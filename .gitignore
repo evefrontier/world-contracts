@@ -12,3 +12,6 @@ node_modules/
 
 # IDE / Editor files
 .vscode/
+
+# Deployment debug files
+deployments/**
