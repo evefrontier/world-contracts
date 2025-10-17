@@ -1,0 +1,48 @@
+# Node modules
+node_modules/
+npm-debug.log
+
+# Build artifacts
+contracts/*/build/
+*.mv
+*.mvd
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment outputs
+deployments/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# CI/CD
+.github/
+
+# Documentation
+*.md
+docs/
+
+# Temporary files
+*.log
+*.tmp
+tmp/
+temp/
+

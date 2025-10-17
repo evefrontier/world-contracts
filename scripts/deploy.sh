@@ -7,7 +7,10 @@ set -e  # Exit on error
 
 # Load environment variables
 if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
+    # Use set -a to automatically export all variables
+    set -a
+    source .env
+    set +a
 else
     echo "Error: .env file not found. Copy env.example to .env and configure it."
     exit 1
@@ -38,17 +41,17 @@ while [ $# -gt 0 ]; do
         ;;
     *)
         echo "Unknown argument: $1"
-        echo "Usage: $0 [--env=<devnet|testnet|localnet>] [--dry-run]"
+        echo "Usage: $0 [--env=<devnet|testnet|localnet|mainnet>] [--dry-run]"
         exit 1
     esac
     shift
 done
 
-# Validate environment, Intentionally not adding mainnet to the list
+# Validate environment
 case "$ENV" in
-    testnet|devnet|localnet) ;;
+    testnet|devnet|localnet|mainnet) ;;
     *)
-        echo "Error: Invalid environment '$ENV'. Must be testnet, devnet, or localnet"
+        echo "Error: Invalid environment '$ENV'. Must be testnet, devnet, localnet, or mainnet"
         exit 1
     ;;
 esac
@@ -57,8 +60,72 @@ echo "======================================"
 echo "Deploying to: $ENV"
 echo "======================================"
 
-# Switch to selected environment
-sui client switch --env $ENV
+# Initialize Sui client config if it doesn't exist, this setting is mostly for the docker deployment
+if [ ! -f "$HOME/.sui/sui_config/client.yaml" ]; then
+    echo "Initializing Sui client configuration..."
+    # Determine RPC URL based on environment
+    case "$ENV" in
+        testnet)
+            RPC_URL="https://fullnode.testnet.sui.io:443"
+            ;;
+        devnet)
+            RPC_URL="https://fullnode.devnet.sui.io:443"
+            ;;
+        localnet)
+            RPC_URL="http://127.0.0.1:9000"
+            ;;
+        mainnet)
+            RPC_URL="https://fullnode.mainnet.sui.io:443"
+            ;;
+    esac
+    
+    # Create directory if it doesn't exist
+    mkdir -p "$HOME/.sui/sui_config"
+    
+    # Create minimal client.yaml to avoid interactive prompts
+    cat > "$HOME/.sui/sui_config/client.yaml" << EOF
+---
+keystore:
+  File: $HOME/.sui/sui_config/sui.keystore
+envs:
+  - alias: $ENV
+    rpc: "$RPC_URL"
+    ws: ~
+    basic_auth: ~
+active_env: $ENV
+active_address: ~
+EOF
+    echo "Created Sui client configuration for $ENV"
+fi
+
+# Import mnemonic if provided
+if [ -n "$MNEMONIC" ]; then
+    echo "Importing wallet from mnemonic..."
+    
+    set +e
+    IMPORT_OUTPUT=$(sui keytool import "$MNEMONIC" ${KEY_SCHEME:-ed25519} 2>&1)
+    IMPORT_EXIT_CODE=$?
+    set -e
+    
+    # Handle import result
+    if [ $IMPORT_EXIT_CODE -ne 0 ] && ! echo "$IMPORT_OUTPUT" | grep -qi "already exists"; then
+        echo "Error: Failed to import mnemonic"
+        echo "$IMPORT_OUTPUT"
+        exit 1
+    fi
+    
+    # Extract imported address
+    IMPORTED_ADDRESS=$(echo "$IMPORT_OUTPUT" | grep -oE '0x[a-fA-F0-9]{64}' | head -n 1)
+    if [ -n "$IMPORTED_ADDRESS" ]; then
+        echo "Using imported address: $IMPORTED_ADDRESS"
+        # Switch to the imported address
+        sui client switch --address "$IMPORTED_ADDRESS"
+    fi
+    echo ""
+else
+    # No mnemonic provided, just switch to environment
+    sui client switch --env $ENV
+fi
 
 if [ "$DRY_RUN" = true ]; then
     echo "Dry run - exiting without publishing"
