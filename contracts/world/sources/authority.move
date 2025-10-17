@@ -71,3 +71,12 @@ public fun delete_owner_cap(owner_cap: OwnerCap, _: &AdminCap) {
 public fun is_authorized(owner_cap: &OwnerCap, object_id: ID): bool {
     owner_cap.owned_object_id == object_id
 }
+
+fun init(ctx: &mut TxContext) {
+     let admin_cap = AdminCap {
+        id: object::new(ctx),
+        admin: ctx.sender(),
+    };
+
+    transfer::transfer(admin_cap, ctx.sender());
+}
