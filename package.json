@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "description": "contracts for eve frontier",
   "scripts": {
-    "build": "cd contracts/world && sui move build",
-    "test": "cd contracts/world && sui move test",
+    "build": "find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move build --path {}",
+    "test": "find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move test --path {}",
     "deploy": "chmod +x ./scripts/deploy.sh && ./scripts/deploy.sh",
     "deploy:dry-run": "chmod +x ./scripts/deploy.sh && ./scripts/deploy.sh --dry-run",
-    "fmt": "prettier --plugin=@mysten/prettier-plugin-move --write \"**/**/*.move\""
+    "fmt": "prettier --plugin=@mysten/prettier-plugin-move --write \"**/**/*.move\"",
+    "fmt:check": "prettier --plugin=@mysten/prettier-plugin-move --check \"**/**/*.move\""
   },
   "dependencies": {
     "@mysten/prettier-plugin-move": "^0.3.3",
