@@ -4,26 +4,25 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'contracts/**'
-      - 'scripts/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
+
+env:
+  CONTRACTS_DIR: contracts
+  PARALLEL_JOBS: 4
 
 jobs:
   lint:
     name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
       
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
           version: 9
       
@@ -32,6 +31,14 @@ jobs:
       
       - name: Run formatter check
         run: pnpm run fmt:check
+      
+      - name: Lint Move contracts
+        run: |
+          docker run --rm \
+            -v $(pwd):/app \
+            -w /app \
+            mysten/sui-tools:testnet \
+            bash -c 'find ${{ env.CONTRACTS_DIR }} -maxdepth 1 -mindepth 1 -type d | xargs -P ${{ env.PARALLEL_JOBS }} -I {} sui move build --path {} --lint'
 
   build:
     name: Build All Contracts
@@ -46,7 +53,7 @@ jobs:
             -v $(pwd):/app \
             -w /app \
             mysten/sui-tools:testnet \
-            bash -c 'find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move build --path {}'
+            bash -c 'find ${{ env.CONTRACTS_DIR }} -maxdepth 1 -mindepth 1 -type d | xargs -P ${{ env.PARALLEL_JOBS }} -I {} sui move build --path {}'
 
   test:
     name: Test All Contracts
@@ -61,4 +68,4 @@ jobs:
             -v $(pwd):/app \
             -w /app \
             mysten/sui-tools:testnet \
-            bash -c 'find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move test --path {}'
+            bash -c 'find ${{ env.CONTRACTS_DIR }} -maxdepth 1 -mindepth 1 -type d | xargs -P ${{ env.PARALLEL_JOBS }} -I {} sui move test --path {}'
