@@ -42,12 +42,8 @@ docker run -it --rm \
   ./scripts/deploy.sh --env=testnet
 ```
 
-### Test the Setup
-```bash
-# Run Move tests
-docker run --rm world-contracts:latest npm test
-
 # Dry run deployment
+```
 ./scripts/docker-deploy.sh --env=testnet --dry-run
 ```
 
@@ -70,7 +66,8 @@ npm run test
 
 ### Deploy Locally
 ```bash
-npm run deploy -- --env=localnet
+# optionally change the network in the .env, by default its localnet
+npm run deploy
 ```
 
 ## Deployment Outputs

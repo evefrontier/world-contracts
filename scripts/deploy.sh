@@ -28,7 +28,7 @@ for dep in jq sui; do
 done
 
 # Process command line args
-ENV=${SUI_NETWORK:-devnet}
+ENV=${SUI_NETWORK:-localnet}
 DRY_RUN=false
 
 while [ $# -gt 0 ]; do
@@ -60,24 +60,25 @@ echo "======================================"
 echo "Deploying to: $ENV"
 echo "======================================"
 
+# Determine RPC URL based on environment
+case "$ENV" in
+    testnet)
+        RPC_URL="https://fullnode.testnet.sui.io:443"
+        ;;
+    devnet)
+        RPC_URL="https://fullnode.devnet.sui.io:443"
+        ;;
+    localnet)
+        RPC_URL="http://127.0.0.1:9000"
+        ;;
+    mainnet)
+        RPC_URL="https://fullnode.mainnet.sui.io:443"
+        ;;
+esac
+
 # Initialize Sui client config if it doesn't exist, this setting is mostly for the docker deployment
 if [ ! -f "$HOME/.sui/sui_config/client.yaml" ]; then
     echo "Initializing Sui client configuration..."
-    # Determine RPC URL based on environment
-    case "$ENV" in
-        testnet)
-            RPC_URL="https://fullnode.testnet.sui.io:443"
-            ;;
-        devnet)
-            RPC_URL="https://fullnode.devnet.sui.io:443"
-            ;;
-        localnet)
-            RPC_URL="http://127.0.0.1:9000"
-            ;;
-        mainnet)
-            RPC_URL="https://fullnode.mainnet.sui.io:443"
-            ;;
-    esac
     
     # Create directory if it doesn't exist
     mkdir -p "$HOME/.sui/sui_config"
@@ -96,7 +97,38 @@ active_env: $ENV
 active_address: ~
 EOF
     echo "Created Sui client configuration for $ENV"
+else
+    # Check if the environment exists in the config
+    echo "Checking Sui client configuration..."
+    if ! sui client envs 2>/dev/null | grep -qw "$ENV"; then
+        echo "Adding $ENV environment to Sui config..."
+        set +e
+        ENV_ADD_OUTPUT=$(sui client new-env --alias $ENV --rpc $RPC_URL 2>&1)
+        ENV_ADD_EXIT=$?
+        set -e
+        
+        # Ignore error if environment already exists
+        if [ $ENV_ADD_EXIT -ne 0 ] && ! echo "$ENV_ADD_OUTPUT" | grep -qi "already exists"; then
+            echo "Error: Failed to add $ENV environment"
+            echo "$ENV_ADD_OUTPUT"
+            exit 1
+        fi
+    fi
 fi
+
+# Switch to the target environment
+echo "Switching to $ENV environment..."
+sui client switch --env $ENV
+
+# Verify we're on the correct network
+ACTIVE_ENV=$(sui client active-env 2>/dev/null || echo "unknown")
+if [ "$ACTIVE_ENV" != "$ENV" ]; then
+    echo "Error: Failed to switch to $ENV (currently on $ACTIVE_ENV)"
+    echo "Please check your Sui configuration"
+    exit 1
+fi
+echo "Using $ENV environment"
+echo ""
 
 # Import mnemonic if provided
 if [ -n "$MNEMONIC" ]; then
@@ -122,9 +154,6 @@ if [ -n "$MNEMONIC" ]; then
         sui client switch --address "$IMPORTED_ADDRESS"
     fi
     echo ""
-else
-    # No mnemonic provided, just switch to environment
-    sui client switch --env $ENV
 fi
 
 if [ "$DRY_RUN" = true ]; then
