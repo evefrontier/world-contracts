@@ -7,7 +7,6 @@ on:
 
 env:
   CONTRACTS_DIR: contracts
-  PARALLEL_JOBS: 4
 
 jobs:
   lint:
@@ -31,41 +30,57 @@ jobs:
       
       - name: Run formatter check
         run: pnpm run fmt:check
+
+  lint-contracts:
+    strategy:
+      matrix:
+        package: [world]
+    name: Lint ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v5
       
-      - name: Lint Move contracts
+      - name: Lint ${{ matrix.package }}
         run: |
           docker run --rm \
             -v $(pwd):/app \
             -w /app \
             mysten/sui-tools:testnet \
-            bash -c 'find ${{ env.CONTRACTS_DIR }} -maxdepth 1 -mindepth 1 -type d | xargs -P ${{ env.PARALLEL_JOBS }} -I {} sui move build --path {} --lint'
+            sui move build --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }} --lint
 
   build:
-    name: Build All Contracts
+    strategy:
+      matrix:
+        package: [world]
+    name: Build ${{ matrix.package }}
     runs-on: ubuntu-latest
-    needs: lint
+    needs: lint-contracts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
-      - name: Build contracts with Sui Docker
+      - name: Build ${{ matrix.package }}
         run: |
           docker run --rm \
             -v $(pwd):/app \
             -w /app \
             mysten/sui-tools:testnet \
-            bash -c 'find ${{ env.CONTRACTS_DIR }} -maxdepth 1 -mindepth 1 -type d | xargs -P ${{ env.PARALLEL_JOBS }} -I {} sui move build --path {}'
+            sui move build --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
 
   test:
-    name: Test All Contracts
+    strategy:
+      matrix:
+        package: [world]
+    name: Test ${{ matrix.package }}
     runs-on: ubuntu-latest
-    needs: lint
+    needs: lint-contracts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
-      - name: Test contracts with Sui Docker
+      - name: Test ${{ matrix.package }}
         run: |
           docker run --rm \
             -v $(pwd):/app \
             -w /app \
             mysten/sui-tools:testnet \
-            bash -c 'find ${{ env.CONTRACTS_DIR }} -maxdepth 1 -mindepth 1 -type d | xargs -P ${{ env.PARALLEL_JOBS }} -I {} sui move test --path {}'
+            sui move test --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
