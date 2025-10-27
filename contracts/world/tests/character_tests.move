@@ -48,8 +48,8 @@ fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: ve
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let mut registry = ts::take_shared<CharacterRegistry>(ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             game_id,
             tribe_id,
             utf8(name),
@@ -123,8 +123,8 @@ fun test_deterministic_character_id() {
         precomputed_id = object::id_from_address(precomputed_addr);
 
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             game_id,
             100,
             utf8(b"test1"),
@@ -156,8 +156,8 @@ fun test_different_game_ids_produce_different_character_ids() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             1u32,
             100,
             utf8(b"character1"),
@@ -175,8 +175,8 @@ fun test_different_game_ids_produce_different_character_ids() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             2u32,
             100,
             utf8(b"character2"),
@@ -211,8 +211,8 @@ fun test_duplicate_game_id_fails() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             game_id,
             100,
             utf8(b"test1"),
@@ -230,8 +230,8 @@ fun test_duplicate_game_id_fails() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             game_id,
             200,
             utf8(b"test2"),
@@ -261,8 +261,8 @@ fun test_delete_recreate_character() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             1u32,
             100,
             utf8(b"character1"),
@@ -288,8 +288,8 @@ fun test_delete_recreate_character() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             1u32,
             200,
             utf8(b"test2"),
@@ -385,8 +385,8 @@ fun test_create_character_without_admin_cap() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             1,
             100,
             utf8(b"test"),

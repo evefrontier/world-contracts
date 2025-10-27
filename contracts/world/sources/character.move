@@ -12,20 +12,20 @@ use world::authority::{Self, OwnerCap, AdminCap};
 #[error]
 const ECharacterNotAuthorized: u64 = 0;
 
-// Events
-public struct CharacterCreatedEvent has copy, drop {
-    character_id: ID,
-    game_character_id: u32,
-    tribe_id: u32,
-    name: String,
-}
-
 public struct CharacterRegistry has key {
     id: UID,
 }
 
 public struct Character has key {
     id: UID,
+    game_character_id: u32,
+    tribe_id: u32,
+    name: String,
+}
+
+// Events
+public struct CharacterCreatedEvent has copy, drop {
+    character_id: ID,
     game_character_id: u32,
     tribe_id: u32,
     name: String,
@@ -38,8 +38,8 @@ fun init(ctx: &mut TxContext) {
 }
 
 public fun create_character(
-    _: &AdminCap,
     registry: &mut CharacterRegistry,
+    _: &AdminCap,
     game_character_id: u32,
     tribe_id: u32,
     name: String,
