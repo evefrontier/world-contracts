@@ -9,8 +9,17 @@ use std::string::String;
 use sui::{derived_object, event};
 use world::authority::{Self, OwnerCap, AdminCap};
 
-#[error]
-const ECharacterNotAuthorized: u64 = 0;
+#[error(code = 0)]
+const EGameCharacterIdEmpty: vector<u8> = b"Game character ID is empty";
+
+#[error(code = 1)]
+const ETribeIdEmpty: vector<u8> = b"Tribe ID is empty";
+
+#[error(code = 2)]
+const ECharacterAlreadyExists: vector<u8> = b"Character with this game character ID already exists";
+
+#[error(code = 3)]
+const ECharacterNotAuthorized: vector<u8> = b"Character not authorized";
 
 // Events
 public struct CharacterCreatedEvent has copy, drop {
@@ -38,14 +47,16 @@ fun init(ctx: &mut TxContext) {
 }
 
 public fun create_character(
-    _: &AdminCap,
     registry: &mut CharacterRegistry,
+    _: &AdminCap,
     game_character_id: u32,
     tribe_id: u32,
     name: String,
     _: &mut TxContext,
 ): Character {
-    // TODO: Should we do empty field checks ?
+    assert!(game_character_id != 0, EGameCharacterIdEmpty);
+    assert!(tribe_id != 0, ETribeIdEmpty);
+    assert!(!derived_object::exists(&registry.id, game_character_id), ECharacterAlreadyExists);
 
     // Claim a derived UID using the game character id as the key
     // This ensures deterministic character id  generation and prevents duplicate character creation under the same game id.

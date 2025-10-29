@@ -48,8 +48,8 @@ fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: ve
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let mut registry = ts::take_shared<CharacterRegistry>(ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             game_id,
             tribe_id,
             utf8(name),
@@ -62,7 +62,7 @@ fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: ve
 }
 
 #[test]
-fun test_character_registry_initialized() {
+fun character_registry_initialized() {
     let mut ts = ts::begin(GOVERNOR);
     ts::next_tx(&mut ts, GOVERNOR);
     {
@@ -80,7 +80,7 @@ fun test_character_registry_initialized() {
 }
 
 #[test]
-fun test_create_character() {
+fun create_character() {
     let mut ts = ts::begin(GOVERNOR);
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
@@ -99,7 +99,7 @@ fun test_create_character() {
 }
 
 #[test]
-fun test_deterministic_character_id() {
+fun deterministic_character_id() {
     let mut ts = ts::begin(GOVERNOR);
     setup_world(&mut ts);
 
@@ -123,8 +123,8 @@ fun test_deterministic_character_id() {
         precomputed_id = object::id_from_address(precomputed_addr);
 
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             game_id,
             100,
             utf8(b"test1"),
@@ -143,7 +143,7 @@ fun test_deterministic_character_id() {
 }
 
 #[test]
-fun test_different_game_ids_produce_different_character_ids() {
+fun different_game_ids_produce_different_character_ids() {
     let mut ts = ts::begin(GOVERNOR);
     setup_world(&mut ts);
 
@@ -156,8 +156,8 @@ fun test_different_game_ids_produce_different_character_ids() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             1u32,
             100,
             utf8(b"character1"),
@@ -175,8 +175,8 @@ fun test_different_game_ids_produce_different_character_ids() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             2u32,
             100,
             utf8(b"character2"),
@@ -198,114 +198,7 @@ fun test_different_game_ids_produce_different_character_ids() {
 }
 
 #[test]
-#[expected_failure(abort_code = derived_object::EObjectAlreadyExists)]
-fun test_duplicate_game_id_fails() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
-
-    let game_id = 123u32;
-
-    // Create first character with game_id = 123
-    ts::next_tx(&mut ts, ADMIN);
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
-        let character = character::create_character(
-            &admin_cap,
-            &mut registry,
-            game_id,
-            100,
-            utf8(b"test1"),
-            ts::ctx(&mut ts),
-        );
-        character::share_character(character, &admin_cap);
-        ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
-    };
-
-    // Try to create another character with the same game_id = 123
-    // This should fail because the derived UID was already claimed
-    ts::next_tx(&mut ts, ADMIN);
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
-        let character = character::create_character(
-            &admin_cap,
-            &mut registry,
-            game_id,
-            200,
-            utf8(b"test2"),
-            ts::ctx(&mut ts),
-        );
-        character::share_character(character, &admin_cap);
-        ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
-    };
-
-    ts.end();
-}
-
-// Current limitation: derived UIDs cannot be reclaimed after deletion.
-// Recreating a character with the same game_id fails,
-// even after the original character is deleted.
-// The Sui team plans to lift this restriction in the future.
-#[test]
-#[expected_failure(abort_code = derived_object::EObjectAlreadyExists)]
-fun test_delete_recreate_character() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
-
-    // Create first character with game_id = 1
-    ts::next_tx(&mut ts, ADMIN);
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
-        let character = character::create_character(
-            &admin_cap,
-            &mut registry,
-            1u32,
-            100,
-            utf8(b"character1"),
-            ts::ctx(&mut ts),
-        );
-        character::share_character(character, &admin_cap);
-        ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
-    };
-
-    // Delete the character
-    ts::next_tx(&mut ts, ADMIN);
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let character = ts::take_shared<Character>(&ts);
-        character::delete_character(character, &admin_cap);
-        ts::return_to_sender(&ts, admin_cap);
-    };
-
-    // Create another character with the same game_id = 42
-    ts::next_tx(&mut ts, ADMIN);
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
-        let character = character::create_character(
-            &admin_cap,
-            &mut registry,
-            1u32,
-            200,
-            utf8(b"test2"),
-            ts::ctx(&mut ts),
-        );
-
-        character::share_character(character, &admin_cap);
-        ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
-    };
-
-    ts.end();
-}
-
-#[test]
-fun test_rename_character() {
+fun rename_character() {
     let mut ts = ts::begin(GOVERNOR);
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
@@ -335,7 +228,7 @@ fun test_rename_character() {
 }
 
 #[test]
-fun test_update_tribe() {
+fun update_tribe() {
     let mut ts = ts::begin(GOVERNOR);
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
@@ -356,7 +249,7 @@ fun test_update_tribe() {
 }
 
 #[test]
-fun test_delete_character() {
+fun delete_character() {
     let mut ts = ts::begin(GOVERNOR);
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
@@ -375,8 +268,135 @@ fun test_delete_character() {
 }
 
 #[test]
+#[expected_failure(abort_code = character::EGameCharacterIdEmpty)]
+fun create_character_with_empty_game_character_id() {
+    let mut ts = ts::begin(GOVERNOR);
+    setup_world(&mut ts);
+    setup_character(&mut ts, 0, 100, b"test");
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = character::ETribeIdEmpty)]
+fun create_character_with_empty_tribe_id() {
+    let mut ts = ts::begin(GOVERNOR);
+    setup_world(&mut ts);
+    setup_character(&mut ts, 1, 0, b"test");
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = character::ECharacterAlreadyExists)]
+fun duplicate_game_id_fails() {
+    let mut ts = ts::begin(GOVERNOR);
+    setup_world(&mut ts);
+
+    let game_id = 123u32;
+
+    // Create first character with game_id = 123
+    ts::next_tx(&mut ts, ADMIN);
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let character = character::create_character(
+            &mut registry,
+            &admin_cap,
+            game_id,
+            100,
+            utf8(b"test1"),
+            ts::ctx(&mut ts),
+        );
+        character::share_character(character, &admin_cap);
+        ts::return_shared(registry);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    // Try to create another character with the same game_id = 123
+    // This should fail because the derived UID was already claimed
+    ts::next_tx(&mut ts, ADMIN);
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let character = character::create_character(
+            &mut registry,
+            &admin_cap,
+            game_id,
+            200,
+            utf8(b"test2"),
+            ts::ctx(&mut ts),
+        );
+        character::share_character(character, &admin_cap);
+        ts::return_shared(registry);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    ts.end();
+}
+
+// Current limitation: derived UIDs cannot be reclaimed after deletion.
+// Recreating a character with the same game_id fails,
+// even after the original character is deleted.
+// The Sui team plans to lift this restriction in the future.
+#[test]
 #[expected_failure]
-fun test_create_character_without_admin_cap() {
+fun delete_recreate_character() {
+    let mut ts = ts::begin(GOVERNOR);
+    setup_world(&mut ts);
+
+    // Create first character with game_id = 1
+    ts::next_tx(&mut ts, ADMIN);
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let character = character::create_character(
+            &mut registry,
+            &admin_cap,
+            1u32,
+            100,
+            utf8(b"character1"),
+            ts::ctx(&mut ts),
+        );
+        character::share_character(character, &admin_cap);
+        ts::return_shared(registry);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    // Delete the character
+    ts::next_tx(&mut ts, ADMIN);
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let character = ts::take_shared<Character>(&ts);
+        character::delete_character(character, &admin_cap);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    // Create another character with the same game_id = 42
+    ts::next_tx(&mut ts, ADMIN);
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let character = character::create_character(
+            &mut registry,
+            &admin_cap,
+            1u32,
+            200,
+            utf8(b"test2"),
+            ts::ctx(&mut ts),
+        );
+
+        character::share_character(character, &admin_cap);
+        ts::return_shared(registry);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    ts.end();
+}
+
+#[test]
+#[expected_failure]
+fun create_character_without_admin_cap() {
     let mut ts = ts::begin(GOVERNOR);
     setup_world(&mut ts);
 
@@ -385,8 +405,8 @@ fun test_create_character_without_admin_cap() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let character = character::create_character(
-            &admin_cap,
             &mut registry,
+            &admin_cap,
             1,
             100,
             utf8(b"test"),
