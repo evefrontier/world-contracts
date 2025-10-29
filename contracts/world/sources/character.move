@@ -21,20 +21,20 @@ const ECharacterAlreadyExists: vector<u8> = b"Character with this game character
 #[error(code = 3)]
 const ECharacterNotAuthorized: vector<u8> = b"Character not authorized";
 
-// Events
-public struct CharacterCreatedEvent has copy, drop {
-    character_id: ID,
-    game_character_id: u32,
-    tribe_id: u32,
-    name: String,
-}
-
 public struct CharacterRegistry has key {
     id: UID,
 }
 
 public struct Character has key {
     id: UID,
+    game_character_id: u32,
+    tribe_id: u32,
+    name: String,
+}
+
+// Events
+public struct CharacterCreatedEvent has copy, drop {
+    character_id: ID,
     game_character_id: u32,
     tribe_id: u32,
     name: String,
