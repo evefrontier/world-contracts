@@ -54,6 +54,7 @@ Constructs are the actual in-game entities (storage units, gates, manufacturing 
 - Each construct is a Sui [shared object](https://docs.sui.io/concepts/object-ownership/shared) to enable concurrent access by both game and players
 - Constructs expose entry functions that define their behavior
 - State mutations are protected by [Move capabilities](https://docs.sui.io/concepts/sui-move-concepts/conventions#access-control) to enforce authorization
+- Function authorization follows two patterns: (1) game operations requiring an admin capability for core state mutations, and (2) owner operations requiring an ownership certificate for construct-specific modifications.
 - Constructs maintain an allowlist of registered software types for extensibility
 
 **Security Model:** While shared objects allow concurrent access, all mutation operations require proper authorization through capability patterns, preventing unauthorized state changes.
