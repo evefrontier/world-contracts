@@ -33,7 +33,7 @@ The foundation consists of small, focused modules that implement low-level funct
 - `location.move` - Spatial positioning and hashed location storage
 - `inventory.move` - Item storage and management
 - `fuel.move` - Energy/resource consumption mechanics
-- `assembly.move` - Base deployable structures
+- `deployable.move` - Base deployable structures
 - `network_node.move` - Inter-structure communication
 
 **Design Principle:** Each library is a Move module logically grouped by functionalities. Libraries expose composable functions and can be used without circular dependencies.
@@ -60,10 +60,10 @@ Constructs are the actual in-game entities (storage units, gates, manufacturing 
 
 ### Layer 3: Player Extensions (Moddability)
 
-Players can extend construct behavior by deploying custom smart contract packages that register with existing constructs through a `typed authentication witness` pattern.This is a powerful combination of witness / type-based capability pattern in Move. 
+Players can extend a construct behavior by deploying custom smart contract packages that register with existing constructs through a `typed authentication witness` pattern. This is a powerful combination of witness / type-based capability pattern in Move. 
 
 **Authentication Mechanism:**
-The construct maintains an allowlist of `TypeName` entries. A third-party "software" package registers its own witness type by adding its `TypeName` to this list. Since only the defining module can create instances of its witness type (via private constructor), only that software can call the construct's authenticated entry points.
+The construct maintains an allowlist of `TypeName` entries. A third-party "software" package registers its own witness type by adding its `TypeName` to this list. Since only the defining module can create instances of its witness type, only that software can call the construct's authenticated entry points.
 
 **Flow:**
 - There is a module per construct (ie storage_unit.move, gate.move, etc)
@@ -136,7 +136,7 @@ graph LR
         L1[location.move]
         L2[inventory.move]
         L3[fuel.move]
-        L4[assembly.move]
+        L4[deployable.move]
         L5[network_node.move]
     end
     
