@@ -79,5 +79,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          cache-from: ${{ github.event.inputs.skip_cache != 'true' && format('type=registry,ref={0}/{1}/{2}:buildcache', env.REGISTRY, env.REPO_OWNER, env.IMAGE_NAME) || '' }}
+          cache-to: ${{ github.event.inputs.skip_cache != 'true' && format('type=registry,ref={0}/{1}/{2}:buildcache,mode=max', env.REGISTRY, env.REPO_OWNER, env.IMAGE_NAME) || '' }}
