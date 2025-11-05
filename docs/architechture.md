@@ -4,7 +4,7 @@
 The Frontier world contracts need to support a complex game environment with structures that can be composed, extended, and modified by both the core game and third-party builders. The architecture must balance flexibility with security while preserving player privacy in a transparent blockchain environment.
 
 ## Motivations
-Some of the major motivation behind the design decisions are: 
+Some of the major motivations behind the design decisions are: 
 
 ### 1. Composability
 Contracts should be structured as logical modules that promote code reusability without circular dependencies. This enables building complex game entities from simple, well-tested components.
