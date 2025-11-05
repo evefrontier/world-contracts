@@ -33,7 +33,7 @@ The foundation consists of small, focused modules that implement low-level funct
 - `location.move` - Spatial positioning and hashed location storage
 - `inventory.move` - Item storage and management
 - `fuel.move` - Energy/resource consumption mechanics
-- `state.move` - Anchored/Online/offline state management
+- `status.move` - Anchored/Online/offline state management
 - `network_node.move` - Inter-structure communication
 
 **Design Principle:** Each primitive is a Move module logically grouped by functionalities. Primitives expose composable functions and can be used without circular dependencies. The architecture emphasizes **composition over inheritance** a fundamental pattern in Move.
@@ -137,7 +137,7 @@ graph LR
         L1[location.move]
         L2[inventory.move]
         L3[fuel.move]
-        L4[state.move]
+        L4[status.move]
         L5[network_node.move]
     end
     
