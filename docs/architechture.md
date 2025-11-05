@@ -128,58 +128,6 @@ To support game mechanics requiring information asymmetry while maintaining on-c
 
 **Example Use Case:** Transferring items between two inventories requires proof that both inventories are at the same or adjacent locations.
 
-### Architecture Diagram
-
-```mermaid
-graph LR
-    subgraph Layer1["Layer 1: Composable Primitives"]
-        direction TB
-        L1[location.move]
-        L2[inventory.move]
-        L3[fuel.move]
-        L4[status.move]
-        L5[network_node.move]
-    end
-    
-    subgraph Layer2["Layer 2: Game-Defined Assemblies"]
-        direction TB
-        C1[Storage Unit]
-        C2[Gate]
-        C3[Manufacturing Unit]
-        C4[Assembly]
-    end
-    
-    subgraph Layer3["Layer 3: Player Extensions"]
-        direction TB
-        PE1[Custom Extension A]
-        PE2[Custom Extension B]
-        PE3[Custom Extension C]
-    end
-    
-    L1 --> C1 & C2
-    L2 --> C1 & C3
-    L3 --> C1 & C2 & C3
-    L4 --> C4
-    L5 --> C2
-    
-    C1 -.-> PE1
-    C2 -.-> PE2
-    C3 -.-> PE3
-    
-    style L1 fill:#e1f5ff
-    style L2 fill:#e1f5ff
-    style L3 fill:#e1f5ff
-    style L4 fill:#e1f5ff
-    style L5 fill:#e1f5ff
-    style C1 fill:#fff4e1
-    style C2 fill:#fff4e1
-    style C3 fill:#fff4e1
-    style C4 fill:#fff4e1
-    style PE1 fill:#f0e1ff
-    style PE2 fill:#f0e1ff
-    style PE3 fill:#f0e1ff
-```
-
 ### Folder Structure
 
 ```text
