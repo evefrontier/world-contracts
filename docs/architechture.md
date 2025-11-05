@@ -38,11 +38,11 @@ The foundation consists of small, focused modules that implement low-level funct
 
 **Design Principle:** Each primitive is a Move module logically grouped by functionalities. Primitives expose composable functions and can be used without circular dependencies. The architecture emphasizes **composition over inheritance** a fundamental pattern in Move.
 
-**Example Compositions:**
-- **Storage Unit** = `inventory` + `location` + `fuel`
-- **Gate** = `location` + `fuel` + `network_node`
-- **Manufacturing Unit** = `inventory` + `fuel`
-- **Basic Assembly** = `assembly` only
+**Example Assembly using Primitives:**
+- **Storage Unit** = `status` + `inventory` + `location` + `fuel` + `network_node`  
+- **Gate** = `status` + `location` + `fuel` + `network_node`  
+- **Manufacturing Unit** = `status` + `fuel` + `network_node`  
+- **Basic Assembly** =  `status`  
 
 **Access Control:** Primitives are currently restricted to Frontier-designed assemblies and not directly exposed to third-party builders.
 
@@ -187,12 +187,13 @@ world-contracts/
 │
 ├── world/                          
 │   ├── sources/
+│   │   ├── character/             
 │   │   ├── assemblies/             # Game defined assemblies
 │   │   │   ├── gate.move
 │   │   │   └── storage_unit.move
 │   │   │   └── assembly.move
 │   │   └── primitives/             # Composable primitives
-│   │       ├── state.move
+│   │       ├── status.move
 │   │       ├── fuel.move
 │   │       ├── inventory.move
 │   │       ├── location.move
