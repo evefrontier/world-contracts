@@ -7,13 +7,8 @@ use sui::test_scenario as ts;
 use world::{
     authority::{Self, OwnerCap, AdminCap},
     status::{Self, AssemblyStatus},
-    world::{Self, GovernorCap}
+    test_helpers::{Self, governor, admin, user_a, user_b}
 };
-
-const GOVERNOR: address = @0xA;
-const ADMIN: address = @0xB;
-const USER_A: address = @0xC;
-const USER_B: address = @0xD;
 
 public struct StorageUnit has key {
     id: UID,
@@ -22,23 +17,10 @@ public struct StorageUnit has key {
 }
 
 // Helper Functions
-fun setup_world(ts: &mut ts::Scenario) {
-    ts::next_tx(ts, GOVERNOR);
-    {
-        world::init_for_testing(ts.ctx());
-    };
-
-    ts::next_tx(ts, GOVERNOR);
-    {
-        let gov_cap = ts::take_from_sender<GovernorCap>(ts);
-        authority::create_admin_cap(&gov_cap, ADMIN, ts.ctx());
-        ts::return_to_sender(ts, gov_cap);
-    };
-}
 
 // An assembly implementation using the status primitive
 fun create_storage_unit(ts: &mut ts::Scenario) {
-    ts::next_tx(ts, ADMIN);
+    ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let uid = object::new(ts.ctx());
@@ -55,7 +37,7 @@ fun create_storage_unit(ts: &mut ts::Scenario) {
 }
 
 fun destroy_storage_unit(ts: &mut ts::Scenario) {
-    ts::next_tx(ts, ADMIN);
+    ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let storage_unit = ts::take_shared<StorageUnit>(ts);
@@ -68,24 +50,13 @@ fun destroy_storage_unit(ts: &mut ts::Scenario) {
     }
 }
 
-// Create a owner cap to access a assembly
-fun setup_owner_cap(assembly_id: ID, ts: &mut ts::Scenario) {
-    ts::next_tx(ts, ADMIN);
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let owner_cap = authority::create_owner_cap(&admin_cap, assembly_id, ts.ctx());
-        authority::transfer_owner_cap(owner_cap, &admin_cap, USER_A);
-        ts::return_to_sender(ts, admin_cap);
-    }
-}
-
 #[test]
 fun create_assembly() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
     create_storage_unit(&mut ts);
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
         assert_eq!(storage_unit.status.status_to_u8(), 0);
@@ -96,18 +67,18 @@ fun create_assembly() {
 
 #[test]
 fun online() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
     create_storage_unit(&mut ts);
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        setup_owner_cap(object::id(&storage_unit), &mut ts);
+        test_helpers::setup_owner_cap_for_user_a(&mut ts, object::id(&storage_unit));
         ts::return_shared(storage_unit);
     };
 
-    ts::next_tx(&mut ts, USER_A);
+    ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
@@ -122,18 +93,18 @@ fun online() {
 
 #[test]
 fun offline() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
     create_storage_unit(&mut ts);
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        setup_owner_cap(object::id(&storage_unit), &mut ts);
+        test_helpers::setup_owner_cap_for_user_a(&mut ts, object::id(&storage_unit));
         ts::return_shared(storage_unit);
     };
 
-    ts::next_tx(&mut ts, USER_A);
+    ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
@@ -149,11 +120,11 @@ fun offline() {
 
 #[test]
 fun unanchor_destroy() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
     create_storage_unit(&mut ts);
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
         assert_eq!(storage_unit.status.status_to_u8(), 0);
@@ -166,18 +137,18 @@ fun unanchor_destroy() {
 #[test]
 #[expected_failure(abort_code = status::EAssemblyInvalidStatus)]
 fun offline_without_online_fail() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
     create_storage_unit(&mut ts);
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        setup_owner_cap(object::id(&storage_unit), &mut ts);
+        test_helpers::setup_owner_cap_for_user_a(&mut ts, object::id(&storage_unit));
         ts::return_shared(storage_unit);
     };
 
-    ts::next_tx(&mut ts, USER_A);
+    ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
@@ -194,14 +165,14 @@ fun offline_without_online_fail() {
 #[test]
 #[expected_failure(abort_code = status::EAssemblyNotAuthorized)]
 fun online_fail_by_unauthorised_owner() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
 
     // First assembly
     create_storage_unit(&mut ts);
     let assembly_1_id: ID;
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let storage_unit_1 = ts::take_shared<StorageUnit>(&ts);
         assembly_1_id = object::id(&storage_unit_1);
@@ -217,15 +188,15 @@ fun online_fail_by_unauthorised_owner() {
         };
         transfer::share_object(storage_unit_2);
 
-        // Give USER_B cap for assembly_2
+        // Give user_b cap for assembly_2
         let owner_cap = authority::create_owner_cap(&admin_cap, assembly_2_id, ts.ctx());
-        authority::transfer_owner_cap(owner_cap, &admin_cap, USER_B);
+        authority::transfer_owner_cap(owner_cap, &admin_cap, user_b());
 
         ts::return_shared(storage_unit_1);
         ts::return_to_sender(&ts, admin_cap);
     };
 
-    ts::next_tx(&mut ts, USER_B);
+    ts::next_tx(&mut ts, user_b());
     {
         // let mut storage_unit_1 = ts::take_shared<StorageUnit>(&ts);
         let mut storage_unit_1 = ts::take_shared_by_id<StorageUnit>(&ts, assembly_1_id);
@@ -244,18 +215,18 @@ fun online_fail_by_unauthorised_owner() {
 #[test]
 #[expected_failure]
 fun get_assembly_status_after_unanchor_fails() {
-    let mut ts = ts::begin(GOVERNOR);
-    setup_world(&mut ts);
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
     create_storage_unit(&mut ts);
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
         assert_eq!(storage_unit.status.status_to_u8(), 0);
         ts::return_shared(storage_unit);
         destroy_storage_unit(&mut ts);
     };
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
         assert_eq!(storage_unit.status.status_to_u8(), 0);

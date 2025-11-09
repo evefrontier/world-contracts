@@ -7,43 +7,29 @@ use sui::{derived_object, test_scenario as ts};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
     character::{Self, Character, CharacterRegistry},
+    test_helpers::{Self, governor, admin, user_a, user_b},
     world::{Self, GovernorCap}
 };
-
-const GOVERNOR: address = @0xA;
-const ADMIN: address = @0xB;
-const USER_A: address = @0xC;
-const USER_B: address = @0xD;
 
 // Helper functions
 
 fun setup_world(ts: &mut ts::Scenario) {
-    ts::next_tx(ts, GOVERNOR);
+    ts::next_tx(ts, governor());
     {
         world::init_for_testing(ts::ctx(ts));
         character::init_for_testing(ts::ctx(ts));
     };
 
-    ts::next_tx(ts, GOVERNOR);
+    ts::next_tx(ts, governor());
     {
         let gov_cap = ts::take_from_sender<GovernorCap>(ts);
-        authority::create_admin_cap(&gov_cap, ADMIN, ts::ctx(ts));
+        authority::create_admin_cap(&gov_cap, admin(), ts::ctx(ts));
         ts::return_to_sender(ts, gov_cap);
     };
 }
 
-fun setup_owner_cap(ts: &mut ts::Scenario, owner: address, character_id: ID) {
-    ts::next_tx(ts, ADMIN);
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let owner_cap = authority::create_owner_cap(&admin_cap, character_id, ts::ctx(ts));
-        authority::transfer_owner_cap(owner_cap, &admin_cap, owner);
-        ts::return_to_sender(ts, admin_cap);
-    };
-}
-
 fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: vector<u8>) {
-    ts::next_tx(ts, ADMIN);
+    ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let mut registry = ts::take_shared<CharacterRegistry>(ts);
@@ -63,13 +49,13 @@ fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: ve
 
 #[test]
 fun character_registry_initialized() {
-    let mut ts = ts::begin(GOVERNOR);
-    ts::next_tx(&mut ts, GOVERNOR);
+    let mut ts = ts::begin(governor());
+    ts::next_tx(&mut ts, governor());
     {
         character::init_for_testing(ts::ctx(&mut ts));
     };
 
-    ts::next_tx(&mut ts, GOVERNOR);
+    ts::next_tx(&mut ts, governor());
     {
         let registry = ts::take_shared<CharacterRegistry>(&ts);
         // Registry should exist and be shared
@@ -81,11 +67,11 @@ fun character_registry_initialized() {
 
 #[test]
 fun create_character() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let character = ts::take_shared<Character>(&ts);
 
@@ -100,7 +86,7 @@ fun create_character() {
 
 #[test]
 fun deterministic_character_id() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
     let game_id = 42u32;
@@ -108,7 +94,7 @@ fun deterministic_character_id() {
     let precomputed_id: ID;
 
     // Create first character with game_id = 42
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
@@ -144,14 +130,14 @@ fun deterministic_character_id() {
 
 #[test]
 fun different_game_ids_produce_different_character_ids() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
     let character_id_1: ID;
     let character_id_2: ID;
 
     // Create first character with game_id = 1
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
@@ -170,7 +156,7 @@ fun different_game_ids_produce_different_character_ids() {
     };
 
     // Create second character with game_id = 2
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
@@ -188,7 +174,7 @@ fun different_game_ids_produce_different_character_ids() {
         ts::return_to_sender(&ts, admin_cap);
     };
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         // Different game IDs should produce different character IDs
         assert!(character_id_1 != character_id_2, 0);
@@ -199,20 +185,20 @@ fun different_game_ids_produce_different_character_ids() {
 
 #[test]
 fun rename_character() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
 
-    ts::next_tx(&mut ts, USER_A);
+    ts::next_tx(&mut ts, user_a());
     {
         let character = ts::take_shared<Character>(&ts);
         let character_id = object::id(&character);
         ts::return_shared(character);
 
-        setup_owner_cap(&mut ts, USER_A, character_id);
+        test_helpers::setup_owner_cap(&mut ts, user_a(), character_id);
     };
 
-    ts::next_tx(&mut ts, USER_A);
+    ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
@@ -229,11 +215,11 @@ fun rename_character() {
 
 #[test]
 fun update_tribe() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
@@ -250,11 +236,11 @@ fun update_tribe() {
 
 #[test]
 fun delete_character() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
 
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let character = ts::take_shared<Character>(&ts);
@@ -270,7 +256,7 @@ fun delete_character() {
 #[test]
 #[expected_failure(abort_code = character::EGameCharacterIdEmpty)]
 fun create_character_with_empty_game_character_id() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
     setup_character(&mut ts, 0, 100, b"test");
 
@@ -280,7 +266,7 @@ fun create_character_with_empty_game_character_id() {
 #[test]
 #[expected_failure(abort_code = character::ETribeIdEmpty)]
 fun create_character_with_empty_tribe_id() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 0, b"test");
 
@@ -290,13 +276,13 @@ fun create_character_with_empty_tribe_id() {
 #[test]
 #[expected_failure(abort_code = character::ECharacterAlreadyExists)]
 fun duplicate_game_id_fails() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
     let game_id = 123u32;
 
     // Create first character with game_id = 123
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
@@ -315,7 +301,7 @@ fun duplicate_game_id_fails() {
 
     // Try to create another character with the same game_id = 123
     // This should fail because the derived UID was already claimed
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
@@ -342,11 +328,11 @@ fun duplicate_game_id_fails() {
 #[test]
 #[expected_failure]
 fun delete_recreate_character() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
     // Create first character with game_id = 1
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
@@ -364,7 +350,7 @@ fun delete_recreate_character() {
     };
 
     // Delete the character
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let character = ts::take_shared<Character>(&ts);
@@ -373,7 +359,7 @@ fun delete_recreate_character() {
     };
 
     // Create another character with the same game_id = 42
-    ts::next_tx(&mut ts, ADMIN);
+    ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
@@ -397,10 +383,10 @@ fun delete_recreate_character() {
 #[test]
 #[expected_failure]
 fun create_character_without_admin_cap() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
-    ts::next_tx(&mut ts, USER_A);
+    ts::next_tx(&mut ts, user_a());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
@@ -420,11 +406,11 @@ fun create_character_without_admin_cap() {
 #[test]
 #[expected_failure]
 fun test_rename_character_without_owner_cap() {
-    let mut ts = ts::begin(GOVERNOR);
+    let mut ts = ts::begin(governor());
     setup_world(&mut ts);
     setup_character(&mut ts, 1, 100, b"test");
 
-    ts::next_tx(&mut ts, USER_B);
+    ts::next_tx(&mut ts, user_b());
     {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
