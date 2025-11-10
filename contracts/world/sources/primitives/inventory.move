@@ -80,6 +80,22 @@ public struct ItemAmountChangedEvent has copy, drop {
     new_quantity: u64,
 }
 
+public struct ItemDepositedEvent has copy, drop {
+    inventory_id: ID,
+    item_id: u64,
+    type_id: u64,
+    volume: u64,
+    quantity: u64,
+}
+
+public struct ItemWithdrawnEvent has copy, drop {
+    inventory_id: ID,
+    item_id: u64,
+    type_id: u64,
+    volume: u64,
+    quantity: u64,
+}
+
 // === Public Functions ===
 // TODO: Transfer items between two inventories by providing proximity proofs
 
@@ -97,7 +113,7 @@ public fun burn_items_from_inventory(
 ) {
     assert!(authority::is_authorized(owner_cap, inventory.id), EInventoryAccessNotAuthorized);
     assert!(vec_map::contains(&inventory.items, &item_id), EItemDoesNotExist);
-    assert!(status::is_online(assembly_status), ENotOnline);
+    assert!(assembly_status.is_online(), ENotOnline);
 
     //TODO: Verify proximity
 
@@ -112,7 +128,7 @@ public fun burn_items_from_inventory(
         inventory.used_capacity = inventory.used_capacity - volume_freed;
 
         let Item { id, type_id: _, item_id: _, volume: _, quantity: _, location } = removed_item;
-        location::remove_location(location);
+        location.remove_location();
         object::delete(id);
     } else {
         reduce_item_amount(inventory, item_id, quantity);
@@ -132,8 +148,8 @@ public fun burn_items_from_inventory(
 /// Admin-only function for trusted game server
 /// Creates new item or adds to existing if item_id already exists
 public fun mint_items_in_inventory(
-    assembly_status: &AssemblyStatus,
     inventory: &mut Inventory,
+    assembly_status: &AssemblyStatus,
     location_hash: vector<u8>,
     admin_cap: &AdminCap,
     item_id: u64,
@@ -144,7 +160,7 @@ public fun mint_items_in_inventory(
 ) {
     assert!(item_id != 0, EItemIdEmpty);
     assert!(type_id != 0, ETypeIdEmpty);
-    assert!(status::is_online(assembly_status), ENotOnline);
+    assert!(assembly_status.is_online(), ENotOnline);
 
     if (vec_map::contains(&inventory.items, &item_id)) {
         add_items(inventory, item_id, quantity);
@@ -197,6 +213,14 @@ public(package) fun deposit_item(inventory: &mut Inventory, item: Item) {
     assert!(req_capacity <= remaining_capacity, EInventoryInSufficientCapacity);
 
     inventory.used_capacity = inventory.used_capacity + req_capacity;
+
+    event::emit(ItemDepositedEvent {
+        inventory_id: inventory.id,
+        item_id: item.item_id,
+        type_id: item.type_id,
+        volume: item.volume,
+        quantity: item.quantity,
+    });
     inventory.items.insert(item.item_id, item);
 }
 
@@ -208,6 +232,14 @@ public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item
     let (_, item) = vec_map::remove(&mut inventory.items, &item_id);
     let volume_freed = calculate_volume(item.volume, item.quantity);
     inventory.used_capacity = inventory.used_capacity - volume_freed;
+
+    event::emit(ItemWithdrawnEvent {
+        inventory_id: inventory.id,
+        item_id: item.item_id,
+        type_id: item.type_id,
+        volume: item.volume,
+        quantity: item.quantity,
+    });
     item
 }
 
