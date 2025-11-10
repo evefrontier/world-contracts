@@ -35,35 +35,16 @@ public struct StatusChangedEvent has copy, drop {
     status: Status,
 }
 
-/// Anchors an assmebly and returns an instance of the status
-public fun anchor(_: &AdminCap, assembly_id: ID): AssemblyStatus {
-    let assembly_status = AssemblyStatus {
-        assembly_id: assembly_id,
-        status: Status::ANCHORED,
-    };
-    event::emit(StatusChangedEvent {
-        assembly_id: assembly_id,
-        status: assembly_status.status,
-    });
-    assembly_status
+// === View Functions ===
+public fun get_status(assembly_status: &AssemblyStatus): Status {
+    assembly_status.status
 }
 
-/// Unanchor/Delete an assembly
-public fun unanchor(assembly_status: AssemblyStatus, _: &AdminCap) {
-    assert!(
-        assembly_status.status == Status::ANCHORED || assembly_status.status == Status::ONLINE,
-        EAssemblyInvalidStatus,
-    );
-
-    // This event is only for inform the indexers for status change
-    event::emit(StatusChangedEvent {
-        assembly_id: assembly_status.assembly_id,
-        status: Status::DESTROYED,
-    });
-
-    let AssemblyStatus { assembly_id: _, status: _ } = assembly_status;
+public fun is_online(assembly_status: &AssemblyStatus): bool {
+    assembly_status.status == Status::ONLINE
 }
 
+// === Public Functions ===
 /// Online an assembly
 public fun online(assembly_status: &mut AssemblyStatus, owner_cap: &OwnerCap) {
     assert!(assembly_status.status == Status::ANCHORED, EAssemblyInvalidStatus);
@@ -95,15 +76,37 @@ public fun offline(assembly_status: &mut AssemblyStatus, owner_cap: &OwnerCap) {
     });
 }
 
-/// Get the status of an assembly
-public fun get_status(assembly_status: &AssemblyStatus): Status {
-    assembly_status.status
+// === Package Functions ===
+/// Anchors an assmebly and returns an instance of the status
+public(package) fun anchor(_: &AdminCap, assembly_id: ID): AssemblyStatus {
+    let assembly_status = AssemblyStatus {
+        assembly_id: assembly_id,
+        status: Status::ANCHORED,
+    };
+    event::emit(StatusChangedEvent {
+        assembly_id: assembly_id,
+        status: assembly_status.status,
+    });
+    assembly_status
 }
 
-public fun is_online(status: &Status): bool {
-    status == Status::ONLINE
+/// Unanchor/Delete an assembly
+public(package) fun unanchor(assembly_status: AssemblyStatus, _: &AdminCap) {
+    assert!(
+        assembly_status.status == Status::ANCHORED || assembly_status.status == Status::ONLINE,
+        EAssemblyInvalidStatus,
+    );
+
+    // This event is only for inform the indexers for status change
+    event::emit(StatusChangedEvent {
+        assembly_id: assembly_status.assembly_id,
+        status: Status::DESTROYED,
+    });
+
+    let AssemblyStatus { assembly_id: _, status: _ } = assembly_status;
 }
 
+// === Test Functions ===
 #[test_only]
 public fun status_to_u8(assembly_status: &AssemblyStatus): u8 {
     match (assembly_status.status) {
