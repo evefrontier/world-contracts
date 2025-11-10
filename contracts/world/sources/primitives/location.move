@@ -22,14 +22,21 @@ public struct Location has store {
 /// Verifies if the locations are in proximity
 /// `proof` - Cryptographic proof of proximity. Currently: Signature from trusted server. Future: Zero-knowledge proof
 public fun verify_proximity(location_a: &Location, location_b: &Location, proof: vector<u8>) {
-    assert!(in_proximity(location_a, location_b, proof), ENotInProximity);
+    assert!(
+        in_proximity(location_a.location_hash, location_b.location_hash, proof),
+        ENotInProximity,
+    );
 }
 
 // === View Functions ===
-public fun in_proximity(_: &Location, _: &Location, _: vector<u8>): bool {
+public fun in_proximity(_: vector<u8>, _: vector<u8>, _: vector<u8>): bool {
     //TODO: check location_a and location_b is in same location
     //TODO: verify the signature proof against a trusted server key
     true
+}
+
+public fun get_hash(location: &Location): vector<u8> {
+    location.location_hash
 }
 
 // === Admin Functions ===
@@ -50,4 +57,8 @@ public(package) fun attach_location(
         structure_id: structure_id,
         location_hash: location_hash,
     }
+}
+
+public(package) fun remove_location(location: Location) {
+    let Location { structure_id: _, location_hash: _ } = location;
 }
