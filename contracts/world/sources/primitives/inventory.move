@@ -11,7 +11,7 @@ use sui::{event, vec_map::{Self, VecMap}};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
     location::{Self, Location},
-    status::{AssemblyStatus}
+    status::AssemblyStatus
 };
 
 // === Errors ===
@@ -96,6 +96,12 @@ public struct ItemWithdrawnEvent has copy, drop {
     quantity: u64,
 }
 
+// === View Functions ===
+// Helpful for wrapper functions
+public fun contains_item(inventory: &Inventory, item_id: u64): bool {
+    vec_map::contains(&inventory.items, &item_id)
+}
+
 // === Public Functions ===
 // TODO: Transfer items between two inventories by providing proximity proofs
 
@@ -150,12 +156,12 @@ public fun burn_items_from_inventory(
 public fun mint_items_in_inventory(
     inventory: &mut Inventory,
     assembly_status: &AssemblyStatus,
-    location_hash: vector<u8>,
     admin_cap: &AdminCap,
     item_id: u64,
     type_id: u64,
     volume: u64,
     quantity: u64,
+    location_hash: vector<u8>,
     ctx: &mut TxContext,
 ) {
     assert!(item_id != 0, EItemIdEmpty);
@@ -303,4 +309,9 @@ public fun used_capacity(inventory: &Inventory): u64 {
 #[test_only]
 public fun get_item_quantity(inventory: &Inventory, item_id: u64): u64 {
     vec_map::get(&inventory.items, &item_id).quantity
+}
+
+#[test_only]
+public fun get_inventory_item_length(inventory: &Inventory): u64 {
+    vec_map::length(&inventory.items)
 }

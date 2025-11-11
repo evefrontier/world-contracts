@@ -91,12 +91,12 @@ public fun game_to_chain_inventory(
         .inventory
         .mint_items_in_inventory(
             &storage_unit.status,
-            storage_unit.location.get_hash(),
             admin_cap,
             item_id,
             type_id,
             volume,
             quantity,
+            storage_unit.location.get_hash(),
             ctx,
         )
 }
@@ -124,5 +124,5 @@ public fun withdraw_from_inventory<Auth: drop>(
 // === Test Functions ===
 #[test_only]
 public fun get_item_amount(storage_unit: &StorageUnit, item_id: u64): u64 {
-    storage_unit.inventory.get_item_amount(item_id)
+    storage_unit.inventory.get_item_quantity(item_id)
 }
