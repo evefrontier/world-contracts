@@ -26,7 +26,7 @@ const EInventoryInSufficientCapacity: vector<u8> = b"No sufficient capacity in t
 #[error(code = 4)]
 const EInventoryAccessNotAuthorized: vector<u8> = b"Inventory access not authorized";
 #[error(code = 5)]
-const EItemDoesNotExist: vector<u8> = b"Item is not created on-chain";
+const EItemDoesNotExist: vector<u8> = b"Item not found";
 #[error(code = 6)]
 const ENotOnline: vector<u8> = b"Inventory attached source is not online";
 #[error(code = 7)]
@@ -108,7 +108,7 @@ public fun contains_item(inventory: &Inventory, item_id: u64): bool {
 /// Burns items from on-chain inventory (Chain → Game bridge)
 /// Emits ItemBurnedEvent for game server to create item in-game
 /// Deletes Item object if param quantity = existing quantity, otherwise reduces quantity
-public fun burn_items_from_inventory(
+public fun mint_items_from_inventory(
     assembly_status: &AssemblyStatus,
     inventory: &mut Inventory,
     item_id: u64,
@@ -153,7 +153,7 @@ public fun burn_items_from_inventory(
 /// Mints items into inventory (Game → Chain bridge)
 /// Admin-only function for trusted game server
 /// Creates new item or adds to existing if item_id already exists
-public fun mint_items_in_inventory(
+public fun mint_items(
     inventory: &mut Inventory,
     assembly_status: &AssemblyStatus,
     admin_cap: &AdminCap,
@@ -169,7 +169,7 @@ public fun mint_items_in_inventory(
     assert!(assembly_status.is_online(), ENotOnline);
 
     if (vec_map::contains(&inventory.items, &item_id)) {
-        add_items(inventory, item_id, quantity);
+        increase_item_quantity(inventory, item_id, quantity);
     } else {
         let item_uid = object::new(ctx);
         let item_uid_value = object::uid_to_inner(&item_uid);
@@ -256,7 +256,7 @@ public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item
 // === Private Functions ===
 
 /// Adds item quantity to existing item in inventory
-fun add_items(inventory: &mut Inventory, item_id: u64, quantity: u64) {
+fun increase_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u64) {
     let item = vec_map::get_mut(&mut inventory.items, &item_id);
     let req_capacity = calculate_volume(item.volume, quantity);
 

@@ -28,6 +28,8 @@ const ENotAuthorized: vector<u8> =
 // === Structs ===
 public struct StorageUnit has key {
     id: UID,
+    type_id: u64,
+    item_id: u64,
     status: AssemblyStatus,
     location: Location,
     inventory: Inventory,
@@ -45,7 +47,7 @@ public struct StorageUnitCreatedEvent has copy, drop {
 // === View Functions ===
 
 // === Public Functions ===
-public fun authorize_software<Auth: drop>(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
+public fun authorize_extension<Auth: drop>(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
     storage_unit.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
 }
@@ -53,6 +55,8 @@ public fun authorize_software<Auth: drop>(storage_unit: &mut StorageUnit, owner_
 // === Admin Functions ===
 public fun create_storage_unit(
     admin_cap: &AdminCap,
+    type_id: u64,
+    item_id: u64,
     max_capacity: u64,
     location_hash: vector<u8>,
     ctx: &mut TxContext,
@@ -61,6 +65,8 @@ public fun create_storage_unit(
     let assembly_id = object::uid_to_inner(&assembly_uid);
     let storage_unit = StorageUnit {
         id: assembly_uid,
+        type_id: type_id,
+        item_id: item_id,
         status: status::anchor(admin_cap, assembly_id),
         location: location::attach_location(admin_cap, assembly_id, location_hash),
         inventory: inventory::create(admin_cap, max_capacity, assembly_id),
@@ -89,7 +95,7 @@ public fun game_to_chain_inventory(
 ) {
     storage_unit
         .inventory
-        .mint_items_in_inventory(
+        .mint_items(
             &storage_unit.status,
             admin_cap,
             item_id,

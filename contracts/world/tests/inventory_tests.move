@@ -65,11 +65,11 @@ fun create_assembly_with_inventory() {
     ts::end(ts);
 }
 
-// mint_items_in_inventory: Mint a new item to the inventory
-// assert remaining capacity, item added, item length, event ?
-fun mint_items_in_inventory() {
+#[test]
+fun mint_items() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
+    create_storage_unit(&mut ts);
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -94,7 +94,7 @@ fun mint_items_in_inventory() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         storage_unit
             .inventory
-            .mint_items_in_inventory(
+            .mint_items(
                 status_ref,
                 &admin_cap,
                 AMMO_ITEM_ID,
@@ -114,9 +114,10 @@ fun mint_items_in_inventory() {
     ts::end(ts);
 }
 
-// burn_items_from_inventory
 // burn  same amount , item shoujld be deleted and capacity should increase, check location is removed
 // burn partial amount, only reduces quantity and capacity
+#[test]
+public fun burn_items() {}
 
 // withdraw returns the entire item, increases capacity
 // and then deposit reduces the capcity
