@@ -11,7 +11,7 @@ use sui::{event, vec_map::{Self, VecMap}};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
     location::{Self, Location},
-    status::{Self, AssemblyStatus}
+    status::{AssemblyStatus}
 };
 
 // === Errors ===
@@ -73,7 +73,7 @@ public struct ItemBurnedEvent has copy, drop {
     quantity: u64,
 }
 
-public struct ItemAmountChangedEvent has copy, drop {
+public struct ItemQuantityChangedEvent has copy, drop {
     inventory_id: ID,
     item_id: u64,
     old_quantity: u64,
@@ -119,10 +119,10 @@ public fun burn_items_from_inventory(
 
     let item_ref = vec_map::get(&inventory.items, &item_id);
     assert!(item_ref.quantity >= quantity, EInsufficientQuantity);
-    let current_amount = item_ref.quantity;
+    let current_quantity = item_ref.quantity;
 
     // If burning all items, remove and delete the Item object
-    if (current_amount == quantity) {
+    if (current_quantity == quantity) {
         let (_, removed_item) = vec_map::remove(&mut inventory.items, &item_id);
         let volume_freed = calculate_volume(removed_item.volume, removed_item.quantity);
         inventory.used_capacity = inventory.used_capacity - volume_freed;
@@ -131,7 +131,7 @@ public fun burn_items_from_inventory(
         location.remove_location();
         object::delete(id);
     } else {
-        reduce_item_amount(inventory, item_id, quantity);
+        reduce_item_quantity(inventory, item_id, quantity);
     };
 
     // Emit event for game bridge to listen
@@ -257,7 +257,7 @@ fun add_items(inventory: &mut Inventory, item_id: u64, quantity: u64) {
     let remaining_capacity = inventory.max_capacity - inventory.used_capacity;
     assert!(req_capacity <= remaining_capacity, EInventoryInSufficientCapacity);
 
-    event::emit(ItemAmountChangedEvent {
+    event::emit(ItemQuantityChangedEvent {
         inventory_id: inventory.id,
         item_id: item_id,
         old_quantity: item.quantity,
@@ -269,18 +269,18 @@ fun add_items(inventory: &mut Inventory, item_id: u64, quantity: u64) {
 }
 
 /// Reduces item quantity in inventory
-fun reduce_item_amount(inventory: &mut Inventory, item_id: u64, quantity: u64) {
+fun reduce_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u64) {
     let item = vec_map::get_mut(&mut inventory.items, &item_id);
     let volume_freed = calculate_volume(item.volume, quantity);
 
-    let old_amount = item.quantity;
+    let old_quantity = item.quantity;
     item.quantity = item.quantity - quantity;
     inventory.used_capacity = inventory.used_capacity - volume_freed;
 
-    event::emit(ItemAmountChangedEvent {
+    event::emit(ItemQuantityChangedEvent {
         inventory_id: inventory.id,
         item_id,
-        old_quantity: old_amount,
+        old_quantity: old_quantity,
         new_quantity: item.quantity,
     });
 }
@@ -301,6 +301,6 @@ public fun used_capacity(inventory: &Inventory): u64 {
 }
 
 #[test_only]
-public fun get_item_amount(inventory: &Inventory, item_id: u64): u64 {
+public fun get_item_quantity(inventory: &Inventory, item_id: u64): u64 {
     vec_map::get(&inventory.items, &item_id).quantity
 }

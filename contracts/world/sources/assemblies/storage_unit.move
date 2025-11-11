@@ -111,12 +111,10 @@ public fun deposit_to_inventory<Auth: drop>(
     storage_unit.inventory.deposit_item(item);
 }
 
-// Add location to item , so before transferring the proximity of the item can be checked
 public fun withdraw_from_inventory<Auth: drop>(
     storage_unit: &mut StorageUnit,
     _: Auth,
     item_id: u64,
-    quantity: u64,
     _: &mut TxContext,
 ): Item {
     assert!(storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()), ENotAuthorized);
