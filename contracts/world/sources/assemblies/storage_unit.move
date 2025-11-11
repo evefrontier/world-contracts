@@ -61,6 +61,7 @@ public fun create_storage_unit(
     location_hash: vector<u8>,
     ctx: &mut TxContext,
 ): StorageUnit {
+    // TODO: Make this as a derived id
     let assembly_uid = object::new(ctx);
     let assembly_id = object::uid_to_inner(&assembly_uid);
     let storage_unit = StorageUnit {

@@ -105,15 +105,17 @@ public fun contains_item(inventory: &Inventory, item_id: u64): bool {
 // === Public Functions ===
 // TODO: Transfer items between two inventories by providing proximity proofs
 
+// Note: Shouldn't this be admin capped ? How will be game know which inventory to mint to ?
+// Will it by default mint to ship/character inventory ?
 /// Burns items from on-chain inventory (Chain → Game bridge)
 /// Emits ItemBurnedEvent for game server to create item in-game
 /// Deletes Item object if param quantity = existing quantity, otherwise reduces quantity
-public fun mint_items_from_inventory(
-    assembly_status: &AssemblyStatus,
+public fun burn_items(
     inventory: &mut Inventory,
+    assembly_status: &AssemblyStatus,
+    owner_cap: &OwnerCap,
     item_id: u64,
     quantity: u64,
-    owner_cap: &OwnerCap,
     location_hash: vector<u8>,
     proximity_proof: vector<u8>,
 ) {
@@ -136,16 +138,16 @@ public fun mint_items_from_inventory(
         let Item { id, type_id: _, item_id: _, volume: _, quantity: _, location } = removed_item;
         location.remove_location();
         object::delete(id);
+
+        // Emit event for game bridge to listen
+        event::emit(ItemBurnedEvent {
+            inventory_id: inventory.id,
+            item_id,
+            quantity,
+        });
     } else {
         reduce_item_quantity(inventory, item_id, quantity);
     };
-
-    // Emit event for game bridge to listen
-    event::emit(ItemBurnedEvent {
-        inventory_id: inventory.id,
-        item_id,
-        quantity,
-    });
 }
 
 // === Admin Functions ===
@@ -299,6 +301,11 @@ fun calculate_volume(volume: u64, quantity: u64): u64 {
 #[test_only]
 public fun max_capacity(inventory: &Inventory): u64 {
     inventory.max_capacity
+}
+
+#[test_only]
+public fun remaining_capacity(inventory: &Inventory): u64 {
+    inventory.max_capacity - inventory.used_capacity
 }
 
 #[test_only]

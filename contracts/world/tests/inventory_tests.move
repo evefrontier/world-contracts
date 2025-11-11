@@ -30,9 +30,9 @@ public struct StorageUnit has key {
 }
 
 // Helper Functions
-fun create_storage_unit(ts: &mut ts::Scenario) {
+fun create_storage_unit(ts: &mut ts::Scenario): ID {
     ts::next_tx(ts, admin());
-    {
+    let assembly_id = {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
@@ -44,7 +44,45 @@ fun create_storage_unit(ts: &mut ts::Scenario) {
         };
         transfer::share_object(storage_unit);
         ts::return_to_sender(ts, admin_cap);
+        assembly_id
+    };
+    assembly_id
+}
+
+fun online(ts: &mut ts::Scenario) {
+    ts::next_tx(ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(ts);
+        let owner_cap = ts::take_from_sender<OwnerCap>(ts);
+        storage_unit.status.online(&owner_cap);
+        assert_eq!(storage_unit.status.status_to_u8(), 1);
+
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(ts, owner_cap);
     }
+}
+
+fun mint_ammo(ts: &mut ts::Scenario) {
+    ts::next_tx(ts, admin());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(ts);
+        let status_ref = &storage_unit.status;
+        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        storage_unit
+            .inventory
+            .mint_items(
+                status_ref,
+                &admin_cap,
+                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
+                AMMO_VOLUME,
+                AMMO_QUANTITY,
+                LOCATION_A_HASH,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(ts, admin_cap);
+    };
 }
 
 #[test]
@@ -69,55 +107,105 @@ fun create_assembly_with_inventory() {
 fun mint_items() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    create_storage_unit(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
 
-    ts::next_tx(&mut ts, user_a());
-    {
-        let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        test_helpers::setup_owner_cap_for_user_a(&mut ts, object::id(&storage_unit));
-        ts::return_shared(storage_unit);
-    };
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        storage_unit.status.online(&owner_cap);
-        assert_eq!(storage_unit.status.status_to_u8(), 1);
+    online(&mut ts);
+    mint_ammo(&mut ts);
 
-        ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
-    };
     ts::next_tx(&mut ts, admin());
     {
-        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let status_ref = &storage_unit.status;
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        storage_unit
-            .inventory
-            .mint_items(
-                status_ref,
-                &admin_cap,
-                AMMO_ITEM_ID,
-                AMMO_TYPE_ID,
-                AMMO_VOLUME,
-                AMMO_QUANTITY,
-                LOCATION_A_HASH,
-                ts.ctx(),
-            );
-        let inv_ref = &storage_unit.inventory;
-        assert_eq!(inv_ref.used_capacity(), AMMO_QUANTITY * AMMO_VOLUME);
-        assert_eq!(inv_ref.get_item_quantity(AMMO_ITEM_ID), 10);
-        assert_eq!(inv_ref.get_inventory_item_length(), 1);
+        let storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let used_capacity = AMMO_QUANTITY * AMMO_VOLUME;
+
+        assert_eq!(storage_unit.inventory.used_capacity(), used_capacity);
+        assert_eq!(storage_unit.inventory.remaining_capacity(), 0);
+        assert_eq!(storage_unit.inventory.get_item_quantity(AMMO_ITEM_ID), 10);
+        assert_eq!(storage_unit.inventory.get_inventory_item_length(), 1);
+        assert_eq!(storage_unit.location.get_hash(), LOCATION_A_HASH);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, admin_cap);
     };
     ts::end(ts);
 }
 
-// burn  same amount , item shoujld be deleted and capacity should increase, check location is removed
+// todo: check location is not being removed
+#[test]
+public fun burn_items() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+
+    online(&mut ts);
+    mint_ammo(&mut ts);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        storage_unit
+            .inventory
+            .burn_items(
+                status_ref,
+                &owner_cap,
+                AMMO_ITEM_ID,
+                AMMO_QUANTITY,
+                LOCATION_A_HASH,
+                PROOF,
+            );
+
+        let inv_ref = &storage_unit.inventory;
+        assert_eq!(inv_ref.used_capacity(), 0);
+        assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
+        assert_eq!(inv_ref.get_inventory_item_length(), 0);
+
+        let location_ref = &storage_unit.location;
+        assert_eq!(location_ref.get_hash(), LOCATION_A_HASH); // This should not be possible
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    ts::end(ts);
+}
+
 // burn partial amount, only reduces quantity and capacity
 #[test]
-public fun burn_items() {}
+public fun burn_partial_items() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+
+    online(&mut ts);
+    mint_ammo(&mut ts);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        storage_unit
+            .inventory
+            .burn_items(
+                status_ref,
+                &owner_cap,
+                AMMO_ITEM_ID,
+                5, //diff quantity
+                LOCATION_A_HASH,
+                PROOF,
+            );
+
+        let inv_ref = &storage_unit.inventory;
+        let used_capacity = 5 * AMMO_VOLUME;
+        assert_eq!(inv_ref.used_capacity(), used_capacity);
+        assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
+        assert_eq!(inv_ref.get_inventory_item_length(), 1);
+
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    ts::end(ts);
+}
 
 // withdraw returns the entire item, increases capacity
 // and then deposit reduces the capcity
