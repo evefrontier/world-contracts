@@ -1,12 +1,24 @@
 /// This module handles the functionalities of in-game Storage Unit Assembly
 ///
-/// The Storage Unit is a programmable, on-chain storage structure
-/// that allows players to store, withdraw, and manage items under rules they design themselves.
+/// The Storage Unit is a programmable, on-chain storage structure.
+/// It can allow players to store, withdraw, and manage items under rules they design themselves.
 /// The behaviour of a Storage Unit can be customized by registering a custom contract
-/// using the typed witness pattern.
+/// using the typed witness pattern. https://github.com/evefrontier/world-contracts/blob/main/docs/architechture.md#layer-3-player-extensions-moddability
 ///
-/// More information: https://github.com/evefrontier/world-contracts/blob/main/docs/architechture.md#layer-3-player-extensions-moddability
-
+/// Storage Units support two access modes to enable player-to-player interactions:
+///
+/// 1. **Extension-based access** (Primary):
+///    - Functions: deposit_item<Auth>, withdraw_item<Auth>
+///    - Allows 3rd party contracts to handle inventory operations behalf of the owner
+///
+/// 2. **Owner-direct access** (Temporary / Ephemeral Storage)
+///    - Functions: `deposit_by_owner`, `withdraw_by_owner`
+///    - Allows owner to handle inventory operations
+///    - Will be deprecated once the Ship inventory module is implemented
+///    - Ships will handle owner-controlled inventory operations in the future
+///
+/// Future pattern: Storage Units (extension-controlled), Ships (owner-controlled)
+/// Example on how a storage unit can be customised : //todo:
 module world::storage_unit;
 
 use std::type_name::{Self, TypeName};
@@ -25,6 +37,8 @@ const EAccessNotAuthorized: vector<u8> = b"Access not authorised for this Storag
 const ENotAuthorized: vector<u8> =
     b"Access only authorised for the custom contract of the registered type";
 
+// TODO: Add a metadata property
+// Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
 public struct StorageUnit has key {
     id: UID,
@@ -108,7 +122,7 @@ public fun game_to_chain_inventory(
         )
 }
 
-public fun deposit_to_inventory<Auth: drop>(
+public fun deposit_item<Auth: drop>(
     storage_unit: &mut StorageUnit,
     _: Auth,
     item: Item,
@@ -118,13 +132,37 @@ public fun deposit_to_inventory<Auth: drop>(
     storage_unit.inventory.deposit_item(item);
 }
 
-public fun withdraw_from_inventory<Auth: drop>(
+public fun withdraw_item<Auth: drop>(
     storage_unit: &mut StorageUnit,
     _: Auth,
     item_id: u64,
     _: &mut TxContext,
 ): Item {
     assert!(storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()), ENotAuthorized);
+    storage_unit.inventory.withdraw_item(item_id)
+}
+
+// The ephemeral storage functions will be removed when Ship inventory is implemented
+// Future: Ship module will handle owner-controlled inventory operations
+public fun deposit_by_owner(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap,
+    item: Item,
+    _: &mut TxContext,
+) {
+    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    // do proximity check to see if the item location and the storage unit is same.
+    storage_unit.inventory.deposit_item(item);
+}
+
+public fun withdraw_by_owner(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap,
+    item_id: u64,
+    _: &mut TxContext,
+): Item {
+    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    // do proximity check to see if the item location and the storage unit is same.
     storage_unit.inventory.withdraw_item(item_id)
 }
 

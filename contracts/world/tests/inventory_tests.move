@@ -5,7 +5,7 @@ use std::unit_test::assert_eq;
 use sui::{event, test_scenario as ts, vec_map::{Self, VecMap}};
 use world::{
     authority::{Self, OwnerCap, AdminCap},
-    inventory::{Self, Inventory},
+    inventory::{Self, Inventory, Item},
     location::{Self, Location},
     status::{Self, AssemblyStatus},
     test_helpers::{Self, governor, admin, user_a, user_b}
@@ -168,7 +168,6 @@ public fun burn_items() {
     ts::end(ts);
 }
 
-// burn partial amount, only reduces quantity and capacity
 #[test]
 public fun burn_partial_items() {
     let mut ts = ts::begin(governor());
@@ -207,9 +206,320 @@ public fun burn_partial_items() {
     ts::end(ts);
 }
 
-// withdraw returns the entire item, increases capacity
-// and then deposit reduces the capcity
-// it should change location
+// Should it change the location ?
+#[test]
+public fun deposit_items() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    // Create a storage unit
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+
+    online(&mut ts);
+    // Mint some ammo into a storage unit
+    mint_ammo(&mut ts);
+
+    // Create a ephemeral storage unit or a ship storage unit
+    let ephemeral_storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap(&mut ts, user_b(), ephemeral_storage_unit_id);
+
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut ephemeral_storage_unit = ts::take_shared_by_id<StorageUnit>(
+            &ts,
+            ephemeral_storage_unit_id,
+        );
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        ephemeral_storage_unit.status.online(&owner_cap);
+
+        //Make sure its empty
+        let inv_ref = &ephemeral_storage_unit.inventory;
+        assert_eq!(inv_ref.used_capacity(), 0);
+        assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
+        assert_eq!(inv_ref.get_inventory_item_length(), 0);
+
+        ts::return_shared(ephemeral_storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    // This is only possible in the tests as its package scoped.
+    // Ideally the builder can only invoke these functions using registered extensions via assembly
+    ts::next_tx(&mut ts, user_a());
+    {
+        // It needs to be withdrawn first to deposit
+        // Withdraw from storage unit and deposit in ephemeral storage
+        // Do the same in reverse for implementing swap functions and item transfer between inventories on-chain
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
+        let item = storage_unit.inventory.withdraw_item(AMMO_ITEM_ID);
+
+        let inv_ref = &storage_unit.inventory;
+        assert_eq!(inv_ref.used_capacity(), 0);
+        assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
+        assert_eq!(inv_ref.get_inventory_item_length(), 0);
+
+        let mut ephemeral_storage_unit = ts::take_shared_by_id<StorageUnit>(
+            &ts,
+            ephemeral_storage_unit_id,
+        );
+        ephemeral_storage_unit.inventory.deposit_item(item);
+
+        let eph_inv_ref = &ephemeral_storage_unit.inventory;
+        let used_capacity = AMMO_QUANTITY * AMMO_VOLUME;
+        assert_eq!(eph_inv_ref.used_capacity(), used_capacity);
+        assert_eq!(eph_inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
+        assert_eq!(eph_inv_ref.get_inventory_item_length(), 1);
+
+        ts::return_shared(storage_unit);
+        ts::return_shared(ephemeral_storage_unit);
+    };
+    ts::end(ts);
+}
 
 // negtive : ETypeIdEmpty, EItemIdEmpty, EInventoryInvalidCapacity, EInventoryInSufficientCapacity
 // EInventoryAccessNotAuthorized, ENotOnline,  EItemDoesNotExist, EInsufficientQuantity
+#[test]
+#[expected_failure(abort_code = inventory::EInventoryInvalidCapacity)]
+fun create_assembly_fail_on_empty_capacity() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let uid = object::new(ts.ctx());
+        let assembly_id = object::uid_to_inner(&uid);
+        let storage_unit = StorageUnit {
+            id: uid,
+            status: status::anchor(&admin_cap, assembly_id),
+            location: location::attach_location(&admin_cap, assembly_id, LOCATION_A_HASH),
+            inventory: inventory::create(&admin_cap, 0, assembly_id),
+        };
+        transfer::share_object(storage_unit);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = inventory::EItemIdEmpty)]
+fun mint_items_fail_empty_item_id() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    online(&mut ts);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        storage_unit
+            .inventory
+            .mint_items(
+                status_ref,
+                &admin_cap,
+                0,
+                AMMO_TYPE_ID,
+                AMMO_VOLUME,
+                AMMO_QUANTITY,
+                LOCATION_A_HASH,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = inventory::ETypeIdEmpty)]
+fun mint_items_fail_empty_type_id() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    online(&mut ts);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        storage_unit
+            .inventory
+            .mint_items(
+                status_ref,
+                &admin_cap,
+                AMMO_ITEM_ID,
+                0,
+                AMMO_VOLUME,
+                AMMO_QUANTITY,
+                LOCATION_A_HASH,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = inventory::ENotOnline)]
+fun mint_items_fail_inventory_offline() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        storage_unit
+            .inventory
+            .mint_items(
+                status_ref,
+                &admin_cap,
+                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
+                AMMO_VOLUME,
+                AMMO_QUANTITY,
+                LOCATION_A_HASH,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = inventory::EInventoryInSufficientCapacity)]
+fun mint_fail_inventory_insufficient_capacity() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    online(&mut ts);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        storage_unit
+            .inventory
+            .mint_items(
+                status_ref,
+                &admin_cap,
+                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
+                AMMO_VOLUME,
+                15,
+                LOCATION_A_HASH,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = inventory::EInventoryAccessNotAuthorized)]
+public fun burn_items_fail_by_non_owner() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    let dummy_id = object::id_from_bytes(
+        x"0000000000000000000000000000000000000000000000000000000000000001",
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
+
+    online(&mut ts);
+    mint_ammo(&mut ts);
+
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        storage_unit
+            .inventory
+            .burn_items(
+                status_ref,
+                &owner_cap,
+                AMMO_ITEM_ID,
+                AMMO_QUANTITY,
+                LOCATION_A_HASH,
+                PROOF,
+            );
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = inventory::EItemDoesNotExist)]
+public fun burn_items_fail_when_items_not_minted() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    online(&mut ts);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        storage_unit
+            .inventory
+            .burn_items(
+                status_ref,
+                &owner_cap,
+                AMMO_ITEM_ID,
+                AMMO_QUANTITY,
+                LOCATION_A_HASH,
+                PROOF,
+            );
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = inventory::EInsufficientQuantity)]
+public fun burn_items_fail_when_quantity_is_more_than_minted() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+
+    online(&mut ts);
+    mint_ammo(&mut ts);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let status_ref = &storage_unit.status;
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        storage_unit
+            .inventory
+            .burn_items(
+                status_ref,
+                &owner_cap,
+                AMMO_ITEM_ID,
+                15,
+                LOCATION_A_HASH,
+                PROOF,
+            );
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    ts::end(ts);
+}
