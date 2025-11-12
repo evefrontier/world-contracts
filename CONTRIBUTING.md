@@ -16,7 +16,7 @@ Before opening an issue, be sure to search through the existing open and closed 
 
 When requesting a new feature, include as many details as you can, especially around the use cases that motivate it. Features are prioritized according to the impact they may have on the ecosystem, so we appreciate information showing that the impact could be high.
 
-[open an issue]: https://github.com/projectawakening/world-chain-contracts/issues
+[open an issue]: https://github.com/evefrontier/world-contracts/issues
 
 ## Submitting a pull request
 
