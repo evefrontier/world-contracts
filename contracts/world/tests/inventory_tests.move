@@ -668,3 +668,60 @@ fun withdraw_item_fail_item_not_found() {
     };
     ts::end(ts);
 }
+
+#[test]
+#[expected_failure(abort_code = inventory::EInventoryAssemblyMismatch)]
+fun mint_items_fail_inventory_assembly_mismatch() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+
+    let storage_unit_id_1 = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id_1);
+
+    let storage_unit_id_2 = create_storage_unit(&mut ts);
+    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_unit_id_2);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id_1);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        storage_unit.status.online(&owner_cap);
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id_2);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        storage_unit.status.online(&owner_cap);
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit_1 = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id_1);
+        let storage_unit_2 = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id_2);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+
+        // This should fail with EInventoryAssemblyMismatch
+        storage_unit_1
+            .inventory
+            .mint_items(
+                &storage_unit_2.status, // status from different assembly
+                &admin_cap,
+                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
+                AMMO_VOLUME,
+                AMMO_QUANTITY,
+                LOCATION_A_HASH,
+                ts.ctx(),
+            );
+
+        ts::return_shared(storage_unit_1);
+        ts::return_shared(storage_unit_2);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+    ts::end(ts);
+}

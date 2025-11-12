@@ -40,6 +40,10 @@ public fun get_status(assembly_status: &AssemblyStatus): Status {
     assembly_status.status
 }
 
+public fun get_assembly_id(assembly_status: &AssemblyStatus): ID {
+    assembly_status.assembly_id
+}
+
 public fun is_online(assembly_status: &AssemblyStatus): bool {
     assembly_status.status == Status::ONLINE
 }

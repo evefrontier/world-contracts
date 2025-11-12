@@ -11,7 +11,7 @@ use sui::{event, vec_map::{Self, VecMap}};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
     location::{Self, Location},
-    status::AssemblyStatus
+    status::{Self, AssemblyStatus}
 };
 
 // === Errors ===
@@ -31,6 +31,9 @@ const EItemDoesNotExist: vector<u8> = b"Item not found";
 const ENotOnline: vector<u8> = b"Inventory attached source is not online";
 #[error(code = 7)]
 const EInsufficientQuantity: vector<u8> = b"Insufficient quantity in inventory";
+#[error(code = 8)]
+const EInventoryAssemblyMismatch: vector<u8> =
+    b"Inventory and assembly status do not belong to the same assembly";
 
 // === Structs ===
 
@@ -119,6 +122,7 @@ public fun burn_items(
     location_hash: vector<u8>,
     proximity_proof: vector<u8>,
 ) {
+    assert!(inventory.id == status::get_assembly_id(assembly_status), EInventoryAssemblyMismatch);
     assert!(authority::is_authorized(owner_cap, inventory.id), EInventoryAccessNotAuthorized);
     assert!(vec_map::contains(&inventory.items, &item_id), EItemDoesNotExist);
     assert!(assembly_status.is_online(), ENotOnline);
@@ -166,6 +170,7 @@ public fun mint_items(
     location_hash: vector<u8>,
     ctx: &mut TxContext,
 ) {
+    assert!(inventory.id == status::get_assembly_id(assembly_status), EInventoryAssemblyMismatch);
     assert!(item_id != 0, EItemIdEmpty);
     assert!(type_id != 0, ETypeIdEmpty);
     assert!(assembly_status.is_online(), ENotOnline);
