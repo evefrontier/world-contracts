@@ -13,7 +13,7 @@
 ///
 /// 2. **Owner-direct access** (Temporary / Ephemeral Storage)
 ///    - Functions: `deposit_by_owner`, `withdraw_by_owner`
-///    - Allows owner to handle inventory operations
+///    - Allows the owner to handle inventory operations
 ///    - Will be deprecated once the Ship inventory module is implemented
 ///    - Ships will handle owner-controlled inventory operations in the future
 ///

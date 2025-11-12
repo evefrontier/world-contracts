@@ -47,7 +47,7 @@ public struct Inventory has store {
 // TODO: Use Sui's `Coin<T>` and `Balance<T>` for stackability
 
 // Item has a key as its minted on-chain and can be transferred from one inventory to another
-// It has store ability as it needs to wrapped in a parent. Item should always have a parent eg: Inventory , ship etc
+// It has store ability as it needs to be wrapped in a parent. Item should always have a parent eg: Inventory , ship etc
 public struct Item has key, store {
     id: UID,
     type_id: u64,
