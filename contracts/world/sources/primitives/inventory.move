@@ -319,6 +319,12 @@ public fun get_item_quantity(inventory: &Inventory, item_id: u64): u64 {
 }
 
 #[test_only]
+public fun get_item_location(inventory: &Inventory, item_id: u64): vector<u8> {
+    let item = vec_map::get(&inventory.items, &item_id);
+    location::get_hash(&item.location)
+}
+
+#[test_only]
 public fun get_inventory_item_length(inventory: &Inventory): u64 {
     vec_map::length(&inventory.items)
 }

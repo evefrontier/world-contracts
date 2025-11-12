@@ -2,10 +2,10 @@
 module world::inventory_tests;
 
 use std::unit_test::assert_eq;
-use sui::{event, test_scenario as ts, vec_map::{Self, VecMap}};
+use sui::test_scenario as ts;
 use world::{
-    authority::{Self, OwnerCap, AdminCap},
-    inventory::{Self, Inventory, Item},
+    authority::{OwnerCap, AdminCap},
+    inventory::{Self, Inventory},
     location::{Self, Location},
     status::{Self, AssemblyStatus},
     test_helpers::{Self, governor, admin, user_a, user_b}
@@ -13,8 +13,6 @@ use world::{
 
 const LOCATION_A_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
-const LOCATION_B_HASH: vector<u8> =
-    x"5a7f1b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const PROOF: vector<u8> = x"5a2f1b0e7c4d1a6f5e8b2d9c3f7a1e5b";
 const MAX_CAPACITY: u64 = 1000;
 const AMMO_TYPE_ID: u64 = 88069;
@@ -187,6 +185,7 @@ fun mint_items_increases_quantity_when_exists() {
         assert_eq!(inv_ref.remaining_capacity(), 0);
         assert_eq!(inv_ref.get_item_quantity(AMMO_ITEM_ID), 10);
         assert_eq!(inv_ref.get_inventory_item_length(), 1);
+        assert_eq!(inv_ref.get_item_location(AMMO_ITEM_ID), LOCATION_A_HASH);
         ts::return_shared(storage_unit);
         ts::return_to_sender(&ts, admin_cap);
     };
@@ -226,7 +225,8 @@ public fun burn_items() {
         assert_eq!(inv_ref.get_inventory_item_length(), 0);
 
         let location_ref = &storage_unit.location;
-        assert_eq!(location_ref.get_hash(), LOCATION_A_HASH); // This should not be possible
+        assert_eq!(location_ref.get_hash(), LOCATION_A_HASH);
+
         ts::return_shared(storage_unit);
         ts::return_to_sender(&ts, owner_cap);
     };

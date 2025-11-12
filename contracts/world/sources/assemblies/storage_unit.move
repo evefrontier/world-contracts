@@ -32,9 +32,9 @@ use world::{
 
 // === Errors ===
 #[error(code = 0)]
-const EAccessNotAuthorized: vector<u8> = b"Access not authorised for this Storage Unit";
+const EAccessNotAuthorized: vector<u8> = b"Owner Access not authorised for this Storage Unit";
 #[error(code = 1)]
-const ENotAuthorized: vector<u8> =
+const EExtensionNotAuthorized: vector<u8> =
     b"Access only authorised for the custom contract of the registered type";
 
 // TODO: Add a metadata property
@@ -59,6 +59,17 @@ public struct StorageUnitCreatedEvent has copy, drop {
 }
 
 // === View Functions ===
+public fun get_status(storage_unit: &StorageUnit): &AssemblyStatus {
+    &storage_unit.status
+}
+
+public fun get_location(storage_unit: &StorageUnit): &Location {
+    &storage_unit.location
+}
+
+public fun get_inventory(storage_unit: &StorageUnit): &Inventory {
+    &storage_unit.inventory
+}
 
 // === Public Functions ===
 public fun authorize_extension<Auth: drop>(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
@@ -98,6 +109,15 @@ public fun create_storage_unit(
     storage_unit
 }
 
+public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
+    transfer::share_object(storage_unit);
+}
+
+// We can do wrappers like this, or directly call respective modules
+public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
+    storage_unit.status.online(owner_cap);
+}
+
 // Should we rename the function ?
 public fun game_to_chain_inventory(
     storage_unit: &mut StorageUnit,
@@ -128,7 +148,10 @@ public fun deposit_item<Auth: drop>(
     item: Item,
     _: &mut TxContext,
 ) {
-    assert!(storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()), ENotAuthorized);
+    assert!(
+        storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
+        EExtensionNotAuthorized,
+    );
     storage_unit.inventory.deposit_item(item);
 }
 
@@ -138,7 +161,10 @@ public fun withdraw_item<Auth: drop>(
     item_id: u64,
     _: &mut TxContext,
 ): Item {
-    assert!(storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()), ENotAuthorized);
+    assert!(
+        storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
+        EExtensionNotAuthorized,
+    );
     storage_unit.inventory.withdraw_item(item_id)
 }
 
@@ -146,8 +172,8 @@ public fun withdraw_item<Auth: drop>(
 // Future: Ship module will handle owner-controlled inventory operations
 public fun deposit_by_owner(
     storage_unit: &mut StorageUnit,
-    owner_cap: &OwnerCap,
     item: Item,
+    owner_cap: &OwnerCap,
     _: &mut TxContext,
 ) {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
@@ -166,8 +192,20 @@ public fun withdraw_by_owner(
     storage_unit.inventory.withdraw_item(item_id)
 }
 
+// TODO: Can also have a transfer function for simplicity
+
 // === Test Functions ===
 #[test_only]
-public fun get_item_amount(storage_unit: &StorageUnit, item_id: u64): u64 {
+public fun get_inventory_mut(storage_unit: &mut StorageUnit): &mut Inventory {
+    &mut storage_unit.inventory
+}
+
+#[test_only]
+public fun borrow_status_mut(storage_unit: &mut StorageUnit): &mut AssemblyStatus {
+    &mut storage_unit.status
+}
+
+#[test_only]
+public fun get_item_quantity(storage_unit: &StorageUnit, item_id: u64): u64 {
     storage_unit.inventory.get_item_quantity(item_id)
 }
