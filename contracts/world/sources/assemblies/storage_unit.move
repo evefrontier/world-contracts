@@ -9,7 +9,7 @@
 ///
 /// 1. **Extension-based access** (Primary):
 ///    - Functions: deposit_item<Auth>, withdraw_item<Auth>
-///    - Allows 3rd party contracts to handle inventory operations behalf of the owner
+///    - Allows 3rd party contracts to handle inventory operations on behalf of the owner
 ///
 /// 2. **Owner-direct access** (Temporary / Ephemeral Storage)
 ///    - Functions: `deposit_by_owner`, `withdraw_by_owner`
