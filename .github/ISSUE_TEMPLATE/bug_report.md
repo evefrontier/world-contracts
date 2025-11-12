@@ -36,6 +36,10 @@ We will be able to better help if you provide a minimal example that triggers th
 
  - World Chain Contracts npm release version or branch and commit id
 
+ - Node version [e.g. 20.x]
+
+ - Sui version [e.g. 1.x.x]
+
  - The version of the other tools involved
 
  - OS and its version [e.g. macOS/14.5]
