@@ -209,3 +209,8 @@ public fun borrow_status_mut(storage_unit: &mut StorageUnit): &mut AssemblyStatu
 public fun get_item_quantity(storage_unit: &StorageUnit, item_id: u64): u64 {
     storage_unit.inventory.get_item_quantity(item_id)
 }
+
+#[test_only]
+public fun contains_item(storage_unit: &StorageUnit, item_id: u64): bool {
+    storage_unit.inventory.contains_item(item_id)
+}

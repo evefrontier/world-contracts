@@ -342,7 +342,6 @@ fun test_swap_ammo_for_lens() {
         assert_eq!(inv_ref_b.used_capacity(), used_capacity_b);
         assert_eq!(inv_ref_b.remaining_capacity(), MAX_CAPACITY - used_capacity_b);
 
-
         assert_eq!(storage_a.get_item_quantity(LENS_ITEM_ID), LENS_QUANTITY);
         assert!(!storage_a.get_inventory().contains_item(AMMO_ITEM_ID));
         assert_eq!(storage_b.get_item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
