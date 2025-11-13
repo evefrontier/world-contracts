@@ -1,10 +1,10 @@
-/// This module implements the logic of inventory operations like depositing items, withdrawing items and transferring items between inventories
+/// This module implements the logic of inventory operations such as depositing, withdrawing and transferring items between inventories.
 ///
-/// Bridging items from game to chain and back
-/// - The game is the “trusted bridge” for bringing items from the game to the chain
-/// - To bridge an item from game to chain, the game server will call an authenticated onchain function to mint the item into an onchain inventory
-/// - To bridge an item from chain to game, the chain emits an event and burns the onchain item. The game server listens to the event to create the item in the game.
-/// - `game to chain`(mint) action is restricted by admin capability and `chain to game`(burn) action is restricted by a proximity proof
+/// Bridging items from game to chain and back:
+/// - The game is the “trusted bridge” for bringing items from the game to the chain.
+/// - To bridge an item from game to chain, the game server will call an authenticated on-chain function to mint the item into an on-chain inventory.
+/// - To bridge an item from chain to game, the chain emits an event and burns the on-chain item. The game server listens to the event to create the item in the game.
+/// - The `game to chain`(mint) action is restricted by an admin capability and the `chain to game`(burn) action is restricted by a proximity proof.
 module world::inventory;
 
 use sui::{event, vec_map::{Self, VecMap}};
@@ -22,7 +22,7 @@ const EItemIdEmpty: vector<u8> = b"Item ID cannot be empty";
 #[error(code = 2)]
 const EInventoryInvalidCapacity: vector<u8> = b"Inventory Capacity cannot be 0";
 #[error(code = 3)]
-const EInventoryInSufficientCapacity: vector<u8> = b"No sufficient capacity in the inventory";
+const EInventoryInsufficientCapacity: vector<u8> = b"Insufficient capacity in the inventory";
 #[error(code = 4)]
 const EInventoryAccessNotAuthorized: vector<u8> = b"Inventory access not authorized";
 #[error(code = 5)]
@@ -30,16 +30,16 @@ const EItemDoesNotExist: vector<u8> = b"Item not found";
 #[error(code = 6)]
 const ENotOnline: vector<u8> = b"Inventory attached source is not online";
 #[error(code = 7)]
-const EInsufficientQuantity: vector<u8> = b"Insufficient quantity in inventory";
+const EInventoryInsufficientQuantity: vector<u8> = b"Insufficient quantity in inventory";
 #[error(code = 8)]
 const EInventoryAssemblyMismatch: vector<u8> =
     b"Inventory and assembly status do not belong to the same assembly";
 
 // === Structs ===
 
-// The inventory struct takes the same id as it assembly which its attached to, so it does not have a key
-// Note: Gas cost is high, lookup and insert complexity for VecMap is o(n). alternative is to use Table and seperate Vector
-// But Ideal for this use case
+// The inventory struct uses the id of the assembly it is attached to, so it does not have a key.
+// Note: Gas cost is high, lookup and insert complexity for VecMap is o(n). The alternative is to use a Table and a separate Vector.
+// However it is ideal for this use case.
 public struct Inventory has store {
     id: ID,
     max_capacity: u64,
@@ -49,8 +49,8 @@ public struct Inventory has store {
 
 // TODO: Use Sui's `Coin<T>` and `Balance<T>` for stackability
 
-// Item has a key as its minted on-chain and can be transferred from one inventory to another
-// It has store ability as it needs to be wrapped in a parent. Item should always have a parent eg: Inventory , ship etc
+// Item has a key as its minted on-chain and can be transferred from one inventory to another.
+// It has store ability as it needs to be wrapped in a parent. Item should always have a parent eg: Inventory, ship etc.
 public struct Item has key, store {
     id: UID,
     type_id: u64,
@@ -108,7 +108,7 @@ public fun contains_item(inventory: &Inventory, item_id: u64): bool {
 // === Public Functions ===
 // TODO: Transfer items between two inventories by providing proximity proofs
 
-// Note: Shouldn't this be admin capped ? How will be game know which inventory to mint to ?
+// Note: Shouldn't this be admin capped ?
 // Will it by default mint to ship/character inventory ?
 /// Burns items from on-chain inventory (Chain → Game bridge)
 /// Emits ItemBurnedEvent for game server to create item in-game
@@ -130,7 +130,7 @@ public fun burn_items(
     //TODO: Verify proximity
 
     let item_ref = vec_map::get(&inventory.items, &item_id);
-    assert!(item_ref.quantity >= quantity, EInsufficientQuantity);
+    assert!(item_ref.quantity >= quantity, EInventoryInsufficientQuantity);
     let current_quantity = item_ref.quantity;
 
     // If burning all items, remove and delete the Item object
@@ -191,7 +191,7 @@ public fun mint_items(
 
         let req_capacity = calculate_volume(volume, quantity);
         let remaining_capacity = inventory.max_capacity - inventory.used_capacity;
-        assert!(req_capacity <= remaining_capacity, EInventoryInSufficientCapacity);
+        assert!(req_capacity <= remaining_capacity, EInventoryInsufficientCapacity);
 
         inventory.used_capacity = inventory.used_capacity + req_capacity;
         inventory.items.insert(item_id, item);
@@ -223,7 +223,7 @@ public(package) fun create(_: &AdminCap, max_capacity: u64, inventory_id: ID): I
 public(package) fun deposit_item(inventory: &mut Inventory, item: Item) {
     let req_capacity = calculate_volume(item.volume, item.quantity);
     let remaining_capacity = inventory.max_capacity - inventory.used_capacity;
-    assert!(req_capacity <= remaining_capacity, EInventoryInSufficientCapacity);
+    assert!(req_capacity <= remaining_capacity, EInventoryInsufficientCapacity);
 
     inventory.used_capacity = inventory.used_capacity + req_capacity;
 
@@ -238,7 +238,7 @@ public(package) fun deposit_item(inventory: &mut Inventory, item: Item) {
 }
 
 // A wrapper function to transfer between inventories
-/// Withdraws item and returns the whole Item
+/// Withdraws the item with the specified item_id and returns the whole Item.
 public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item {
     assert!(vec_map::contains(&inventory.items, &item_id), EItemDoesNotExist);
 
@@ -256,19 +256,19 @@ public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item
     item
 }
 
-// FUTURE: transfer items between inventory. eg: inventory to inventory on-chain
-// This needs location proof and distance to enforce digital physics
+// FUTURE: transfer items between inventory, eg: inventory to inventory on-chain.
+// This needs location proof and distance to enforce digital physics.
 // public fun transfer_items() {}
 
 // === Private Functions ===
 
-/// Adds item quantity to existing item in inventory
+/// Increases the quantity value of an existing item in the specified inventory.
 fun increase_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u64) {
     let item = vec_map::get_mut(&mut inventory.items, &item_id);
     let req_capacity = calculate_volume(item.volume, quantity);
 
     let remaining_capacity = inventory.max_capacity - inventory.used_capacity;
-    assert!(req_capacity <= remaining_capacity, EInventoryInSufficientCapacity);
+    assert!(req_capacity <= remaining_capacity, EInventoryInsufficientCapacity);
 
     event::emit(ItemQuantityChangedEvent {
         inventory_id: inventory.id,
@@ -281,7 +281,7 @@ fun increase_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u6
     inventory.used_capacity = inventory.used_capacity + req_capacity;
 }
 
-/// Reduces item quantity in inventory
+/// Reduces item quantity value  of an existing item in the specified inventory.
 fun reduce_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u64) {
     let item = vec_map::get_mut(&mut inventory.items, &item_id);
     let volume_freed = calculate_volume(item.volume, quantity);

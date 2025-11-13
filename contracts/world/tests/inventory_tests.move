@@ -307,7 +307,7 @@ public fun deposit_items() {
         ts::return_to_sender(&ts, owner_cap);
     };
     // This is only possible in the tests as its package scoped.
-    // Ideally the builder can only invoke these functions using registered extensions via assembly
+    // Ideally the builders can only invoke these functions using registered extensions via assembly
     ts::next_tx(&mut ts, user_a());
     {
         // It needs to be withdrawn first to deposit
@@ -339,8 +339,6 @@ public fun deposit_items() {
     ts::end(ts);
 }
 
-// negtive : ETypeIdEmpty, EItemIdEmpty, EInventoryInvalidCapacity, EInventoryInSufficientCapacity
-// EInventoryAccessNotAuthorized, ENotOnline,  EItemDoesNotExist, EInsufficientQuantity
 #[test]
 #[expected_failure(abort_code = inventory::EInventoryInvalidCapacity)]
 fun create_assembly_fail_on_empty_capacity() {
@@ -460,7 +458,7 @@ fun mint_items_fail_inventory_offline() {
 }
 
 #[test]
-#[expected_failure(abort_code = inventory::EInventoryInSufficientCapacity)]
+#[expected_failure(abort_code = inventory::EInventoryInsufficientCapacity)]
 fun mint_fail_inventory_insufficient_capacity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
@@ -558,7 +556,7 @@ public fun burn_items_fail_item_not_found() {
 }
 
 #[test]
-#[expected_failure(abort_code = inventory::EInsufficientQuantity)]
+#[expected_failure(abort_code = inventory::EInventoryInsufficientQuantity)]
 public fun burn_items_fail_insufficient_quantity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
@@ -590,7 +588,7 @@ public fun burn_items_fail_insufficient_quantity() {
 }
 
 #[test]
-#[expected_failure(abort_code = inventory::EInventoryInSufficientCapacity)]
+#[expected_failure(abort_code = inventory::EInventoryInsufficientCapacity)]
 fun deposit_item_fail_insufficient_capacity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);

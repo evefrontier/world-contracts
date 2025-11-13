@@ -1,5 +1,5 @@
-/// This module stores the location hash for location validation
-/// This can be attached to any strucutre in game. eg: inventory, item, ship etc
+/// This module stores the location hash for location validation.
+/// This can be attached to any structure in game, eg: inventory, item, ship etc.
 module world::location;
 
 use world::authority::AdminCap;
@@ -19,8 +19,8 @@ public struct Location has store {
 // === Public Functions ===
 
 // TODO: Should we also add distance param ?
-/// Verifies if the locations are in proximity
-/// `proof` - Cryptographic proof of proximity. Currently: Signature from trusted server. Future: Zero-knowledge proof
+/// Verifies if the locations are in proximity.
+/// `proof` - Cryptographic proof of proximity. Currently: Signature from trusted server. Future: Zero-knowledge proof.
 public fun verify_proximity(location_a: &Location, location_b: &Location, proof: vector<u8>) {
     assert!(
         in_proximity(location_a.location_hash, location_b.location_hash, proof),

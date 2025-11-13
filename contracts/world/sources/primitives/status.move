@@ -1,6 +1,6 @@
 /// This module manages the lifecycle of a assembly in the world.
 ///
-/// Basic AssemblyStatus are: Anchor, Unanchor/Destroy, Online and Offline assembly
+/// Basic AssemblyStatus are: Anchor, Unanchor/Destroy, Online and Offline assembly.
 /// AssemblyStatus is mutable by admin and the assembly owner using capabilities.
 
 module world::status;
@@ -16,7 +16,7 @@ const EAssemblyInvalidStatus: vector<u8> = b"Assembly status is invalid";
 const EAssemblyNotAuthorized: vector<u8> = b"Assembly access not authorized";
 
 // === Structs ===
-// On unanchor or destroy the State wont be available as the object will be deleted
+// After "unanchor" or "destroy" the State will not be available as the object will have been deleted.
 public enum Status has copy, drop, store {
     ANCHORED,
     ONLINE,
@@ -26,7 +26,7 @@ public enum Status has copy, drop, store {
 public struct AssemblyStatus has store {
     assembly_id: ID, // mapping to the assembly object id
     status: Status,
-    // reference to a energy source to check if it has enough energy to online
+    // TODO: add a reference to an energy source to check if it has enough energy to online
 }
 
 // === Events ===
@@ -101,7 +101,7 @@ public(package) fun unanchor(assembly_status: AssemblyStatus, _: &AdminCap) {
         EAssemblyInvalidStatus,
     );
 
-    // This event is only for inform the indexers for status change
+    // This event is only for informing the indexers of the status change
     event::emit(StatusChangedEvent {
         assembly_id: assembly_status.assembly_id,
         status: Status::DESTROYED,

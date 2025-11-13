@@ -1,4 +1,4 @@
-/// This module handles the functionalities of in-game Storage Unit Assembly
+/// This module handles the functionality of the in-game Storage Unit Assembly
 ///
 /// The Storage Unit is a programmable, on-chain storage structure.
 /// It can allow players to store, withdraw, and manage items under rules they design themselves.
@@ -8,7 +8,7 @@
 /// Storage Units support two access modes to enable player-to-player interactions:
 ///
 /// 1. **Extension-based access** (Primary):
-///    - Functions: deposit_item<Auth>, withdraw_item<Auth>
+///    - Functions: `deposit_item<Auth>`, `withdraw_item<Auth>`
 ///    - Allows 3rd party contracts to handle inventory operations on behalf of the owner
 ///
 /// 2. **Owner-direct access** (Temporary / Ephemeral Storage)
@@ -86,7 +86,7 @@ public fun create_storage_unit(
     location_hash: vector<u8>,
     ctx: &mut TxContext,
 ): StorageUnit {
-    // TODO: Make this as a derived id
+    // TODO: Make this a derived id
     let assembly_uid = object::new(ctx);
     let assembly_id = object::uid_to_inner(&assembly_uid);
     let storage_unit = StorageUnit {
@@ -169,7 +169,7 @@ public fun withdraw_item<Auth: drop>(
 }
 
 // The ephemeral storage functions will be removed when Ship inventory is implemented
-// Future: Ship module will handle owner-controlled inventory operations
+// Future: The Ship module will handle owner-controlled inventory operations
 public fun deposit_by_owner(
     storage_unit: &mut StorageUnit,
     item: Item,
@@ -177,7 +177,7 @@ public fun deposit_by_owner(
     _: &mut TxContext,
 ) {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
-    // do proximity check to see if the item location and the storage unit is same.
+    // do a proximity check to see if the item location and the storage unit have the same location.
     storage_unit.inventory.deposit_item(item);
 }
 
@@ -188,7 +188,7 @@ public fun withdraw_by_owner(
     _: &mut TxContext,
 ): Item {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
-    // do proximity check to see if the item location and the storage unit is same.
+    // do a proximity check to see if the item location and the storage unit have the same location.
     storage_unit.inventory.withdraw_item(item_id)
 }
 
