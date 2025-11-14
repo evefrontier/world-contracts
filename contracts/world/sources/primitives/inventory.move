@@ -56,7 +56,7 @@ public struct Item has key, store {
     type_id: u64,
     item_id: u64,
     volume: u64,
-    quantity: u64,
+    quantity: u32,
     location: Location,
 }
 
@@ -67,20 +67,20 @@ public struct ItemMintedEvent has copy, drop {
     item_id: u64,
     type_id: u64,
     volume: u64,
-    quantity: u64,
+    quantity: u32,
 }
 
 public struct ItemBurnedEvent has copy, drop {
     inventory_id: ID,
     item_id: u64,
-    quantity: u64,
+    quantity: u32,
 }
 
 public struct ItemQuantityChangedEvent has copy, drop {
     inventory_id: ID,
     item_id: u64,
-    old_quantity: u64,
-    new_quantity: u64,
+    old_quantity: u32,
+    new_quantity: u32,
 }
 
 public struct ItemDepositedEvent has copy, drop {
@@ -88,7 +88,7 @@ public struct ItemDepositedEvent has copy, drop {
     item_id: u64,
     type_id: u64,
     volume: u64,
-    quantity: u64,
+    quantity: u32,
 }
 
 public struct ItemWithdrawnEvent has copy, drop {
@@ -96,7 +96,7 @@ public struct ItemWithdrawnEvent has copy, drop {
     item_id: u64,
     type_id: u64,
     volume: u64,
-    quantity: u64,
+    quantity: u32,
 }
 
 // === View Functions ===
@@ -118,7 +118,7 @@ public fun burn_items(
     assembly_status: &AssemblyStatus,
     owner_cap: &OwnerCap,
     item_id: u64,
-    quantity: u64,
+    quantity: u32,
     location_hash: vector<u8>,
     proximity_proof: vector<u8>,
 ) {
@@ -166,7 +166,7 @@ public fun mint_items(
     item_id: u64,
     type_id: u64,
     volume: u64,
-    quantity: u64,
+    quantity: u32,
     location_hash: vector<u8>,
     ctx: &mut TxContext,
 ) {
@@ -263,7 +263,7 @@ public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item
 // === Private Functions ===
 
 /// Increases the quantity value of an existing item in the specified inventory.
-fun increase_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u64) {
+fun increase_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u32) {
     let item = vec_map::get_mut(&mut inventory.items, &item_id);
     let req_capacity = calculate_volume(item.volume, quantity);
 
@@ -282,7 +282,7 @@ fun increase_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u6
 }
 
 /// Reduces item quantity value  of an existing item in the specified inventory.
-fun reduce_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u64) {
+fun reduce_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u32) {
     let item = vec_map::get_mut(&mut inventory.items, &item_id);
     let volume_freed = calculate_volume(item.volume, quantity);
 
@@ -298,8 +298,8 @@ fun reduce_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u64)
     });
 }
 
-fun calculate_volume(volume: u64, quantity: u64): u64 {
-    volume * quantity
+fun calculate_volume(volume: u64, quantity: u32): u64 {
+    volume * (quantity as u64)
 }
 
 // === Test Functions ===
@@ -319,7 +319,7 @@ public fun used_capacity(inventory: &Inventory): u64 {
 }
 
 #[test_only]
-public fun get_item_quantity(inventory: &Inventory, item_id: u64): u64 {
+public fun get_item_quantity(inventory: &Inventory, item_id: u64): u32 {
     vec_map::get(&inventory.items, &item_id).quantity
 }
 

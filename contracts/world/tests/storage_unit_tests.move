@@ -20,12 +20,12 @@ const STORAGE_ITEM_ID: u64 = 90001;
 const AMMO_TYPE_ID: u64 = 88069;
 const AMMO_ITEM_ID: u64 = 1000004145107;
 const AMMO_VOLUME: u64 = 100;
-const AMMO_QUANTITY: u64 = 10;
+const AMMO_QUANTITY: u32 = 10;
 
 const LENS_TYPE_ID: u64 = 88070;
 const LENS_ITEM_ID: u64 = 1000004145108;
 const LENS_VOLUME: u64 = 50;
-const LENS_QUANTITY: u64 = 5;
+const LENS_QUANTITY: u32 = 5;
 
 // Mock 3rd Party Extension Witness Types
 /// Authorized extension witness type
@@ -175,7 +175,7 @@ fun test_create_items_on_chain() {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inv_ref = storage_unit.get_inventory();
 
-        let used_capacity = AMMO_QUANTITY * AMMO_VOLUME;
+        let used_capacity = (AMMO_QUANTITY as u64 * AMMO_VOLUME);
         assert_eq!(inv_ref.used_capacity(), used_capacity);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
         assert_eq!(inv_ref.get_item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
@@ -332,8 +332,8 @@ fun test_swap_ammo_for_lens() {
         let storage_a = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
         let storage_b = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
 
-        let used_capacity_a = LENS_QUANTITY * LENS_VOLUME;
-        let used_capacity_b = AMMO_QUANTITY * AMMO_VOLUME;
+        let used_capacity_a = (LENS_QUANTITY as u64* LENS_VOLUME);
+        let used_capacity_b = (AMMO_QUANTITY as u64* AMMO_VOLUME);
         let inv_ref_a = storage_a.get_inventory();
         let inv_ref_b = storage_b.get_inventory();
 

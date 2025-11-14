@@ -18,7 +18,7 @@ const MAX_CAPACITY: u64 = 1000;
 const AMMO_TYPE_ID: u64 = 88069;
 const AMMO_ITEM_ID: u64 = 1000004145107;
 const AMMO_VOLUME: u64 = 100;
-const AMMO_QUANTITY: u64 = 10;
+const AMMO_QUANTITY: u32 = 10;
 
 public struct StorageUnit has key {
     id: UID,
@@ -114,7 +114,7 @@ fun mint_items() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let used_capacity = AMMO_QUANTITY * AMMO_VOLUME;
+        let used_capacity = (AMMO_QUANTITY as u64) * AMMO_VOLUME;
 
         assert_eq!(storage_unit.inventory.used_capacity(), used_capacity);
         assert_eq!(storage_unit.inventory.remaining_capacity(), 0);
@@ -147,7 +147,7 @@ fun mint_items_increases_quantity_when_exists() {
                 AMMO_ITEM_ID,
                 AMMO_TYPE_ID,
                 AMMO_VOLUME,
-                5,
+                5u32,
                 LOCATION_A_HASH,
                 ts.ctx(),
             );
@@ -175,7 +175,7 @@ fun mint_items_increases_quantity_when_exists() {
                 AMMO_ITEM_ID,
                 AMMO_TYPE_ID,
                 AMMO_VOLUME,
-                5,
+                5u32,
                 LOCATION_A_HASH,
                 ts.ctx(),
             );
@@ -254,7 +254,7 @@ public fun burn_partial_items() {
                 status_ref,
                 &owner_cap,
                 AMMO_ITEM_ID,
-                5, //diff quantity
+                5u32, //diff quantity
                 LOCATION_A_HASH,
                 PROOF,
             );
@@ -328,7 +328,7 @@ public fun deposit_items() {
         ephemeral_storage_unit.inventory.deposit_item(item);
 
         let eph_inv_ref = &ephemeral_storage_unit.inventory;
-        let used_capacity = AMMO_QUANTITY * AMMO_VOLUME;
+        let used_capacity = (AMMO_QUANTITY as u64) * AMMO_VOLUME;
         assert_eq!(eph_inv_ref.used_capacity(), used_capacity);
         assert_eq!(eph_inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
         assert_eq!(eph_inv_ref.get_inventory_item_length(), 1);
@@ -479,7 +479,7 @@ fun mint_fail_inventory_insufficient_capacity() {
                 AMMO_ITEM_ID,
                 AMMO_TYPE_ID,
                 AMMO_VOLUME,
-                15,
+                15u32,
                 LOCATION_A_HASH,
                 ts.ctx(),
             );
@@ -577,7 +577,7 @@ public fun burn_items_fail_insufficient_quantity() {
                 status_ref,
                 &owner_cap,
                 AMMO_ITEM_ID,
-                15,
+                15u32,
                 LOCATION_A_HASH,
                 PROOF,
             );

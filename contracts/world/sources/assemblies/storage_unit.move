@@ -125,7 +125,7 @@ public fun game_to_chain_inventory(
     item_id: u64,
     type_id: u64,
     volume: u64,
-    quantity: u64,
+    quantity: u32,
     ctx: &mut TxContext,
 ) {
     storage_unit
@@ -206,7 +206,7 @@ public fun borrow_status_mut(storage_unit: &mut StorageUnit): &mut AssemblyStatu
 }
 
 #[test_only]
-public fun get_item_quantity(storage_unit: &StorageUnit, item_id: u64): u64 {
+public fun get_item_quantity(storage_unit: &StorageUnit, item_id: u64): u32 {
     storage_unit.inventory.get_item_quantity(item_id)
 }
 
