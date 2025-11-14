@@ -24,6 +24,12 @@ RUN pnpm install --no-frozen-lockfile
 
 COPY . .
 
+# Run as deployer:deployer (non-root user)
+RUN groupadd -r deployer && \
+    useradd -r -g deployer -m -d /home/deployer deployer
+RUN chown -R deployer:deployer /app
+USER deployer
+
 FROM dependency-stage AS lint-stage
 RUN pnpm run fmt:check
 
