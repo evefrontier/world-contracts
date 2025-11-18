@@ -54,6 +54,8 @@ jobs:
     strategy:
       matrix:
         package: [world]
+    name: "Move Formatting: ${{ matrix.package }}"
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
@@ -61,7 +63,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Use Node.js
         uses: actions/setup-node@v4
-      - run: npm install --no-warnings @mysten/prettier-plugin-move@${{ env.MOVE_FORMATTER_VERSION }}
+      - run: npm install --no-warnings prettier @mysten/prettier-plugin-move@${{ env.FORMATTER_VERSION }}
       - run: npx prettier-move -c **/*.move
 
   build:
