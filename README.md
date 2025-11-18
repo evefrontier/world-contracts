@@ -2,6 +2,17 @@
 
 Sui Move smart contracts for EVE Frontier.
 
+## Important Notice
+
+This repository contains code intended for future use. While its not currently active in game or
+production ready, it is being shared early for visibility, collaboration, review and reference.
+
+The project is actively under development, and changes should be expected as work progresses.
+
+For more context around this feel free to check out the [press release](https://www.ccpgames.com/news/2025/eve-frontier-to-launch-on-layer-1-blockchain-sui).
+
+If you are looking for the current contracts used in game they can be found here: [projectawakening/world-chain-contracts](https://github.com/projectawakening/world-chain-contracts)
+
 ## Quick Start
 
 ### Prerequisites
