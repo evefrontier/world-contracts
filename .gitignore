@@ -16,3 +16,7 @@ node_modules/
 # Deployment debug files
 deployments/**
 .env
+
+# docs
+docs/features/
+prd.md

@@ -45,7 +45,7 @@ public struct LocationProofMessage has drop {
     distance: u64,
     data: vector<u8>,
     deadline_ms: u64,
-    // Should we add a nonce to prevent replay attach ?
+    // Should we add a nonce to prevent replay attack ?
 }
 
 /// A complete location proof containing the message and its signature.

@@ -26,7 +26,7 @@ use sui::{clock::Clock, event};
 use world::{
     authority::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
     inventory::{Self, Inventory, Item},
-    location::{Self, Location, LocationProof},
+    location::{Self, Location},
     status::{Self, AssemblyStatus, Status}
 };
 
@@ -165,22 +165,6 @@ public fun chain_item_to_game_inventory(
             clock,
             ctx,
         );
-}
-
-public fun verify_storage_proximity(
-    storage_unit: &StorageUnit,
-    proof: LocationProof,
-    clock: &Clock,
-    server_address_registry: &ServerAddressRegistry,
-    ctx: &mut TxContext,
-) {
-    location::verify_location_proof_as_struct(
-        &storage_unit.location,
-        proof,
-        server_address_registry,
-        clock,
-        ctx,
-    );
 }
 
 public fun deposit_item<Auth: drop>(
