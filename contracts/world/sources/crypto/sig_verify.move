@@ -23,7 +23,7 @@
 module world::sig_verify;
 
 use std::bcs;
-use sui::{clock::Clock, hash};
+use sui::{clock::Clock, ed25519, hash};
 
 // === Errors ===
 #[error(code = 0)]
@@ -60,7 +60,7 @@ public fun verify_signature(
 
     assert!(len >= 1, EInvalidLen);
 
-    let flag = *vector::borrow(&signature, 0);
+    let flag = signature[0];
     // Match pattern similar to switch case
     let (sig_len, pk_len) = match (flag) {
         ED25519_FLAG => (ED25519_SIG_LEN, ED25519_PK_LEN),
@@ -94,7 +94,7 @@ public fun verify_signature(
 
     match (flag) {
         ED25519_FLAG => {
-            sui::ed25519::ed25519_verify(&raw_sig, &raw_public_key, &digest)
+            ed25519::ed25519_verify(&raw_sig, &raw_public_key, &digest)
         },
         _ => abort EUnsupportedScheme,
     }
@@ -120,11 +120,6 @@ public fun verify_signature_with_deadline(
 /// # Returns
 /// A new vector containing the bytes from `start` to `end - 1`
 fun extract_bytes(source: &vector<u8>, start: u64, end: u64): vector<u8> {
-    let mut result = vector::empty<u8>();
-    let mut i = start;
-    while (i < end) {
-        result.push_back(*vector::borrow(source, i));
-        i = i + 1;
-    };
-    result
+    // Creates a vector of size (end-start) by mapping indices 0.. to source[start+i]
+    vector::tabulate!(end - start, |i| source[start + i])
 }
