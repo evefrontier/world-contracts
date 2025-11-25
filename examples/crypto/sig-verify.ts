@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
-import { getConfig, MODULES } from "./config";
-import { createClient, loadKeypair } from "./client";
+import { getConfig, MODULES } from "../utils/config";
+import { createClient, loadKeypair } from "../utils/client";
 import { signPersonalMessage, toHex } from "./signMessage";
 
 const FUNCTION_NAME = "verify_signature";
