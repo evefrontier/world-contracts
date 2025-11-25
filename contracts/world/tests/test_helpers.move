@@ -70,7 +70,7 @@ public fun register_server_address(ts: &mut ts::Scenario) {
 }
 
 public fun get_storage_unit_id(): ID {
-    let storage_unit_id_bytes = x"5743208d4f4efbb0e783d3b1bc4f81d522ad73dc44b4052e21c5465df3bba061";
+    let storage_unit_id_bytes = x"b78f2c84dbb71520c4698c4520bfca8da88ea8419b03d472561428cd1e3544e8";
     let storage_unit_id = object::id_from_bytes(storage_unit_id_bytes);
     storage_unit_id
 }
@@ -81,17 +81,18 @@ public fun construct_location_proof(location_hash: vector<u8>): LocationProof {
     );
     let data = x"";
     let signature =
-        x"0026ce00ad44629213f249ec3ee833aaf28bc115d3b781ca0a146a6e22a4016205f992d07c62f8d067d0baecb397bcc5a692a3bae5ff2e33eb6b42fdb94db6f50ba94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
-    let deadline_ms: u64 = 1763408644339;
+        x"00c22f5e577a066099afb480eb9d1dbad1068695b8e8450389b65e5461de6b1b7c51daf293aa095d7715288c154c019c3b70ae742e61d343545f13df61f9b2f700a94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
+    let timestamp_ms: u64 = 1763408644339;
     let proof = location::create_location_proof(
         server_admin(),
         server_admin(), // ideally this is the player
+        character_id,
+        location_hash,
         get_storage_unit_id(),
         location_hash,
-        character_id,
         0u64,
         data,
-        deadline_ms,
+        timestamp_ms,
         signature,
     );
     proof

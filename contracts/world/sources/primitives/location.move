@@ -36,15 +36,27 @@ public struct Location has store {
 /// A signed message containing location proof information.
 /// This message is signed by an authorized server to prove that a player
 /// is within proximity of a target structure.
+///
+/// # Arguments
+/// * `server_address` - The address of the server that signed the message
+/// * `player_address` - The address of the player to whom the proof is issued
+/// * `source_structure_id` - The ID of the structure initiating the interaction
+/// * `source_location_hash` - The hash of the source structure's location. eg: ship/gate location
+/// * `target_structure_id` - The ID of the structure the player wants to interact with
+/// * `target_location_hash` - The hash of the target structure's location
+/// * `distance` - The distance between player and target structure
+/// * `data` - Additional data field
+/// * `timestamp_ms` - timestamp in milliseconds
 public struct LocationProofMessage has drop {
     server_address: address,
     player_address: address,
+    source_structure_id: ID,
+    source_location_hash: vector<u8>,
     target_structure_id: ID,
     target_location_hash: vector<u8>,
-    player_structure_id: ID,
     distance: u64,
     data: vector<u8>,
-    deadline_ms: u64,
+    timestamp_ms: u64,
     // Should we add a nonce to prevent replay attack ?
 }
 
@@ -56,41 +68,28 @@ public struct LocationProof has drop {
 
 // === Public Functions ===
 
-/// Constructs a location proof from individual message fields and signature.
-///
-/// # Arguments
-/// * `server_address` - The address of the server that signed the message
-/// * `player_address` - The address of the player to whom the proof is issued
-/// * `target_structure_id` - The ID of the structure the player wants to interact with
-/// * `target_location_hash` - The hash of the target structure's location
-/// * `player_structure_id` - The ID of the player's structure (character/ship)
-/// * `distance` - The distance between player and target structure
-/// * `data` - Additional data field
-/// * `deadline_ms` - Expiration timestamp in milliseconds
-/// * `signature` - The signature of the message
-///
-/// # Returns
-/// A `LocationProof` struct containing the message and signature
 public fun create_location_proof(
     server_address: address,
     player_address: address,
+    source_structure_id: ID,
+    source_location_hash: vector<u8>,
     target_structure_id: ID,
     target_location_hash: vector<u8>,
-    player_structure_id: ID,
     distance: u64,
     data: vector<u8>,
-    deadline_ms: u64,
+    timestamp_ms: u64,
     signature: vector<u8>,
 ): LocationProof {
     let message = LocationProofMessage {
         server_address,
         player_address,
+        source_structure_id,
+        source_location_hash,
         target_structure_id,
         target_location_hash,
-        player_structure_id,
         distance,
         data,
-        deadline_ms,
+        timestamp_ms,
     };
 
     LocationProof {
@@ -121,7 +120,7 @@ public fun verify_location_proof_as_struct(
             message_bytes,
             signature,
             message.server_address,
-            message.deadline_ms,
+            message.timestamp_ms,
             clock,
         ),
         ESignatureVerificationFailed,
@@ -147,7 +146,7 @@ public fun verify_location_proof_as_bytes(
             message_bytes,
             signature,
             message.server_address,
-            message.deadline_ms,
+            message.timestamp_ms,
             clock,
         ),
         ESignatureVerificationFailed,
@@ -224,12 +223,13 @@ fun unpack_proof(proof_bytes: vector<u8>): (LocationProofMessage, vector<u8>) {
     // Deserialize LocationProofMessage fields
     let server_address = bcs::peel_address(&mut bcs_data);
     let player_address = bcs::peel_address(&mut bcs_data);
+    let source_structure_id = object::id_from_address(bcs::peel_address(&mut bcs_data));
+    let source_location_hash = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
     let target_structure_id = object::id_from_address(bcs::peel_address(&mut bcs_data));
     let target_location_hash = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
-    let player_structure_id = object::id_from_address(bcs::peel_address(&mut bcs_data));
     let distance = bcs::peel_u64(&mut bcs_data);
     let data = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
-    let deadline_ms = bcs::peel_u64(&mut bcs_data);
+    let timestamp_ms = bcs::peel_u64(&mut bcs_data);
 
     // Deserialize signature
     let signature = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
@@ -237,12 +237,13 @@ fun unpack_proof(proof_bytes: vector<u8>): (LocationProofMessage, vector<u8>) {
     let message = LocationProofMessage {
         server_address,
         player_address,
+        source_structure_id,
+        source_location_hash,
         target_structure_id,
         target_location_hash,
-        player_structure_id,
         distance,
         data,
-        deadline_ms,
+        timestamp_ms,
     };
     (message, signature)
 }

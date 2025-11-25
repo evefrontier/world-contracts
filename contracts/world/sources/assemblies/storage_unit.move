@@ -199,15 +199,26 @@ public fun deposit_by_owner(
     storage_unit: &mut StorageUnit,
     item: Item,
     owner_cap: &OwnerCap,
-    _: &mut TxContext,
+    server_registry: &ServerAddressRegistry,
+    proximity_proof: vector<u8>,
+    clock: &Clock,
+    ctx: &mut TxContext,
 ) {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+
+    // This check is only required for ephemeral inventory
     location::verify_same_location(
         storage_unit.location.hash(),
         item.get_item_location_hash(),
     );
 
-    // todo: verify location proof (It already has the location check, do we need proof ?)
+    location::verify_location_proof_as_bytes(
+        &storage_unit.location,
+        proximity_proof,
+        server_registry,
+        clock,
+        ctx,
+    );
     storage_unit.inventory.deposit_item(item);
 }
 
@@ -215,10 +226,20 @@ public fun withdraw_by_owner(
     storage_unit: &mut StorageUnit,
     owner_cap: &OwnerCap,
     item_id: u64,
-    _: &mut TxContext,
+    server_registry: &ServerAddressRegistry,
+    proximity_proof: vector<u8>,
+    clock: &Clock,
+    ctx: &mut TxContext,
 ): Item {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
-    // todo: verify location proof to withdraw
+    location::verify_location_proof_as_bytes(
+        &storage_unit.location,
+        proximity_proof,
+        server_registry,
+        clock,
+        ctx,
+    );
+
     storage_unit.inventory.withdraw_item(item_id)
 }
 

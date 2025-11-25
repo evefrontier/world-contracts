@@ -315,16 +315,17 @@ fun verify_proximity_with_signature_proof_invalid_from_address() {
         let data = x"";
         let signature =
             x"0026ce00ad44629213f249ec3ee833aaf28bc115d3b781ca0a146a6e22a4016205f992d07c62f8d067d0baecb397bcc5a692a3bae5ff2e33eb6b42fdb94db6f50ba94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
-        let deadline_ms: u64 = 1763408644339;
+        let timestamp_ms: u64 = 1763408644339;
         let proof = location::create_location_proof(
             admin(), // sending unauthorized admin
             server_admin(), // ideally this is the player
+            character_id,
+            LOCATION_HASH,
             test_helpers::get_storage_unit_id(),
             LOCATION_HASH,
-            character_id,
             0u64,
             data,
-            deadline_ms,
+            timestamp_ms,
             signature,
         );
 
@@ -361,7 +362,7 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
         let current_time = 1000000u64; // 1 second in milliseconds
         clock.set_for_testing(current_time);
 
-        let deadline_ms: u64 = current_time + 1763408644339; // Far future deadline
+        let timestamp_ms: u64 = current_time + 1763408644339; // Far future deadline
         let character_id = object::id_from_bytes(
             x"0000000000000000000000000000000000000000000000000000000000000002",
         );
@@ -372,12 +373,13 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
         let proof = location::create_location_proof(
             server_admin(),
             server_admin(), // player address
+            character_id,
+            LOCATION_HASH,
             test_helpers::get_storage_unit_id(),
             LOCATION_HASH,
-            character_id,
             0u64,
             data,
-            deadline_ms,
+            timestamp_ms,
             signature,
         );
 

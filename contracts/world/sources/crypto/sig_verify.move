@@ -104,12 +104,12 @@ public fun verify_signature_with_deadline(
     message: vector<u8>,
     signature: vector<u8>,
     expected_address: address,
-    deadline_ms: u64,
+    timestamp_ms: u64,
     clock: &Clock,
 ): bool {
     // Check if the signature is expired
     let current_time_ms = clock.timestamp_ms();
-    assert!(current_time_ms <= deadline_ms, ESignatureExpired);
+    assert!(current_time_ms <= timestamp_ms, ESignatureExpired);
     verify_signature(message, signature, expected_address)
 }
 
