@@ -639,10 +639,11 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
 fun test_deposit_by_owner_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, LOCATION_A_HASH);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
+    test_helpers::register_server_address(&mut ts);
+    let storage_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    test_helpers::setup_owner_cap(&mut ts, test_helpers::server_admin(), storage_id);
 
-    online_storage_unit(&mut ts, user_a(), storage_id);
+    online_storage_unit(&mut ts, test_helpers::server_admin(), storage_id);
     mint_ammo(&mut ts, storage_id);
 
     let dummy_id = object::id_from_bytes(
@@ -650,14 +651,33 @@ fun test_deposit_by_owner_fail_wrong_owner() {
     );
     test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
 
-    // User A withdraws item
-    ts::next_tx(&mut ts, user_a());
+    // server_admin withdraws item
+    ts::next_tx(&mut ts, test_helpers::server_admin());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        item = storage_unit.withdraw_by_owner(&owner_cap, AMMO_ITEM_ID, ts.ctx());
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let clock = clock::create_for_testing(ts.ctx());
+
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
+
+        item =
+            storage_unit.withdraw_by_owner(
+                &owner_cap,
+                AMMO_ITEM_ID,
+                &server_registry,
+                proof_bytes,
+                &clock,
+                ts.ctx(),
+            );
+
+        clock.destroy_for_testing();
         ts::return_shared(storage_unit);
+        ts::return_shared(server_registry);
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -666,9 +686,27 @@ fun test_deposit_by_owner_fail_wrong_owner() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let clock = clock::create_for_testing(ts.ctx());
+
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
+
         // This should fail with EAccessNotAuthorized
-        storage_unit.deposit_by_owner(item, &owner_cap, ts.ctx());
+        storage_unit.deposit_by_owner(
+            item,
+            &owner_cap,
+            &server_registry,
+            proof_bytes,
+            &clock,
+            ts.ctx(),
+        );
+
+        clock.destroy_for_testing();
         ts::return_shared(storage_unit);
+        ts::return_shared(server_registry);
         ts::return_to_sender(&ts, owner_cap);
     };
     ts::end(ts);
@@ -690,14 +728,14 @@ fun test_swap_fail_extension_not_authorized() {
     mint_lens(&mut ts, storage_a_id);
 
     let storage_b_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
-    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_b_id);
-    online_storage_unit(&mut ts, user_b(), storage_b_id);
+    test_helpers::setup_owner_cap(&mut ts, test_helpers::server_admin(), storage_b_id);
+    online_storage_unit(&mut ts, test_helpers::server_admin(), storage_b_id);
     mint_ammo(&mut ts, storage_b_id);
 
     //Skipped authorisation
 
     // call swap
-    ts::next_tx(&mut ts, user_b());
+    ts::next_tx(&mut ts, test_helpers::server_admin());
     {
         let mut storage_a = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
         let mut storage_b = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
