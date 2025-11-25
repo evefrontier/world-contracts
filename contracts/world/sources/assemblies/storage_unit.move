@@ -96,7 +96,7 @@ public fun create_storage_unit(
         id: assembly_uid,
         type_id: type_id,
         item_id: item_id,
-        status: status::anchor(admin_cap, assembly_id),
+        status: status::anchor(admin_cap, assembly_id, type_id),
         location: location::attach_location(admin_cap, assembly_id, location_hash),
         inventory: inventory::create(admin_cap, max_capacity, assembly_id),
         extension: option::none(),
@@ -122,6 +122,16 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
 public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
     storage_unit.status.online(owner_cap);
 }
+
+public fun offline(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
+    storage_unit.status.offline(owner_cap);
+}
+
+// Scoop Storage unit
+public fun unanchor_storage_unit() {}
+
+// Destroy storage unit and claim
+public fun destroy_storage_unit() {}
 
 public fun game_item_to_chain_inventory(
     storage_unit: &mut StorageUnit,
