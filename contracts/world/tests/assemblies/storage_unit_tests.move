@@ -147,6 +147,9 @@ fun mint_lens(ts: &mut ts::Scenario, storage_id: ID) {
     }
 }
 
+/// Tests creating a storage unit
+/// Scenario: Admin creates a storage unit with location hash
+/// Expected: Storage unit is created successfully with correct initial state
 #[test]
 fun test_create_storage_unit() {
     let mut ts = ts::begin(governor());
@@ -168,6 +171,9 @@ fun test_create_storage_unit() {
     ts::end(ts);
 }
 
+/// Tests minting items into storage unit inventory
+/// Scenario: Admin mints ammo items into an online storage unit
+/// Expected: Items are minted successfully and inventory state is correct
 #[test]
 fun test_create_items_on_chain() {
     let mut ts = ts::begin(governor());
@@ -193,6 +199,9 @@ fun test_create_items_on_chain() {
     ts::end(ts);
 }
 
+/// Tests authorizing an extension type for storage unit
+/// Scenario: Owner authorizes SwapAuth extension type for their storage unit
+/// Expected: Extension is successfully authorized
 #[test]
 fun test_authorize_extension() {
     let mut ts = ts::begin(governor());
@@ -213,6 +222,9 @@ fun test_authorize_extension() {
     ts::end(ts);
 }
 
+/// Tests depositing and withdrawing items via extension
+/// Scenario: Authorize extension, withdraw item, then deposit it back using extension access
+/// Expected: Items can be withdrawn and deposited successfully via extension
 #[test]
 fun test_deposit_and_withdraw_via_extension() {
     let mut ts = ts::begin(governor());
@@ -260,6 +272,9 @@ fun test_deposit_and_withdraw_via_extension() {
     ts::end(ts);
 }
 
+/// Tests depositing and withdrawing items by owner
+/// Scenario: Owner withdraws item and deposits it back using owner access
+/// Expected: Items can be withdrawn and deposited successfully by owner
 #[test]
 fun test_deposit_and_withdraw_by_owner() {
     let mut ts = ts::begin(governor());
@@ -439,6 +454,9 @@ fun test_swap_ammo_for_lens() {
     ts::end(ts);
 }
 
+/// Tests that authorizing extension without proper owner capability fails
+/// Scenario: User B attempts to authorize extension for User A's storage unit using wrong OwnerCap
+/// Expected: Transaction aborts with EAccessNotAuthorized error
 #[test]
 #[expected_failure(abort_code = storage_unit::EAccessNotAuthorized)]
 fun test_authorize_extension_fail_wrong_owner() {
@@ -465,6 +483,9 @@ fun test_authorize_extension_fail_wrong_owner() {
     ts::end(ts);
 }
 
+/// Tests that withdrawing via extension without authorization fails
+/// Scenario: Attempt to withdraw item via extension without authorizing the extension type
+/// Expected: Transaction aborts with EExtensionNotAuthorized error
 #[test]
 #[expected_failure(abort_code = storage_unit::EExtensionNotAuthorized)]
 fun test_withdraw_via_extension_fail_not_authorized() {
@@ -495,6 +516,9 @@ fun test_withdraw_via_extension_fail_not_authorized() {
     ts::end(ts);
 }
 
+/// Tests that depositing via extension without authorization fails
+/// Scenario: Attempt to deposit item via extension without authorizing the extension type
+/// Expected: Transaction aborts with EExtensionNotAuthorized error
 #[test]
 #[expected_failure(abort_code = storage_unit::EExtensionNotAuthorized)]
 fun test_deposit_via_extension_fail_not_authorized() {
@@ -549,6 +573,9 @@ fun test_deposit_via_extension_fail_not_authorized() {
     ts::end(ts);
 }
 
+/// Tests that withdrawing by owner without proper owner capability fails
+/// Scenario: User B attempts to withdraw items from User A's storage unit using wrong OwnerCap
+/// Expected: Transaction aborts with EAccessNotAuthorized error
 #[test]
 #[expected_failure(abort_code = storage_unit::EAccessNotAuthorized)]
 fun test_withdraw_by_owner_fail_wrong_owner() {
@@ -604,6 +631,52 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
     ts::end(ts);
 }
 
+/// Tests that depositing by owner without proper owner capability fails
+/// Scenario: User A withdraws item, then User B attempts to deposit it back using wrong OwnerCap
+/// Expected: Transaction aborts with EAccessNotAuthorized error
+#[test]
+#[expected_failure(abort_code = storage_unit::EAccessNotAuthorized)]
+fun test_deposit_by_owner_fail_wrong_owner() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let storage_id = create_storage_unit(&mut ts, LOCATION_A_HASH);
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
+
+    online_storage_unit(&mut ts, user_a(), storage_id);
+    mint_ammo(&mut ts, storage_id);
+
+    let dummy_id = object::id_from_bytes(
+        x"0000000000000000000000000000000000000000000000000000000000000001",
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
+
+    // User A withdraws item
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        item = storage_unit.withdraw_by_owner(&owner_cap, AMMO_ITEM_ID, ts.ctx());
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // User B attempts to deposit using wrong OwnerCap - should fail
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        // This should fail with EAccessNotAuthorized
+        storage_unit.deposit_by_owner(item, &owner_cap, ts.ctx());
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    ts::end(ts);
+}
+
+/// Tests that swap fails when extension is not authorized
+/// Scenario: Attempt to swap items via extension without authorizing the extension type
+/// Expected: Transaction aborts with EExtensionNotAuthorized error
 #[test]
 #[expected_failure(abort_code = storage_unit::EExtensionNotAuthorized)]
 fun test_swap_fail_extension_not_authorized() {

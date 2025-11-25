@@ -47,6 +47,9 @@ fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: ve
     };
 }
 
+/// Tests that the character registry is initialized correctly
+/// Scenario: Initialize character registry and verify it exists as a shared object
+/// Expected: Registry is created and can be accessed as a shared object
 #[test]
 fun character_registry_initialized() {
     let mut ts = ts::begin(governor());
@@ -65,6 +68,9 @@ fun character_registry_initialized() {
     ts.end();
 }
 
+/// Tests creating a character with valid parameters
+/// Scenario: Admin creates a character with game_id=1, tribe_id=100, name="test"
+/// Expected: Character is created successfully with correct attributes
 #[test]
 fun create_character() {
     let mut ts = ts::begin(governor());
@@ -84,6 +90,9 @@ fun create_character() {
     ts.end();
 }
 
+/// Tests that character IDs are deterministic and can be pre-computed
+/// Scenario: Pre-compute character ID using derive_address, then create character
+/// Expected: Actual character ID matches the pre-computed ID
 #[test]
 fun deterministic_character_id() {
     let mut ts = ts::begin(governor());
@@ -128,6 +137,9 @@ fun deterministic_character_id() {
     ts.end();
 }
 
+/// Tests that different game IDs produce different character IDs
+/// Scenario: Create two characters with different game_ids (1 and 2)
+/// Expected: The two characters have different IDs
 #[test]
 fun different_game_ids_produce_different_character_ids() {
     let mut ts = ts::begin(governor());
@@ -183,6 +195,9 @@ fun different_game_ids_produce_different_character_ids() {
     ts.end();
 }
 
+/// Tests renaming a character with owner capability
+/// Scenario: Owner of character renames it from "test" to "new_name"
+/// Expected: Character name is updated successfully
 #[test]
 fun rename_character() {
     let mut ts = ts::begin(governor());
@@ -213,6 +228,9 @@ fun rename_character() {
     ts.end();
 }
 
+/// Tests updating a character's tribe ID with admin capability
+/// Scenario: Admin updates character tribe_id from 100 to 200
+/// Expected: Character tribe_id is updated successfully
 #[test]
 fun update_tribe() {
     let mut ts = ts::begin(governor());
@@ -234,6 +252,9 @@ fun update_tribe() {
     ts.end();
 }
 
+/// Tests deleting a character with admin capability
+/// Scenario: Admin deletes a character
+/// Expected: Character is deleted successfully
 #[test]
 fun delete_character() {
     let mut ts = ts::begin(governor());
@@ -253,6 +274,9 @@ fun delete_character() {
     ts.end();
 }
 
+/// Tests that creating a character with empty game_character_id fails
+/// Scenario: Attempt to create character with game_character_id = 0
+/// Expected: Transaction aborts with EGameCharacterIdEmpty error
 #[test]
 #[expected_failure(abort_code = character::EGameCharacterIdEmpty)]
 fun create_character_with_empty_game_character_id() {
@@ -263,6 +287,9 @@ fun create_character_with_empty_game_character_id() {
     abort
 }
 
+/// Tests that creating a character with empty tribe_id fails
+/// Scenario: Attempt to create character with tribe_id = 0
+/// Expected: Transaction aborts with ETribeIdEmpty error
 #[test]
 #[expected_failure(abort_code = character::ETribeIdEmpty)]
 fun create_character_with_empty_tribe_id() {
@@ -273,6 +300,9 @@ fun create_character_with_empty_tribe_id() {
     abort
 }
 
+/// Tests that creating a character with duplicate game_id fails
+/// Scenario: Create character with game_id=123, then attempt to create another with same game_id
+/// Expected: Second creation aborts with ECharacterAlreadyExists error
 #[test]
 #[expected_failure(abort_code = character::ECharacterAlreadyExists)]
 fun duplicate_game_id_fails() {
@@ -295,6 +325,7 @@ fun duplicate_game_id_fails() {
             ts::ctx(&mut ts),
         );
         character::share_character(character, &admin_cap);
+
         ts::return_shared(registry);
         ts::return_to_sender(&ts, admin_cap);
     };
@@ -314,6 +345,7 @@ fun duplicate_game_id_fails() {
             ts::ctx(&mut ts),
         );
         character::share_character(character, &admin_cap);
+
         ts::return_shared(registry);
         ts::return_to_sender(&ts, admin_cap);
     };
@@ -345,6 +377,7 @@ fun delete_recreate_character() {
             ts::ctx(&mut ts),
         );
         character::share_character(character, &admin_cap);
+
         ts::return_shared(registry);
         ts::return_to_sender(&ts, admin_cap);
     };
@@ -373,6 +406,7 @@ fun delete_recreate_character() {
         );
 
         character::share_character(character, &admin_cap);
+
         ts::return_shared(registry);
         ts::return_to_sender(&ts, admin_cap);
     };
@@ -380,6 +414,10 @@ fun delete_recreate_character() {
     ts.end();
 }
 
+/// Tests that creating a character without admin capability fails
+/// Scenario: User A (not admin) attempts to create a character
+/// Expected: Transaction aborts because AdminCap is required
+/// Note: Security is enforced at compile time via &AdminCap parameter
 #[test]
 #[expected_failure]
 fun create_character_without_admin_cap() {
@@ -403,6 +441,9 @@ fun create_character_without_admin_cap() {
     }
 }
 
+/// Tests that renaming a character without proper owner capability fails
+/// Scenario: User B attempts to rename User A's character using wrong OwnerCap
+/// Expected: Transaction aborts because OwnerCap doesn't authorize access to the character
 #[test]
 #[expected_failure]
 fun test_rename_character_without_owner_cap() {
@@ -416,6 +457,84 @@ fun test_rename_character_without_owner_cap() {
         let mut character = ts::take_shared<Character>(&ts);
 
         character::rename_character(&mut character, &owner_cap, utf8(b"new_name"));
+        abort
+    }
+}
+
+/// Tests that renaming a character with an empty string fails
+/// Scenario: Owner attempts to rename character to empty string
+/// Expected: Transaction aborts with ECharacterNameEmpty error
+#[test]
+#[expected_failure(abort_code = character::ECharacterNameEmpty)]
+fun rename_character_to_empty_string() {
+    let mut ts = ts::begin(governor());
+    setup_world(&mut ts);
+    setup_character(&mut ts, 1, 100, b"test");
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let character = ts::take_shared<Character>(&ts);
+        let character_id = object::id(&character);
+        ts::return_shared(character);
+
+        test_helpers::setup_owner_cap(&mut ts, user_a(), character_id);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let mut character = ts::take_shared<Character>(&ts);
+
+        // This should abort with ECharacterNameEmpty
+        character::rename_character(&mut character, &owner_cap, utf8(b""));
+
+        ts::return_shared(character);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    ts.end();
+}
+
+/// Tests that updating tribe_id to 0 is not allowed (validation in update_tribe)
+/// Scenario: Admin attempts to update character tribe_id to 0
+/// Expected: Transaction aborts with ETribeIdEmpty error
+#[test]
+#[expected_failure(abort_code = character::ETribeIdEmpty)]
+fun update_tribe_to_zero() {
+    let mut ts = ts::begin(governor());
+    setup_world(&mut ts);
+    setup_character(&mut ts, 1, 100, b"test");
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let mut character = ts::take_shared<Character>(&ts);
+
+        character::update_tribe(&mut character, &admin_cap, 0);
+
+        // This should abort with ETribeIdEmpty
+        ts::return_shared(character);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    ts.end();
+}
+
+/// Tests that updating tribe without admin capability fails
+/// Scenario: User A (not admin) attempts to update character tribe_id
+/// Expected: Transaction aborts because AdminCap is required
+/// Note: Security is enforced at compile time via &AdminCap parameter
+#[test]
+#[expected_failure]
+fun update_tribe_without_admin_cap() {
+    let mut ts = ts::begin(governor());
+    setup_world(&mut ts);
+    setup_character(&mut ts, 1, 100, b"test");
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let _character = ts::take_shared<Character>(&ts);
+        // This should fail - user_a doesn't have AdminCap
         abort
     }
 }

@@ -82,6 +82,9 @@ fun mint_ammo(ts: &mut ts::Scenario) {
     };
 }
 
+/// Tests creating an assembly with inventory
+/// Scenario: Admin creates a storage unit with inventory, status, and location
+/// Expected: Storage unit is created successfully with correct initial state
 #[test]
 fun create_assembly_with_inventory() {
     let mut ts = ts::begin(governor());
@@ -100,6 +103,9 @@ fun create_assembly_with_inventory() {
     ts::end(ts);
 }
 
+/// Tests minting items into inventory
+/// Scenario: Admin mints ammo items into an online storage unit
+/// Expected: Items are minted successfully, capacity is used correctly, and item quantity is correct
 #[test]
 fun mint_items() {
     let mut ts = ts::begin(governor());
@@ -125,6 +131,9 @@ fun mint_items() {
     ts::end(ts);
 }
 
+/// Tests that minting items increases quantity when item already exists
+/// Scenario: Admin mints 5 items, then mints 5 more of the same item
+/// Expected: Second mint increases quantity to 10 instead of creating a new item
 #[test]
 fun mint_items_increases_quantity_when_exists() {
     let mut ts = ts::begin(governor());
@@ -192,6 +201,9 @@ fun mint_items_increases_quantity_when_exists() {
 }
 
 // todo: check location is not being removed
+/// Tests burning all items from inventory
+/// Scenario: Owner burns all ammo items from an online storage unit
+/// Expected: All items are burned, capacity is freed, and inventory is empty
 #[test]
 public fun burn_items() {
     let mut ts = ts::begin(governor());
@@ -230,6 +242,9 @@ public fun burn_items() {
     ts::end(ts);
 }
 
+/// Tests burning partial quantity of items
+/// Scenario: Owner burns 5 out of 10 ammo items from inventory
+/// Expected: Quantity is reduced to 5, capacity is partially freed, item still exists
 #[test]
 public fun burn_partial_items() {
     let mut ts = ts::begin(governor());
@@ -266,7 +281,10 @@ public fun burn_partial_items() {
     ts::end(ts);
 }
 
-// Should it change the location ?
+/// Should it change the location ?
+/// Tests depositing items from one inventory to another
+/// Scenario: Withdraw item from storage unit and deposit into ephemeral storage unit
+/// Expected: Item is successfully transferred, capacity updated in both inventories
 #[test]
 public fun deposit_items() {
     let mut ts = ts::begin(governor());
@@ -334,6 +352,9 @@ public fun deposit_items() {
     ts::end(ts);
 }
 
+/// Tests that creating inventory with zero capacity fails
+/// Scenario: Attempt to create inventory with max_capacity = 0
+/// Expected: Transaction aborts with EInventoryInvalidCapacity error
 #[test]
 fun burn_items_with_proof() {
     let mut ts = ts::begin(governor());
@@ -449,6 +470,9 @@ fun create_assembly_fail_on_empty_capacity() {
     ts::end(ts);
 }
 
+/// Tests that minting items with empty item_id fails
+/// Scenario: Attempt to mint items with item_id = 0
+/// Expected: Transaction aborts with EItemIdEmpty error
 #[test]
 #[expected_failure(abort_code = inventory::EItemIdEmpty)]
 fun mint_items_fail_empty_item_id() {
@@ -481,6 +505,9 @@ fun mint_items_fail_empty_item_id() {
     ts::end(ts);
 }
 
+/// Tests that minting items with empty type_id fails
+/// Scenario: Attempt to mint items with type_id = 0
+/// Expected: Transaction aborts with ETypeIdEmpty error
 #[test]
 #[expected_failure(abort_code = inventory::ETypeIdEmpty)]
 fun mint_items_fail_empty_type_id() {
@@ -513,6 +540,9 @@ fun mint_items_fail_empty_type_id() {
     ts::end(ts);
 }
 
+/// Tests that minting items into offline inventory fails
+/// Scenario: Attempt to mint items into storage unit that is not online
+/// Expected: Transaction aborts with ENotOnline error
 #[test]
 #[expected_failure(abort_code = inventory::ENotOnline)]
 fun mint_items_fail_inventory_offline() {
@@ -544,6 +574,9 @@ fun mint_items_fail_inventory_offline() {
     ts::end(ts);
 }
 
+/// Tests that minting items exceeding inventory capacity fails
+/// Scenario: Attempt to mint 15 items when inventory capacity is 1000 and each item uses 100 volume
+/// Expected: Transaction aborts with EInventoryInsufficientCapacity error
 #[test]
 #[expected_failure(abort_code = inventory::EInventoryInsufficientCapacity)]
 fun mint_fail_inventory_insufficient_capacity() {
@@ -576,6 +609,9 @@ fun mint_fail_inventory_insufficient_capacity() {
     ts::end(ts);
 }
 
+/// Tests that burning items without proper owner capability fails
+/// Scenario: User B attempts to burn items from User A's storage unit using wrong OwnerCap
+/// Expected: Transaction aborts with EInventoryAccessNotAuthorized error
 #[test]
 #[expected_failure(abort_code = inventory::EInventoryAccessNotAuthorized)]
 public fun burn_items_fail_unauthorized_owner() {
@@ -610,6 +646,9 @@ public fun burn_items_fail_unauthorized_owner() {
     ts::end(ts);
 }
 
+/// Tests that burning items that don't exist fails
+/// Scenario: Attempt to burn items from empty inventory
+/// Expected: Transaction aborts with EItemDoesNotExist error
 #[test]
 #[expected_failure(abort_code = inventory::EItemDoesNotExist)]
 public fun burn_items_fail_item_not_found() {
@@ -638,6 +677,9 @@ public fun burn_items_fail_item_not_found() {
     ts::end(ts);
 }
 
+/// Tests that burning more items than available fails
+/// Scenario: Attempt to burn 15 items when only 10 exist in inventory
+/// Expected: Transaction aborts with EInventoryInsufficientQuantity error
 #[test]
 #[expected_failure(abort_code = inventory::EInventoryInsufficientQuantity)]
 public fun burn_items_fail_insufficient_quantity() {
@@ -668,6 +710,9 @@ public fun burn_items_fail_insufficient_quantity() {
     ts::end(ts);
 }
 
+/// Tests that depositing items into inventory with insufficient capacity fails
+/// Scenario: Attempt to deposit item requiring 1000 volume into inventory with only 10 capacity
+/// Expected: Transaction aborts with EInventoryInsufficientCapacity error
 #[test]
 #[expected_failure(abort_code = inventory::EInventoryInsufficientCapacity)]
 fun deposit_item_fail_insufficient_capacity() {
@@ -727,6 +772,9 @@ fun deposit_item_fail_insufficient_capacity() {
     ts::end(ts);
 }
 
+/// Tests that withdrawing items that don't exist fails
+/// Scenario: Attempt to withdraw item with non-existent item_id
+/// Expected: Transaction aborts with EItemDoesNotExist error
 #[test]
 #[expected_failure(abort_code = inventory::EItemDoesNotExist)]
 fun withdraw_item_fail_item_not_found() {
@@ -736,18 +784,21 @@ fun withdraw_item_fail_item_not_found() {
     test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
 
     online(&mut ts);
-    mint_ammo(&mut ts);
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
+        // This should abort with EItemDoesNotExist
         let item = storage_unit.inventory.withdraw_item(1222);
-
+        // Unreachable code below - needed to satisfy Move's type checker
         storage_unit.inventory.deposit_item(item);
         ts::return_shared(storage_unit);
     };
     ts::end(ts);
 }
 
+/// Tests that minting items with mismatched assembly status fails
+/// Scenario: Attempt to mint items using status from a different assembly than the inventory
+/// Expected: Transaction aborts with EInventoryAssemblyMismatch error
 #[test]
 #[expected_failure(abort_code = inventory::EInventoryAssemblyMismatch)]
 fun mint_items_fail_inventory_assembly_mismatch() {

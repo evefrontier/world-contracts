@@ -56,6 +56,8 @@ public struct StorageUnitCreatedEvent has copy, drop {
     max_capacity: u64,
     location_hash: vector<u8>,
     status: Status,
+    type_id: u64,
+    item_id: u64,
 }
 
 // === Public Functions ===
@@ -105,6 +107,8 @@ public fun create_storage_unit(
         max_capacity,
         location_hash,
         status: status::status(&storage_unit.status),
+        type_id: type_id,
+        item_id: item_id,
     });
 
     storage_unit

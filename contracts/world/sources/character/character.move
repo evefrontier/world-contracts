@@ -21,6 +21,9 @@ const ECharacterAlreadyExists: vector<u8> = b"Character with this game character
 #[error(code = 3)]
 const ECharacterNotAuthorized: vector<u8> = b"Character not authorized";
 
+#[error(code = 4)]
+const ECharacterNameEmpty: vector<u8> = b"Character name cannot be empty";
+
 public struct CharacterRegistry has key {
     id: UID,
 }
@@ -83,10 +86,12 @@ public fun share_character(character: Character, _: &AdminCap) {
 
 public fun rename_character(character: &mut Character, owner_cap: &OwnerCap, name: String) {
     assert!(authority::is_authorized(owner_cap, object::id(character)), ECharacterNotAuthorized);
+    assert!(std::string::length(&name) > 0, ECharacterNameEmpty);
     character.name = name;
 }
 
 public fun update_tribe(character: &mut Character, _: &AdminCap, tribe_id: u32) {
+    assert!(tribe_id != 0, ETribeIdEmpty);
     character.tribe_id = tribe_id;
 }
 
