@@ -10,6 +10,8 @@ use world::{
     test_helpers::{Self, governor, admin, user_a, user_b}
 };
 
+const STORAGE_TYPE_ID: u64 = 88069;
+
 public struct StorageUnit has key {
     id: UID,
     status: AssemblyStatus,
@@ -27,7 +29,7 @@ fun create_storage_unit(ts: &mut ts::Scenario) {
         let assembly_id = object::uid_to_inner(&uid);
         let storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_id),
+            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID),
             max_capacity: 10000,
         };
         // share storage unit object
@@ -62,7 +64,7 @@ fun create_assembly() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        assert_eq!(storage_unit.status.status_to_u8(), 0);
+        assert_eq!(storage_unit.status.status_to_u8(), 2);
         ts::return_shared(storage_unit);
     };
     ts::end(ts);
@@ -120,7 +122,7 @@ fun offline() {
         status::online(&mut storage_unit.status, &owner_cap);
         status::offline(&mut storage_unit.status, &owner_cap);
 
-        assert_eq!(storage_unit.status.status_to_u8(), 0);
+        assert_eq!(storage_unit.status.status_to_u8(), 2);
         ts::return_shared(storage_unit);
         ts::return_to_sender(&ts, owner_cap);
     };
@@ -139,7 +141,7 @@ fun unanchor_destroy() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        assert_eq!(storage_unit.status.status_to_u8(), 0);
+        assert_eq!(storage_unit.status.status_to_u8(), 2);
         ts::return_shared(storage_unit);
         destroy_storage_unit(&mut ts);
     };
@@ -169,7 +171,7 @@ fun offline_without_online_fail() {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
         status::offline(&mut storage_unit.status, &owner_cap);
 
-        assert_eq!(storage_unit.status.status_to_u8(), 0);
+        assert_eq!(storage_unit.status.status_to_u8(), 2);
         ts::return_shared(storage_unit);
         ts::return_to_sender(&ts, owner_cap);
     };
@@ -238,7 +240,7 @@ fun online_fail_by_unauthorised_owner() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let storage_unit_2 = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_2_id),
+            status: status::anchor(&admin_cap, assembly_2_id, STORAGE_TYPE_ID),
             max_capacity: 10000,
         };
         transfer::share_object(storage_unit_2);
@@ -290,7 +292,7 @@ fun offline_fail_by_unauthorised_owner() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let storage_unit_2 = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_2_id),
+            status: status::anchor(&admin_cap, assembly_2_id, STORAGE_TYPE_ID),
             max_capacity: 10000,
         };
         transfer::share_object(storage_unit_2);
@@ -357,7 +359,7 @@ fun get_assembly_status_after_unanchor_fails() {
         // Try to access the storage unit by ID after it's been destroyed - should fail
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, assembly_id);
         // This should never execute because the object doesn't exist
-        assert_eq!(storage_unit.status.status_to_u8(), 0);
+        assert_eq!(storage_unit.status.status_to_u8(), 2);
         ts::return_shared(storage_unit);
     };
     ts::end(ts);
