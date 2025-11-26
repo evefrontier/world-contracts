@@ -130,7 +130,7 @@ public fun verify_proximity_proof_as_struct(
 }
 
 /// Verify that a server-signed proof attesting a player is in proximity the structure.
-/// This function gets `proof_bytes` the LocationProof as bytes and deserializes it using `peel_*` functions.
+/// This function gets `proof_bytes` the LocationProof as bytes
 public fun verify_proximity_proof_as_bytes(
     location: &Location,
     proof_bytes: vector<u8>,
