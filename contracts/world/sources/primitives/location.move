@@ -275,7 +275,7 @@ fun unpack_proof(proof_bytes: vector<u8>): (LocationProofMessage, vector<u8>) {
 
 fun is_deadline_valid(deadline_ms: u64, clock: &Clock): bool {
     let current_time_ms = clock.timestamp_ms();
-    current_time_ms <= deadline_ms
+    deadline_ms > current_time_ms
 }
 
 // === Test Functions ===
