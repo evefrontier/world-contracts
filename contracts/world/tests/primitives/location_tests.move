@@ -378,7 +378,7 @@ fun verify_proximity_with_signature_proof_invalid_from_address() {
 
 // The test fails due to deadline
 #[test]
-#[expected_failure(abort_code = location::ESignatureVerificationFailed)]
+#[expected_failure(abort_code = location::EDeadlineExpired)]
 fun verify_proximity_proof_with_bytes_fail_by_deadline() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
@@ -393,13 +393,14 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
     {
         let storage_unit = ts::take_shared<Storage>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-
-        // Create a proof with a future deadline
         let mut clock = clock::create_for_testing(ts.ctx());
-        let current_time = 1000000u64; // 1 second in milliseconds
+
+        // This deadline matches the one in the signature
+        let deadline_ms: u64 = 1763408644339u64;
+
+        let current_time = deadline_ms + 5; // some millisecond after deadline
         clock.set_for_testing(current_time);
 
-        let deadline_ms: u64 = current_time + 1763408644339; // Far future deadline
         let character_id = object::id_from_bytes(
             x"0000000000000000000000000000000000000000000000000000000000000002",
         );
