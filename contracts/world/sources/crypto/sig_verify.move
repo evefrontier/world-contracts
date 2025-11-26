@@ -23,7 +23,7 @@
 module world::sig_verify;
 
 use std::bcs;
-use sui::{clock::Clock, ed25519, hash};
+use sui::{ed25519, hash};
 
 // === Errors ===
 #[error(code = 0)]
@@ -32,8 +32,6 @@ const EInvalidPublicKeyLen: vector<u8> = b"Invalid public key length";
 const EUnsupportedScheme: vector<u8> = b"Unsupported scheme";
 #[error(code = 2)]
 const EInvalidLen: vector<u8> = b"Invalid length";
-#[error(code = 3)]
-const ESignatureExpired: vector<u8> = b"Signature has expired";
 
 // === Constants ===
 const ED25519_FLAG: u8 = 0x00;
@@ -98,19 +96,6 @@ public fun verify_signature(
         },
         _ => abort EUnsupportedScheme,
     }
-}
-
-public fun verify_signature_with_deadline(
-    message: vector<u8>,
-    signature: vector<u8>,
-    expected_address: address,
-    timestamp_ms: u64,
-    clock: &Clock,
-): bool {
-    // Check if the signature is expired
-    let current_time_ms = clock.timestamp_ms();
-    assert!(current_time_ms <= timestamp_ms, ESignatureExpired);
-    verify_signature(message, signature, expected_address)
 }
 
 // === Private Functions ===

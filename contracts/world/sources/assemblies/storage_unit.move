@@ -216,7 +216,7 @@ public fun deposit_by_owner(
         item.get_item_location_hash(),
     );
 
-    location::verify_location_proof_as_bytes(
+    location::verify_proximity_proof_as_bytes(
         &storage_unit.location,
         proximity_proof,
         server_registry,
@@ -236,7 +236,7 @@ public fun withdraw_by_owner(
     ctx: &mut TxContext,
 ): Item {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
-    location::verify_location_proof_as_bytes(
+    location::verify_proximity_proof_as_bytes(
         &storage_unit.location,
         proximity_proof,
         server_registry,

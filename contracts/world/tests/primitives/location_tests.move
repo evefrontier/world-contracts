@@ -166,7 +166,7 @@ fun verify_proximity_with_signature_proof() {
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let proof = test_helpers::construct_location_proof(LOCATION_HASH);
 
-        location::verify_location_proof_as_struct_without_deadline(
+        location::verify_proximity_proof_as_struct_without_deadline(
             &storage_unit.location,
             proof,
             &server_registry,
@@ -197,7 +197,7 @@ fun verify_proximity_proof_with_bytes() {
         let proof_bytes = bcs::to_bytes(&proof);
 
         // Verify using the bytes version
-        location::verify_location_proof_as_bytes_without_deadline(
+        location::verify_proximity_proof_as_bytes_without_deadline(
             &storage_unit.location,
             proof_bytes,
             &server_registry,
@@ -252,7 +252,7 @@ fun verify_proximity_with_signature_proof_invalid_sender() {
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let proof = test_helpers::construct_location_proof(LOCATION_HASH);
 
-        location::verify_location_proof_as_struct_without_deadline(
+        location::verify_proximity_proof_as_struct_without_deadline(
             &storage_unit.location,
             proof,
             &server_registry,
@@ -283,7 +283,7 @@ fun verify_proximity_with_signature_proof_invalid_location_hash() {
             x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
         let proof = test_helpers::construct_location_proof(wrong_location_hash);
 
-        location::verify_location_proof_as_struct_without_deadline(
+        location::verify_proximity_proof_as_struct_without_deadline(
             &storage_unit.location,
             proof,
             &server_registry,
@@ -315,7 +315,7 @@ fun verify_proximity_with_signature_proof_invalid_from_address() {
         let data = x"";
         let signature =
             x"0026ce00ad44629213f249ec3ee833aaf28bc115d3b781ca0a146a6e22a4016205f992d07c62f8d067d0baecb397bcc5a692a3bae5ff2e33eb6b42fdb94db6f50ba94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
-        let timestamp_ms: u64 = 1763408644339;
+        let deadline_ms: u64 = 1763408644339;
         let proof = location::create_location_proof(
             admin(), // sending unauthorized admin
             server_admin(), // ideally this is the player
@@ -325,11 +325,11 @@ fun verify_proximity_with_signature_proof_invalid_from_address() {
             LOCATION_HASH,
             0u64,
             data,
-            timestamp_ms,
+            deadline_ms,
             signature,
         );
 
-        location::verify_location_proof_as_struct_without_deadline(
+        location::verify_proximity_proof_as_struct_without_deadline(
             &storage_unit.location,
             proof,
             &server_registry,
@@ -362,7 +362,7 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
         let current_time = 1000000u64; // 1 second in milliseconds
         clock.set_for_testing(current_time);
 
-        let timestamp_ms: u64 = current_time + 1763408644339; // Far future deadline
+        let deadline_ms: u64 = current_time + 1763408644339; // Far future deadline
         let character_id = object::id_from_bytes(
             x"0000000000000000000000000000000000000000000000000000000000000002",
         );
@@ -379,7 +379,7 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
             LOCATION_HASH,
             0u64,
             data,
-            timestamp_ms,
+            deadline_ms,
             signature,
         );
 
@@ -387,7 +387,7 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
         let proof_bytes = bcs::to_bytes(&proof);
 
         // Verify using the bytes version
-        location::verify_location_proof_as_bytes(
+        location::verify_proximity_proof_as_bytes(
             &storage_unit.location,
             proof_bytes,
             &server_registry,

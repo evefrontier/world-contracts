@@ -82,7 +82,7 @@ public fun construct_location_proof(location_hash: vector<u8>): LocationProof {
     let data = x"";
     let signature =
         x"00c22f5e577a066099afb480eb9d1dbad1068695b8e8450389b65e5461de6b1b7c51daf293aa095d7715288c154c019c3b70ae742e61d343545f13df61f9b2f700a94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
-    let timestamp_ms: u64 = 1763408644339;
+    let deadline_ms: u64 = 1763408644339;
     let proof = location::create_location_proof(
         server_admin(),
         server_admin(), // ideally this is the player
@@ -92,7 +92,7 @@ public fun construct_location_proof(location_hash: vector<u8>): LocationProof {
         location_hash,
         0u64,
         data,
-        timestamp_ms,
+        deadline_ms,
         signature,
     );
     proof

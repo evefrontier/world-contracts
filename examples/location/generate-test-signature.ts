@@ -21,7 +21,7 @@ const LocationProofMessage = bcs.struct("LocationProofMessage", {
     target_location_hash: bcs.vector(bcs.u8()),
     distance: bcs.u64(),
     data: bcs.vector(bcs.u8()),
-    timestamp_ms: bcs.u64(),
+    deadline_ms: bcs.u64(),
 });
 
 async function generateTestSignature() {
@@ -53,7 +53,7 @@ async function generateTestSignature() {
         target_location_hash: Array.from(fromHex(LOCATION_HASH)),
         distance: 0n,
         data: [],
-        timestamp_ms: TIMESTAMP_MS,
+        deadline_ms: TIMESTAMP_MS,
     };
 
     console.log("\n=== Message Details ===");
@@ -65,7 +65,7 @@ async function generateTestSignature() {
     console.log("Target location hash:", toHex(new Uint8Array(message.target_location_hash)));
     console.log("Distance:", message.distance.toString());
     console.log("Data:", message.data);
-    console.log("Timestamp :", message.timestamp_ms.toString());
+    console.log("Timestamp :", message.deadline_ms.toString());
 
     // Serialize the message
     const messageBytes = LocationProofMessage.serialize(message).toBytes();

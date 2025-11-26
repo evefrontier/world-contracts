@@ -2,7 +2,6 @@
 module world::sig_verify_tests;
 
 use std::bcs;
-use sui::{clock, test_scenario as ts};
 use world::sig_verify;
 
 public struct Message has drop {
@@ -116,69 +115,6 @@ fun verify_full_signature_wrong_sig() {
 }
 
 #[test]
-fun verify_signature_with_deadline_valid() {
-    let mut ts = ts::begin(@0x1);
-    let mut clock = clock::create_for_testing(ts.ctx());
-    let current_time = 1000000u64; // 1 second in milliseconds
-    clock.set_for_testing(current_time);
-
-    let message = b"Hello, World!";
-    let full_sig =
-        x"006228f74ec83910e326a294b555f5d2f4183f3fd37335468a766d9ff3a04b82f8d7a8bff9908ab11f43d9c206ef6fa2743dc821b5059b6ac856e670c3dc45be0191dae31b6d33559fffd6092b5a3727b5d79c224e117cac59b57358003db9eefd";
-    let expected_address = sui::address::from_bytes(
-        x"4ddb44b7188932c0ee5cd5d9c6a01b50343e92d7e83e95154de5ff6475f16454",
-    );
-
-    // Set deadline 1 hour in the future
-    let deadline = current_time + 3600000; // 1 hour = 3600000 ms
-
-    let result = sig_verify::verify_signature_with_deadline(
-        message,
-        full_sig,
-        expected_address,
-        deadline,
-        &clock,
-    );
-
-    assert!(result);
-
-    clock.destroy_for_testing();
-    ts.end();
-}
-
-#[test]
-fun verify_signature_with_deadline_at_exact_deadline() {
-    let mut ts = ts::begin(@0x1);
-
-    let mut clock = clock::create_for_testing(ts.ctx());
-    let current_time = 1000000u64;
-    clock.set_for_testing(current_time);
-
-    let message = b"Hello, World!";
-    let full_sig =
-        x"006228f74ec83910e326a294b555f5d2f4183f3fd37335468a766d9ff3a04b82f8d7a8bff9908ab11f43d9c206ef6fa2743dc821b5059b6ac856e670c3dc45be0191dae31b6d33559fffd6092b5a3727b5d79c224e117cac59b57358003db9eefd";
-    let expected_address = sui::address::from_bytes(
-        x"4ddb44b7188932c0ee5cd5d9c6a01b50343e92d7e83e95154de5ff6475f16454",
-    );
-
-    // Set deadline to exactly current time (should still be valid)
-    let deadline = current_time;
-
-    let result = sig_verify::verify_signature_with_deadline(
-        message,
-        full_sig,
-        expected_address,
-        deadline,
-        &clock,
-    );
-
-    assert!(result);
-
-    clock.destroy_for_testing();
-    ts.end();
-}
-
-#[test]
 #[expected_failure(abort_code = sig_verify::EUnsupportedScheme)]
 fun verify_full_signature_unknown_scheme() {
     let message = b"Hello, World!";
@@ -221,36 +157,4 @@ fun verify_full_signature_invalid_len_too_long() {
     let result = sig_verify::verify_signature(message, full_sig, expected_address);
 
     assert!(result);
-}
-
-#[test]
-#[expected_failure(abort_code = sig_verify::ESignatureExpired)]
-fun verify_signature_with_deadline_expired() {
-    let mut ts = ts::begin(@0x1);
-
-    let mut clock = clock::create_for_testing(ts.ctx());
-    let current_time = 10000;
-    clock.set_for_testing(current_time);
-
-    let message = b"Hello, World!";
-    let full_sig =
-        x"006228f74ec83910e326a294b555f5d2f4183f3fd37335468a766d9ff3a04b82f8d7a8bff9908ab11f43d9c206ef6fa2743dc821b5059b6ac856e670c3dc45be0191dae31b6d33559fffd6092b5a3727b5d79c224e117cac59b57358003db9eefd";
-    let expected_address = sui::address::from_bytes(
-        x"4ddb44b7188932c0ee5cd5d9c6a01b50343e92d7e83e95154de5ff6475f16454",
-    );
-
-    // Set deadline in the past (1 millisecond before current time)
-    let deadline = 500;
-
-    // This should abort with ESignatureExpired
-    let _result = sig_verify::verify_signature_with_deadline(
-        message,
-        full_sig,
-        expected_address,
-        deadline,
-        &clock,
-    );
-
-    clock.destroy_for_testing();
-    ts.end();
 }

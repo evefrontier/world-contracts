@@ -113,7 +113,13 @@ public fun burn_items_with_proof(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    location::verify_location_proof_as_bytes(location, location_proof, server_registry, clock, ctx);
+    location::verify_proximity_proof_as_bytes(
+        location,
+        location_proof,
+        server_registry,
+        clock,
+        ctx,
+    );
     burn_items(inventory, assembly_status, owner_cap, item_id, quantity);
 }
 
@@ -373,7 +379,7 @@ public fun burn_items_with_proof_test(
     location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    location::verify_location_proof_as_bytes_without_deadline(
+    location::verify_proximity_proof_as_bytes_without_deadline(
         location,
         location_proof,
         server_registry,

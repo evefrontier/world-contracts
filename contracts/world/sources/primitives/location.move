@@ -22,6 +22,10 @@ const EInvalidLocationHash: vector<u8> = b"Invalid location hash";
 const EUnauthorizedServer: vector<u8> = b"Message signed by unauthorized server";
 #[error(code = 5)]
 const ESignatureVerificationFailed: vector<u8> = b"Signature verification failed";
+#[error(code = 6)]
+const EDeadlineExpired: vector<u8> = b"Deadline has expired";
+#[error(code = 7)]
+const EInvalidDistance: vector<u8> = b"Invalid Distance";
 
 // === Structs ===
 
@@ -46,7 +50,7 @@ public struct Location has store {
 /// * `target_location_hash` - The hash of the target structure's location
 /// * `distance` - The distance between player and target structure
 /// * `data` - Additional data field
-/// * `timestamp_ms` - timestamp in milliseconds
+/// * `deadline_ms` - expiration timestamp in milliseconds
 public struct LocationProofMessage has drop {
     server_address: address,
     player_address: address,
@@ -56,8 +60,7 @@ public struct LocationProofMessage has drop {
     target_location_hash: vector<u8>,
     distance: u64,
     data: vector<u8>,
-    timestamp_ms: u64,
-    // Should we add a nonce to prevent replay attack ?
+    deadline_ms: u64,
 }
 
 /// A complete location proof containing the message and its signature.
@@ -77,7 +80,7 @@ public fun create_location_proof(
     target_location_hash: vector<u8>,
     distance: u64,
     data: vector<u8>,
-    timestamp_ms: u64,
+    deadline_ms: u64,
     signature: vector<u8>,
 ): LocationProof {
     let message = LocationProofMessage {
@@ -89,7 +92,7 @@ public fun create_location_proof(
         target_location_hash,
         distance,
         data,
-        timestamp_ms,
+        deadline_ms,
     };
 
     LocationProof {
@@ -100,7 +103,7 @@ public fun create_location_proof(
 
 /// Verify that a server-signed proof attesting a player is near a structure
 /// This function gets `proof` LocationProof as struct
-public fun verify_location_proof_as_struct(
+public fun verify_proximity_proof_as_struct(
     location: &Location,
     proof: LocationProof,
     server_registry: &ServerAddressRegistry,
@@ -115,21 +118,20 @@ public fun verify_location_proof_as_struct(
     validate_proof_message(&message, location, server_registry, ctx.sender());
 
     let message_bytes = bcs::to_bytes(&message);
+    assert!(is_deadline_valid(message.deadline_ms, clock), EDeadlineExpired);
     assert!(
-        sig_verify::verify_signature_with_deadline(
+        sig_verify::verify_signature(
             message_bytes,
             signature,
             message.server_address,
-            message.timestamp_ms,
-            clock,
         ),
         ESignatureVerificationFailed,
-    );
+    )
 }
 
-/// Verify that a server-signed proof attesting a player is near a structure.
+/// Verify that a server-signed proof attesting a player is in proximity the structure.
 /// This function gets `proof_bytes` the LocationProof as bytes and deserializes it using `peel_*` functions.
-public fun verify_location_proof_as_bytes(
+public fun verify_proximity_proof_as_bytes(
     location: &Location,
     proof_bytes: vector<u8>,
     server_registry: &ServerAddressRegistry,
@@ -141,16 +143,39 @@ public fun verify_location_proof_as_bytes(
     validate_proof_message(&message, location, server_registry, ctx.sender());
 
     let message_bytes = bcs::to_bytes(&message);
+    assert!(is_deadline_valid(message.deadline_ms, clock), EDeadlineExpired);
     assert!(
-        sig_verify::verify_signature_with_deadline(
+        sig_verify::verify_signature(
             message_bytes,
             signature,
             message.server_address,
-            message.timestamp_ms,
-            clock,
         ),
         ESignatureVerificationFailed,
-    );
+    )
+}
+
+/// Verify that a server-signed proof attesting two structures are under a certain distance.
+public fun verify_distance_proof(
+    location: &Location,
+    proof_bytes: vector<u8>,
+    server_registry: &ServerAddressRegistry,
+    max_distance: u64,
+    ctx: &mut TxContext,
+) {
+    let (message, signature) = unpack_proof(proof_bytes);
+
+    validate_proof_message(&message, location, server_registry, ctx.sender());
+
+    let message_bytes = bcs::to_bytes(&message);
+    assert!(message.distance <= max_distance, EInvalidDistance);
+    assert!(
+        sig_verify::verify_signature(
+            message_bytes,
+            signature,
+            message.server_address,
+        ),
+        ESignatureVerificationFailed,
+    )
 }
 
 /// Verifies if two locations are in proximity based on their hashes.
@@ -229,7 +254,7 @@ fun unpack_proof(proof_bytes: vector<u8>): (LocationProofMessage, vector<u8>) {
     let target_location_hash = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
     let distance = bcs::peel_u64(&mut bcs_data);
     let data = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
-    let timestamp_ms = bcs::peel_u64(&mut bcs_data);
+    let deadline_ms = bcs::peel_u64(&mut bcs_data);
 
     // Deserialize signature
     let signature = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
@@ -243,9 +268,14 @@ fun unpack_proof(proof_bytes: vector<u8>): (LocationProofMessage, vector<u8>) {
         target_location_hash,
         distance,
         data,
-        timestamp_ms,
+        deadline_ms,
     };
     (message, signature)
+}
+
+fun is_deadline_valid(deadline_ms: u64, clock: &Clock): bool {
+    let current_time_ms = clock.timestamp_ms();
+    current_time_ms <= deadline_ms
 }
 
 // === Test Functions ===
@@ -257,7 +287,7 @@ fun unpack_proof(proof_bytes: vector<u8>): (LocationProofMessage, vector<u8>) {
 /// in tests, which means deadlines will always expire unless we set a never-expiring
 /// deadline. This function bypasses deadline validation for testing convenience.
 #[test_only]
-public fun verify_location_proof_as_struct_without_deadline(
+public fun verify_proximity_proof_as_struct_without_deadline(
     location: &Location,
     proof: LocationProof,
     server_registry: &ServerAddressRegistry,
@@ -279,7 +309,7 @@ public fun verify_location_proof_as_struct_without_deadline(
 }
 
 #[test_only]
-public fun verify_location_proof_as_bytes_without_deadline(
+public fun verify_proximity_proof_as_bytes_without_deadline(
     location: &Location,
     proof_bytes: vector<u8>,
     server_registry: &ServerAddressRegistry,
