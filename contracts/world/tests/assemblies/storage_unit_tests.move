@@ -26,6 +26,8 @@ const LENS_ITEM_ID: u64 = 1000004145108;
 const LENS_VOLUME: u64 = 50;
 const LENS_QUANTITY: u32 = 5;
 
+const STATUS_ONLINE: u8 = 1;
+
 // Mock 3rd Party Extension Witness Types
 /// Authorized extension witness type
 public struct SwapAuth has drop {}
@@ -105,7 +107,7 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID) {
         storage_unit.online(&owner_cap);
 
         let status = storage_unit.status();
-        assert_eq!(status.status_to_u8(), 1);
+        assert_eq!(status.status_to_u8(), STATUS_ONLINE);
         ts::return_shared(storage_unit);
         ts::return_to_sender(ts, owner_cap);
     }

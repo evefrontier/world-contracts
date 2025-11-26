@@ -19,6 +19,8 @@ const AMMO_TYPE_ID: u64 = 88069;
 const AMMO_ITEM_ID: u64 = 1000004145107;
 const AMMO_VOLUME: u64 = 100;
 const AMMO_QUANTITY: u32 = 10;
+const STATUS_ONLINE: u8 = 1;
+const STATUS_OFFLINE: u8 = 2;
 
 public struct StorageUnit has key {
     id: UID,
@@ -53,7 +55,7 @@ fun online(ts: &mut ts::Scenario) {
         let mut storage_unit = ts::take_shared<StorageUnit>(ts);
         let owner_cap = ts::take_from_sender<OwnerCap>(ts);
         storage_unit.status.online(&owner_cap);
-        assert_eq!(storage_unit.status.status_to_u8(), 1);
+        assert_eq!(storage_unit.status.status_to_u8(), STATUS_ONLINE);
 
         ts::return_shared(storage_unit);
         ts::return_to_sender(ts, owner_cap);
@@ -95,7 +97,7 @@ fun create_assembly_with_inventory() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        assert_eq!(storage_unit.status.status_to_u8(), 2);
+        assert_eq!(storage_unit.status.status_to_u8(), STATUS_OFFLINE);
         assert_eq!(storage_unit.location.hash(), LOCATION_A_HASH);
         assert_eq!(storage_unit.inventory.max_capacity(), MAX_CAPACITY);
         assert_eq!(storage_unit.inventory.used_capacity(), 0);
