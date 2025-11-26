@@ -32,16 +32,16 @@ public enum Action has copy, drop, store {
 
 public struct AssemblyStatus has store {
     assembly_id: ID, // mapping to the assembly object id
-    type_id: u64,
     status: Status,
+    type_id: u64,
     // TODO: add a reference to an energy source to check if it has enough energy to online
 }
 
 // === Events ===
 public struct StatusChangedEvent has copy, drop {
     assembly_id: ID,
-    type_id: u64,
     status: Status,
+    type_id: u64,
     action: Action,
 }
 
@@ -58,8 +58,8 @@ public fun online(assembly_status: &mut AssemblyStatus, owner_cap: &OwnerCap) {
     assembly_status.status = Status::ONLINE;
     event::emit(StatusChangedEvent {
         assembly_id: assembly_status.assembly_id,
-        type_id: assembly_status.type_id,
         status: assembly_status.status,
+        type_id: assembly_status.type_id,
         action: Action::ONLINE,
     });
 }
@@ -76,8 +76,8 @@ public fun offline(assembly_status: &mut AssemblyStatus, owner_cap: &OwnerCap) {
     assembly_status.status = Status::OFFLINE;
     event::emit(StatusChangedEvent {
         assembly_id: assembly_status.assembly_id,
-        type_id: assembly_status.type_id,
         status: assembly_status.status,
+        type_id: assembly_status.type_id,
         action: Action::OFFLINE,
     });
 }
@@ -101,13 +101,13 @@ public fun is_online(assembly_status: &AssemblyStatus): bool {
 public(package) fun anchor(_: &AdminCap, assembly_id: ID, type_id: u64): AssemblyStatus {
     let assembly_status = AssemblyStatus {
         assembly_id: assembly_id,
-        type_id: type_id,
         status: Status::OFFLINE,
+        type_id: type_id,
     };
     event::emit(StatusChangedEvent {
         assembly_id: assembly_id,
-        type_id: assembly_status.type_id,
         status: assembly_status.status,
+        type_id: assembly_status.type_id,
         action: Action::ANCHORED,
     });
     assembly_status
