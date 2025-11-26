@@ -12,7 +12,7 @@ public fun governor(): address { @0xA }
 
 public fun admin(): address { @0xB }
 
-public fun user_a(): address { @0xC }
+public fun user_a(): address { @0x202d7d52ab5f8e8824e3e8066c0b7458f84e326c5d77b30254c69d807586a7b0 }
 
 public fun user_b(): address { @0xD }
 
@@ -81,11 +81,11 @@ public fun construct_location_proof(location_hash: vector<u8>): LocationProof {
     );
     let data = x"";
     let signature =
-        x"00c22f5e577a066099afb480eb9d1dbad1068695b8e8450389b65e5461de6b1b7c51daf293aa095d7715288c154c019c3b70ae742e61d343545f13df61f9b2f700a94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
+        x"0085ee2824a8a3821be5d779ee912c6947acc36e8a6982024c994a3fdc88f450245e9a13ae23901b3c5b93acc34b0b314fe42a26742e16d3beac782360b65bff0ba94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
     let deadline_ms: u64 = 1763408644339;
     let proof = location::create_location_proof(
-        server_admin(),
-        server_admin(), // ideally this is the player
+        server_admin(), // authorized server
+        user_a(), // player address
         character_id,
         location_hash,
         get_storage_unit_id(),

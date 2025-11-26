@@ -378,9 +378,9 @@ fun burn_items_with_proof() {
         ts::return_to_sender(&ts, admin_cap);
     };
 
-    test_helpers::setup_owner_cap(&mut ts, server_admin(), test_helpers::get_storage_unit_id());
+    test_helpers::setup_owner_cap(&mut ts, user_a(), test_helpers::get_storage_unit_id());
 
-    ts::next_tx(&mut ts, server_admin());
+    ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
@@ -409,7 +409,7 @@ fun burn_items_with_proof() {
         ts::return_to_sender(&ts, admin_cap);
     };
 
-    ts::next_tx(&mut ts, server_admin());
+    ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let status_ref = &storage_unit.status;

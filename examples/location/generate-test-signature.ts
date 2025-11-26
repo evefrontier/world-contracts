@@ -6,6 +6,7 @@ import { loadKeypair } from "../utils/client";
 
 // Test values from test_helpers.move
 const SERVER_ADMIN_ADDRESS = "0x93d3209c7f138aded41dcb008d066ae872ed558bd8dcb562da47d4ef78295333";
+const USER_A_ADDRESS = "0x202d7d52ab5f8e8824e3e8066c0b7458f84e326c5d77b30254c69d807586a7b0";
 const STORAGE_UNIT_ID = "0xb78f2c84dbb71520c4698c4520bfca8da88ea8419b03d472561428cd1e3544e8";
 const CHARACTER_ID = "0x0000000000000000000000000000000000000000000000000000000000000002";
 const LOCATION_HASH = "0x16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049";
@@ -46,7 +47,7 @@ async function generateTestSignature() {
     // Create the LocationProofMessage
     const message = {
         server_address: SERVER_ADMIN_ADDRESS,
-        player_address: SERVER_ADMIN_ADDRESS, // In tests, player is also server_admin
+        player_address: USER_A_ADDRESS,
         source_structure_id: CHARACTER_ID,
         source_location_hash: Array.from(fromHex(LOCATION_HASH)),
         target_structure_id: STORAGE_UNIT_ID,

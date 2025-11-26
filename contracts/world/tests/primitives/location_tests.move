@@ -5,11 +5,16 @@ use sui::{clock, test_scenario as ts};
 use world::{
     authority::{AdminCap, ServerAddressRegistry},
     location::{Self, Location},
-    test_helpers::{Self, governor, admin, server_admin}
+    test_helpers::{Self, governor, admin, server_admin, user_a, user_b}
 };
 
-const LOCATION_HASH: vector<u8> =
+// Location hash representing coordinates near Planet A in Solar System 1
+const LOCATION_HASH_PLANET_A_SYSTEM_1: vector<u8> =
     x"16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049";
+
+// Location hash representing coordinates near Planet B in Solar System 2
+const LOCATION_HASH_PLANET_B_SYSTEM_2: vector<u8> =
+    x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 
 public struct Gate has key {
     id: UID,
@@ -22,14 +27,14 @@ public struct Storage has key {
     location: Location,
 }
 
-fun create_storage_unit(ts: &mut ts::Scenario, storage_unit_id: ID) {
+fun create_storage_unit(ts: &mut ts::Scenario, storage_unit_id: ID, location_hash: vector<u8>) {
     ts::next_tx(ts, server_admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let uid = object::new(ts.ctx());
         let storage_unit = Storage {
             id: uid,
-            location: location::attach_location(&admin_cap, storage_unit_id, LOCATION_HASH),
+            location: location::attach_location(&admin_cap, storage_unit_id, location_hash),
         };
         transfer::share_object(storage_unit);
         ts::return_to_sender(ts, admin_cap);
@@ -46,12 +51,14 @@ fun create_assembly_with_location() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
-        let location_hash: vector<u8> =
-            x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
         let max_distance: u64 = 1000000000;
         let gate = Gate {
             id: uid,
-            location: location::attach_location(&admin_cap, assembly_id, location_hash),
+            location: location::attach_location(
+                &admin_cap,
+                assembly_id,
+                LOCATION_HASH_PLANET_B_SYSTEM_2,
+            ),
             max_distance,
         };
         transfer::share_object(gate);
@@ -70,12 +77,14 @@ fun update_assembly_location() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
-        let location_hash: vector<u8> =
-            x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
         let max_distance: u64 = 1000000000;
         let gate = Gate {
             id: uid,
-            location: location::attach_location(&admin_cap, assembly_id, location_hash),
+            location: location::attach_location(
+                &admin_cap,
+                assembly_id,
+                LOCATION_HASH_PLANET_B_SYSTEM_2,
+            ),
             max_distance,
         };
         transfer::share_object(gate);
@@ -110,8 +119,7 @@ fun verify_same_location() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         gate_id_1 = object::uid_to_inner(&uid);
-        let location_hash: vector<u8> =
-            x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
+        let location_hash: vector<u8> = LOCATION_HASH_PLANET_B_SYSTEM_2;
         let max_distance: u64 = 1000000000;
         let gate_1 = Gate {
             id: uid,
@@ -128,12 +136,14 @@ fun verify_same_location() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         gate_id_2 = object::uid_to_inner(&uid);
-        let location_hash: vector<u8> =
-            x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
         let max_distance: u64 = 5000000000;
         let gate_2 = Gate {
             id: uid,
-            location: location::attach_location(&admin_cap, gate_id_2, location_hash),
+            location: location::attach_location(
+                &admin_cap,
+                gate_id_2,
+                LOCATION_HASH_PLANET_B_SYSTEM_2,
+            ),
             max_distance,
         };
         transfer::share_object(gate_2);
@@ -158,13 +168,17 @@ fun verify_proximity_with_signature_proof() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    create_storage_unit(&mut ts, test_helpers::get_storage_unit_id());
+    create_storage_unit(
+        &mut ts,
+        test_helpers::get_storage_unit_id(),
+        LOCATION_HASH_PLANET_A_SYSTEM_1,
+    );
 
-    ts::next_tx(&mut ts, server_admin());
+    ts::next_tx(&mut ts, user_a());
     {
         let storage_unit = ts::take_shared<Storage>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let proof = test_helpers::construct_location_proof(LOCATION_HASH);
+        let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_A_SYSTEM_1);
 
         location::verify_proximity_proof_as_struct_without_deadline(
             &storage_unit.location,
@@ -185,13 +199,17 @@ fun verify_proximity_proof_with_bytes() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    create_storage_unit(&mut ts, test_helpers::get_storage_unit_id());
+    create_storage_unit(
+        &mut ts,
+        test_helpers::get_storage_unit_id(),
+        LOCATION_HASH_PLANET_A_SYSTEM_1,
+    );
 
-    ts::next_tx(&mut ts, server_admin());
+    ts::next_tx(&mut ts, user_a());
     {
         let storage_unit = ts::take_shared<Storage>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let proof = test_helpers::construct_location_proof(LOCATION_HASH);
+        let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_A_SYSTEM_1);
 
         // Serialize the proof to bytes
         let proof_bytes = bcs::to_bytes(&proof);
@@ -244,13 +262,18 @@ fun verify_proximity_with_signature_proof_invalid_sender() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    create_storage_unit(&mut ts, test_helpers::get_storage_unit_id());
+    create_storage_unit(
+        &mut ts,
+        test_helpers::get_storage_unit_id(),
+        LOCATION_HASH_PLANET_A_SYSTEM_1,
+    );
 
-    ts::next_tx(&mut ts, admin());
+    // Call with server_admin() but the proof is for user_a(), so it should fail
+    ts::next_tx(&mut ts, user_b());
     {
         let storage_unit = ts::take_shared<Storage>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let proof = test_helpers::construct_location_proof(LOCATION_HASH);
+        let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_A_SYSTEM_1);
 
         location::verify_proximity_proof_as_struct_without_deadline(
             &storage_unit.location,
@@ -272,16 +295,19 @@ fun verify_proximity_with_signature_proof_invalid_location_hash() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    create_storage_unit(&mut ts, test_helpers::get_storage_unit_id());
+    create_storage_unit(
+        &mut ts,
+        test_helpers::get_storage_unit_id(),
+        LOCATION_HASH_PLANET_A_SYSTEM_1,
+    );
 
-    ts::next_tx(&mut ts, server_admin());
+    ts::next_tx(&mut ts, user_a());
     {
         let storage_unit = ts::take_shared<Storage>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
 
-        let wrong_location_hash =
-            x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
-        let proof = test_helpers::construct_location_proof(wrong_location_hash);
+        // Using a different location hash (Planet B) than the storage unit (Planet A) to error
+        let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_B_SYSTEM_2);
 
         location::verify_proximity_proof_as_struct_without_deadline(
             &storage_unit.location,
@@ -302,8 +328,13 @@ fun verify_proximity_with_signature_proof_invalid_location_hash() {
 fun verify_proximity_with_signature_proof_invalid_from_address() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
+    // Only server_admin() address is registered as an authorized server
     test_helpers::register_server_address(&mut ts);
-    create_storage_unit(&mut ts, test_helpers::get_storage_unit_id());
+    create_storage_unit(
+        &mut ts,
+        test_helpers::get_storage_unit_id(),
+        LOCATION_HASH_PLANET_A_SYSTEM_1,
+    );
 
     ts::next_tx(&mut ts, server_admin());
     {
@@ -316,13 +347,15 @@ fun verify_proximity_with_signature_proof_invalid_from_address() {
         let signature =
             x"0026ce00ad44629213f249ec3ee833aaf28bc115d3b781ca0a146a6e22a4016205f992d07c62f8d067d0baecb397bcc5a692a3bae5ff2e33eb6b42fdb94db6f50ba94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
         let deadline_ms: u64 = 1763408644339;
+        // The proof claims to be from admin(), but only server_admin() is registered
+        // as an authorized server, so this should fail with EUnauthorizedServer
         let proof = location::create_location_proof(
-            admin(), // sending unauthorized admin
-            server_admin(), // ideally this is the player
+            admin(), // UNAUTHORIZED - not in server registry
+            server_admin(), // to address (player)
             character_id,
-            LOCATION_HASH,
+            LOCATION_HASH_PLANET_A_SYSTEM_1,
             test_helpers::get_storage_unit_id(),
-            LOCATION_HASH,
+            LOCATION_HASH_PLANET_A_SYSTEM_1,
             0u64,
             data,
             deadline_ms,
@@ -350,9 +383,13 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    create_storage_unit(&mut ts, test_helpers::get_storage_unit_id());
+    create_storage_unit(
+        &mut ts,
+        test_helpers::get_storage_unit_id(),
+        LOCATION_HASH_PLANET_A_SYSTEM_1,
+    );
 
-    ts::next_tx(&mut ts, server_admin());
+    ts::next_tx(&mut ts, user_a());
     {
         let storage_unit = ts::take_shared<Storage>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
@@ -372,11 +409,11 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
 
         let proof = location::create_location_proof(
             server_admin(),
-            server_admin(), // player address
+            user_a(), // player address
             character_id,
-            LOCATION_HASH,
+            LOCATION_HASH_PLANET_A_SYSTEM_1,
             test_helpers::get_storage_unit_id(),
-            LOCATION_HASH,
+            LOCATION_HASH_PLANET_A_SYSTEM_1,
             0u64,
             data,
             deadline_ms,
