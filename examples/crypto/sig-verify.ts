@@ -2,7 +2,7 @@ import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
 import { getConfig, MODULES } from "../utils/config";
-import { createClient, loadKeypair } from "../utils/client";
+import { createClient, keypairFromPrivateKey } from "../utils/client";
 import { signPersonalMessage, toHex } from "./signMessage";
 
 const FUNCTION_NAME = "verify_signature";
@@ -26,7 +26,7 @@ async function main() {
     }
 
     const client = createClient(network);
-    const keypair = loadKeypair(exportedKey);
+    const keypair = keypairFromPrivateKey(exportedKey);
     const config = getConfig(network);
 
     const address = keypair.getPublicKey().toSuiAddress();

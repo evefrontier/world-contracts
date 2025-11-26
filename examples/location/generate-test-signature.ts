@@ -2,7 +2,20 @@ import "dotenv/config";
 import { bcs } from "@mysten/sui/bcs";
 import { signPersonalMessage } from "../crypto/signMessage";
 import { toHex, fromHex } from "../utils/helper";
-import { loadKeypair } from "../utils/client";
+import { keypairFromPrivateKey } from "../utils/client";
+
+/**
+ * This script generates test signatures for location proof verification in Move tests.
+ *
+ * The generated signature is used in:
+ * - contracts/world/tests/test_helpers.move::construct_location_proof()
+ *
+ * To regenerate the signature:
+ * 1. Set PRIVATE_KEY env var (must correspond to SERVER_ADMIN_ADDRESS)
+ * 2. Run: npm run generate-test-signature
+ * 3. Copy the "Full signature (hex)" output
+ * 4. Update the signature in test_helpers.move::construct_location_proof()
+ */
 
 // Test values from test_helpers.move
 const SERVER_ADMIN_ADDRESS = "0x93d3209c7f138aded41dcb008d066ae872ed558bd8dcb562da47d4ef78295333";
@@ -34,7 +47,7 @@ async function generateTestSignature() {
         throw new Error("PRIVATE_KEY environment variable is required");
     }
 
-    const keypair = loadKeypair(privateKey);
+    const keypair = keypairFromPrivateKey(privateKey);
 
     const derivedAddress = keypair.getPublicKey().toSuiAddress();
     console.log("Derived address:", derivedAddress);

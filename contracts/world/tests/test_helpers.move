@@ -80,6 +80,9 @@ public fun construct_location_proof(location_hash: vector<u8>): LocationProof {
         x"0000000000000000000000000000000000000000000000000000000000000002",
     );
     let data = x"";
+    // Signature generated with user_a as the player address
+    // To regenerate: run `npm run generate-test-signature` in examples/location/
+    // Then update the signature hex below with the output from the script
     let signature =
         x"0085ee2824a8a3821be5d779ee912c6947acc36e8a6982024c994a3fdc88f450245e9a13ae23901b3c5b93acc34b0b314fe42a26742e16d3beac782360b65bff0ba94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
     let deadline_ms: u64 = 1763408644339;

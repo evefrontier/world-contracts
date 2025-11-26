@@ -8,7 +8,7 @@ export function createClient(network: Network = "localnet"): SuiClient {
     return new SuiClient({ url: config.url });
 }
 
-export function loadKeypair(privateKey: string): Ed25519Keypair {
+export function keypairFromPrivateKey(privateKey: string): Ed25519Keypair {
     const { schema, secretKey } = decodeSuiPrivateKey(privateKey);
     if (schema !== "ED25519") {
         throw new Error("Only ED25519 keys are supported");
