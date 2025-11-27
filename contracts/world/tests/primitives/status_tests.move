@@ -11,6 +11,7 @@ use world::{
 };
 
 const STORAGE_TYPE_ID: u64 = 88069;
+const STORAGE_ITEM_ID: u64 = 5500004145107;
 const STATUS_NULL: u8 = 0;
 const STATUS_ONLINE: u8 = 1;
 const STATUS_OFFLINE: u8 = 2;
@@ -32,7 +33,7 @@ fun create_storage_unit(ts: &mut ts::Scenario) {
         let assembly_id = object::uid_to_inner(&uid);
         let storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID),
+            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
             max_capacity: 10000,
         };
         // share storage unit object
@@ -243,7 +244,7 @@ fun online_fail_by_unauthorised_owner() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let storage_unit_2 = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_2_id, STORAGE_TYPE_ID),
+            status: status::anchor(&admin_cap, assembly_2_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
             max_capacity: 10000,
         };
         transfer::share_object(storage_unit_2);
@@ -295,7 +296,7 @@ fun offline_fail_by_unauthorised_owner() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let storage_unit_2 = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_2_id, STORAGE_TYPE_ID),
+            status: status::anchor(&admin_cap, assembly_2_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
             max_capacity: 10000,
         };
         transfer::share_object(storage_unit_2);

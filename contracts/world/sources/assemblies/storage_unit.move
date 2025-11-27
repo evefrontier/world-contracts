@@ -96,7 +96,7 @@ public fun create_storage_unit(
         id: assembly_uid,
         type_id: type_id,
         item_id: item_id,
-        status: status::anchor(admin_cap, assembly_id, type_id),
+        status: status::anchor(admin_cap, assembly_id, type_id, item_id),
         location: location::attach_location(admin_cap, assembly_id, location_hash),
         inventory: inventory::create(admin_cap, max_capacity, assembly_id),
         extension: option::none(),

@@ -12,6 +12,7 @@ use world::{
 };
 
 const STORAGE_TYPE_ID: u64 = 77069;
+const STORAGE_ITEM_ID: u64 = 5500004145107;
 const LOCATION_A_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const MAX_CAPACITY: u64 = 1000;
@@ -38,7 +39,7 @@ fun create_storage_unit(ts: &mut ts::Scenario): ID {
         let assembly_id = object::uid_to_inner(&uid);
         let storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID),
+            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
             location: location::attach_location(&admin_cap, assembly_id, LOCATION_A_HASH),
             inventory: inventory::create(&admin_cap, MAX_CAPACITY, assembly_id),
         };
@@ -373,7 +374,7 @@ fun burn_items_with_proof() {
         let assembly_id = test_helpers::get_storage_unit_id();
         let storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID),
+            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
             location: location::attach_location(&admin_cap, assembly_id, verified_location_hash),
             inventory: inventory::create(&admin_cap, MAX_CAPACITY, assembly_id),
         };
@@ -463,7 +464,7 @@ fun create_assembly_fail_on_empty_capacity() {
         let assembly_id = object::uid_to_inner(&uid);
         let storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID),
+            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
             location: location::attach_location(&admin_cap, assembly_id, LOCATION_A_HASH),
             inventory: inventory::create(&admin_cap, 0, assembly_id),
         };
@@ -737,7 +738,12 @@ fun deposit_item_fail_insufficient_capacity() {
         ephemeral_storage_unit_id = object::uid_to_inner(&uid);
         let ephemeral_storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, ephemeral_storage_unit_id, STORAGE_TYPE_ID),
+            status: status::anchor(
+                &admin_cap,
+                ephemeral_storage_unit_id,
+                STORAGE_TYPE_ID,
+                STORAGE_ITEM_ID,
+            ),
             location: location::attach_location(
                 &admin_cap,
                 ephemeral_storage_unit_id,
