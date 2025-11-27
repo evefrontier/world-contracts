@@ -103,7 +103,7 @@ public fun create_location_proof(
 
 /// Verify that a server-signed proof attesting a player is near a structure
 /// This function gets `proof` LocationProof as struct
-public fun verify_proximity_proof_as_struct(
+public fun verify_proximity(
     location: &Location,
     proof: LocationProof,
     server_registry: &ServerAddressRegistry,
@@ -131,7 +131,7 @@ public fun verify_proximity_proof_as_struct(
 
 /// Verify that a server-signed proof attesting a player is in proximity the structure.
 /// This function gets `proof_bytes` the LocationProof as bytes
-public fun verify_proximity_proof_as_bytes(
+public fun verify_proximity_proof_from_bytes(
     location: &Location,
     proof_bytes: vector<u8>,
     server_registry: &ServerAddressRegistry,
@@ -155,7 +155,7 @@ public fun verify_proximity_proof_as_bytes(
 }
 
 /// Verify that a server-signed proof attesting two structures are under a certain distance.
-public fun verify_distance_proof(
+public fun verify_distance(
     location: &Location,
     proof_bytes: vector<u8>,
     server_registry: &ServerAddressRegistry,
@@ -287,7 +287,7 @@ fun is_deadline_valid(deadline_ms: u64, clock: &Clock): bool {
 /// in tests, which means deadlines will always expire unless we set a never-expiring
 /// deadline. This function bypasses deadline validation for testing convenience.
 #[test_only]
-public fun verify_proximity_proof_as_struct_without_deadline(
+public fun verify_proximity_without_deadline(
     location: &Location,
     proof: LocationProof,
     server_registry: &ServerAddressRegistry,
@@ -309,7 +309,7 @@ public fun verify_proximity_proof_as_struct_without_deadline(
 }
 
 #[test_only]
-public fun verify_proximity_proof_as_bytes_without_deadline(
+public fun verify_proximity_proof_from_bytes_without_deadline(
     location: &Location,
     proof_bytes: vector<u8>,
     server_registry: &ServerAddressRegistry,

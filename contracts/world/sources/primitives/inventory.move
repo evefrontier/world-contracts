@@ -113,7 +113,7 @@ public fun burn_items_with_proof(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    location::verify_proximity_proof_as_bytes(
+    location::verify_proximity_proof_from_bytes(
         location,
         location_proof,
         server_registry,
@@ -379,7 +379,7 @@ public fun burn_items_with_proof_test(
     location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    location::verify_proximity_proof_as_bytes_without_deadline(
+    location::verify_proximity_proof_from_bytes_without_deadline(
         location,
         location_proof,
         server_registry,

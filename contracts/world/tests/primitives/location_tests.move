@@ -180,7 +180,7 @@ fun verify_proximity_with_signature_proof() {
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_A_SYSTEM_1);
 
-        location::verify_proximity_proof_as_struct_without_deadline(
+        location::verify_proximity_without_deadline(
             &storage_unit.location,
             proof,
             &server_registry,
@@ -215,7 +215,7 @@ fun verify_proximity_proof_with_bytes() {
         let proof_bytes = bcs::to_bytes(&proof);
 
         // Verify using the bytes version
-        location::verify_proximity_proof_as_bytes_without_deadline(
+        location::verify_proximity_proof_from_bytes_without_deadline(
             &storage_unit.location,
             proof_bytes,
             &server_registry,
@@ -275,7 +275,7 @@ fun verify_proximity_with_signature_proof_invalid_sender() {
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_A_SYSTEM_1);
 
-        location::verify_proximity_proof_as_struct_without_deadline(
+        location::verify_proximity_without_deadline(
             &storage_unit.location,
             proof,
             &server_registry,
@@ -309,7 +309,7 @@ fun verify_proximity_with_signature_proof_invalid_location_hash() {
         // Using a different location hash (Planet B) than the storage unit (Planet A) to error
         let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_B_SYSTEM_2);
 
-        location::verify_proximity_proof_as_struct_without_deadline(
+        location::verify_proximity_without_deadline(
             &storage_unit.location,
             proof,
             &server_registry,
@@ -362,7 +362,7 @@ fun verify_proximity_with_signature_proof_invalid_from_address() {
             signature,
         );
 
-        location::verify_proximity_proof_as_struct_without_deadline(
+        location::verify_proximity_without_deadline(
             &storage_unit.location,
             proof,
             &server_registry,
@@ -425,7 +425,7 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
         let proof_bytes = bcs::to_bytes(&proof);
 
         // Verify using the bytes version
-        location::verify_proximity_proof_as_bytes(
+        location::verify_proximity_proof_from_bytes(
             &storage_unit.location,
             proof_bytes,
             &server_registry,
