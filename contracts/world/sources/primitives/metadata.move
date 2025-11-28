@@ -3,6 +3,11 @@ module world::metadata;
 
 use std::string::String;
 use sui::event;
+use world::authority::{Self, OwnerCap};
+
+// === Errors ===
+#[error(code = 0)]
+const ENotAuthorized: vector<u8> = b"Not authorized to update metadata";
 
 // === Structs ===
 public struct Metadata has store {
@@ -22,6 +27,25 @@ public struct MetadataChangedEvent has copy, drop {
     url: String,
 }
 
+// === Public Functions ===
+public fun update_name(metadata: &mut Metadata, owner_cap: &OwnerCap, name: String) {
+    assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
+    metadata.name = name;
+    emit_metadata_changed(metadata);
+}
+
+public fun update_description(metadata: &mut Metadata, owner_cap: &OwnerCap, description: String) {
+    assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
+    metadata.description = description;
+    emit_metadata_changed(metadata);
+}
+
+public fun update_url(metadata: &mut Metadata, owner_cap: &OwnerCap, url: String) {
+    assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
+    metadata.url = url;
+    emit_metadata_changed(metadata);
+}
+
 // === Package Functions ===
 public(package) fun create_metadata(
     assembly_id: ID,
@@ -38,27 +62,9 @@ public(package) fun create_metadata(
         url,
     };
 
-    event::emit(MetadataChangedEvent {
-        assembly_id,
-        item_id,
-        name,
-        description,
-        url,
-    });
+    emit_metadata_changed(&metadata);
 
     metadata
-}
-
-public(package) fun update_name(metadata: &mut Metadata, name: String) {
-    metadata.name = name;
-}
-
-public(package) fun update_description(metadata: &mut Metadata, description: String) {
-    metadata.description = description;
-}
-
-public(package) fun update_url(metadata: &mut Metadata, url: String) {
-    metadata.url = url;
 }
 
 public(package) fun delete(metadata: Metadata) {
@@ -69,4 +75,30 @@ public(package) fun delete(metadata: Metadata) {
         description: _,
         url: _,
     } = metadata;
+}
+
+// === Private Functions ===
+fun emit_metadata_changed(metadata: &Metadata) {
+    event::emit(MetadataChangedEvent {
+        assembly_id: metadata.assembly_id,
+        item_id: metadata.item_id,
+        name: metadata.name,
+        description: metadata.description,
+        url: metadata.url,
+    });
+}
+
+#[test_only]
+public fun name(metadata: &Metadata): String {
+    metadata.name
+}
+
+#[test_only]
+public fun description(metadata: &Metadata): String {
+    metadata.description
+}
+
+#[test_only]
+public fun url(metadata: &Metadata): String {
+    metadata.url
 }
