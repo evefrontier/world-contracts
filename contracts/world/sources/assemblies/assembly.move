@@ -15,7 +15,7 @@ use world::{
 const EAssemblyTypeIdEmpty: vector<u8> = b"Assembly TypeId is empty";
 #[error(code = 1)]
 const EAssemblyItemIdEmpty: vector<u8> = b"Assembly ItemId is empty";
-#[error(code = 3)]
+#[error(code = 2)]
 const EAssemblyAlreadyExists: vector<u8> = b"Assembly with this ItemId already exists";
 
 // === Structs ===
