@@ -3,6 +3,7 @@ module world::storage_unit_tests;
 use std::{bcs, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
+    assembly::AssemblyRegistry,
     authority::{OwnerCap, AdminCap, ServerAddressRegistry},
     inventory::Item,
     storage_unit::{Self, StorageUnit},
@@ -12,8 +13,11 @@ use world::{
 const LOCATION_A_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const MAX_CAPACITY: u64 = 100000;
-const STORAGE_TYPE_ID: u64 = 50001;
-const STORAGE_ITEM_ID: u64 = 90001;
+const STORAGE_A_TYPE_ID: u64 = 50001;
+const STORAGE_B_TYPE_ID: u64 = 50002;
+
+const STORAGE_A_ITEM_ID: u64 = 90002;
+const STORAGE_B_ITEM_ID: u64 = 90003;
 
 // Item constants
 const AMMO_TYPE_ID: u64 = 88069;
@@ -79,14 +83,22 @@ public fun swap_ammo_for_lens_extension(
 
 // === Helper Functions ===
 
-fun create_storage_unit(ts: &mut ts::Scenario, location: vector<u8>): ID {
+fun create_storage_unit(
+    ts: &mut ts::Scenario,
+    location: vector<u8>,
+    item_id: u64,
+    type_id: u64,
+): ID {
     ts::next_tx(ts, admin());
+
+    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
     let storage_unit_id = {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let storage_unit = storage_unit::create_storage_unit(
+        let storage_unit = storage_unit::anchor(
+            &mut assembly_registry,
             &admin_cap,
-            STORAGE_TYPE_ID,
-            STORAGE_ITEM_ID,
+            type_id,
+            item_id,
             MAX_CAPACITY,
             location,
             ts.ctx(),
@@ -96,6 +108,7 @@ fun create_storage_unit(ts: &mut ts::Scenario, location: vector<u8>): ID {
         ts::return_to_sender(ts, admin_cap);
         storage_unit_id
     };
+    ts::return_shared(assembly_registry);
     storage_unit_id
 }
 
@@ -156,7 +169,12 @@ fun mint_lens(ts: &mut ts::Scenario, storage_id: ID) {
 fun test_create_storage_unit() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, LOCATION_A_HASH);
+    let storage_id = create_storage_unit(
+        &mut ts,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
 
     ts::next_tx(&mut ts, admin());
     {
@@ -180,7 +198,12 @@ fun test_create_storage_unit() {
 fun test_create_items_on_chain() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, LOCATION_A_HASH);
+    let storage_id = create_storage_unit(
+        &mut ts,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
@@ -208,7 +231,12 @@ fun test_create_items_on_chain() {
 fun test_authorize_extension() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, LOCATION_A_HASH);
+    let storage_id = create_storage_unit(
+        &mut ts,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
 
     ts::next_tx(&mut ts, user_a());
@@ -231,7 +259,12 @@ fun test_authorize_extension() {
 fun test_deposit_and_withdraw_via_extension() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, LOCATION_A_HASH);
+    let storage_id = create_storage_unit(
+        &mut ts,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
@@ -282,7 +315,12 @@ fun test_deposit_and_withdraw_by_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    let storage_id = create_storage_unit(
+        &mut ts,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap(&mut ts, user_a(), storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
@@ -361,13 +399,23 @@ fun test_swap_ammo_for_lens() {
     test_helpers::register_server_address(&mut ts);
 
     // Create User A's storage unit with lens
-    let storage_a_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    let storage_a_id = create_storage_unit(
+        &mut ts,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap(&mut ts, user_b(), storage_a_id);
     online_storage_unit(&mut ts, user_b(), storage_a_id);
     mint_lens(&mut ts, storage_a_id);
 
     // Create User B's storage_b storage unit with ammo
-    let storage_b_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    let storage_b_id = create_storage_unit(
+        &mut ts,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_B_ITEM_ID,
+        STORAGE_B_TYPE_ID,
+    );
     test_helpers::setup_owner_cap(&mut ts, user_a(), storage_b_id);
     online_storage_unit(&mut ts, user_a(), storage_b_id);
     mint_ammo(&mut ts, storage_b_id);
@@ -464,7 +512,12 @@ fun test_swap_ammo_for_lens() {
 fun test_authorize_extension_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, LOCATION_A_HASH);
+    let storage_id = create_storage_unit(
+        &mut ts,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
 
     let dummy_id = object::id_from_bytes(
@@ -493,7 +546,12 @@ fun test_authorize_extension_fail_wrong_owner() {
 fun test_withdraw_via_extension_fail_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, LOCATION_A_HASH);
+    let storage_id = create_storage_unit(
+        &mut ts,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
@@ -527,7 +585,12 @@ fun test_deposit_via_extension_fail_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    let storage_id = create_storage_unit(
+        &mut ts,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap(&mut ts, user_a(), storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
@@ -584,7 +647,12 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    let storage_id = create_storage_unit(
+        &mut ts,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
@@ -642,7 +710,12 @@ fun test_deposit_by_owner_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let storage_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    let storage_id = create_storage_unit(
+        &mut ts,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap(&mut ts, user_a(), storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
@@ -724,12 +797,22 @@ fun test_swap_fail_extension_not_authorized() {
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
 
-    let storage_a_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    let storage_a_id = create_storage_unit(
+        &mut ts,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
     test_helpers::setup_owner_cap(&mut ts, user_a(), storage_a_id);
     online_storage_unit(&mut ts, user_a(), storage_a_id);
     mint_lens(&mut ts, storage_a_id);
 
-    let storage_b_id = create_storage_unit(&mut ts, test_helpers::get_verified_location_hash());
+    let storage_b_id = create_storage_unit(
+        &mut ts,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_B_ITEM_ID,
+        STORAGE_B_TYPE_ID,
+    );
     test_helpers::setup_owner_cap(&mut ts, test_helpers::server_admin(), storage_b_id);
     online_storage_unit(&mut ts, test_helpers::server_admin(), storage_b_id);
     mint_ammo(&mut ts, storage_b_id);

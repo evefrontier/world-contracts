@@ -49,7 +49,7 @@ fun destroy_storage_unit(ts: &mut ts::Scenario) {
         let storage_unit = ts::take_shared<StorageUnit>(ts);
         let StorageUnit { id, status, max_capacity: _ } = storage_unit;
 
-        status::unanchor(status, &admin_cap);
+        status::unanchor(status);
         object::delete(id);
 
         ts::return_to_sender(ts, admin_cap);

@@ -3,6 +3,7 @@ module world::test_helpers;
 
 use sui::test_scenario as ts;
 use world::{
+    assembly,
     authority::{Self, AdminCap, ServerAddressRegistry},
     location::{Self, LocationProof},
     world::{Self, GovernorCap}
@@ -30,6 +31,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
     {
         world::init_for_testing(ts.ctx());
         authority::init_for_testing(ts.ctx());
+        assembly::init_for_testing(ts.ctx());
     };
 
     ts::next_tx(ts, governor());

@@ -16,7 +16,6 @@ const EAssemblyInvalidStatus: vector<u8> = b"Assembly status is invalid";
 const EAssemblyNotAuthorized: vector<u8> = b"Assembly access not authorized";
 
 // === Structs ===
-// After "unanchor" or "destroy" the State will not be available as the object will have been deleted.
 public enum Status has copy, drop, store {
     NULL,
     OFFLINE,
@@ -119,8 +118,9 @@ public(package) fun anchor(
     assembly_status
 }
 
-/// Unanchor/Delete an assembly
-public(package) fun unanchor(assembly_status: AssemblyStatus, _: &AdminCap) {
+// TODO: discuss the definition of an assembly and decouple the deleting logic to a seperate function
+/// Unanchor an assembly
+public(package) fun unanchor(assembly_status: AssemblyStatus) {
     assert!(
         assembly_status.status == Status::OFFLINE || assembly_status.status == Status::ONLINE,
         EAssemblyInvalidStatus,

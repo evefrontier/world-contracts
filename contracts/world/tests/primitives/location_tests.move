@@ -34,7 +34,7 @@ fun create_storage_unit(ts: &mut ts::Scenario, storage_unit_id: ID, location_has
         let uid = object::new(ts.ctx());
         let storage_unit = Storage {
             id: uid,
-            location: location::attach_location(&admin_cap, storage_unit_id, location_hash),
+            location: location::attach(&admin_cap, storage_unit_id, location_hash),
         };
         transfer::share_object(storage_unit);
         ts::return_to_sender(ts, admin_cap);
@@ -54,7 +54,7 @@ fun create_assembly_with_location() {
         let max_distance: u64 = 1000000000;
         let gate = Gate {
             id: uid,
-            location: location::attach_location(
+            location: location::attach(
                 &admin_cap,
                 assembly_id,
                 LOCATION_HASH_PLANET_B_SYSTEM_2,
@@ -80,7 +80,7 @@ fun update_assembly_location() {
         let max_distance: u64 = 1000000000;
         let gate = Gate {
             id: uid,
-            location: location::attach_location(
+            location: location::attach(
                 &admin_cap,
                 assembly_id,
                 LOCATION_HASH_PLANET_B_SYSTEM_2,
@@ -96,7 +96,7 @@ fun update_assembly_location() {
         let mut gate = ts::take_shared<Gate>(&ts);
         let location_hash: vector<u8> =
             x"7a8f5b1e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
-        location::update_location(&mut gate.location, &admin_cap, location_hash);
+        location::update(&mut gate.location, &admin_cap, location_hash);
 
         assert_eq!(location::hash(&gate.location), location_hash);
         ts::return_shared(gate);
@@ -123,7 +123,7 @@ fun verify_same_location() {
         let max_distance: u64 = 1000000000;
         let gate_1 = Gate {
             id: uid,
-            location: location::attach_location(&admin_cap, gate_id_1, location_hash),
+            location: location::attach(&admin_cap, gate_id_1, location_hash),
             max_distance,
         };
         transfer::share_object(gate_1);
@@ -139,7 +139,7 @@ fun verify_same_location() {
         let max_distance: u64 = 5000000000;
         let gate_2 = Gate {
             id: uid,
-            location: location::attach_location(
+            location: location::attach(
                 &admin_cap,
                 gate_id_2,
                 LOCATION_HASH_PLANET_B_SYSTEM_2,
@@ -246,7 +246,7 @@ fun attach_location_with_invalid_hash_length() {
 
         let gate = Gate {
             id: uid,
-            location: location::attach_location(&admin_cap, assembly_id, location_hash),
+            location: location::attach(&admin_cap, assembly_id, location_hash),
             max_distance: 1000,
         };
 

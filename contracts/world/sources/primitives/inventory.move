@@ -113,6 +113,7 @@ public fun burn_items_with_proof(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert!(authority::is_authorized(owner_cap, inventory.id), EInventoryAccessNotAuthorized);
     location::verify_proximity_proof_from_bytes(
         location,
         location_proof,
@@ -120,7 +121,7 @@ public fun burn_items_with_proof(
         clock,
         ctx,
     );
-    burn_items(inventory, assembly_status, owner_cap, item_id, quantity);
+    burn_items(inventory, assembly_status, item_id, quantity);
 }
 
 // === View Functions ===
@@ -165,7 +166,7 @@ public fun mint_items(
             item_id,
             volume,
             quantity,
-            location: location::attach_location(admin_cap, item_uid_value, location_hash),
+            location: location::attach(admin_cap, item_uid_value, location_hash),
         };
 
         let req_capacity = calculate_volume(volume, quantity);
@@ -235,26 +236,39 @@ public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item
     item
 }
 
+public(package) fun delete(inventory: Inventory) {
+    let Inventory {
+        id: _,
+        max_capacity: _,
+        used_capacity: _,
+        mut items,
+    } = inventory;
+
+    while (!items.is_empty()) {
+        let (_, item) = items.pop();
+        let Item { id, type_id: _, item_id: _, volume: _, quantity: _, location } = item;
+        location.remove();
+        object::delete(id);
+    };
+    items.destroy_empty();
+}
+
 // FUTURE: transfer items between inventory, eg: inventory to inventory on-chain.
 // This needs location proof and distance to enforce digital physics.
 // public fun transfer_items() {}
 
 // === Private Functions ===
 
-// Note: Shouldn't this be admin capped ?
-// Will it by default mint to ship/character inventory ?
 /// Burns items from on-chain inventory (Chain → Game bridge)
 /// Emits ItemBurnedEvent for game server to create item in-game
 /// Deletes Item object if param quantity = existing quantity, otherwise reduces quantity
 fun burn_items(
     inventory: &mut Inventory,
     assembly_status: &AssemblyStatus,
-    owner_cap: &OwnerCap,
     item_id: u64,
     quantity: u32,
 ) {
     assert!(inventory.id == status::assembly_id(assembly_status), EInventoryAssemblyMismatch);
-    assert!(authority::is_authorized(owner_cap, inventory.id), EInventoryAccessNotAuthorized);
     assert!(vec_map::contains(&inventory.items, &item_id), EItemDoesNotExist);
     assert!(assembly_status.is_online(), ENotOnline);
 
@@ -269,7 +283,7 @@ fun burn_items(
         inventory.used_capacity = inventory.used_capacity - volume_freed;
 
         let Item { id, type_id: _, item_id: _, volume: _, quantity: _, location } = removed_item;
-        location.remove_location();
+        location.remove();
         object::delete(id);
 
         // Emit event for game bridge to listen
@@ -363,7 +377,8 @@ public fun burn_items_test(
     item_id: u64,
     quantity: u32,
 ) {
-    burn_items(inventory, assembly_status, owner_cap, item_id, quantity);
+    assert!(authority::is_authorized(owner_cap, inventory.id), EInventoryAccessNotAuthorized);
+    burn_items(inventory, assembly_status, item_id, quantity);
 }
 
 // Mocking without deadline
@@ -372,7 +387,7 @@ public fun burn_items_with_proof_test(
     inventory: &mut Inventory,
     assembly_status: &AssemblyStatus,
     location: &Location,
-    owner_cap: &OwnerCap,
+    _: &OwnerCap,
     item_id: u64,
     quantity: u32,
     server_registry: &ServerAddressRegistry,
@@ -385,5 +400,5 @@ public fun burn_items_with_proof_test(
         server_registry,
         ctx,
     );
-    burn_items(inventory, assembly_status, owner_cap, item_id, quantity);
+    burn_items(inventory, assembly_status, item_id, quantity);
 }

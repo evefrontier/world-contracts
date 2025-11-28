@@ -22,18 +22,26 @@
 module world::storage_unit;
 
 use std::type_name::{Self, TypeName};
-use sui::{clock::Clock, event};
+use sui::{clock::Clock, derived_object, event};
 use world::{
+    assembly::{Self, AssemblyRegistry},
     authority::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
     inventory::{Self, Inventory, Item},
     location::{Self, Location},
+    metadata::Metadata,
     status::{Self, AssemblyStatus, Status}
 };
 
 // === Errors ===
 #[error(code = 0)]
-const EAccessNotAuthorized: vector<u8> = b"Owner Access not authorised for this Storage Unit";
+const EStorageUnitTypeIdEmpty: vector<u8> = b"StorageUnit TypeId is empty";
 #[error(code = 1)]
+const EStorageUnitItemIdEmpty: vector<u8> = b"StorageUnit ItemId is empty";
+#[error(code = 2)]
+const EStorageUnitAlreadyExists: vector<u8> = b"StorageUnit with the same Item Id already exists";
+#[error(code = 3)]
+const EAccessNotAuthorized: vector<u8> = b"Owner Access not authorised for this Storage Unit";
+#[error(code = 4)]
 const EExtensionNotAuthorized: vector<u8> =
     b"Access only authorised for the custom contract of the registered type";
 
@@ -47,6 +55,7 @@ public struct StorageUnit has key {
     status: AssemblyStatus,
     location: Location,
     inventory: Inventory,
+    metadata: Option<Metadata>,
     extension: Option<TypeName>,
 }
 
@@ -66,58 +75,6 @@ public fun authorize_extension<Auth: drop>(storage_unit: &mut StorageUnit, owner
     storage_unit.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
 }
 
-// === View Functions ===
-
-public fun status(storage_unit: &StorageUnit): &AssemblyStatus {
-    &storage_unit.status
-}
-
-public fun location(storage_unit: &StorageUnit): &Location {
-    &storage_unit.location
-}
-
-public fun inventory(storage_unit: &StorageUnit): &Inventory {
-    &storage_unit.inventory
-}
-
-// === Admin Functions ===
-public fun create_storage_unit(
-    admin_cap: &AdminCap,
-    type_id: u64,
-    item_id: u64,
-    max_capacity: u64,
-    location_hash: vector<u8>,
-    ctx: &mut TxContext,
-): StorageUnit {
-    // TODO: Make this a derived id
-    let assembly_uid = object::new(ctx);
-    let assembly_id = object::uid_to_inner(&assembly_uid);
-    let storage_unit = StorageUnit {
-        id: assembly_uid,
-        type_id: type_id,
-        item_id: item_id,
-        status: status::anchor(admin_cap, assembly_id, type_id, item_id),
-        location: location::attach_location(admin_cap, assembly_id, location_hash),
-        inventory: inventory::create(admin_cap, max_capacity, assembly_id),
-        extension: option::none(),
-    };
-
-    event::emit(StorageUnitCreatedEvent {
-        storage_unit_id: assembly_id,
-        max_capacity,
-        location_hash,
-        status: status::status(&storage_unit.status),
-        type_id: type_id,
-        item_id: item_id,
-    });
-
-    storage_unit
-}
-
-public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
-    transfer::share_object(storage_unit);
-}
-
 // We can do wrappers like this, or directly call respective modules
 public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
     storage_unit.status.online(owner_cap);
@@ -125,35 +82,6 @@ public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
 
 public fun offline(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
     storage_unit.status.offline(owner_cap);
-}
-
-// Scoop Storage unit
-public fun unanchor_storage_unit() {}
-
-// Destroy storage unit and claim
-public fun destroy_storage_unit() {}
-
-public fun game_item_to_chain_inventory(
-    storage_unit: &mut StorageUnit,
-    admin_cap: &AdminCap,
-    item_id: u64,
-    type_id: u64,
-    volume: u64,
-    quantity: u32,
-    ctx: &mut TxContext,
-) {
-    storage_unit
-        .inventory
-        .mint_items(
-            &storage_unit.status,
-            admin_cap,
-            item_id,
-            type_id,
-            volume,
-            quantity,
-            storage_unit.location.hash(),
-            ctx,
-        )
 }
 
 public fun chain_item_to_game_inventory(
@@ -258,6 +186,114 @@ public fun withdraw_by_owner(
 }
 
 // TODO: Can also have a transfer function for simplicity
+
+// === View Functions ===
+
+public fun status(storage_unit: &StorageUnit): &AssemblyStatus {
+    &storage_unit.status
+}
+
+public fun location(storage_unit: &StorageUnit): &Location {
+    &storage_unit.location
+}
+
+public fun inventory(storage_unit: &StorageUnit): &Inventory {
+    &storage_unit.inventory
+}
+
+// === Admin Functions ===
+public fun anchor(
+    assembly_registry: &mut AssemblyRegistry,
+    admin_cap: &AdminCap,
+    type_id: u64,
+    item_id: u64,
+    max_capacity: u64,
+    location_hash: vector<u8>,
+    _: &mut TxContext,
+): StorageUnit {
+    assert!(type_id != 0, EStorageUnitTypeIdEmpty);
+    assert!(item_id != 0, EStorageUnitItemIdEmpty);
+    assert!(!assembly::assembly_exists(assembly_registry, item_id), EStorageUnitAlreadyExists);
+
+    let registry_id = assembly::borrow_registry_id(assembly_registry);
+    let assembly_uid = derived_object::claim(registry_id, item_id);
+    let assembly_id = object::uid_to_inner(&assembly_uid);
+    let storage_unit = StorageUnit {
+        id: assembly_uid,
+        type_id: type_id,
+        item_id: item_id,
+        status: status::anchor(admin_cap, assembly_id, type_id, item_id),
+        location: location::attach(admin_cap, assembly_id, location_hash),
+        inventory: inventory::create(admin_cap, max_capacity, assembly_id),
+        metadata: option::none(),
+        extension: option::none(),
+    };
+
+    event::emit(StorageUnitCreatedEvent {
+        storage_unit_id: assembly_id,
+        max_capacity,
+        location_hash,
+        status: status::status(&storage_unit.status),
+        type_id: type_id,
+        item_id: item_id,
+    });
+
+    storage_unit
+}
+
+public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
+    transfer::share_object(storage_unit);
+}
+
+// On unanchor the storage unit is scooped back into inventory in game
+// So we burn the items and delete the object
+public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
+    let StorageUnit {
+        id,
+        type_id: _,
+        item_id: _,
+        status,
+        location,
+        inventory,
+        metadata,
+        extension: _,
+    } = storage_unit;
+
+    status.unanchor();
+    location.remove();
+
+    inventory.delete();
+    if (metadata.is_some()) {
+        let _meta_data = metadata.destroy_some();
+        _meta_data.delete();
+    } else {
+        metadata.destroy_none();
+    };
+    object::delete(id);
+}
+
+public fun game_item_to_chain_inventory(
+    storage_unit: &mut StorageUnit,
+    admin_cap: &AdminCap,
+    item_id: u64,
+    type_id: u64,
+    volume: u64,
+    quantity: u32,
+    ctx: &mut TxContext,
+) {
+    storage_unit
+        .inventory
+        .mint_items(
+            &storage_unit.status,
+            admin_cap,
+            item_id,
+            type_id,
+            volume,
+            quantity,
+            storage_unit.location.hash(),
+            ctx,
+        )
+}
 
 // === Test Functions ===
 #[test_only]

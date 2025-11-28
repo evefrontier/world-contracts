@@ -193,18 +193,14 @@ public fun hash(location: &Location): vector<u8> {
 
 // === Admin Functions ===
 
-public fun update_location(
-    location: &mut Location,
-    _admin_cap: &AdminCap,
-    location_hash: vector<u8>,
-) {
+public fun update(location: &mut Location, _admin_cap: &AdminCap, location_hash: vector<u8>) {
     assert!(location_hash.length() == 32, EInvalidHashLength);
     location.location_hash = location_hash;
 }
 
 // === Package Functions ===
 
-public(package) fun attach_location(
+public(package) fun attach(
     _admin_cap: &AdminCap,
     structure_id: ID,
     location_hash: vector<u8>,
@@ -216,7 +212,7 @@ public(package) fun attach_location(
     }
 }
 
-public(package) fun remove_location(location: Location) {
+public(package) fun remove(location: Location) {
     let Location { structure_id: _, location_hash: _ } = location;
 }
 

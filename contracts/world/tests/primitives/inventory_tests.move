@@ -40,7 +40,7 @@ fun create_storage_unit(ts: &mut ts::Scenario): ID {
         let storage_unit = StorageUnit {
             id: uid,
             status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
-            location: location::attach_location(&admin_cap, assembly_id, LOCATION_A_HASH),
+            location: location::attach(&admin_cap, assembly_id, LOCATION_A_HASH),
             inventory: inventory::create(&admin_cap, MAX_CAPACITY, assembly_id),
         };
         transfer::share_object(storage_unit);
@@ -375,7 +375,7 @@ fun burn_items_with_proof() {
         let storage_unit = StorageUnit {
             id: uid,
             status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
-            location: location::attach_location(&admin_cap, assembly_id, verified_location_hash),
+            location: location::attach(&admin_cap, assembly_id, verified_location_hash),
             inventory: inventory::create(&admin_cap, MAX_CAPACITY, assembly_id),
         };
         transfer::share_object(storage_unit);
@@ -465,7 +465,7 @@ fun create_assembly_fail_on_empty_capacity() {
         let storage_unit = StorageUnit {
             id: uid,
             status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
-            location: location::attach_location(&admin_cap, assembly_id, LOCATION_A_HASH),
+            location: location::attach(&admin_cap, assembly_id, LOCATION_A_HASH),
             inventory: inventory::create(&admin_cap, 0, assembly_id),
         };
         transfer::share_object(storage_unit);
@@ -744,7 +744,7 @@ fun deposit_item_fail_insufficient_capacity() {
                 STORAGE_TYPE_ID,
                 STORAGE_ITEM_ID,
             ),
-            location: location::attach_location(
+            location: location::attach(
                 &admin_cap,
                 ephemeral_storage_unit_id,
                 LOCATION_A_HASH,
