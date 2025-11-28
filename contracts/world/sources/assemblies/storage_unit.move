@@ -261,8 +261,8 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
 
     status.unanchor();
     location.remove();
-
     inventory.delete();
+
     if (metadata.is_some()) {
         let _meta_data = metadata.destroy_some();
         _meta_data.delete();
