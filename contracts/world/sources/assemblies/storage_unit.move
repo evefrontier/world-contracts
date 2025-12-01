@@ -22,7 +22,7 @@
 module world::storage_unit;
 
 use std::type_name::{Self, TypeName};
-use sui::{clock::Clock, derived_object, event};
+use sui::{clock::Clock, derived_object, dynamic_object_field as dof, event};
 use world::{
     assembly::{Self, AssemblyRegistry},
     authority::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
@@ -50,11 +50,11 @@ const EExtensionNotAuthorized: vector<u8> =
 // === Structs ===
 public struct StorageUnit has key {
     id: UID,
+    owner_character_id: ID,
     type_id: u64,
     item_id: u64,
     status: AssemblyStatus,
     location: Location,
-    inventory: Inventory,
     metadata: Option<Metadata>,
     extension: Option<TypeName>,
 }
@@ -87,39 +87,47 @@ public fun offline(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
 public fun chain_item_to_game_inventory(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,
-    location_proof: vector<u8>,
     owner_cap: &OwnerCap,
+    character_id: ID,
     item_id: u64,
     quantity: u32,
+    location_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    storage_unit
-        .inventory
-        .burn_items_with_proof(
-            &storage_unit.status,
-            &storage_unit.location,
-            owner_cap,
-            item_id,
-            quantity,
-            server_registry,
-            location_proof,
-            clock,
-            ctx,
-        );
+    let mut inventory = dof::borrow_mut<ID, Inventory>(
+        &mut storage_unit.id,
+        character_id,
+    );
+
+    inventory.burn_items_with_proof(
+        &storage_unit.status,
+        server_registry,
+        &storage_unit.location,
+        owner_cap,
+        item_id,
+        quantity,
+        location_proof,
+        clock,
+        ctx,
+    );
 }
 
 public fun deposit_item<Auth: drop>(
     storage_unit: &mut StorageUnit,
-    _: Auth,
     item: Item,
+    _: Auth,
     _: &mut TxContext,
 ) {
     assert!(
         storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
         EExtensionNotAuthorized,
     );
-    storage_unit.inventory.deposit_item(item);
+    let mut inventory = dof::borrow_mut<ID, Inventory>(
+        &mut storage_unit.id,
+        storage_unit.owner_character_id,
+    );
+    inventory.deposit_item(item);
 }
 
 public fun withdraw_item<Auth: drop>(
@@ -132,7 +140,12 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
         EExtensionNotAuthorized,
     );
-    storage_unit.inventory.withdraw_item(item_id)
+    let mut inventory = dof::borrow_mut<ID, Inventory>(
+        &mut storage_unit.id,
+        storage_unit.owner_character_id,
+    );
+
+    inventory.withdraw_item(item_id)
 }
 
 // The ephemeral storage functions will be removed when Ship inventory is implemented
@@ -140,8 +153,9 @@ public fun withdraw_item<Auth: drop>(
 public fun deposit_by_owner(
     storage_unit: &mut StorageUnit,
     item: Item,
-    owner_cap: &OwnerCap,
     server_registry: &ServerAddressRegistry,
+    owner_cap: &OwnerCap,
+    character_id: ID,
     proximity_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -161,14 +175,21 @@ public fun deposit_by_owner(
         clock,
         ctx,
     );
-    storage_unit.inventory.deposit_item(item);
+
+    let mut inventory = dof::borrow_mut<ID, Inventory>(
+        &mut storage_unit.id,
+        character_id,
+    );
+
+    inventory.deposit_item(item);
 }
 
 public fun withdraw_by_owner(
     storage_unit: &mut StorageUnit,
-    owner_cap: &OwnerCap,
-    item_id: u64,
     server_registry: &ServerAddressRegistry,
+    owner_cap: &OwnerCap,
+    character_id: ID,
+    item_id: u64,
     proximity_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -182,7 +203,12 @@ public fun withdraw_by_owner(
         ctx,
     );
 
-    storage_unit.inventory.withdraw_item(item_id)
+    let mut inventory = dof::borrow_mut<ID, Inventory>(
+        &mut storage_unit.id,
+        character_id,
+    );
+
+    inventory.withdraw_item(item_id)
 }
 
 // TODO: Can also have a transfer function for simplicity
@@ -197,37 +223,46 @@ public fun location(storage_unit: &StorageUnit): &Location {
     &storage_unit.location
 }
 
-public fun inventory(storage_unit: &StorageUnit): &Inventory {
-    &storage_unit.inventory
+public fun inventory(storage_unit: &StorageUnit, character_id: ID): &Inventory {
+    dof::borrow(&storage_unit.id, character_id)
 }
 
 // === Admin Functions ===
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
     admin_cap: &AdminCap,
+    character_id: ID,
     type_id: u64,
     item_id: u64,
     max_capacity: u64,
     location_hash: vector<u8>,
-    _: &mut TxContext,
+    ctx: &mut TxContext,
 ): StorageUnit {
     assert!(type_id != 0, EStorageUnitTypeIdEmpty);
     assert!(item_id != 0, EStorageUnitItemIdEmpty);
     assert!(!assembly::assembly_exists(assembly_registry, item_id), EStorageUnitAlreadyExists);
 
     let registry_id = assembly::borrow_registry_id(assembly_registry);
-    let assembly_uid = derived_object::claim(registry_id, item_id);
+    let mut assembly_uid = derived_object::claim(registry_id, item_id);
     let assembly_id = object::uid_to_inner(&assembly_uid);
-    let storage_unit = StorageUnit {
+
+    let inventory = inventory::create(
+        &mut assembly_uid,
+        character_id,
+        max_capacity,
+    );
+
+    let mut storage_unit = StorageUnit {
         id: assembly_uid,
+        owner_character_id: character_id,
         type_id: type_id,
         item_id: item_id,
         status: status::anchor(admin_cap, assembly_id, type_id, item_id),
         location: location::attach(admin_cap, assembly_id, location_hash),
-        inventory: inventory::create(admin_cap, max_capacity, assembly_id),
         metadata: option::none(),
         extension: option::none(),
     };
+    dof::add(&mut storage_unit.id, character_id, inventory);
 
     event::emit(StorageUnitCreatedEvent {
         storage_unit_id: assembly_id,
@@ -249,19 +284,25 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
 // So we burn the items and delete the object
 public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     let StorageUnit {
-        id,
+        mut id,
+        owner_character_id,
         type_id: _,
         item_id: _,
         status,
         location,
-        inventory,
         metadata,
         extension: _,
     } = storage_unit;
 
     status.unanchor();
     location.remove();
-    inventory.delete();
+
+    // All the ephemeral child inventories are orphaned, e eventually deleted
+    // This is optional
+    if (dof::exists_(&id, owner_character_id)) {
+        let inventory = dof::remove<ID, Inventory>(&mut id, owner_character_id);
+        inventory.delete();
+    };
 
     if (metadata.is_some()) {
         let _meta_data = metadata.destroy_some();
@@ -275,24 +316,52 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
 public fun game_item_to_chain_inventory(
     storage_unit: &mut StorageUnit,
     admin_cap: &AdminCap,
+    character_id: ID,
     item_id: u64,
     type_id: u64,
     volume: u64,
     quantity: u32,
     ctx: &mut TxContext,
 ) {
-    storage_unit
-        .inventory
-        .mint_items(
-            &storage_unit.status,
-            admin_cap,
-            item_id,
-            type_id,
-            volume,
-            quantity,
-            storage_unit.location.hash(),
-            ctx,
-        )
+    // Check if the character has a inventory , if not create ephemeral inventory
+    //  let inventory = inventory::create(
+    //     admin_cap,
+    //     &mut assembly_uid,
+    //     character_id,
+    //     max_capacity
+    // );
+
+    if (!dof::exists_(&storage_unit.id, character_id)) {
+        let parent_inv = dof::borrow<ID, Inventory>(
+            &mut storage_unit.id,
+            character_id,
+        );
+        let inventory = inventory::create(
+            &mut storage_unit.id,
+            character_id,
+            parent_inv.max_capacity(),
+        );
+
+        dof::add(&mut storage_unit.id, character_id, inventory);
+    };
+
+    let mut inventory = dof::borrow_mut<ID, Inventory>(
+        &mut storage_unit.id,
+        character_id,
+    );
+
+    // also create ownerCap to this character for this inventory
+
+    inventory.mint_items(
+        &storage_unit.status,
+        admin_cap,
+        item_id,
+        type_id,
+        volume,
+        quantity,
+        storage_unit.location.hash(),
+        ctx,
+    )
 }
 
 // === Test Functions ===
@@ -320,21 +389,21 @@ public fun contains_item(storage_unit: &StorageUnit, item_id: u64): bool {
 public fun chain_item_to_game_inventory_test(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,
-    location_proof: vector<u8>,
     owner_cap: &OwnerCap,
     item_id: u64,
     quantity: u32,
+    location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
     storage_unit
         .inventory
         .burn_items_with_proof_test(
             &storage_unit.status,
+            server_registry,
             &storage_unit.location,
             owner_cap,
             item_id,
             quantity,
-            server_registry,
             location_proof,
             ctx,
         );
