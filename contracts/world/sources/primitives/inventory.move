@@ -239,7 +239,7 @@ public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item
 
 public(package) fun delete(inventory: Inventory) {
     let Inventory {
-        id: _,
+        id,
         assembly_id: _,
         max_capacity: _,
         used_capacity: _,
@@ -249,9 +249,16 @@ public(package) fun delete(inventory: Inventory) {
     // Burn the items one by one
     while (!items.is_empty()) {
         let (_, item) = items.pop();
-        let Item { id, type_id: _, item_id: _, volume: _, quantity: _, location } = item;
+        let Item { id: item_uid, type_id: _, item_id, volume: _, quantity, location } = item;
+
+        event::emit(ItemBurnedEvent {
+            inventory_id: id,
+            item_id,
+            quantity,
+        });
+
         location.remove();
-        object::delete(id);
+        object::delete(item_uid);
     };
     items.destroy_empty();
 }

@@ -398,6 +398,16 @@ public fun contains_item(storage_unit: &StorageUnit, character_id: ID, item_id: 
 }
 
 #[test_only]
+public fun inventory_keys(storage_unit: &StorageUnit): vector<ID> {
+    storage_unit.inventory_keys
+}
+
+#[test_only]
+public fun has_inventory(storage_unit: &StorageUnit, character_id: ID): bool {
+    df::exists_(&storage_unit.id, character_id)
+}
+
+#[test_only]
 public fun chain_item_to_game_inventory_test(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,

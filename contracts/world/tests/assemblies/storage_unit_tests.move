@@ -175,11 +175,11 @@ fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
     }
 }
 
-/// Test creating a storage unit
-/// Scenario: Admin creates a storage unit with location hash
+/// Test Anchoring a storage unit
+/// Scenario: Admin anchors a storage unit with location hash
 /// Expected: Storage unit is created successfully with correct initial state
 #[test]
-fun test_create_storage_unit() {
+fun test_anchor_storage_unit() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let character_id = user_a_character_id();
@@ -195,6 +195,11 @@ fun test_create_storage_unit() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let inventory_keys = storage_unit.inventory_keys();
+        assert!(storage_unit.has_inventory(character_id));
+        assert_eq!(inventory_keys.length(), 1);
+        assert_eq!(*inventory_keys.borrow(0), character_id);
+
         let inv_ref = storage_unit.inventory(character_id);
         let location_ref = storage_unit.location();
 
@@ -310,6 +315,69 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
         ts::return_to_sender(&ts, owner_cap);
+    };
+
+    ts::end(ts);
+}
+
+/// Test adding items twice in the ephemeral inventory
+/// Scenario: User A mints lens on-chain by game_item_to_chain_inventory()
+/// User B mints lens on-chain by game_item_to_chain_inventory()
+/// User B mints ammo on-chain
+/// Expected: ephemeral inventory should only created once
+#[test]
+fun test_mint_multiple_items_in_ephemeral_inventory() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::register_server_address(&mut ts);
+    let character_a_id = user_a_character_id();
+    let character_b_id = user_b_character_id();
+
+    // Create storage unit for User A
+    let storage_id = create_storage_unit(
+        &mut ts,
+        character_a_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_id);
+    online_storage_unit(&mut ts, user_b(), storage_id);
+
+    // Mint lens for user A
+    mint_lens(&mut ts, storage_id, character_a_id);
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let inventory_keys = storage_unit.inventory_keys();
+        assert!(storage_unit.has_inventory(character_a_id));
+        assert_eq!(inventory_keys.length(), 1);
+        assert_eq!(*inventory_keys.borrow(0), character_a_id);
+        ts::return_shared(storage_unit);
+    };
+
+    // Mint lens for user B
+    mint_lens(&mut ts, storage_id, character_b_id);
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let inventory_keys = storage_unit.inventory_keys();
+        assert!(storage_unit.has_inventory(character_b_id));
+        assert_eq!(inventory_keys.length(), 2);
+        assert_eq!(*inventory_keys.borrow(1), character_b_id);
+        ts::return_shared(storage_unit);
+    };
+
+    // Mint Ammo for user B
+    mint_ammo(&mut ts, storage_id, character_b_id);
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let inventory_keys = storage_unit.inventory_keys();
+        assert!(storage_unit.has_inventory(character_b_id));
+        assert_eq!(inventory_keys.length(), 2);
+        assert_eq!(*inventory_keys.borrow(1), character_b_id);
+        ts::return_shared(storage_unit);
     };
 
     ts::end(ts);
@@ -598,6 +666,51 @@ fun test_swap_ammo_for_lens() {
         assert!(!storage_unit.contains_item(character_b_id, LENS_ITEM_ID));
 
         ts::return_shared(storage_unit);
+    };
+
+    ts::end(ts);
+}
+
+/// Test unanchoring a storage unit
+/// Scenario: User A anchors a storage unit, deposits items, unanchors
+/// Exepected: On Unanchor, the attached inventories should be removed
+/// items should be burned and the location should not be available
+#[test]
+fun test_unachor_storage_unit() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::register_server_address(&mut ts);
+    let character_a_id = user_a_character_id();
+    let character_b_id = user_b_character_id();
+
+    // Create storage unit for User A
+    let storage_id = create_storage_unit(
+        &mut ts,
+        character_a_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_id);
+    online_storage_unit(&mut ts, user_b(), storage_id);
+
+    mint_lens(&mut ts, storage_id, character_a_id);
+    mint_lens(&mut ts, storage_id, character_b_id);
+    mint_ammo(&mut ts, storage_id, character_b_id);
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let inventory_keys = storage_unit.inventory_keys();
+        assert_eq!(inventory_keys.length(), 2);
+        ts::return_shared(storage_unit);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        storage_unit.unanchor(&admin_cap);
+        ts::return_to_sender(&ts, admin_cap);
     };
 
     ts::end(ts);
