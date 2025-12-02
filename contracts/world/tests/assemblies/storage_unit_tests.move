@@ -145,17 +145,6 @@ fun mint_ammo(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
     }
 }
 
-fun create_owner_cap_for_inventory(ts: &mut ts::Scenario, character_id: ID, user: address) {
-    ts::next_tx(ts, admin());
-    {
-        let storage_unit = ts::take_shared<StorageUnit>(ts);
-        let inventory = storage_unit.inventory(character_id);
-
-        test_helpers::setup_owner_cap(ts, user, inventory.id());
-        ts::return_shared(storage_unit);
-    };
-}
-
 fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
     ts::next_tx(ts, admin());
     {
@@ -173,6 +162,17 @@ fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
         ts::return_shared(storage_unit);
         ts::return_to_sender(ts, admin_cap);
     }
+}
+
+fun create_owner_cap_for_inventory(ts: &mut ts::Scenario, character_id: ID, user: address) {
+    ts::next_tx(ts, admin());
+    {
+        let storage_unit = ts::take_shared<StorageUnit>(ts);
+        let inventory = storage_unit.inventory(character_id);
+
+        test_helpers::setup_owner_cap(ts, user, inventory.id());
+        ts::return_shared(storage_unit);
+    };
 }
 
 /// Test Anchoring a storage unit
@@ -268,7 +268,6 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         STORAGE_A_TYPE_ID,
     );
     test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
-
     online_storage_unit(&mut ts, user_a(), storage_id);
     mint_ammo(&mut ts, storage_id, character_id);
 
@@ -307,7 +306,6 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         );
 
         let inv_ref = storage_unit.inventory(character_id);
-
         assert_eq!(inv_ref.used_capacity(), 0);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.inventory_item_length(), 0);

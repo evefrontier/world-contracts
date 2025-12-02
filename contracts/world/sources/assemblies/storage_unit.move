@@ -49,7 +49,6 @@ const EInventoryNotAuthorized: vector<u8> = b"Inventory Access not authorised";
 #[error(code = 6)]
 const ENotOnline: vector<u8> = b"Storage Unit is not online";
 
-// TODO: Add a metadata property
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
 public struct StorageUnit has key {
@@ -261,12 +260,6 @@ public fun anchor(
     let assembly_uid = derived_object::claim(registry_id, item_id);
     let assembly_id = object::uid_to_inner(&assembly_uid);
 
-    let inventory = inventory::create(
-        assembly_id,
-        character_id,
-        max_capacity,
-    );
-
     let mut storage_unit = StorageUnit {
         id: assembly_uid,
         owner_character_id: character_id,
@@ -279,6 +272,11 @@ public fun anchor(
         extension: option::none(),
     };
 
+    let inventory = inventory::create(
+        assembly_id,
+        character_id,
+        max_capacity,
+    );
     storage_unit.inventory_keys.push_back(character_id);
     df::add(&mut storage_unit.id, character_id, inventory);
 
@@ -344,6 +342,8 @@ public fun game_item_to_chain_inventory(
     ctx: &mut TxContext,
 ) {
     assert!(storage_unit.status.is_online(), ENotOnline);
+
+    // create a ephemeral inventory if it does not exists for a character
     if (!df::exists_(&storage_unit.id, character_id)) {
         let owner_inv = df::borrow<ID, Inventory>(
             &storage_unit.id,

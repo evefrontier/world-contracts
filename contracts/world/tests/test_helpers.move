@@ -87,6 +87,7 @@ public fun get_storage_unit_id(): ID {
     storage_unit_id
 }
 
+// functions to get off-chain verified values for signaure proof
 public fun construct_location_proof(location_hash: vector<u8>): LocationProof {
     let character_id = object::id_from_bytes(
         x"0000000000000000000000000000000000000000000000000000000000000002",
