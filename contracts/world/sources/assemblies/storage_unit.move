@@ -40,11 +40,13 @@ const EStorageUnitItemIdEmpty: vector<u8> = b"StorageUnit ItemId is empty";
 #[error(code = 2)]
 const EStorageUnitAlreadyExists: vector<u8> = b"StorageUnit with the same Item Id already exists";
 #[error(code = 3)]
-const EAccessNotAuthorized: vector<u8> = b"Owner Access not authorised for this Storage Unit";
+const EAssemblyNotAuthorized: vector<u8> = b"StorageUnit access not authorized";
 #[error(code = 4)]
 const EExtensionNotAuthorized: vector<u8> =
     b"Access only authorised for the custom contract of the registered type";
 #[error(code = 5)]
+const EInventoryNotAuthorized: vector<u8> = b"Inventory Access not authorised";
+#[error(code = 6)]
 const ENotOnline: vector<u8> = b"Storage Unit is not online";
 
 // TODO: Add a metadata property
@@ -74,7 +76,7 @@ public struct StorageUnitCreatedEvent has copy, drop {
 
 // === Public Functions ===
 public fun authorize_extension<Auth: drop>(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
-    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
     storage_unit.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
 }
 
@@ -98,17 +100,17 @@ public fun chain_item_to_game_inventory(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    let inventory_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+    assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EInventoryNotAuthorized);
     assert!(storage_unit.status.is_online(), ENotOnline);
+
     let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         character_id,
     );
-
     inventory.burn_items_with_proof(
         server_registry,
         &storage_unit.location,
-        owner_cap,
         item_id,
         quantity,
         location_proof,
@@ -169,7 +171,7 @@ public fun deposit_by_owner(
     assert!(storage_unit.status.is_online(), ENotOnline);
 
     let inventory_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
-    assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EAccessNotAuthorized);
+    assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EInventoryNotAuthorized);
 
     // This check is only required for ephemeral inventory
     location::verify_same_location(
@@ -206,7 +208,7 @@ public fun withdraw_by_owner(
     assert!(storage_unit.status.is_online(), ENotOnline);
 
     let inventory_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
-    assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EAccessNotAuthorized);
+    assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EInventoryNotAuthorized);
 
     location::verify_proximity_proof_from_bytes(
         &storage_unit.location,
@@ -216,7 +218,7 @@ public fun withdraw_by_owner(
         ctx,
     );
 
-    let mut inventory = df::borrow_mut<ID, Inventory>(
+    let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         character_id,
     );
@@ -361,9 +363,6 @@ public fun game_item_to_chain_inventory(
         &mut storage_unit.id,
         character_id,
     );
-
-    // also create ownerCap to this character for this inventory
-
     inventory.mint_items(
         admin_cap,
         item_id,
@@ -409,13 +408,14 @@ public fun chain_item_to_game_inventory_test(
     location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    let inventory_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+    assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EInventoryNotAuthorized);
     assert!(storage_unit.status.is_online(), ENotOnline);
+
     let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
     inventory.burn_items_with_proof_test(
         server_registry,
         &storage_unit.location,
-        owner_cap,
         item_id,
         quantity,
         location_proof,

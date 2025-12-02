@@ -1,11 +1,11 @@
 module world::storage_unit_tests;
 
 use std::{bcs, unit_test::assert_eq};
-use sui::{clock, dynamic_field as df, test_scenario as ts};
+use sui::{clock, test_scenario as ts};
 use world::{
     assembly::AssemblyRegistry,
     authority::{OwnerCap, AdminCap, ServerAddressRegistry},
-    inventory::{Item, Inventory},
+    inventory::Item,
     storage_unit::{Self, StorageUnit},
     test_helpers::{Self, governor, admin, user_a, user_b, user_a_character_id, user_b_character_id}
 };
@@ -14,10 +14,7 @@ const LOCATION_A_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const MAX_CAPACITY: u64 = 100000;
 const STORAGE_A_TYPE_ID: u64 = 50001;
-const STORAGE_B_TYPE_ID: u64 = 50002;
-
 const STORAGE_A_ITEM_ID: u64 = 90002;
-const STORAGE_B_ITEM_ID: u64 = 90003;
 
 // Item constants
 const AMMO_TYPE_ID: u64 = 88069;
@@ -178,14 +175,14 @@ fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
     }
 }
 
-/// Tests creating a storage unit
+/// Test creating a storage unit
 /// Scenario: Admin creates a storage unit with location hash
 /// Expected: Storage unit is created successfully with correct initial state
 #[test]
 fun test_create_storage_unit() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -210,14 +207,14 @@ fun test_create_storage_unit() {
     ts::end(ts);
 }
 
-/// Tests minting items into storage unit inventory
+/// Test minting items into storage unit inventory
 /// Scenario: Admin mints ammo items into an online storage unit
 /// Expected: Items are minted successfully and inventory state is correct
 #[test]
 fun test_create_items_on_chain() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     // Create a storage unit for user_a character_id
     let storage_id = create_storage_unit(
@@ -247,14 +244,85 @@ fun test_create_items_on_chain() {
     ts::end(ts);
 }
 
-/// Tests authorizing an extension type for storage unit
+/// Test burning items from storage unit inventory
+/// Scenario: Admin moves ammo on-chain by game_item_to_chain_inventory()
+/// User moves ammo from on-chain to game by chain_item_to_game_inventory()
+/// Excpected: moving items back and forth is successfull
+#[test]
+fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::register_server_address(&mut ts);
+    let character_id = user_a_character_id();
+
+    let storage_id = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
+
+    online_storage_unit(&mut ts, user_a(), storage_id);
+    mint_ammo(&mut ts, storage_id, character_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let inv_ref = storage_unit.inventory(character_id);
+
+        let used_capacity = (AMMO_QUANTITY as u64 * AMMO_VOLUME);
+        assert_eq!(inv_ref.used_capacity(), used_capacity);
+        assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
+        assert_eq!(inv_ref.item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert_eq!(inv_ref.inventory_item_length(), 1);
+        ts::return_shared(storage_unit);
+    };
+
+    create_owner_cap_for_inventory(&mut ts, character_id, user_a());
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
+        storage_unit.chain_item_to_game_inventory_test(
+            &server_registry,
+            &owner_cap,
+            character_id,
+            AMMO_ITEM_ID,
+            AMMO_QUANTITY,
+            proof_bytes,
+            ts.ctx(),
+        );
+
+        let inv_ref = storage_unit.inventory(character_id);
+
+        assert_eq!(inv_ref.used_capacity(), 0);
+        assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
+        assert_eq!(inv_ref.inventory_item_length(), 0);
+
+        ts::return_shared(storage_unit);
+        ts::return_shared(server_registry);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    ts::end(ts);
+}
+
+/// Test authorizing an extension type for storage unit
 /// Scenario: Owner authorizes SwapAuth extension type for their storage unit
 /// Expected: Extension is successfully authorized
 #[test]
 fun test_authorize_extension() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -278,14 +346,14 @@ fun test_authorize_extension() {
     ts::end(ts);
 }
 
-/// Tests depositing and withdrawing items via extension
+/// Test depositing and withdrawing items via extension
 /// Scenario: Authorize extension, withdraw item, then deposit it back using extension access
 /// Expected: Items can be withdrawn and deposited successfully via extension
 #[test]
 fun test_deposit_and_withdraw_via_extension() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -336,7 +404,7 @@ fun test_deposit_and_withdraw_via_extension() {
     ts::end(ts);
 }
 
-/// Tests depositing and withdrawing items by owner
+/// Test depositing and withdrawing items by owner
 /// Scenario: Owner withdraws item and deposits it back using owner access
 /// Expected: Items can be withdrawn and deposited successfully by owner
 #[test]
@@ -344,7 +412,7 @@ fun test_deposit_and_withdraw_by_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -433,8 +501,8 @@ fun test_swap_ammo_for_lens() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = test_helpers::user_a_character_id();
-    let character_b_id = test_helpers::user_b_character_id();
+    let character_a_id = user_a_character_id();
+    let character_b_id = user_b_character_id();
 
     // Create User B's storage unit with lens
     let storage_id = create_storage_unit(
@@ -535,15 +603,15 @@ fun test_swap_ammo_for_lens() {
     ts::end(ts);
 }
 
-/// Tests that authorizing extension without proper owner capability fails
+/// Test that authorizing extension without proper owner capability fails
 /// Scenario: User B attempts to authorize extension for User A's storage unit using wrong OwnerCap
-/// Expected: Transaction aborts with EAccessNotAuthorized error
+/// Expected: Transaction aborts with EAssemblyNotAuthorized error
 #[test]
-#[expected_failure(abort_code = storage_unit::EAccessNotAuthorized)]
+#[expected_failure(abort_code = storage_unit::EAssemblyNotAuthorized)]
 fun test_authorize_extension_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -572,7 +640,7 @@ fun test_authorize_extension_fail_wrong_owner() {
     ts::end(ts);
 }
 
-/// Tests that withdrawing via extension without authorization fails
+/// Test that withdrawing via extension without authorization fails
 /// Scenario: Attempt to withdraw item via extension without authorizing the extension type
 /// Expected: Transaction aborts with EExtensionNotAuthorized error
 #[test]
@@ -580,7 +648,7 @@ fun test_authorize_extension_fail_wrong_owner() {
 fun test_withdraw_via_extension_fail_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -613,7 +681,7 @@ fun test_withdraw_via_extension_fail_not_authorized() {
     ts::end(ts);
 }
 
-/// Tests that depositing via extension without authorization fails
+/// Test that depositing via extension without authorization fails
 /// Scenario: Attempt to deposit item via extension without authorizing the extension type
 /// Expected: Transaction aborts with EExtensionNotAuthorized error
 #[test]
@@ -622,7 +690,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -681,16 +749,16 @@ fun test_deposit_via_extension_fail_not_authorized() {
     ts::end(ts);
 }
 
-/// Tests that withdrawing by owner without proper owner capability fails
+/// Test that withdrawing by owner without proper owner capability fails
 /// Scenario: User B attempts to withdraw items from User A's storage unit using wrong OwnerCap
-/// Expected: Transaction aborts with EAccessNotAuthorized error
+/// Expected: Transaction aborts with EInventoryNotAuthorized error
 #[test]
-#[expected_failure(abort_code = storage_unit::EAccessNotAuthorized)]
+#[expected_failure(abort_code = storage_unit::EInventoryNotAuthorized)]
 fun test_withdraw_by_owner_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -749,16 +817,16 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
     ts::end(ts);
 }
 
-/// Tests that depositing by owner without proper owner capability fails
+/// Test that depositing by owner without proper owner capability fails
 /// Scenario: User A withdraws item, then User B attempts to deposit it back using wrong OwnerCap
-/// Expected: Transaction aborts with EAccessNotAuthorized error
+/// Expected: Transaction aborts with EInventoryNotAuthorized error
 #[test]
-#[expected_failure(abort_code = storage_unit::EAccessNotAuthorized)]
+#[expected_failure(abort_code = storage_unit::EInventoryNotAuthorized)]
 fun test_deposit_by_owner_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_id = test_helpers::user_a_character_id();
+    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
@@ -821,7 +889,7 @@ fun test_deposit_by_owner_fail_wrong_owner() {
         );
         let proof_bytes = bcs::to_bytes(&proof);
 
-        // This should fail with EAccessNotAuthorized
+        // This should fail with EAssemblyNotAuthorized
         storage_unit.deposit_by_owner(
             item,
             &server_registry,
@@ -840,7 +908,7 @@ fun test_deposit_by_owner_fail_wrong_owner() {
     ts::end(ts);
 }
 
-/// Tests that swap fails when extension is not authorized
+/// Test that swap fails when extension is not authorized
 /// Scenario: Attempt to swap items via extension without authorizing the extension type
 /// Expected: Transaction aborts with EExtensionNotAuthorized error
 #[test]
@@ -849,8 +917,8 @@ fun test_swap_fail_extension_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = test_helpers::user_a_character_id();
-    let character_b_id = test_helpers::user_b_character_id();
+    let character_a_id = user_a_character_id();
+    let character_b_id = user_b_character_id();
 
     // Create User B's storage unit with lens
     let storage_id = create_storage_unit(
@@ -898,5 +966,85 @@ fun test_swap_fail_extension_not_authorized() {
         ts::return_shared(server_registry);
         ts::return_to_sender(&ts, owner_cap_b);
     };
+    ts::end(ts);
+}
+
+/// Test moving item from chain to game without proper owner capability fails
+/// Scenario: User B attempts to move items chain to game from User A's storage unit using wrong OwnerCap
+/// Expected: Transaction aborts with EInventoryNotAuthorized error
+#[test]
+#[expected_failure(abort_code = storage_unit::EInventoryNotAuthorized)]
+public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::register_server_address(&mut ts);
+    let character_b_id = user_b_character_id();
+
+    // Create User B's storage unit with lens
+    let storage_id = create_storage_unit(
+        &mut ts,
+        character_b_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_id);
+    online_storage_unit(&mut ts, user_b(), storage_id);
+
+    // Mint lens for user B
+    mint_lens(&mut ts, storage_id, character_b_id);
+
+    let dummy_id = object::id_from_bytes(
+        x"0000000000000000000000000000000000000000000000000000000000000001",
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
+
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
+        storage_unit.chain_item_to_game_inventory_test(
+            &server_registry,
+            &owner_cap,
+            character_b_id,
+            LENS_ITEM_ID,
+            LENS_QUANTITY,
+            proof_bytes,
+            ts.ctx(),
+        );
+
+        ts::return_shared(storage_unit);
+        ts::return_shared(server_registry);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    ts::end(ts);
+}
+
+/// Test that minting items into offline inventory fails
+/// Scenario: Attempt to mint items into storage unit that is not online
+/// Expected: Transaction aborts with ENotOnline error
+#[test]
+#[expected_failure(abort_code = storage_unit::ENotOnline)]
+fun mint_items_fail_inventory_offline() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::register_server_address(&mut ts);
+    let character_id = user_a_character_id();
+
+    let storage_unit_id = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_unit_id);
+    mint_ammo(&mut ts, storage_unit_id, character_id);
     ts::end(ts);
 }

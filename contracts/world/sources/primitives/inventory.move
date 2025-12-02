@@ -8,7 +8,7 @@
 module world::inventory;
 
 use sui::{clock::Clock, derived_object, event, vec_map::{Self, VecMap}};
-use world::{authority::{AdminCap, OwnerCap, ServerAddressRegistry}, location::{Self, Location}};
+use world::{authority::{AdminCap, ServerAddressRegistry}, location::{Self, Location}};
 
 // === Errors ===
 #[error(code = 0)]
@@ -91,11 +91,10 @@ public struct ItemWithdrawnEvent has copy, drop {
 
 // === Public Functions ===
 
-public fun burn_items_with_proof(
+public(package) fun burn_items_with_proof(
     inventory: &mut Inventory,
     server_registry: &ServerAddressRegistry,
     location: &Location,
-    owner_cap: &OwnerCap,
     item_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
@@ -364,12 +363,7 @@ public fun inventory_item_length(inventory: &Inventory): u64 {
 }
 
 #[test_only]
-public fun burn_items_test(
-    inventory: &mut Inventory,
-    owner_cap: &OwnerCap,
-    item_id: u64,
-    quantity: u32,
-) {
+public fun burn_items_test(inventory: &mut Inventory, item_id: u64, quantity: u32) {
     burn_items(inventory, item_id, quantity);
 }
 
@@ -379,7 +373,6 @@ public fun burn_items_with_proof_test(
     inventory: &mut Inventory,
     server_registry: &ServerAddressRegistry,
     location: &Location,
-    _: &OwnerCap,
     item_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
