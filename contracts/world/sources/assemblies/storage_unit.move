@@ -166,8 +166,10 @@ public fun deposit_by_owner(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
     assert!(storage_unit.status.is_online(), ENotOnline);
+
+    let inventory_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+    assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EAccessNotAuthorized);
 
     // This check is only required for ephemeral inventory
     location::verify_same_location(
@@ -201,8 +203,10 @@ public fun withdraw_by_owner(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Item {
-    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
     assert!(storage_unit.status.is_online(), ENotOnline);
+
+    let inventory_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+    assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EAccessNotAuthorized);
 
     location::verify_proximity_proof_from_bytes(
         &storage_unit.location,
@@ -212,7 +216,7 @@ public fun withdraw_by_owner(
         ctx,
     );
 
-    let inventory = df::borrow_mut<ID, Inventory>(
+    let mut inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         character_id,
     );
