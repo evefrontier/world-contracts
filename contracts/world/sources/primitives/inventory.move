@@ -249,16 +249,7 @@ public(package) fun delete(inventory: Inventory) {
     // Burn the items one by one
     while (!items.is_empty()) {
         let (_, item) = items.pop();
-        let Item { id: item_uid, type_id: _, item_id, volume: _, quantity, location } = item;
-
-        event::emit(ItemBurnedEvent {
-            inventory_id: id,
-            item_id,
-            quantity,
-        });
-
-        location.remove();
-        object::delete(item_uid);
+        destroy_item(item, id);
     };
     items.destroy_empty();
 }
@@ -273,31 +264,52 @@ public(package) fun delete(inventory: Inventory) {
 /// Emits ItemBurnedEvent for game server to create item in-game
 /// Deletes Item object if param quantity = existing quantity, otherwise reduces quantity
 fun burn_items(inventory: &mut Inventory, item_id: u64, quantity: u32) {
-    assert!(vec_map::contains(&inventory.items, &item_id), EItemDoesNotExist);
+    assert!(inventory.items.contains(&item_id), EItemDoesNotExist);
 
-    let item_ref = vec_map::get(&inventory.items, &item_id);
-    assert!(item_ref.quantity >= quantity, EInventoryInsufficientQuantity);
-    let current_quantity = item_ref.quantity;
+    let should_remove = {
+        let item = &mut inventory.items[&item_id];
+        assert!(item.quantity >= quantity, EInventoryInsufficientQuantity);
 
-    // If burning all items, remove and delete the Item object
-    if (current_quantity == quantity) {
-        let (_, removed_item) = vec_map::remove(&mut inventory.items, &item_id);
+        if (item.quantity == quantity) {
+            true
+        } else {
+            // Optimization: Handle partial burn here directly to avoid another lookup
+            let volume_freed = calculate_volume(item.volume, quantity);
+            let old_quantity = item.quantity;
+
+            item.quantity = item.quantity - quantity;
+            inventory.used_capacity = inventory.used_capacity - volume_freed;
+
+            event::emit(ItemQuantityChangedEvent {
+                inventory_id: inventory.id,
+                item_id,
+                old_quantity,
+                new_quantity: item.quantity,
+            });
+            false
+        }
+    };
+
+    if (should_remove) {
+        let (_, removed_item) = inventory.items.remove(&item_id);
         let volume_freed = calculate_volume(removed_item.volume, removed_item.quantity);
         inventory.used_capacity = inventory.used_capacity - volume_freed;
 
-        let Item { id, type_id: _, item_id: _, volume: _, quantity: _, location } = removed_item;
-        location.remove();
-        object::delete(id);
-
-        // Emit event for game bridge to listen
-        event::emit(ItemBurnedEvent {
-            inventory_id: inventory.id,
-            item_id,
-            quantity,
-        });
-    } else {
-        reduce_item_quantity(inventory, item_id, quantity);
+        destroy_item(removed_item, inventory.id);
     };
+}
+
+fun destroy_item(item: Item, inventory_id: ID) {
+    let Item { id, type_id: _, item_id, volume: _, quantity, location } = item;
+
+    event::emit(ItemBurnedEvent {
+        inventory_id,
+        item_id,
+        quantity,
+    });
+
+    location.remove();
+    object::delete(id);
 }
 
 /// Increases the quantity value of an existing item in the specified inventory.
@@ -318,24 +330,6 @@ fun increase_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u3
 
     item.quantity = item.quantity + quantity;
     inventory.used_capacity = inventory.used_capacity + req_capacity;
-}
-
-/// Reduces item quantity value  of an existing item in the specified inventory.
-fun reduce_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u32) {
-    let inv_id = inventory.id;
-    let item = &mut inventory.items[&item_id];
-    let volume_freed = calculate_volume(item.volume, quantity);
-
-    let old_quantity = item.quantity;
-    item.quantity = item.quantity - quantity;
-    inventory.used_capacity = inventory.used_capacity - volume_freed;
-
-    event::emit(ItemQuantityChangedEvent {
-        inventory_id: inv_id,
-        item_id,
-        old_quantity: old_quantity,
-        new_quantity: item.quantity,
-    });
 }
 
 fun calculate_volume(volume: u64, quantity: u32): u64 {
