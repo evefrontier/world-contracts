@@ -32,6 +32,13 @@ const LENS_QUANTITY: u32 = 5;
 
 const STATUS_ONLINE: u8 = 1;
 
+// Test character ID - used for inventory creation
+fun test_character_id(): ID {
+    object::id_from_bytes(
+        x"0000000000000000000000000000000000000000000000000000000000000001",
+    )
+}
+
 // Mock 3rd Party Extension Witness Types
 /// Authorized extension witness type
 public struct SwapAuth has drop {}
@@ -94,9 +101,11 @@ fun create_storage_unit(
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
     let storage_unit_id = {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let character_id = test_character_id();
         let storage_unit = storage_unit::anchor(
             &mut assembly_registry,
             &admin_cap,
+            character_id,
             type_id,
             item_id,
             MAX_CAPACITY,
@@ -131,8 +140,10 @@ fun mint_ammo(ts: &mut ts::Scenario, storage_id: ID) {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let character_id = test_character_id();
         storage_unit.game_item_to_chain_inventory(
             &admin_cap,
+            character_id,
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
             AMMO_VOLUME,
@@ -149,8 +160,10 @@ fun mint_lens(ts: &mut ts::Scenario, storage_id: ID) {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let character_id = test_character_id();
         storage_unit.game_item_to_chain_inventory(
             &admin_cap,
+            character_id,
             LENS_ITEM_ID,
             LENS_TYPE_ID,
             LENS_VOLUME,
@@ -179,7 +192,8 @@ fun test_create_storage_unit() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let inv_ref = storage_unit.inventory();
+        let character_id = test_character_id();
+        let inv_ref = storage_unit.inventory(character_id);
         let location_ref = storage_unit.location();
 
         assert_eq!(inv_ref.used_capacity(), 0);
@@ -212,7 +226,8 @@ fun test_create_items_on_chain() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let inv_ref = storage_unit.inventory();
+        let character_id = test_character_id();
+        let inv_ref = storage_unit.inventory(character_id);
 
         let used_capacity = (AMMO_QUANTITY as u64 * AMMO_VOLUME);
         assert_eq!(inv_ref.used_capacity(), used_capacity);
@@ -301,7 +316,8 @@ fun test_deposit_and_withdraw_via_extension() {
             item,
             ts.ctx(),
         );
-        assert_eq!(storage_unit.item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
+        let character_id = test_character_id();
+        assert_eq!(storage_unit.item_quantity(character_id, AMMO_ITEM_ID), AMMO_QUANTITY);
         ts::return_shared(storage_unit);
     };
     ts::end(ts);
@@ -376,7 +392,8 @@ fun test_deposit_and_withdraw_by_owner() {
             ts.ctx(),
         );
 
-        assert_eq!(storage_unit.item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
+        let character_id = test_character_id();
+        assert_eq!(storage_unit.item_quantity(character_id, AMMO_ITEM_ID), AMMO_QUANTITY);
 
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
@@ -436,20 +453,21 @@ fun test_swap_ammo_for_lens() {
         let storage_a = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
         let storage_b = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
 
+        let character_id = test_character_id();
         let used_capacity_a = (LENS_QUANTITY as u64* LENS_VOLUME);
         let used_capacity_b = (AMMO_QUANTITY as u64* AMMO_VOLUME);
-        let inv_ref_a = storage_a.inventory();
-        let inv_ref_b = storage_b.inventory();
+        let inv_ref_a = storage_a.inventory(character_id);
+        let inv_ref_b = storage_b.inventory(character_id);
 
         assert_eq!(inv_ref_a.used_capacity(), used_capacity_a);
         assert_eq!(inv_ref_a.remaining_capacity(), MAX_CAPACITY - used_capacity_a);
         assert_eq!(inv_ref_b.used_capacity(), used_capacity_b);
         assert_eq!(inv_ref_b.remaining_capacity(), MAX_CAPACITY - used_capacity_b);
 
-        assert_eq!(storage_a.item_quantity(LENS_ITEM_ID), LENS_QUANTITY);
-        assert!(!storage_a.inventory().contains_item(AMMO_ITEM_ID));
-        assert_eq!(storage_b.item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
-        assert!(!storage_b.inventory().contains_item(LENS_ITEM_ID));
+        assert_eq!(storage_a.item_quantity(character_id, LENS_ITEM_ID), LENS_QUANTITY);
+        assert!(!storage_a.contains_item(character_id, AMMO_ITEM_ID));
+        assert_eq!(storage_b.item_quantity(character_id, AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert!(!storage_b.contains_item(character_id, LENS_ITEM_ID));
 
         ts::return_shared(storage_a);
         ts::return_shared(storage_b);
@@ -491,11 +509,12 @@ fun test_swap_ammo_for_lens() {
     {
         let storage_a = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
         let storage_b = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let character_id = test_character_id();
 
-        assert_eq!(storage_a.item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
-        assert!(!storage_a.inventory().contains_item(LENS_ITEM_ID));
-        assert_eq!(storage_b.item_quantity(LENS_ITEM_ID), LENS_QUANTITY);
-        assert!(!storage_b.inventory().contains_item(AMMO_ITEM_ID));
+        assert_eq!(storage_a.item_quantity(character_id, AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert!(!storage_a.contains_item(character_id, LENS_ITEM_ID));
+        assert_eq!(storage_b.item_quantity(character_id, LENS_ITEM_ID), LENS_QUANTITY);
+        assert!(!storage_b.contains_item(character_id, AMMO_ITEM_ID));
 
         ts::return_shared(storage_a);
         ts::return_shared(storage_b);

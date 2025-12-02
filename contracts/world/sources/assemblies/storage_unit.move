@@ -22,7 +22,7 @@
 module world::storage_unit;
 
 use std::type_name::{Self, TypeName};
-use sui::{clock::Clock, derived_object, dynamic_object_field as dof, event};
+use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     assembly::{Self, AssemblyRegistry},
     authority::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
@@ -44,6 +44,8 @@ const EAccessNotAuthorized: vector<u8> = b"Owner Access not authorised for this 
 #[error(code = 4)]
 const EExtensionNotAuthorized: vector<u8> =
     b"Access only authorised for the custom contract of the registered type";
+#[error(code = 5)]
+const ENotOnline: vector<u8> = b"Storage Unit is not online";
 
 // TODO: Add a metadata property
 // Future thought: Can we make the behaviour attached dynamically using dof
@@ -55,6 +57,7 @@ public struct StorageUnit has key {
     item_id: u64,
     status: AssemblyStatus,
     location: Location,
+    inventory_keys: vector<ID>,
     metadata: Option<Metadata>,
     extension: Option<TypeName>,
 }
@@ -95,13 +98,14 @@ public fun chain_item_to_game_inventory(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let mut inventory = dof::borrow_mut<ID, Inventory>(
+    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         character_id,
     );
 
     inventory.burn_items_with_proof(
-        &storage_unit.status,
         server_registry,
         &storage_unit.location,
         owner_cap,
@@ -123,7 +127,8 @@ public fun deposit_item<Auth: drop>(
         storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
         EExtensionNotAuthorized,
     );
-    let mut inventory = dof::borrow_mut<ID, Inventory>(
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         storage_unit.owner_character_id,
     );
@@ -140,7 +145,8 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
         EExtensionNotAuthorized,
     );
-    let mut inventory = dof::borrow_mut<ID, Inventory>(
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         storage_unit.owner_character_id,
     );
@@ -161,6 +167,7 @@ public fun deposit_by_owner(
     ctx: &mut TxContext,
 ) {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    assert!(storage_unit.status.is_online(), ENotOnline);
 
     // This check is only required for ephemeral inventory
     location::verify_same_location(
@@ -176,7 +183,7 @@ public fun deposit_by_owner(
         ctx,
     );
 
-    let mut inventory = dof::borrow_mut<ID, Inventory>(
+    let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         character_id,
     );
@@ -195,6 +202,8 @@ public fun withdraw_by_owner(
     ctx: &mut TxContext,
 ): Item {
     assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    assert!(storage_unit.status.is_online(), ENotOnline);
+
     location::verify_proximity_proof_from_bytes(
         &storage_unit.location,
         proximity_proof,
@@ -203,7 +212,7 @@ public fun withdraw_by_owner(
         ctx,
     );
 
-    let mut inventory = dof::borrow_mut<ID, Inventory>(
+    let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         character_id,
     );
@@ -224,7 +233,7 @@ public fun location(storage_unit: &StorageUnit): &Location {
 }
 
 public fun inventory(storage_unit: &StorageUnit, character_id: ID): &Inventory {
-    dof::borrow(&storage_unit.id, character_id)
+    df::borrow(&storage_unit.id, character_id)
 }
 
 // === Admin Functions ===
@@ -236,18 +245,18 @@ public fun anchor(
     item_id: u64,
     max_capacity: u64,
     location_hash: vector<u8>,
-    ctx: &mut TxContext,
+    _: &mut TxContext,
 ): StorageUnit {
     assert!(type_id != 0, EStorageUnitTypeIdEmpty);
     assert!(item_id != 0, EStorageUnitItemIdEmpty);
     assert!(!assembly::assembly_exists(assembly_registry, item_id), EStorageUnitAlreadyExists);
 
     let registry_id = assembly::borrow_registry_id(assembly_registry);
-    let mut assembly_uid = derived_object::claim(registry_id, item_id);
+    let assembly_uid = derived_object::claim(registry_id, item_id);
     let assembly_id = object::uid_to_inner(&assembly_uid);
 
     let inventory = inventory::create(
-        &mut assembly_uid,
+        assembly_id,
         character_id,
         max_capacity,
     );
@@ -259,10 +268,13 @@ public fun anchor(
         item_id: item_id,
         status: status::anchor(admin_cap, assembly_id, type_id, item_id),
         location: location::attach(admin_cap, assembly_id, location_hash),
+        inventory_keys: vector[],
         metadata: option::none(),
         extension: option::none(),
     };
-    dof::add(&mut storage_unit.id, character_id, inventory);
+
+    storage_unit.inventory_keys.push_back(character_id);
+    df::add(&mut storage_unit.id, character_id, inventory);
 
     event::emit(StorageUnitCreatedEvent {
         storage_unit_id: assembly_id,
@@ -285,11 +297,12 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
 public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     let StorageUnit {
         mut id,
-        owner_character_id,
+        owner_character_id: _,
         type_id: _,
         item_id: _,
         status,
         location,
+        inventory_keys,
         metadata,
         extension: _,
     } = storage_unit;
@@ -297,11 +310,12 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     status.unanchor();
     location.remove();
 
-    // All the ephemeral child inventories are orphaned, e eventually deleted
-    // This is optional
-    if (dof::exists_(&id, owner_character_id)) {
-        let inventory = dof::remove<ID, Inventory>(&mut id, owner_character_id);
+    // loop through inventory_keys
+    let mut i = 0;
+    while (i < inventory_keys.length()) {
+        let inventory = df::remove<ID, Inventory>(&mut id, inventory_keys[i]);
         inventory.delete();
+        i = i +1;
     };
 
     if (metadata.is_some()) {
@@ -323,29 +337,23 @@ public fun game_item_to_chain_inventory(
     quantity: u32,
     ctx: &mut TxContext,
 ) {
-    // Check if the character has a inventory , if not create ephemeral inventory
-    //  let inventory = inventory::create(
-    //     admin_cap,
-    //     &mut assembly_uid,
-    //     character_id,
-    //     max_capacity
-    // );
-
-    if (!dof::exists_(&storage_unit.id, character_id)) {
-        let parent_inv = dof::borrow<ID, Inventory>(
-            &mut storage_unit.id,
-            character_id,
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    if (!df::exists_(&storage_unit.id, character_id)) {
+        let owner_inv = df::borrow<ID, Inventory>(
+            &storage_unit.id,
+            storage_unit.owner_character_id,
         );
         let inventory = inventory::create(
-            &mut storage_unit.id,
+            object::id(storage_unit),
             character_id,
-            parent_inv.max_capacity(),
+            owner_inv.max_capacity(),
         );
 
-        dof::add(&mut storage_unit.id, character_id, inventory);
+        storage_unit.inventory_keys.push_back(character_id);
+        df::add(&mut storage_unit.id, character_id, inventory);
     };
 
-    let mut inventory = dof::borrow_mut<ID, Inventory>(
+    let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         character_id,
     );
@@ -353,7 +361,6 @@ public fun game_item_to_chain_inventory(
     // also create ownerCap to this character for this inventory
 
     inventory.mint_items(
-        &storage_unit.status,
         admin_cap,
         item_id,
         type_id,
@@ -366,8 +373,8 @@ public fun game_item_to_chain_inventory(
 
 // === Test Functions ===
 #[test_only]
-public fun inventory_mut(storage_unit: &mut StorageUnit): &mut Inventory {
-    &mut storage_unit.inventory
+public fun inventory_mut(storage_unit: &mut StorageUnit, character_id: ID): &mut Inventory {
+    df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id)
 }
 
 #[test_only]
@@ -376,13 +383,15 @@ public fun borrow_status_mut(storage_unit: &mut StorageUnit): &mut AssemblyStatu
 }
 
 #[test_only]
-public fun item_quantity(storage_unit: &StorageUnit, item_id: u64): u32 {
-    storage_unit.inventory.item_quantity(item_id)
+public fun item_quantity(storage_unit: &StorageUnit, character_id: ID, item_id: u64): u32 {
+    let inventory = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+    inventory.item_quantity(item_id)
 }
 
 #[test_only]
-public fun contains_item(storage_unit: &StorageUnit, item_id: u64): bool {
-    storage_unit.inventory.contains_item(item_id)
+public fun contains_item(storage_unit: &StorageUnit, character_id: ID, item_id: u64): bool {
+    let inventory = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+    inventory.contains_item(item_id)
 }
 
 #[test_only]
@@ -390,21 +399,22 @@ public fun chain_item_to_game_inventory_test(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap,
+    character_id: ID,
     item_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    storage_unit
-        .inventory
-        .burn_items_with_proof_test(
-            &storage_unit.status,
-            server_registry,
-            &storage_unit.location,
-            owner_cap,
-            item_id,
-            quantity,
-            location_proof,
-            ctx,
-        );
+    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAccessNotAuthorized);
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+    inventory.burn_items_with_proof_test(
+        server_registry,
+        &storage_unit.location,
+        owner_cap,
+        item_id,
+        quantity,
+        location_proof,
+        ctx,
+    );
 }

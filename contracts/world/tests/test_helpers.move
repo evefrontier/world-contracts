@@ -17,6 +17,18 @@ public fun user_a(): address { @0x202d7d52ab5f8e8824e3e8066c0b7458f84e326c5d77b3
 
 public fun user_b(): address { @0xD }
 
+public fun user_a_character_id(): ID {
+    object::id_from_bytes(
+        x"0000000000000000000000000000000000000000000000000000000000000001",
+    )
+}
+
+public fun user_b_character_id(): ID {
+    object::id_from_bytes(
+        x"0000000000000000000000000000000000000000000000000000000000000002",
+    )
+}
+
 public fun server_admin(): address {
     @0x93d3209c7f138aded41dcb008d066ae872ed558bd8dcb562da47d4ef78295333
 }
@@ -56,8 +68,6 @@ public fun setup_owner_cap(ts: &mut ts::Scenario, owner: address, object_id: ID)
 public fun setup_owner_cap_for_user_a(ts: &mut ts::Scenario, object_id: ID) {
     setup_owner_cap(ts, user_a(), object_id);
 }
-
-// functions to get off-chain verified values for signaure proof
 
 public fun register_server_address(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
