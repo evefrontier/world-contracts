@@ -132,9 +132,9 @@ public fun verify_proximity(
 /// Verify that a server-signed proof attesting a player is in proximity the structure.
 /// This function gets `proof_bytes` the LocationProof as bytes
 public fun verify_proximity_proof_from_bytes(
+    server_registry: &ServerAddressRegistry,
     location: &Location,
     proof_bytes: vector<u8>,
-    server_registry: &ServerAddressRegistry,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -157,8 +157,8 @@ public fun verify_proximity_proof_from_bytes(
 /// Verify that a server-signed proof attesting two structures are under a certain distance.
 public fun verify_distance(
     location: &Location,
-    proof_bytes: vector<u8>,
     server_registry: &ServerAddressRegistry,
+    proof_bytes: vector<u8>,
     max_distance: u64,
     ctx: &mut TxContext,
 ) {
@@ -193,18 +193,14 @@ public fun hash(location: &Location): vector<u8> {
 
 // === Admin Functions ===
 
-public fun update(location: &mut Location, _admin_cap: &AdminCap, location_hash: vector<u8>) {
+public fun update(location: &mut Location, _: &AdminCap, location_hash: vector<u8>) {
     assert!(location_hash.length() == 32, EInvalidHashLength);
     location.location_hash = location_hash;
 }
 
 // === Package Functions ===
 
-public(package) fun attach(
-    _admin_cap: &AdminCap,
-    structure_id: ID,
-    location_hash: vector<u8>,
-): Location {
+public(package) fun attach(structure_id: ID, location_hash: vector<u8>): Location {
     assert!(location_hash.length() == 32, EInvalidHashLength);
     Location {
         structure_id,
@@ -284,9 +280,9 @@ fun is_deadline_valid(deadline_ms: u64, clock: &Clock): bool {
 /// deadline. This function bypasses deadline validation for testing convenience.
 #[test_only]
 public fun verify_proximity_without_deadline(
+    server_registry: &ServerAddressRegistry,
     location: &Location,
     proof: LocationProof,
-    server_registry: &ServerAddressRegistry,
     ctx: &mut TxContext,
 ): bool {
     let LocationProof {
@@ -306,9 +302,9 @@ public fun verify_proximity_without_deadline(
 
 #[test_only]
 public fun verify_proximity_proof_from_bytes_without_deadline(
+    server_registry: &ServerAddressRegistry,
     location: &Location,
     proof_bytes: vector<u8>,
-    server_registry: &ServerAddressRegistry,
     ctx: &mut TxContext,
 ) {
     let (message, signature) = unpack_proof(proof_bytes);

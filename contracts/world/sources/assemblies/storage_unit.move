@@ -112,9 +112,9 @@ public fun chain_item_to_game_inventory(
     inventory.burn_items_with_proof(
         server_registry,
         &storage_unit.location,
+        location_proof,
         item_id,
         quantity,
-        location_proof,
         clock,
         ctx,
     );
@@ -157,8 +157,6 @@ public fun withdraw_item<Auth: drop>(
     inventory.withdraw_item(item_id)
 }
 
-// The ephemeral storage functions will be removed when Ship inventory is implemented
-// Future: The Ship module will handle owner-controlled inventory operations
 public fun deposit_by_owner(
     storage_unit: &mut StorageUnit,
     item: Item,
@@ -181,9 +179,9 @@ public fun deposit_by_owner(
     );
 
     location::verify_proximity_proof_from_bytes(
+        server_registry,
         &storage_unit.location,
         proximity_proof,
-        server_registry,
         clock,
         ctx,
     );
@@ -212,9 +210,9 @@ public fun withdraw_by_owner(
     assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EInventoryNotAuthorized);
 
     location::verify_proximity_proof_from_bytes(
+        server_registry,
         &storage_unit.location,
         proximity_proof,
-        server_registry,
         clock,
         ctx,
     );
@@ -230,7 +228,6 @@ public fun withdraw_by_owner(
 // TODO: Can also have a transfer function for simplicity
 
 // === View Functions ===
-
 public fun status(storage_unit: &StorageUnit): &AssemblyStatus {
     &storage_unit.status
 }
@@ -246,7 +243,7 @@ public fun inventory(storage_unit: &StorageUnit, character_id: ID): &Inventory {
 // === Admin Functions ===
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminCap,
     character_id: ID,
     type_id: u64,
     item_id: u64,
@@ -267,8 +264,8 @@ public fun anchor(
         owner_character_id: character_id,
         type_id: type_id,
         item_id: item_id,
-        status: status::anchor(admin_cap, assembly_id, type_id, item_id),
-        location: location::attach(admin_cap, assembly_id, location_hash),
+        status: status::anchor(assembly_id, type_id, item_id),
+        location: location::attach(assembly_id, location_hash),
         inventory_keys: vector[],
         metadata: option::none(),
         extension: option::none(),
@@ -335,7 +332,7 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
 
 public fun game_item_to_chain_inventory(
     storage_unit: &mut StorageUnit,
-    admin_cap: &AdminCap,
+    _: &AdminCap,
     character_id: ID,
     item_id: u64,
     type_id: u64,
@@ -366,7 +363,6 @@ public fun game_item_to_chain_inventory(
         character_id,
     );
     inventory.mint_items(
-        admin_cap,
         item_id,
         type_id,
         volume,
@@ -428,9 +424,9 @@ public fun chain_item_to_game_inventory_test(
     inventory.burn_items_with_proof_test(
         server_registry,
         &storage_unit.location,
+        location_proof,
         item_id,
         quantity,
-        location_proof,
         ctx,
     );
 }

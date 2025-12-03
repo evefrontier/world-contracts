@@ -49,6 +49,14 @@ fun init(ctx: &mut TxContext) {
     });
 }
 
+// === Public Functions ===
+public fun rename_character(character: &mut Character, owner_cap: &OwnerCap, name: String) {
+    assert!(authority::is_authorized(owner_cap, object::id(character)), ECharacterNotAuthorized);
+    assert!(std::string::length(&name) > 0, ECharacterNameEmpty);
+    character.name = name;
+}
+
+// === Admin Functions ===
 public fun create_character(
     registry: &mut CharacterRegistry,
     _: &AdminCap,
@@ -84,12 +92,6 @@ public fun share_character(character: Character, _: &AdminCap) {
     transfer::share_object(character);
 }
 
-public fun rename_character(character: &mut Character, owner_cap: &OwnerCap, name: String) {
-    assert!(authority::is_authorized(owner_cap, object::id(character)), ECharacterNotAuthorized);
-    assert!(std::string::length(&name) > 0, ECharacterNameEmpty);
-    character.name = name;
-}
-
 public fun update_tribe(character: &mut Character, _: &AdminCap, tribe_id: u32) {
     assert!(tribe_id != 0, ETribeIdEmpty);
     character.tribe_id = tribe_id;
@@ -100,6 +102,7 @@ public fun delete_character(character: Character, _: &AdminCap) {
     id.delete();
 }
 
+// === Test Functions ===
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);

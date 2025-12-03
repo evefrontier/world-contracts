@@ -28,17 +28,15 @@ public struct StorageUnit has key {
 fun create_storage_unit(ts: &mut ts::Scenario) {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
         let storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(&admin_cap, assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
+            status: status::anchor(assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
             max_capacity: 10000,
         };
         // share storage unit object
         transfer::share_object(storage_unit);
-        ts::return_to_sender(ts, admin_cap);
     }
 }
 

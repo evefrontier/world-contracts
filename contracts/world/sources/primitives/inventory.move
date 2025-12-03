@@ -8,7 +8,7 @@
 module world::inventory;
 
 use sui::{clock::Clock, derived_object, event, vec_map::{Self, VecMap}};
-use world::{authority::{AdminCap, ServerAddressRegistry}, location::{Self, Location}};
+use world::{authority::ServerAddressRegistry, location::{Self, Location}};
 
 // === Errors ===
 #[error(code = 0)]
@@ -95,30 +95,7 @@ public struct ItemWithdrawnEvent has copy, drop {
     quantity: u32,
 }
 
-// === Public Functions ===
-
-public(package) fun burn_items_with_proof(
-    inventory: &mut Inventory,
-    server_registry: &ServerAddressRegistry,
-    location: &Location,
-    item_id: u64,
-    quantity: u32,
-    location_proof: vector<u8>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    location::verify_proximity_proof_from_bytes(
-        location,
-        location_proof,
-        server_registry,
-        clock,
-        ctx,
-    );
-    burn_items(inventory, item_id, quantity);
-}
-
 // === View Functions ===
-
 public fun id(inventory: &Inventory): ID {
     inventory.id
 }
@@ -142,14 +119,26 @@ public fun derive_inventory_id(assembly_id: ID, character_id: ID): ID {
     inventory_id
 }
 
-// === Admin Functions ===
+// === Package Functions ===
+
+public(package) fun create(assembly_id: ID, character_id: ID, max_capacity: u64): Inventory {
+    assert!(max_capacity != 0, EInventoryInvalidCapacity);
+
+    Inventory {
+        id: derive_inventory_id(assembly_id, character_id),
+        owner_character_id: character_id,
+        assembly_id: assembly_id,
+        max_capacity,
+        used_capacity: 0,
+        items: vec_map::empty(),
+    }
+}
 
 /// Mints items into inventory (Game → Chain bridge)
 /// Admin-only function for trusted game server
 /// Creates new item or adds to existing if item_id already exists
-public fun mint_items(
+public(package) fun mint_items(
     inventory: &mut Inventory,
-    admin_cap: &AdminCap,
     item_id: u64,
     type_id: u64,
     volume: u64,
@@ -171,7 +160,7 @@ public fun mint_items(
             item_id,
             volume,
             quantity,
-            location: location::attach(admin_cap, item_uid_value, location_hash),
+            location: location::attach(item_uid_value, location_hash),
         };
 
         let req_capacity = calculate_volume(volume, quantity);
@@ -193,21 +182,26 @@ public fun mint_items(
     }
 }
 
-// === Package Functions ===
-public(package) fun create(assembly_id: ID, character_id: ID, max_capacity: u64): Inventory {
-    assert!(max_capacity != 0, EInventoryInvalidCapacity);
-
-    Inventory {
-        id: derive_inventory_id(assembly_id, character_id),
-        owner_character_id: character_id,
-        assembly_id: assembly_id,
-        max_capacity,
-        used_capacity: 0,
-        items: vec_map::empty(),
-    }
+public(package) fun burn_items_with_proof(
+    inventory: &mut Inventory,
+    server_registry: &ServerAddressRegistry,
+    location: &Location,
+    location_proof: vector<u8>,
+    item_id: u64,
+    quantity: u32,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    location::verify_proximity_proof_from_bytes(
+        server_registry,
+        location,
+        location_proof,
+        clock,
+        ctx,
+    );
+    burn_items(inventory, item_id, quantity);
 }
 
-// Does this need to be online ?
 // A wrapper function to transfer between inventories
 public(package) fun deposit_item(inventory: &mut Inventory, item: Item) {
     let req_capacity = calculate_volume(item.volume, item.quantity);
@@ -388,15 +382,15 @@ public fun burn_items_with_proof_test(
     inventory: &mut Inventory,
     server_registry: &ServerAddressRegistry,
     location: &Location,
+    location_proof: vector<u8>,
     item_id: u64,
     quantity: u32,
-    location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
     location::verify_proximity_proof_from_bytes_without_deadline(
+        server_registry,
         location,
         location_proof,
-        server_registry,
         ctx,
     );
     burn_items(inventory, item_id, quantity);

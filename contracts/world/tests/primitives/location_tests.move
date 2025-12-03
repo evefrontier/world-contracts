@@ -30,14 +30,12 @@ public struct Storage has key {
 fun create_storage_unit(ts: &mut ts::Scenario, storage_unit_id: ID, location_hash: vector<u8>) {
     ts::next_tx(ts, server_admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let uid = object::new(ts.ctx());
         let storage_unit = Storage {
             id: uid,
-            location: location::attach(&admin_cap, storage_unit_id, location_hash),
+            location: location::attach(storage_unit_id, location_hash),
         };
         transfer::share_object(storage_unit);
-        ts::return_to_sender(ts, admin_cap);
     };
 }
 
@@ -48,21 +46,18 @@ fun create_assembly_with_location() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
         let max_distance: u64 = 1000000000;
         let gate = Gate {
             id: uid,
             location: location::attach(
-                &admin_cap,
                 assembly_id,
                 LOCATION_HASH_PLANET_B_SYSTEM_2,
             ),
             max_distance,
         };
         transfer::share_object(gate);
-        ts::return_to_sender(&ts, admin_cap);
     };
     ts::end(ts);
 }
@@ -74,21 +69,18 @@ fun update_assembly_location() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
         let max_distance: u64 = 1000000000;
         let gate = Gate {
             id: uid,
             location: location::attach(
-                &admin_cap,
                 assembly_id,
                 LOCATION_HASH_PLANET_B_SYSTEM_2,
             ),
             max_distance,
         };
         transfer::share_object(gate);
-        ts::return_to_sender(&ts, admin_cap);
     };
     ts::next_tx(&mut ts, admin());
     {
@@ -116,38 +108,33 @@ fun verify_same_location() {
     // Create assembly 1
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         gate_id_1 = object::uid_to_inner(&uid);
         let location_hash: vector<u8> = LOCATION_HASH_PLANET_B_SYSTEM_2;
         let max_distance: u64 = 1000000000;
         let gate_1 = Gate {
             id: uid,
-            location: location::attach(&admin_cap, gate_id_1, location_hash),
+            location: location::attach(gate_id_1, location_hash),
             max_distance,
         };
         transfer::share_object(gate_1);
-        ts::return_to_sender(&ts, admin_cap);
     };
 
     // Create assembly 2
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         gate_id_2 = object::uid_to_inner(&uid);
         let max_distance: u64 = 5000000000;
         let gate_2 = Gate {
             id: uid,
             location: location::attach(
-                &admin_cap,
                 gate_id_2,
                 LOCATION_HASH_PLANET_B_SYSTEM_2,
             ),
             max_distance,
         };
         transfer::share_object(gate_2);
-        ts::return_to_sender(&ts, admin_cap);
     };
     ts::next_tx(&mut ts, admin());
     {
@@ -181,9 +168,9 @@ fun verify_proximity_with_signature_proof() {
         let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_A_SYSTEM_1);
 
         location::verify_proximity_without_deadline(
+            &server_registry,
             &storage_unit.location,
             proof,
-            &server_registry,
             ts.ctx(),
         );
 
@@ -216,9 +203,9 @@ fun verify_proximity_proof_with_bytes() {
 
         // Verify using the bytes version
         location::verify_proximity_proof_from_bytes_without_deadline(
+            &server_registry,
             &storage_unit.location,
             proof_bytes,
-            &server_registry,
             ts.ctx(),
         );
 
@@ -237,7 +224,6 @@ fun attach_location_with_invalid_hash_length() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
 
@@ -246,12 +232,11 @@ fun attach_location_with_invalid_hash_length() {
 
         let gate = Gate {
             id: uid,
-            location: location::attach(&admin_cap, assembly_id, location_hash),
+            location: location::attach(assembly_id, location_hash),
             max_distance: 1000,
         };
 
         transfer::share_object(gate);
-        ts::return_to_sender(&ts, admin_cap);
     };
     ts::end(ts);
 }
@@ -276,9 +261,9 @@ fun verify_proximity_with_signature_proof_invalid_sender() {
         let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_A_SYSTEM_1);
 
         location::verify_proximity_without_deadline(
+            &server_registry,
             &storage_unit.location,
             proof,
-            &server_registry,
             ts.ctx(),
         );
 
@@ -310,9 +295,9 @@ fun verify_proximity_with_signature_proof_invalid_location_hash() {
         let proof = test_helpers::construct_location_proof(LOCATION_HASH_PLANET_B_SYSTEM_2);
 
         location::verify_proximity_without_deadline(
+            &server_registry,
             &storage_unit.location,
             proof,
-            &server_registry,
             ts.ctx(),
         );
 
@@ -363,9 +348,9 @@ fun verify_proximity_with_signature_proof_invalid_from_address() {
         );
 
         location::verify_proximity_without_deadline(
+            &server_registry,
             &storage_unit.location,
             proof,
-            &server_registry,
             ts.ctx(),
         );
 
@@ -426,9 +411,9 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
 
         // Verify using the bytes version
         location::verify_proximity_proof_from_bytes(
+            &server_registry,
             &storage_unit.location,
             proof_bytes,
-            &server_registry,
             &clock,
             ts.ctx(),
         );

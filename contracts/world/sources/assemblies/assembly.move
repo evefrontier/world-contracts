@@ -35,6 +35,7 @@ public struct Assembly has key {
     metadata: Option<Metadata>,
 }
 
+// === Events ===
 public struct AssemblyCreatedEvent has copy, drop {
     assembly_id: ID,
     type_id: u64,
@@ -67,7 +68,7 @@ public fun status(assembly: &Assembly): &AssemblyStatus {
 // === Admin Functions ===
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminCap,
     type_id: u64,
     item_id: u64,
     volume: u64,
@@ -85,8 +86,8 @@ public fun anchor(
         type_id,
         item_id,
         volume,
-        status: status::anchor(admin_cap, assembly_id, type_id, item_id),
-        location: location::attach(admin_cap, assembly_id, location_hash),
+        status: status::anchor(assembly_id, type_id, item_id),
+        location: location::attach(assembly_id, location_hash),
         metadata: option::none(),
     };
 
