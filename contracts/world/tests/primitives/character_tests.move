@@ -125,7 +125,7 @@ fun deterministic_character_id() {
             utf8(b"test1"),
             ts::ctx(&mut ts),
         );
-        character_id_1 = character::id(&character);
+        character_id_1 = object::id(&character);
 
         // Verify that the actual ID matches the pre-computed ID
         assert_eq!(character_id_1, precomputed_id);
@@ -161,7 +161,7 @@ fun different_game_ids_produce_different_character_ids() {
             utf8(b"character1"),
             ts::ctx(&mut ts),
         );
-        character_id_1 = character::id(&character);
+        character_id_1 = object::id(&character);
         character::share_character(character, &admin_cap);
         ts::return_shared(registry);
         ts::return_to_sender(&ts, admin_cap);
@@ -180,7 +180,7 @@ fun different_game_ids_produce_different_character_ids() {
             utf8(b"character2"),
             ts::ctx(&mut ts),
         );
-        character_id_2 = character::id(&character);
+        character_id_2 = object::id(&character);
         character::share_character(character, &admin_cap);
         ts::return_shared(registry);
         ts::return_to_sender(&ts, admin_cap);

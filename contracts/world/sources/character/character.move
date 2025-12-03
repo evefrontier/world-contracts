@@ -109,11 +109,6 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-public fun id(character: &Character): ID {
-    object::id(character)
-}
-
-#[test_only]
 public fun game_character_id(character: &Character): u32 {
     character.game_character_id
 }
