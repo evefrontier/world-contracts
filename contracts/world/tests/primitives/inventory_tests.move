@@ -4,7 +4,7 @@ module world::inventory_tests;
 use std::{bcs, unit_test::assert_eq};
 use sui::{dynamic_field as df, test_scenario as ts};
 use world::{
-    authority::{OwnerCap, AdminCap, ServerAddressRegistry},
+    authority::{AdminCap, ServerAddressRegistry},
     inventory::{Self, Inventory},
     location::{Self, Location},
     status::{Self, AssemblyStatus},
@@ -67,12 +67,10 @@ fun online(ts: &mut ts::Scenario) {
     ts::next_tx(ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(ts);
-        storage_unit.status.online(&owner_cap);
+        storage_unit.status.online();
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_ONLINE);
 
         ts::return_shared(storage_unit);
-        ts::return_to_sender(ts, owner_cap);
     }
 }
 
@@ -411,14 +409,6 @@ fun burn_items_with_proof() {
     };
 
     test_helpers::setup_owner_cap(&mut ts, user_a(), test_helpers::get_storage_unit_id());
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        storage_unit.status.online(&owner_cap);
-        ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
-    };
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);

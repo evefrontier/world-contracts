@@ -5,9 +5,9 @@ module world::status_tests;
 use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
-    authority::{Self, OwnerCap, AdminCap},
+    authority::AdminCap,
     status::{Self, AssemblyStatus},
-    test_helpers::{Self, governor, admin, user_a, user_b}
+    test_helpers::{Self, governor, admin, user_a}
 };
 
 const STORAGE_TYPE_ID: u64 = 88069;
@@ -93,12 +93,10 @@ fun online() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        status::online(&mut storage_unit.status, &owner_cap);
+        storage_unit.status.online();
 
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_ONLINE);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
     };
     ts::end(ts);
 }
@@ -122,13 +120,11 @@ fun offline() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        status::online(&mut storage_unit.status, &owner_cap);
-        status::offline(&mut storage_unit.status, &owner_cap);
+        storage_unit.status.online();
+        storage_unit.status.offline();
 
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_OFFLINE);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
     };
     ts::end(ts);
 }
@@ -162,22 +158,13 @@ fun offline_without_online_fail() {
     test_helpers::setup_world(&mut ts);
     create_storage_unit(&mut ts);
 
-    ts::next_tx(&mut ts, admin());
-    {
-        let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        test_helpers::setup_owner_cap_for_user_a(&mut ts, object::id(&storage_unit));
-        ts::return_shared(storage_unit);
-    };
-
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        status::offline(&mut storage_unit.status, &owner_cap);
+        storage_unit.status.offline();
 
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_OFFLINE);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
     };
     ts::end(ts);
 }
@@ -192,145 +179,19 @@ fun online_when_already_online_fail() {
     test_helpers::setup_world(&mut ts);
     create_storage_unit(&mut ts);
 
-    ts::next_tx(&mut ts, admin());
+    ts::next_tx(&mut ts, user_a());
     {
-        let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        test_helpers::setup_owner_cap_for_user_a(&mut ts, object::id(&storage_unit));
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        storage_unit.status.online();
         ts::return_shared(storage_unit);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        status::online(&mut storage_unit.status, &owner_cap);
-        ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
-    };
-
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
         // Attempt to bring online again - should fail
-        status::online(&mut storage_unit.status, &owner_cap);
+        storage_unit.status.online();
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
-    };
-    ts::end(ts);
-}
-
-/// Tests that bringing online without proper owner capability fails
-/// Scenario: User B attempts to bring User A's assembly online using wrong OwnerCap
-/// Expected: Transaction aborts with EAssemblyNotAuthorized error
-#[test]
-#[expected_failure(abort_code = status::EAssemblyNotAuthorized)]
-fun online_fail_by_unauthorised_owner() {
-    let mut ts = ts::begin(governor());
-    test_helpers::setup_world(&mut ts);
-
-    // First assembly
-    create_storage_unit(&mut ts);
-    let assembly_1_id: ID;
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let storage_unit_1 = ts::take_shared<StorageUnit>(&ts);
-        assembly_1_id = object::id(&storage_unit_1);
-
-        // Create second assembly
-        let uid = object::new(ts.ctx());
-        let assembly_2_id = object::uid_to_inner(&uid);
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let storage_unit_2 = StorageUnit {
-            id: uid,
-            status: status::anchor(&admin_cap, assembly_2_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
-            max_capacity: 10000,
-        };
-        transfer::share_object(storage_unit_2);
-
-        // Give user_b cap for assembly_2
-        let owner_cap = authority::create_owner_cap(&admin_cap, assembly_2_id, ts.ctx());
-        authority::transfer_owner_cap(owner_cap, &admin_cap, user_b());
-
-        ts::return_shared(storage_unit_1);
-        ts::return_to_sender(&ts, admin_cap);
-    };
-
-    ts::next_tx(&mut ts, user_b());
-    {
-        // let mut storage_unit_1 = ts::take_shared<StorageUnit>(&ts);
-        let mut storage_unit_1 = ts::take_shared_by_id<StorageUnit>(&ts, assembly_1_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-
-        // use assembly_2's cap on assembly_1, Should fail
-        status::online(&mut storage_unit_1.status, &owner_cap);
-
-        ts::return_shared(storage_unit_1);
-        ts::return_to_sender(&ts, owner_cap);
-    };
-    ts::end(ts);
-}
-
-/// Tests that taking offline without proper owner capability fails
-/// Scenario: User B attempts to take User A's assembly offline using wrong OwnerCap
-/// Expected: Transaction aborts with EAssemblyNotAuthorized error
-#[test]
-#[expected_failure(abort_code = status::EAssemblyNotAuthorized)]
-fun offline_fail_by_unauthorised_owner() {
-    let mut ts = ts::begin(governor());
-    test_helpers::setup_world(&mut ts);
-
-    // First assembly
-    create_storage_unit(&mut ts);
-    let assembly_1_id: ID;
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let storage_unit_1 = ts::take_shared<StorageUnit>(&ts);
-        assembly_1_id = object::id(&storage_unit_1);
-
-        // Create second assembly
-        let uid = object::new(ts.ctx());
-        let assembly_2_id = object::uid_to_inner(&uid);
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let storage_unit_2 = StorageUnit {
-            id: uid,
-            status: status::anchor(&admin_cap, assembly_2_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
-            max_capacity: 10000,
-        };
-        transfer::share_object(storage_unit_2);
-
-        // Give user_a cap for assembly_1
-        let owner_cap_1 = authority::create_owner_cap(&admin_cap, assembly_1_id, ts.ctx());
-        authority::transfer_owner_cap(owner_cap_1, &admin_cap, user_a());
-
-        // Give user_b cap for assembly_2
-        let owner_cap_2 = authority::create_owner_cap(&admin_cap, assembly_2_id, ts.ctx());
-        authority::transfer_owner_cap(owner_cap_2, &admin_cap, user_b());
-
-        ts::return_shared(storage_unit_1);
-        ts::return_to_sender(&ts, admin_cap);
-    };
-
-    // Bring assembly_1 online
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut storage_unit_1 = ts::take_shared_by_id<StorageUnit>(&ts, assembly_1_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        status::online(&mut storage_unit_1.status, &owner_cap);
-        ts::return_shared(storage_unit_1);
-        ts::return_to_sender(&ts, owner_cap);
-    };
-
-    ts::next_tx(&mut ts, user_b());
-    {
-        let mut storage_unit_1 = ts::take_shared_by_id<StorageUnit>(&ts, assembly_1_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        // Use assembly_2's cap on assembly_1 - should fail
-        status::offline(&mut storage_unit_1.status, &owner_cap);
-        ts::return_shared(storage_unit_1);
-        ts::return_to_sender(&ts, owner_cap);
     };
     ts::end(ts);
 }

@@ -81,11 +81,13 @@ public fun authorize_extension<Auth: drop>(storage_unit: &mut StorageUnit, owner
 
 // We can do wrappers like this, or directly call respective modules
 public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
-    storage_unit.status.online(owner_cap);
+    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    storage_unit.status.online();
 }
 
 public fun offline(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap) {
-    storage_unit.status.offline(owner_cap);
+    assert!(authority::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    storage_unit.status.offline();
 }
 
 public fun chain_item_to_game_inventory(

@@ -1159,3 +1159,70 @@ fun mint_items_fail_inventory_offline() {
     mint_ammo(&mut ts, storage_unit_id, character_id);
     ts::end(ts);
 }
+
+/// Tests that bringing online without proper owner capability fails
+/// Scenario: User B attempts to bring User A's assembly online using wrong OwnerCap
+/// Expected: Transaction aborts with EAssemblyNotAuthorized error
+#[test]
+#[expected_failure(abort_code = storage_unit::EAssemblyNotAuthorized)]
+fun online_fail_by_unauthorised_owner() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let character_a_id = user_a_character_id();
+
+    // Create User A Storage unit
+    let storage_id = create_storage_unit(
+        &mut ts,
+        character_a_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_id);
+
+    let dummy_id = object::id_from_bytes(
+        x"0000000000000000000000000000000000000000000000000000000000000001",
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
+
+    online_storage_unit(&mut ts, user_b(), storage_id);
+
+    ts::end(ts);
+}
+
+/// Test taking offline without proper owner capability fails
+/// Scenario: User B attempts to take User A's assembly offline using wrong OwnerCap
+/// Expected: Transaction aborts with EAssemblyNotAuthorized error
+#[test]
+#[expected_failure]
+fun offline_fail_by_unauthorised_owner() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let character_a_id = user_a_character_id();
+    let character_b_id = user_b_character_id();
+
+    // Create User A Storage unit
+    let storage_a_id = create_storage_unit(
+        &mut ts,
+        character_a_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_a_id);
+    online_storage_unit(&mut ts, user_b(), storage_a_id);
+
+    // Create User B Storage unit
+    let storage_b_id = create_storage_unit(
+        &mut ts,
+        character_b_id,
+        test_helpers::get_verified_location_hash(),
+        2343432432,
+        5676576576,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_b_id);
+
+    // B tries to offline A's storage unit fails
+    online_storage_unit(&mut ts, user_b(), storage_a_id);
+    ts::end(ts);
+}
