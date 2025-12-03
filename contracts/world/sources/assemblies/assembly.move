@@ -27,6 +27,7 @@ public struct AssemblyRegistry has key {
 
 public struct Assembly has key {
     id: UID,
+    owner_character_id: ID,
     type_id: u64,
     item_id: u64,
     volume: u64,
@@ -38,6 +39,7 @@ public struct Assembly has key {
 // === Events ===
 public struct AssemblyCreatedEvent has copy, drop {
     assembly_id: ID,
+    owner_character_id: ID,
     type_id: u64,
     item_id: u64,
     volume: u64,
@@ -69,6 +71,7 @@ public fun status(assembly: &Assembly): &AssemblyStatus {
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
     _: &AdminCap,
+    character_id: ID,
     type_id: u64,
     item_id: u64,
     volume: u64,
@@ -83,6 +86,7 @@ public fun anchor(
     let assembly_id = object::uid_to_inner(&assembly_uid);
     let assembly = Assembly {
         id: assembly_uid,
+        owner_character_id: character_id,
         type_id,
         item_id,
         volume,
@@ -93,6 +97,7 @@ public fun anchor(
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,
+        owner_character_id: character_id,
         type_id,
         item_id,
         volume,
@@ -108,6 +113,7 @@ public fun share_assembly(assembly: Assembly, _: &AdminCap) {
 public fun unanchor(assembly: Assembly, _: &AdminCap) {
     let Assembly {
         id,
+        owner_character_id: _,
         type_id: _,
         item_id: _,
         volume: _,

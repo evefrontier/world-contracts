@@ -8,7 +8,7 @@ use world::{
     authority::{AdminCap, OwnerCap},
     location,
     status,
-    test_helpers::{Self, governor, admin, user_a}
+    test_helpers::{Self, governor, admin, user_a, user_a_character_id}
 };
 
 const LOCATION_HASH: vector<u8> =
@@ -28,6 +28,7 @@ fun create_assembly(ts: &mut ts::Scenario): ID {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a_character_id(),
         TYPE_ID,
         ITEM_ID,
         VOLUME,
@@ -115,6 +116,7 @@ fun test_unanchor() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a_character_id(),
         TYPE_ID,
         ITEM_ID,
         VOLUME,
@@ -147,6 +149,7 @@ fun test_anchor_duplicate_item_id() {
     let assembly1 = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a_character_id(),
         TYPE_ID,
         ITEM_ID,
         VOLUME,
@@ -159,6 +162,7 @@ fun test_anchor_duplicate_item_id() {
     let assembly2 = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a_character_id(),
         TYPE_ID,
         ITEM_ID,
         VOLUME,
@@ -185,6 +189,7 @@ fun test_anchor_invalid_type_id() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a_character_id(),
         0, // Invalid Type ID
         ITEM_ID,
         VOLUME,
@@ -211,6 +216,7 @@ fun test_anchor_invalid_item_id() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a_character_id(),
         TYPE_ID,
         0, // Invalid Item ID
         VOLUME,

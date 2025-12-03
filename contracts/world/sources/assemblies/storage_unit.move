@@ -66,6 +66,7 @@ public struct StorageUnit has key {
 // === Events ===
 public struct StorageUnitCreatedEvent has copy, drop {
     storage_unit_id: ID,
+    owner_character_id: ID,
     max_capacity: u64,
     location_hash: vector<u8>,
     status: Status,
@@ -281,6 +282,7 @@ public fun anchor(
 
     event::emit(StorageUnitCreatedEvent {
         storage_unit_id: assembly_id,
+        owner_character_id: character_id,
         max_capacity,
         location_hash,
         status: status::status(&storage_unit.status),
