@@ -1165,7 +1165,7 @@ fun mint_items_fail_inventory_offline() {
 /// Expected: Transaction aborts with EAssemblyNotAuthorized error
 #[test]
 #[expected_failure(abort_code = storage_unit::EAssemblyNotAuthorized)]
-fun online_fail_by_unauthorised_owner() {
+fun online_fail_by_unauthorized_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let character_a_id = user_a_character_id();
@@ -1195,7 +1195,7 @@ fun online_fail_by_unauthorised_owner() {
 /// Expected: Transaction aborts with EAssemblyNotAuthorized error
 #[test]
 #[expected_failure]
-fun offline_fail_by_unauthorised_owner() {
+fun offline_fail_by_unauthorized_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let character_a_id = user_a_character_id();
