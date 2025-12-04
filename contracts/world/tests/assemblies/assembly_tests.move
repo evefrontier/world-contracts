@@ -5,10 +5,10 @@ use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
     assembly::{Self, Assembly, AssemblyRegistry},
-    authority::{AdminCap, OwnerCap},
+    authority::{Self, AdminCap, OwnerCap},
     location,
     status,
-    test_helpers::{Self, governor, admin, user_a, user_a_character_id}
+    test_helpers::{Self, governor, admin, user_a, user_b}
 };
 
 const LOCATION_HASH: vector<u8> =
@@ -25,10 +25,9 @@ fun create_assembly(ts: &mut ts::Scenario): ID {
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
-    let assembly = assembly::anchor(
+    let (assembly, owner_cap) = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        user_a_character_id(),
         TYPE_ID,
         ITEM_ID,
         VOLUME,
@@ -37,6 +36,7 @@ fun create_assembly(ts: &mut ts::Scenario): ID {
     );
     let id = object::id(&assembly);
     assembly::share_assembly(assembly, &admin_cap);
+    authority::transfer_owner_cap(owner_cap, &admin_cap, user_a());
 
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(assembly_registry);
@@ -76,7 +76,6 @@ fun test_online_offline() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let assembly_id = create_assembly(&mut ts);
-    test_helpers::setup_owner_cap(&mut ts, user_a(), assembly_id);
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -113,16 +112,16 @@ fun test_unanchor() {
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
-    let assembly = assembly::anchor(
+    let (assembly, owner_cap) = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        user_a_character_id(),
         TYPE_ID,
         ITEM_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );
+    authority::transfer_owner_cap(owner_cap, &admin_cap, user_a());
 
     // Unanchor - consumes assembly
     assembly::unanchor(assembly, &admin_cap);
@@ -146,10 +145,9 @@ fun test_anchor_duplicate_item_id() {
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
-    let assembly1 = assembly::anchor(
+    let (assembly1, owner_cap1) = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        user_a_character_id(),
         TYPE_ID,
         ITEM_ID,
         VOLUME,
@@ -157,12 +155,12 @@ fun test_anchor_duplicate_item_id() {
         ts.ctx(),
     );
     assembly::share_assembly(assembly1, &admin_cap);
+    authority::transfer_owner_cap(owner_cap1, &admin_cap, user_a());
 
     // Second anchor with same ITEM_ID should fail
-    let assembly2 = assembly::anchor(
+    let (assembly2, owner_cap2) = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        user_a_character_id(),
         TYPE_ID,
         ITEM_ID,
         VOLUME,
@@ -170,6 +168,7 @@ fun test_anchor_duplicate_item_id() {
         ts.ctx(),
     );
     assembly::share_assembly(assembly2, &admin_cap);
+    authority::transfer_owner_cap(owner_cap2, &admin_cap, user_b());
 
     ts::return_to_sender(&ts, admin_cap);
     ts::return_shared(assembly_registry);
@@ -186,10 +185,9 @@ fun test_anchor_invalid_type_id() {
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
-    let assembly = assembly::anchor(
+    let (assembly, owner_cap) = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        user_a_character_id(),
         0, // Invalid Type ID
         ITEM_ID,
         VOLUME,
@@ -197,6 +195,7 @@ fun test_anchor_invalid_type_id() {
         ts.ctx(),
     );
     assembly::share_assembly(assembly, &admin_cap);
+    authority::transfer_owner_cap(owner_cap, &admin_cap, user_a());
 
     ts::return_to_sender(&ts, admin_cap);
     ts::return_shared(assembly_registry);
@@ -213,10 +212,9 @@ fun test_anchor_invalid_item_id() {
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
-    let assembly = assembly::anchor(
+    let (assembly, owner_cap) = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        user_a_character_id(),
         TYPE_ID,
         0, // Invalid Item ID
         VOLUME,
@@ -224,6 +222,7 @@ fun test_anchor_invalid_item_id() {
         ts.ctx(),
     );
     assembly::share_assembly(assembly, &admin_cap);
+    authority::transfer_owner_cap(owner_cap, &admin_cap, user_a());
 
     ts::return_to_sender(&ts, admin_cap);
     ts::return_shared(assembly_registry);

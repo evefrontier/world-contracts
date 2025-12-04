@@ -27,7 +27,7 @@ public struct AssemblyRegistry has key {
 
 public struct Assembly has key {
     id: UID,
-    owner_id: ID,
+    owner_cap_id: ID,
     type_id: u64,
     item_id: u64,
     volume: u64,
@@ -39,7 +39,7 @@ public struct Assembly has key {
 // === Events ===
 public struct AssemblyCreatedEvent has copy, drop {
     assembly_id: ID,
-    owner_id: ID,
+    owner_cap_id: ID,
     type_id: u64,
     item_id: u64,
     volume: u64,
@@ -70,23 +70,26 @@ public fun status(assembly: &Assembly): &AssemblyStatus {
 // === Admin Functions ===
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
-    _: &AdminCap,
-    character_id: ID,
+    admin_cap: &AdminCap,
     type_id: u64,
     item_id: u64,
     volume: u64,
     location_hash: vector<u8>,
-    _: &mut TxContext,
-): Assembly {
+    ctx: &mut TxContext,
+): (Assembly, OwnerCap) {
     assert!(type_id != 0, EAssemblyTypeIdEmpty);
     assert!(item_id != 0, EAssemblyItemIdEmpty);
     assert!(!assembly_exists(assembly_registry, item_id), EAssemblyAlreadyExists);
 
     let assembly_uid = derived_object::claim(&mut assembly_registry.id, item_id);
     let assembly_id = object::uid_to_inner(&assembly_uid);
+
+    let owner_cap = authority::create_owner_cap(admin_cap, assembly_id, ctx);
+    let owner_cap_id = object::id(&owner_cap);
+
     let assembly = Assembly {
         id: assembly_uid,
-        owner_id: character_id,
+        owner_cap_id: owner_cap_id,
         type_id,
         item_id,
         volume,
@@ -97,12 +100,12 @@ public fun anchor(
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,
-        owner_id: character_id,
+        owner_cap_id: owner_cap_id,
         type_id,
         item_id,
         volume,
     });
-    assembly
+    (assembly, owner_cap)
 }
 
 public fun share_assembly(assembly: Assembly, _: &AdminCap) {
@@ -113,7 +116,7 @@ public fun share_assembly(assembly: Assembly, _: &AdminCap) {
 public fun unanchor(assembly: Assembly, _: &AdminCap) {
     let Assembly {
         id,
-        owner_id: _,
+        owner_cap_id: _,
         type_id: _,
         item_id: _,
         volume: _,
