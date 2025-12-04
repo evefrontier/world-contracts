@@ -13,7 +13,7 @@ Contracts should be structured as logical modules that promote code reusability 
 Base modules should support the creation of diverse in-game structures without requiring modifications to the underlying primitives. New assemblies can be added by composing existing modules.
 
 ### 3. Security
-Since Sui smart contracts are publicly accessible and state mutations are permanent, the design must ensure only authorized entities can modify on-chain state. This is critical for preventing unauthorised access and maintaining game integrity.
+Since Sui smart contracts are publicly accessible and state mutations are permanent, the design must ensure only authorized entities can modify on-chain state. This is critical for preventing unauthorized access and maintaining game integrity.
 
 ### 4. Moddability
 As a core feature of Frontier, players should be able to extend the behavior of in-game structures they own through custom smart contracts. The world-contracts must provide a secure mechanism for integrating third-party code while maintaining authorization controls.

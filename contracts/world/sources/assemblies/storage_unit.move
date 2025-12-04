@@ -43,9 +43,9 @@ const EStorageUnitAlreadyExists: vector<u8> = b"StorageUnit with the same Item I
 const EAssemblyNotAuthorized: vector<u8> = b"StorageUnit access not authorized";
 #[error(code = 4)]
 const EExtensionNotAuthorized: vector<u8> =
-    b"Access only authorised for the custom contract of the registered type";
+    b"Access only authorized for the custom contract of the registered type";
 #[error(code = 5)]
-const EInventoryNotAuthorized: vector<u8> = b"Inventory Access not authorised";
+const EInventoryNotAuthorized: vector<u8> = b"Inventory Access not authorized";
 #[error(code = 6)]
 const ENotOnline: vector<u8> = b"Storage Unit is not online";
 
@@ -53,7 +53,7 @@ const ENotOnline: vector<u8> = b"Storage Unit is not online";
 // === Structs ===
 public struct StorageUnit has key {
     id: UID,
-    owner_character_id: ID,
+    owner_id: ID,
     type_id: u64,
     item_id: u64,
     status: AssemblyStatus,
@@ -133,7 +133,7 @@ public fun deposit_item<Auth: drop>(
     assert!(storage_unit.status.is_online(), ENotOnline);
     let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
-        storage_unit.owner_character_id,
+        storage_unit.owner_id,
     );
     inventory.deposit_item(item);
 }
@@ -148,10 +148,9 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
         EExtensionNotAuthorized,
     );
-    assert!(storage_unit.status.is_online(), ENotOnline);
     let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
-        storage_unit.owner_character_id,
+        storage_unit.owner_id,
     );
 
     inventory.withdraw_item(item_id)
@@ -261,7 +260,7 @@ public fun anchor(
 
     let mut storage_unit = StorageUnit {
         id: assembly_uid,
-        owner_character_id: character_id,
+        owner_id: character_id,
         type_id: type_id,
         item_id: item_id,
         status: status::anchor(assembly_id, type_id, item_id),
@@ -300,7 +299,7 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
 public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     let StorageUnit {
         mut id,
-        owner_character_id: _,
+        owner_id: _,
         type_id: _,
         item_id: _,
         status,
@@ -346,7 +345,7 @@ public fun game_item_to_chain_inventory(
     if (!df::exists_(&storage_unit.id, character_id)) {
         let owner_inv = df::borrow<ID, Inventory>(
             &storage_unit.id,
-            storage_unit.owner_character_id,
+            storage_unit.owner_id,
         );
         let inventory = inventory::create(
             object::id(storage_unit),
