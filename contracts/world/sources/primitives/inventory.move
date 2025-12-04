@@ -32,7 +32,7 @@ const EInventoryInsufficientQuantity: vector<u8> = b"Insufficient quantity in in
 public struct Inventory has store {
     id: ID,
     assembly_id: ID,
-    owner_character_id: ID,
+    owner_id: ID,
     max_capacity: u64,
     used_capacity: u64,
     items: VecMap<u64, Item>,
@@ -54,7 +54,7 @@ public struct Item has key, store {
 // === Events ===
 public struct ItemMintedEvent has copy, drop {
     inventory_id: ID,
-    owner_character_id: ID,
+    owner_id: ID,
     item_uid: ID,
     item_id: u64,
     type_id: u64,
@@ -64,14 +64,14 @@ public struct ItemMintedEvent has copy, drop {
 
 public struct ItemBurnedEvent has copy, drop {
     inventory_id: ID,
-    owner_character_id: ID,
+    owner_id: ID,
     item_id: u64,
     quantity: u32,
 }
 
 public struct ItemQuantityChangedEvent has copy, drop {
     inventory_id: ID,
-    owner_character_id: ID,
+    owner_id: ID,
     item_id: u64,
     old_quantity: u32,
     new_quantity: u32,
@@ -79,7 +79,7 @@ public struct ItemQuantityChangedEvent has copy, drop {
 
 public struct ItemDepositedEvent has copy, drop {
     inventory_id: ID,
-    owner_character_id: ID,
+    owner_id: ID,
     item_id: u64,
     type_id: u64,
     volume: u64,
@@ -88,7 +88,7 @@ public struct ItemDepositedEvent has copy, drop {
 
 public struct ItemWithdrawnEvent has copy, drop {
     inventory_id: ID,
-    owner_character_id: ID,
+    owner_id: ID,
     item_id: u64,
     type_id: u64,
     volume: u64,
@@ -183,7 +183,7 @@ public fun mint_items(
 
         event::emit(ItemMintedEvent {
             inventory_id: inventory.id,
-            owner_character_id: inventory.owner_character_id,
+            owner_id: inventory.owner_id,
             item_uid: item_uid_value,
             item_id: item_id,
             type_id: type_id,
@@ -199,7 +199,7 @@ public(package) fun create(assembly_id: ID, character_id: ID, max_capacity: u64)
 
     Inventory {
         id: derive_inventory_id(assembly_id, character_id),
-        owner_character_id: character_id,
+        owner_id: character_id,
         assembly_id: assembly_id,
         max_capacity,
         used_capacity: 0,
@@ -218,7 +218,7 @@ public(package) fun deposit_item(inventory: &mut Inventory, item: Item) {
 
     event::emit(ItemDepositedEvent {
         inventory_id: inventory.id,
-        owner_character_id: inventory.owner_character_id,
+        owner_id: inventory.owner_id,
         item_id: item.item_id,
         type_id: item.type_id,
         volume: item.volume,
@@ -238,7 +238,7 @@ public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item
 
     event::emit(ItemWithdrawnEvent {
         inventory_id: inventory.id,
-        owner_character_id: inventory.owner_character_id,
+        owner_id: inventory.owner_id,
         item_id: item.item_id,
         type_id: item.type_id,
         volume: item.volume,
@@ -250,7 +250,7 @@ public(package) fun withdraw_item(inventory: &mut Inventory, item_id: u64): Item
 public(package) fun delete(inventory: Inventory) {
     let Inventory {
         id,
-        owner_character_id: owner_character_id,
+        owner_id: owner_id,
         assembly_id: _,
         max_capacity: _,
         used_capacity: _,
@@ -260,7 +260,7 @@ public(package) fun delete(inventory: Inventory) {
     // Burn the items one by one
     while (!items.is_empty()) {
         let (_, item) = items.pop();
-        destroy_item(item, id, owner_character_id);
+        destroy_item(item, id, owner_id);
     };
     items.destroy_empty();
 }
@@ -293,7 +293,7 @@ fun burn_items(inventory: &mut Inventory, item_id: u64, quantity: u32) {
 
             event::emit(ItemQuantityChangedEvent {
                 inventory_id: inventory.id,
-                owner_character_id: inventory.owner_character_id,
+                owner_id: inventory.owner_id,
                 item_id,
                 old_quantity,
                 new_quantity: item.quantity,
@@ -307,7 +307,7 @@ fun burn_items(inventory: &mut Inventory, item_id: u64, quantity: u32) {
         let volume_freed = calculate_volume(removed_item.volume, removed_item.quantity);
         inventory.used_capacity = inventory.used_capacity - volume_freed;
 
-        destroy_item(removed_item, inventory.id, inventory.owner_character_id);
+        destroy_item(removed_item, inventory.id, inventory.owner_id);
     };
 }
 
@@ -316,7 +316,7 @@ fun destroy_item(item: Item, inventory_id: ID, character_id: ID) {
 
     event::emit(ItemBurnedEvent {
         inventory_id,
-        owner_character_id: character_id,
+        owner_id: character_id,
         item_id,
         quantity,
     });
@@ -336,7 +336,7 @@ fun increase_item_quantity(inventory: &mut Inventory, item_id: u64, quantity: u3
 
     event::emit(ItemQuantityChangedEvent {
         inventory_id: inv_id,
-        owner_character_id: inventory.owner_character_id,
+        owner_id: inventory.owner_id,
         item_id: item_id,
         old_quantity: item.quantity,
         new_quantity: item.quantity + quantity,
