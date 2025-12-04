@@ -43,9 +43,9 @@ const EStorageUnitAlreadyExists: vector<u8> = b"StorageUnit with the same Item I
 const EAssemblyNotAuthorized: vector<u8> = b"StorageUnit access not authorized";
 #[error(code = 4)]
 const EExtensionNotAuthorized: vector<u8> =
-    b"Access only authorised for the custom contract of the registered type";
+    b"Access only authorized for the custom contract of the registered type";
 #[error(code = 5)]
-const EInventoryNotAuthorized: vector<u8> = b"Inventory Access not authorised";
+const EInventoryNotAuthorized: vector<u8> = b"Inventory Access not authorized";
 #[error(code = 6)]
 const ENotOnline: vector<u8> = b"Storage Unit is not online";
 

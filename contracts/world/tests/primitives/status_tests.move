@@ -225,7 +225,7 @@ fun online_when_already_online_fail() {
 /// Expected: Transaction aborts with EAssemblyNotAuthorized error
 #[test]
 #[expected_failure(abort_code = status::EAssemblyNotAuthorized)]
-fun online_fail_by_unauthorised_owner() {
+fun online_fail_by_unauthorized_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
@@ -277,7 +277,7 @@ fun online_fail_by_unauthorised_owner() {
 /// Expected: Transaction aborts with EAssemblyNotAuthorized error
 #[test]
 #[expected_failure(abort_code = status::EAssemblyNotAuthorized)]
-fun offline_fail_by_unauthorised_owner() {
+fun offline_fail_by_unauthorized_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
