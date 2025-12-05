@@ -24,13 +24,21 @@ const ECharacterNotAuthorized: vector<u8> = b"Character not authorized";
 #[error(code = 4)]
 const ECharacterNameEmpty: vector<u8> = b"Character name cannot be empty";
 
+#[error(code = 5)]
+const ETenantEmpty: vector<u8> = b"Tenant name cannot be empty";
+
 public struct CharacterRegistry has key {
     id: UID,
 }
 
+public struct CharacterKey has copy, drop, store {
+    game_character_id: u32,
+    tenant: String,
+}
+
 public struct Character has key {
     id: UID,
-    game_character_id: u32,
+    key: CharacterKey,
     tribe_id: u32,
     name: String,
 }
@@ -39,7 +47,9 @@ public struct Character has key {
 public struct CharacterCreatedEvent has copy, drop {
     character_id: ID,
     game_character_id: u32,
+    tenant: String,
     tribe_id: u32,
+    // TODO : use metadata instead
     name: String,
 }
 
@@ -53,6 +63,8 @@ fun init(ctx: &mut TxContext) {
 public fun rename_character(character: &mut Character, owner_cap: &OwnerCap, name: String) {
     assert!(authority::is_authorized(owner_cap, object::id(character)), ECharacterNotAuthorized);
     assert!(std::string::length(&name) > 0, ECharacterNameEmpty);
+
+    // TODO: emit events
     character.name = name;
 }
 
@@ -61,27 +73,34 @@ public fun create_character(
     registry: &mut CharacterRegistry,
     _: &AdminCap,
     game_character_id: u32,
+    tenant: String,
     tribe_id: u32,
     name: String,
     _: &mut TxContext,
 ): Character {
     assert!(game_character_id != 0, EGameCharacterIdEmpty);
     assert!(tribe_id != 0, ETribeIdEmpty);
-    assert!(!derived_object::exists(&registry.id, game_character_id), ECharacterAlreadyExists);
+    assert!(std::string::length(&tenant) > 0, ETenantEmpty);
 
-    // Claim a derived UID using the game character id as the key
+    // Claim a derived UID using the game character id and tenant id as the key
     // This ensures deterministic character id  generation and prevents duplicate character creation under the same game id.
-    // The character id can be pre-computed using the registry object id and game_character_id
-    let character_uid = derived_object::claim(&mut registry.id, game_character_id);
+    // The character id can be pre-computed using the registry object id and CharacterKey
+    let character_key = CharacterKey {
+        game_character_id: game_character_id,
+        tenant: tenant,
+    };
+    assert!(!derived_object::exists(&registry.id, character_key), ECharacterAlreadyExists);
+    let character_uid = derived_object::claim(&mut registry.id, character_key);
     let character = Character {
         id: character_uid,
-        game_character_id: game_character_id,
+        key: character_key,
         tribe_id: tribe_id,
         name: name,
     };
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),
         game_character_id: game_character_id,
+        tenant: tenant,
         tribe_id: tribe_id,
         name: name,
     });
@@ -94,11 +113,20 @@ public fun share_character(character: Character, _: &AdminCap) {
 
 public fun update_tribe(character: &mut Character, _: &AdminCap, tribe_id: u32) {
     assert!(tribe_id != 0, ETribeIdEmpty);
+    // TODO: emit events
     character.tribe_id = tribe_id;
+}
+
+// for emergencies
+public fun update_tenent_id(character: &mut Character, _: &AdminCap, tenant: String) {
+    assert!(std::string::length(&tenant) > 0, ETenantEmpty);
+    // TODO: emit events
+    character.key.tenant = tenant;
 }
 
 public fun delete_character(character: Character, _: &AdminCap) {
     let Character { id, .. } = character;
+    // TODO: emit events
     id.delete();
 }
 
@@ -115,7 +143,7 @@ public fun id(character: &Character): ID {
 
 #[test_only]
 public fun game_character_id(character: &Character): u32 {
-    character.game_character_id
+    character.key.game_character_id
 }
 
 #[test_only]
@@ -126,4 +154,17 @@ public fun tribe_id(character: &Character): u32 {
 #[test_only]
 public fun name(character: &Character): String {
     character.name
+}
+
+#[test_only]
+public fun tenant(character: &Character): String {
+    character.key.tenant
+}
+
+#[test_only]
+public fun create_character_key(game_id: u32, tenant: String): CharacterKey {
+    CharacterKey {
+        game_character_id: game_id,
+        tenant: tenant,
+    }
 }
