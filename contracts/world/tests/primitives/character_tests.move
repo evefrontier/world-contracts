@@ -7,6 +7,7 @@ use sui::{derived_object, test_scenario as ts};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
     character::{Self, Character, CharacterRegistry},
+    game_id as character_id,
     test_helpers::{Self, governor, admin, user_a, user_b},
     world::{Self, GovernorCap}
 };
@@ -116,7 +117,7 @@ fun deterministic_character_id() {
         // Pre-compute the character ID before creation
         // Pre-computation formula: blake2b_hash(registry_id || type_tag || bcs_serialize(CharacterKey))
         // where type_tag = "sui::derived_object::DerivedObjectKey<CharacterKey>"
-        let character_key = character::create_character_key(game_id, string::utf8(TENANT));
+        let character_key = character_id::create_key(game_id as u64, string::utf8(TENANT));
         let precomputed_addr = derived_object::derive_address(
             object::id(&registry),
             character_key,
