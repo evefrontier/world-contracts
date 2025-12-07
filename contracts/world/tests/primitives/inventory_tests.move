@@ -8,16 +8,7 @@ use world::{
     inventory::{Self, Inventory},
     location::{Self, Location},
     status::{Self, AssemblyStatus},
-    test_helpers::{
-        Self,
-        governor,
-        admin,
-        user_a,
-        user_b,
-        server_admin,
-        user_a_character_id,
-        user_b_character_id
-    }
+    test_helpers::{Self, governor, admin, user_a, user_b, server_admin}
 };
 
 const STORAGE_TYPE_ID: u64 = 77069;
@@ -25,6 +16,9 @@ const STORAGE_ITEM_ID: u64 = 5500004145107;
 const LOCATION_A_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const MAX_CAPACITY: u64 = 1000;
+const EPHEMERAL_MAX_CAPACITY: u64 = 1000;
+const INVENTORY_A_ITEM_ID: u64 = 952424;
+const INVENTORY_B_ITEM_ID: u64 = 952525;
 const AMMO_TYPE_ID: u64 = 88069;
 const AMMO_ITEM_ID: u64 = 1000004145107;
 const AMMO_VOLUME: u64 = 100;
@@ -36,29 +30,58 @@ public struct StorageUnit has key {
     id: UID,
     status: AssemblyStatus,
     location: Location,
-    inventory_keys: vector<ID>,
+    inventory_keys: vector<u64>,
 }
 
 // Helper Functions
+// Creates storage unit and ownercap to user a
 fun create_storage_unit(ts: &mut ts::Scenario): ID {
     ts::next_tx(ts, admin());
     let assembly_id = {
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
-        let character_id = user_a_character_id();
+
         let mut storage_unit = StorageUnit {
             id: uid,
             status: status::anchor(assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
             location: location::attach(assembly_id, LOCATION_A_HASH),
             inventory_keys: vector[],
         };
-        let inv = inventory::create(assembly_id, character_id, MAX_CAPACITY);
-        storage_unit.inventory_keys.push_back(character_id);
-        df::add(&mut storage_unit.id, character_id, inv);
+
+        let inv = inventory::create(assembly_id, INVENTORY_A_ITEM_ID, MAX_CAPACITY);
+        storage_unit.inventory_keys.push_back(INVENTORY_A_ITEM_ID);
+        df::add(&mut storage_unit.id, INVENTORY_A_ITEM_ID, inv);
+
         transfer::share_object(storage_unit);
         assembly_id
     };
+    ts::next_tx(ts, admin());
+    {
+        let storage_unit = ts::take_shared<StorageUnit>(ts);
+        test_helpers::setup_owner_cap(ts, user_a(), assembly_id);
+        let inv = storage_unit.default_inventory_ref();
+        test_helpers::setup_owner_cap(ts, user_a(), inv.id());
+        ts::return_shared(storage_unit);
+    };
+
     assembly_id
+}
+
+// Creates ephemeral inventory and ownercap to user
+fun create_ephemeral_inv(ts: &mut ts::Scenario, user: address) {
+    ts::next_tx(ts, admin());
+    let mut storage_unit = ts::take_shared<StorageUnit>(ts);
+    let inv = inventory::create(
+        object::id(&storage_unit),
+        INVENTORY_B_ITEM_ID,
+        EPHEMERAL_MAX_CAPACITY,
+    );
+    //create ownerCap for inventory
+    test_helpers::setup_owner_cap(ts, user, inv.id());
+
+    storage_unit.inventory_keys.push_back(INVENTORY_B_ITEM_ID);
+    df::add(&mut storage_unit.id, INVENTORY_B_ITEM_ID, inv);
+    ts::return_shared(storage_unit);
 }
 
 fun online(ts: &mut ts::Scenario) {
@@ -76,8 +99,7 @@ fun mint_ammo(ts: &mut ts::Scenario) {
     ts::next_tx(ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(ts);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory();
         inventory.mint_items(
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
@@ -88,6 +110,22 @@ fun mint_ammo(ts: &mut ts::Scenario) {
         );
         ts::return_shared(storage_unit);
     };
+}
+
+public fun default_inventory(storage_unit: &mut StorageUnit): &mut Inventory {
+    df::borrow_mut<u64, Inventory>(&mut storage_unit.id, INVENTORY_A_ITEM_ID)
+}
+
+public fun default_inventory_ref(storage_unit: &StorageUnit): &Inventory {
+    df::borrow<u64, Inventory>(&storage_unit.id, INVENTORY_A_ITEM_ID)
+}
+
+public fun ephemeral_inventory(storage_unit: &mut StorageUnit): &mut Inventory {
+    df::borrow_mut<u64, Inventory>(&mut storage_unit.id, INVENTORY_B_ITEM_ID)
+}
+
+public fun ephemeral_inventory_ref(storage_unit: &StorageUnit): &Inventory {
+    df::borrow<u64, Inventory>(&storage_unit.id, INVENTORY_B_ITEM_ID)
 }
 
 /// Tests creating an assembly with inventory
@@ -102,8 +140,7 @@ fun create_assembly_with_inventory() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory_ref();
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_OFFLINE);
         assert_eq!(storage_unit.location.hash(), LOCATION_A_HASH);
         assert_eq!(inventory.max_capacity(), MAX_CAPACITY);
@@ -120,8 +157,7 @@ fun create_assembly_with_inventory() {
 fun mint_items() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     mint_ammo(&mut ts);
@@ -129,8 +165,7 @@ fun mint_items() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory_ref();
         let used_capacity = (AMMO_QUANTITY as u64) * AMMO_VOLUME;
 
         assert_eq!(inventory.used_capacity(), used_capacity);
@@ -148,17 +183,15 @@ fun mint_items() {
 /// Expected: Second mint increases quantity to 10 instead of creating a new item
 #[test]
 fun mint_items_increases_quantity_when_exists() {
-    let character_id = user_a_character_id();
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory();
         inventory.mint_items(
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
@@ -168,7 +201,7 @@ fun mint_items_increases_quantity_when_exists() {
             ts.ctx(),
         );
 
-        let inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+        let inv_ref = storage_unit.default_inventory_ref();
         let used_capacity = 5 * AMMO_VOLUME;
 
         assert_eq!(inv_ref.used_capacity(), used_capacity);
@@ -180,7 +213,7 @@ fun mint_items_increases_quantity_when_exists() {
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory();
         inventory.mint_items(
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
@@ -190,7 +223,7 @@ fun mint_items_increases_quantity_when_exists() {
             ts.ctx(),
         );
 
-        let inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+        let inv_ref = storage_unit.default_inventory_ref();
         assert_eq!(inv_ref.used_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.remaining_capacity(), 0);
         assert_eq!(inv_ref.item_quantity(AMMO_ITEM_ID), 10);
@@ -207,11 +240,9 @@ fun mint_items_increases_quantity_when_exists() {
 /// Expected: All items are burned, capacity is freed, and inventory is empty
 #[test]
 public fun burn_items() {
-    let character_id = user_a_character_id();
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     mint_ammo(&mut ts);
@@ -219,21 +250,13 @@ public fun burn_items() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
-        test_helpers::setup_owner_cap_for_user_a(&mut ts, inventory.id());
-        ts::return_shared(storage_unit);
-    };
-
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory();
         inventory.burn_items_test(
             AMMO_ITEM_ID,
             AMMO_QUANTITY,
         );
 
-        let inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+        let inv_ref = storage_unit.default_inventory_ref();
         assert_eq!(inv_ref.used_capacity(), 0);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.inventory_item_length(), 0);
@@ -251,11 +274,9 @@ public fun burn_items() {
 /// Expected: Quantity is reduced to 5, capacity is partially freed, item still exists
 #[test]
 public fun burn_partial_items() {
-    let character_id = user_a_character_id();
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     mint_ammo(&mut ts);
@@ -263,13 +284,13 @@ public fun burn_partial_items() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory();
         inventory.burn_items_test(
             AMMO_ITEM_ID,
             5u32, //diff quantity
         );
 
-        let inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+        let inv_ref = storage_unit.default_inventory_ref();
         let used_capacity = 5 * AMMO_VOLUME;
         assert_eq!(inv_ref.used_capacity(), used_capacity);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
@@ -286,42 +307,16 @@ public fun burn_partial_items() {
 /// Expected: Item is successfully transferred, capacity updated in both inventories
 #[test]
 public fun deposit_items() {
-    let character_a_id = user_a_character_id();
-    let character_b_id = user_b_character_id();
-
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     // Creating a storage unit creates a inventory by default for the owner
     let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
 
     online(&mut ts);
     mint_ammo(&mut ts);
 
-    // Setup inventory owner cap for user_a
-    ts::next_tx(&mut ts, admin());
-    {
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(
-            &ts,
-            storage_unit_id,
-        );
-        let inventory = df::borrow<ID, Inventory>(&storage_unit.id, character_a_id);
-        test_helpers::setup_owner_cap(&mut ts, user_a(), inventory.id());
-        ts::return_shared(storage_unit);
-    };
-
     // Create a ephemeral inventory for user b
-    ts::next_tx(&mut ts, admin());
-    {
-        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
-        let inventory = inventory::create(
-            storage_unit_id,
-            character_a_id,
-            MAX_CAPACITY,
-        );
-        df::add(&mut storage_unit.id, character_b_id, inventory);
-        ts::return_shared(storage_unit);
-    };
+    create_ephemeral_inv(&mut ts, user_b());
 
     ts::next_tx(&mut ts, user_b());
     {
@@ -330,7 +325,8 @@ public fun deposit_items() {
             storage_unit_id,
         );
 
-        let inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_b_id);
+        let inv_ref = storage_unit.ephemeral_inventory_ref();
+
         assert_eq!(inv_ref.used_capacity(), 0);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.inventory_item_length(), 0);
@@ -345,21 +341,18 @@ public fun deposit_items() {
         // Withdraw from storage unit and deposit in ephemeral storage
         // Do the same in reverse for implementing swap functions and item transfer between inventories on-chain
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_a_id);
+        let inventory = storage_unit.default_inventory();
         let item = inventory.withdraw_item(AMMO_ITEM_ID);
 
-        let inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_a_id);
+        let inv_ref = storage_unit.default_inventory_ref();
         assert_eq!(inv_ref.used_capacity(), 0);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.inventory_item_length(), 0);
 
-        let eph_inventory = df::borrow_mut<ID, Inventory>(
-            &mut storage_unit.id,
-            character_b_id,
-        );
+        let eph_inventory = storage_unit.ephemeral_inventory();
         eph_inventory.deposit_item(item);
 
-        let eph_inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_b_id);
+        let eph_inv_ref = storage_unit.ephemeral_inventory_ref();
         let used_capacity = (AMMO_QUANTITY as u64) * AMMO_VOLUME;
         assert_eq!(eph_inv_ref.used_capacity(), used_capacity);
         assert_eq!(eph_inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
@@ -372,7 +365,6 @@ public fun deposit_items() {
 
 #[test]
 fun burn_items_with_proof() {
-    let character_id = user_a_character_id();
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
@@ -389,9 +381,9 @@ fun burn_items_with_proof() {
             location: location::attach(assembly_id, verified_location_hash),
             inventory_keys: vector[],
         };
-        let inv = inventory::create(assembly_id, character_id, MAX_CAPACITY);
-        storage_unit.inventory_keys.push_back(character_id);
-        df::add(&mut storage_unit.id, character_id, inv);
+        let inv = inventory::create(assembly_id, INVENTORY_A_ITEM_ID, MAX_CAPACITY);
+        storage_unit.inventory_keys.push_back(INVENTORY_A_ITEM_ID);
+        df::add(&mut storage_unit.id, INVENTORY_A_ITEM_ID, inv);
         transfer::share_object(storage_unit);
     };
 
@@ -399,7 +391,7 @@ fun burn_items_with_proof() {
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory();
         inventory.mint_items(
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
@@ -415,11 +407,11 @@ fun burn_items_with_proof() {
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let location_ref = &storage_unit.location;
+        let inventory = df::borrow_mut<u64, Inventory>(&mut storage_unit.id, INVENTORY_A_ITEM_ID);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let proof = test_helpers::construct_location_proof(verified_location_hash);
         let location_proof = bcs::to_bytes(&proof);
 
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
         inventory.burn_items_with_proof_test(
             &server_registry,
             location_ref,
@@ -429,7 +421,7 @@ fun burn_items_with_proof() {
             ts.ctx(),
         );
 
-        let inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
+        let inv_ref = storage_unit.default_inventory_ref();
         assert_eq!(inv_ref.used_capacity(), 0);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.inventory_item_length(), 0);
@@ -456,7 +448,6 @@ fun create_assembly_fail_on_empty_capacity() {
     {
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
-        let character_id = user_a_character_id();
         let mut storage_unit = StorageUnit {
             id: uid,
             status: status::anchor(assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
@@ -464,9 +455,9 @@ fun create_assembly_fail_on_empty_capacity() {
             inventory_keys: vector[],
         };
         // This should fail with EInventoryInvalidCapacity
-        let inv = inventory::create(assembly_id, character_id, 0);
-        storage_unit.inventory_keys.push_back(character_id);
-        df::add(&mut storage_unit.id, character_id, inv);
+        let inv = inventory::create(assembly_id, INVENTORY_A_ITEM_ID, 0);
+        storage_unit.inventory_keys.push_back(INVENTORY_A_ITEM_ID);
+        df::add(&mut storage_unit.id, INVENTORY_A_ITEM_ID, inv);
         transfer::share_object(storage_unit);
     };
     ts::end(ts);
@@ -480,18 +471,13 @@ fun create_assembly_fail_on_empty_capacity() {
 fun mint_items_fail_empty_item_id() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
     online(&mut ts);
 
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow_mut<ID, Inventory>(
-            &mut storage_unit.id,
-            character_id,
-        );
+        let inventory = storage_unit.default_inventory();
 
         inventory.mint_items(
             0,
@@ -514,18 +500,13 @@ fun mint_items_fail_empty_item_id() {
 fun mint_items_fail_empty_type_id() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
     online(&mut ts);
 
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow_mut<ID, Inventory>(
-            &mut storage_unit.id,
-            character_id,
-        );
+        let inventory = storage_unit.default_inventory();
 
         inventory.mint_items(
             AMMO_ITEM_ID,
@@ -548,18 +529,13 @@ fun mint_items_fail_empty_type_id() {
 fun mint_fail_inventory_insufficient_capacity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
     online(&mut ts);
 
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow_mut<ID, Inventory>(
-            &mut storage_unit.id,
-            character_id,
-        );
+        let inventory = storage_unit.default_inventory();
 
         inventory.mint_items(
             AMMO_ITEM_ID,
@@ -582,18 +558,13 @@ fun mint_fail_inventory_insufficient_capacity() {
 public fun burn_items_fail_item_not_found() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
     online(&mut ts);
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow_mut<ID, Inventory>(
-            &mut storage_unit.id,
-            character_id,
-        );
+        let inventory = storage_unit.default_inventory();
 
         inventory.burn_items_test(
             AMMO_ITEM_ID,
@@ -612,17 +583,14 @@ public fun burn_items_fail_item_not_found() {
 public fun burn_items_fail_insufficient_quantity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
-
+    create_storage_unit(&mut ts);
     online(&mut ts);
     mint_ammo(&mut ts);
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory();
         inventory.burn_items_test(
             AMMO_ITEM_ID,
             15u32,
@@ -638,14 +606,9 @@ public fun burn_items_fail_insufficient_quantity() {
 #[test]
 #[expected_failure(abort_code = inventory::EInventoryInsufficientCapacity)]
 fun deposit_item_fail_insufficient_capacity() {
-    let character_a_id = user_a_character_id();
-    let character_b_id = user_b_character_id();
-
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
-
     online(&mut ts);
     mint_ammo(&mut ts);
 
@@ -655,27 +618,19 @@ fun deposit_item_fail_insufficient_capacity() {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let inventory = inventory::create(
             storage_unit_id,
-            character_a_id,
+            INVENTORY_B_ITEM_ID,
             10,
         );
-        df::add(&mut storage_unit.id, character_b_id, inventory);
-        ts::return_shared(storage_unit);
-    };
+        test_helpers::setup_owner_cap(&mut ts, user_b(), inventory.id());
 
-    ts::next_tx(&mut ts, admin());
-    {
-        let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory_a = df::borrow<ID, Inventory>(&storage_unit.id, character_a_id);
-        let inventory_b = df::borrow<ID, Inventory>(&storage_unit.id, character_b_id);
-        test_helpers::setup_owner_cap(&mut ts, user_a(), inventory_a.id());
-        test_helpers::setup_owner_cap(&mut ts, user_b(), inventory_b.id());
+        df::add(&mut storage_unit.id, INVENTORY_B_ITEM_ID, inventory);
         ts::return_shared(storage_unit);
     };
 
     ts::next_tx(&mut ts, user_a());
     let item = {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_a_id);
+        let inventory = storage_unit.default_inventory();
         let item = inventory.withdraw_item(AMMO_ITEM_ID);
         ts::return_shared(storage_unit);
         item
@@ -684,10 +639,7 @@ fun deposit_item_fail_insufficient_capacity() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let eph_inventory = df::borrow_mut<ID, Inventory>(
-            &mut storage_unit.id,
-            character_b_id,
-        );
+        let eph_inventory = storage_unit.ephemeral_inventory();
         eph_inventory.deposit_item(item);
         ts::return_shared(storage_unit);
     };
@@ -703,14 +655,12 @@ fun withdraw_item_fail_item_not_found() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
 
     online(&mut ts);
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
-        let character_id = user_a_character_id();
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
+        let inventory = storage_unit.default_inventory();
         // This should abort with EItemDoesNotExist
         let item = inventory.withdraw_item(1222);
         // Unreachable code below - needed to satisfy Move's type checker
