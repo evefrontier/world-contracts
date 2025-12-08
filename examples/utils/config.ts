@@ -9,10 +9,10 @@ export const NETWORKS = {
     },
     testnet: {
         url: "https://fullnode.testnet.sui.io:443",
-        packageId: "0xf4ccb612f6332b0b83e93ce12fb2ada70722b3deb98fd2e0778ae8b1df6f011b",
-        adminCapObjectId: "0xe121f7c532a7e5c7be9372b25df22105790883c44daafa0dfb244af60eaec638",
-        characterRegisterId: "0x8e09b2b046a5a933d6f3da9d1a08e6ae16d7486e0f78860ba138b57283dbfb1a",
-        serverAddressRegistry: "0x62405cbcc9b0705c053648dcf0d89a8399f985d843970568c815bd05213e1101",
+        packageId: "0x8941524ae368d91a7f9ee95466d3e60b75ddc16de3c3b9233dc11f85ce86c258",
+        adminCapObjectId: "0x73361a1cbe38e33010363cd727b54fbca3a58c7ac95ca3b647a167c57f79f95f",
+        characterRegisterId: "0x70c704eb8ee89c910a31ecf550a85514d5a4d3d2742cc2fbd5b2131c3513b79c",
+        serverAddressRegistry: "0xc259666e108ef25275566f3a2e4843ae113f86d42d89e1e31f752426c99c9e7d",
     },
     mainnet: {
         url: "https://fullnode.mainnet.sui.io:443",
