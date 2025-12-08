@@ -12,8 +12,8 @@ importers:
         specifier: ^0.3.3
         version: 0.3.3
       '@mysten/sui':
-        specifier: ^1.45.0
-        version: 1.45.0(typescript@5.9.3)
+        specifier: ^1.45.2
+        version: 1.45.2(typescript@5.9.3)
       '@noble/hashes':
         specifier: ^1.3.3
         version: 1.8.0
@@ -238,8 +238,8 @@ packages:
     resolution: {integrity: sha512-UCq9W95fyYI6EUG3Lm1mtEyxBqVHzg7PdofMX7nSxn6841GwC7Tv6VhdRcDIANMbq+m6e2whxgEi+xXtDSnXrg==}
     hasBin: true
 
-  '@mysten/sui@1.45.0':
-    resolution: {integrity: sha512-WYpZmrGWE/FeQaRhYrAYpHcHallj4BFIfSmjq6BkODzEhP9HfMplQAtd8AmtctwO7cpHJ+BjPUOguEAcf1gU4g==}
+  '@mysten/sui@1.45.2':
+    resolution: {integrity: sha512-gftf7fNpFSiXyfXpbtP2afVEnhc7p2m/MEYc/SO5pov92dacGKOpQIF7etZsGDI1Wvhv+dpph+ulRNpnYSs7Bg==}
     engines: {node: '>=18'}
 
   '@mysten/utils@0.2.0':
@@ -325,8 +325,13 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  valibot@0.36.0:
-    resolution: {integrity: sha512-CjF1XN4sUce8sBK9TixrDqFM7RwNkuXdJu174/AwmQUB62QbCQADg5lLe8ldBalFgtj1uKj+pKwDJiNo4Mn+eQ==}
+  valibot@1.2.0:
+    resolution: {integrity: sha512-mm1rxUsmOxzrwnX5arGS+U4T25RdvpPjPN4yR0u9pUBov9+zGVtO84tif1eY4r6zWxVxu3KzIyknJy3rxfRZZg==}
+    peerDependencies:
+      typescript: '>=5'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   web-tree-sitter@0.20.8:
     resolution: {integrity: sha512-weOVgZ3aAARgdnb220GqYuh7+rZU0Ka9k9yfKtGAzEYMa6GgiCzW9JjQRJyCJakvibQW+dfjJdihjInKuuCAUQ==}
@@ -448,7 +453,7 @@ snapshots:
       prettier: 3.6.2
       web-tree-sitter: 0.20.8
 
-  '@mysten/sui@1.45.0(typescript@5.9.3)':
+  '@mysten/sui@1.45.2(typescript@5.9.3)':
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@16.12.0)
       '@mysten/bcs': 1.9.2
@@ -464,7 +469,7 @@ snapshots:
       gql.tada: 1.9.0(graphql@16.12.0)(typescript@5.9.3)
       graphql: 16.12.0
       poseidon-lite: 0.2.1
-      valibot: 0.36.0
+      valibot: 1.2.0(typescript@5.9.3)
     transitivePeerDependencies:
       - '@gql.tada/svelte-support'
       - '@gql.tada/vue-support'
@@ -577,6 +582,8 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  valibot@0.36.0: {}
+  valibot@1.2.0(typescript@5.9.3):
+    optionalDependencies:
+      typescript: 5.9.3
 
   web-tree-sitter@0.20.8: {}
