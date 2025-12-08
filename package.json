@@ -12,7 +12,8 @@
     "fmt:ts": "prettier --write \"examples/**/*.ts\"",
     "fmt:ts:check": "prettier --check \"examples/**/*.ts\"",
     "sig-verify": "tsx examples/crypto/sig-verify.ts",
-    "generate-test-sig": "tsx examples/location/generate-test-signature.ts"
+    "generate-test-sig": "tsx examples/location/generate-test-signature.ts",
+    "create-character": "tsx examples/character/create-character.ts"
   },
   "dependencies": {
     "@mysten/prettier-plugin-move": "^0.3.3",
