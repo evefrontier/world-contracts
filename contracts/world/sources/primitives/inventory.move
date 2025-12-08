@@ -52,6 +52,12 @@ public struct Item has key, store {
 }
 
 // === Events ===
+public struct InventoryCreated has copy, drop {
+    inventory_id: ID,
+    inv_item_id: u64,
+    max_capacity: u64,
+}
+
 public struct ItemMintedEvent has copy, drop {
     inventory_id: ID,
     inv_item_id: u64,
@@ -124,14 +130,22 @@ public fun derive_inventory_id(assembly_id: ID, inventory_key: u64): ID {
 public(package) fun create(assembly_id: ID, inv_item_id: u64, max_capacity: u64): Inventory {
     assert!(max_capacity != 0, EInventoryInvalidCapacity);
 
-    Inventory {
-        id: derive_inventory_id(assembly_id, inv_item_id),
+    let inventory_id = derive_inventory_id(assembly_id, inv_item_id);
+    let inventory = Inventory {
+        id: inventory_id,
         assembly_id: assembly_id,
         item_id: inv_item_id,
         max_capacity,
         used_capacity: 0,
         items: vec_map::empty(),
-    }
+    };
+
+    event::emit(InventoryCreated {
+        inventory_id,
+        inv_item_id,
+        max_capacity,
+    });
+    inventory
 }
 
 /// Mints items into inventory (Game → Chain bridge)
