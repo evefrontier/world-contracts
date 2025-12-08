@@ -5,6 +5,7 @@ import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
+import { deriveCharacterId } from "./derive-character-id";
 
 const GAME_CHARACTER_ID = Math.floor(Math.random() * 1000000) + 1;
 const TRIBE_ID = 100;
@@ -19,6 +20,15 @@ async function createCharacter(
     console.log("Game Character ID:", GAME_CHARACTER_ID);
     console.log("Tribe ID:", TRIBE_ID);
     console.log("TENANT:", tenant);
+
+    // Pre-compute the character ID before creation
+    const precomputedCharacterId = deriveCharacterId(
+        config.characterRegisterId,
+        GAME_CHARACTER_ID,
+        tenant,
+        config.packageId
+    );
+    console.log("Pre-computed Character ID:", precomputedCharacterId);
 
     const tx = new Transaction();
     const [character] = tx.moveCall({
@@ -74,11 +84,7 @@ async function main() {
         const keypair = keypairFromPrivateKey(exportedKey);
         const config = getConfig(network);
 
-        const characterId = await createCharacter(tenant, client, keypair, config);
-
-        console.log(characterId);
-
-
+        await createCharacter(tenant, client, keypair, config);
     } catch (error) {
         console.error("\n=== Error ===");
         console.error("Error:", error instanceof Error ? error.message : error);
