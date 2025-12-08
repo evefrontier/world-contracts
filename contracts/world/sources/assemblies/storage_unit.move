@@ -237,7 +237,7 @@ public fun anchor(
 ): StorageUnit {
     assert!(type_id != 0, EStorageUnitTypeIdEmpty);
     assert!(item_id != 0, EStorageUnitItemIdEmpty);
-    assert!(!assembly::assembly_exists(assembly_registry, item_id), EStorageUnitAlreadyExists);
+    // assert!(!assembly::assembly_exists(assembly_registry, item_id), EStorageUnitAlreadyExists);
 
     let registry_id = assembly::borrow_registry_id(assembly_registry);
     let assembly_uid = derived_object::claim(registry_id, item_id);

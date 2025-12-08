@@ -8,7 +8,7 @@ use world::{
     authority::{AdminCap, OwnerCap},
     location,
     status,
-    test_helpers::{Self, governor, admin, user_a}
+    test_helpers::{Self, governor, admin, user_a, tenant, in_game_id}
 };
 
 const LOCATION_HASH: vector<u8> =
@@ -28,8 +28,9 @@ fun create_assembly(ts: &mut ts::Scenario): ID {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        TYPE_ID,
+        tenant(),
         ITEM_ID,
+        TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
@@ -52,7 +53,7 @@ fun test_anchor_assembly() {
     ts::next_tx(&mut ts, admin());
     {
         let assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
-        assert!(assembly::assembly_exists(&assembly_registry, ITEM_ID), 0);
+        assert!(assembly::assembly_exists(&assembly_registry, in_game_id(ITEM_ID)), 0);
         ts::return_shared(assembly_registry);
     };
 
@@ -115,8 +116,9 @@ fun test_unanchor() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        TYPE_ID,
+        tenant(),
         ITEM_ID,
+        TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
@@ -127,7 +129,7 @@ fun test_unanchor() {
 
     // As per implementation, derived object is not reclaimed, so assembly_exists should be true
     // but object is gone.
-    assert!(assembly::assembly_exists(&assembly_registry, ITEM_ID), 0);
+    assert!(assembly::assembly_exists(&assembly_registry, in_game_id(ITEM_ID)), 0);
 
     ts::return_to_sender(&ts, admin_cap);
     ts::return_shared(assembly_registry);
@@ -147,8 +149,9 @@ fun test_anchor_duplicate_item_id() {
     let assembly1 = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        TYPE_ID,
+        tenant(),
         ITEM_ID,
+        TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
@@ -159,8 +162,9 @@ fun test_anchor_duplicate_item_id() {
     let assembly2 = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        TYPE_ID,
+        tenant(),
         ITEM_ID,
+        TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
@@ -185,8 +189,9 @@ fun test_anchor_invalid_type_id() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        0, // Invalid Type ID
+        tenant(),
         ITEM_ID,
+        0, // Invalid Type ID
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
@@ -211,8 +216,9 @@ fun test_anchor_invalid_item_id() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
-        TYPE_ID,
+        tenant(),
         0, // Invalid Item ID
+        TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
