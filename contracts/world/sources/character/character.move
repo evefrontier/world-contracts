@@ -73,7 +73,7 @@ public fun create_character(
 
     // Claim a derived UID using the game character id and tenant id as the key
     // This ensures deterministic character id  generation and prevents duplicate character creation under the same game id.
-    // The character id can be pre-computed using the registry object id and GameId
+    // The character id can be pre-computed using the registry object id and DerivationKey
     let character_key = game_id::create_key(game_character_id as u64, tenant);
     assert!(!derived_object::exists(&registry.id, character_key), ECharacterAlreadyExists);
     let character_uid = derived_object::claim(&mut registry.id, character_key);

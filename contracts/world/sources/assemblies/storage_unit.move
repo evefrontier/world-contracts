@@ -21,11 +21,12 @@
 /// Example on how a storage unit can be customised : //todo:
 module world::storage_unit;
 
-use std::type_name::{Self, TypeName};
+use std::{string::String, type_name::{Self, TypeName}};
 use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     assembly::{Self, AssemblyRegistry},
     authority::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
+    game_id::{Self, DerivationKey},
     inventory::{Self, Inventory, Item},
     location::{Self, Location},
     metadata::Metadata,
@@ -53,9 +54,9 @@ const ENotOnline: vector<u8> = b"Storage Unit is not online";
 // === Structs ===
 public struct StorageUnit has key {
     id: UID,
+    key: DerivationKey,
     owner_id: ID,
     type_id: u64,
-    item_id: u64,
     status: AssemblyStatus,
     location: Location,
     inventory_keys: vector<ID>,
@@ -66,11 +67,11 @@ public struct StorageUnit has key {
 // === Events ===
 public struct StorageUnitCreatedEvent has copy, drop {
     storage_unit_id: ID,
+    key: DerivationKey,
+    type_id: u64,
     max_capacity: u64,
     location_hash: vector<u8>,
     status: Status,
-    type_id: u64,
-    item_id: u64,
 }
 
 // === Public Functions ===
@@ -244,15 +245,21 @@ public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
     _: &AdminCap,
     character_id: ID,
-    type_id: u64,
+    tenant: String,
     item_id: u64,
+    type_id: u64,
     max_capacity: u64,
     location_hash: vector<u8>,
     _: &mut TxContext,
 ): StorageUnit {
     assert!(type_id != 0, EStorageUnitTypeIdEmpty);
     assert!(item_id != 0, EStorageUnitItemIdEmpty);
-    assert!(!assembly::assembly_exists(assembly_registry, item_id), EStorageUnitAlreadyExists);
+
+    let storage_unit_key = game_id::create_key(item_id, tenant);
+    assert!(
+        !assembly::assembly_exists(assembly_registry, storage_unit_key),
+        EStorageUnitAlreadyExists,
+    );
 
     let registry_id = assembly::borrow_registry_id(assembly_registry);
     let assembly_uid = derived_object::claim(registry_id, item_id);
@@ -260,9 +267,9 @@ public fun anchor(
 
     let mut storage_unit = StorageUnit {
         id: assembly_uid,
+        key: storage_unit_key,
         owner_id: character_id,
         type_id: type_id,
-        item_id: item_id,
         status: status::anchor(assembly_id, type_id, item_id),
         location: location::attach(assembly_id, location_hash),
         inventory_keys: vector[],
@@ -280,11 +287,11 @@ public fun anchor(
 
     event::emit(StorageUnitCreatedEvent {
         storage_unit_id: assembly_id,
+        key: storage_unit_key,
+        type_id: type_id,
         max_capacity,
         location_hash,
         status: status::status(&storage_unit.status),
-        type_id: type_id,
-        item_id: item_id,
     });
 
     storage_unit
@@ -299,9 +306,9 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
 public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     let StorageUnit {
         mut id,
+        key: _,
         owner_id: _,
         type_id: _,
-        item_id: _,
         status,
         location,
         inventory_keys,
@@ -326,7 +333,7 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     } else {
         metadata.destroy_none();
     };
-    object::delete(id);
+    id.delete();
 }
 
 public fun game_item_to_chain_inventory(

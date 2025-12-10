@@ -7,7 +7,16 @@ use world::{
     authority::{OwnerCap, AdminCap, ServerAddressRegistry},
     inventory::Item,
     storage_unit::{Self, StorageUnit},
-    test_helpers::{Self, governor, admin, user_a, user_b, user_a_character_id, user_b_character_id}
+    test_helpers::{
+        Self,
+        governor,
+        admin,
+        user_a,
+        user_b,
+        user_a_character_id,
+        user_b_character_id,
+        tenant
+    }
 };
 
 const LOCATION_A_HASH: vector<u8> =
@@ -97,8 +106,9 @@ fun create_storage_unit(
             &mut assembly_registry,
             &admin_cap,
             character_id,
-            type_id,
+            tenant(),
             item_id,
+            type_id,
             MAX_CAPACITY,
             location,
             ts.ctx(),

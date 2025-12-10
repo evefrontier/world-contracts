@@ -1,13 +1,25 @@
 #[test_only]
 module world::test_helpers;
 
+use std::string::{Self, String};
 use sui::test_scenario as ts;
 use world::{
     assembly,
     authority::{Self, AdminCap, ServerAddressRegistry},
+    game_id::{Self, DerivationKey},
     location::{Self, LocationProof},
     world::{Self, GovernorCap}
 };
+
+const TEST: vector<u8> = b"TEST";
+
+public fun tenant(): String {
+    string::utf8(TEST)
+}
+
+public fun game_id(item_id: u64): DerivationKey {
+    game_id::create_key(item_id, tenant())
+}
 
 public fun governor(): address { @0xA }
 
@@ -18,9 +30,7 @@ public fun user_a(): address { @0x202d7d52ab5f8e8824e3e8066c0b7458f84e326c5d77b3
 public fun user_b(): address { @0xD }
 
 public fun user_a_character_id(): ID {
-    object::id_from_bytes(
-        x"0000000000000000000000000000000000000000000000000000000000000001",
-    )
+    object::id_from_bytes(x"0000000000000000000000000000000000000000000000000000000000000001")
 }
 
 public fun user_b_character_id(): ID {

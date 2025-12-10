@@ -316,7 +316,7 @@ fun destroy_item(item: Item, inventory_id: ID, character_id: ID) {
     });
 
     location.remove();
-    object::delete(id);
+    id.delete();
 }
 
 /// Increases the quantity value of an existing item in the specified inventory.

@@ -2,9 +2,11 @@
 /// Basic operations are anchor, unanchor, online, offline and destroy
 module world::assembly;
 
+use std::string::String;
 use sui::{derived_object, event};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
+    game_id::{Self, DerivationKey},
     location::{Self, Location},
     metadata::Metadata,
     status::{Self, AssemblyStatus}
@@ -27,8 +29,8 @@ public struct AssemblyRegistry has key {
 
 public struct Assembly has key {
     id: UID,
+    key: DerivationKey,
     type_id: u64,
-    item_id: u64,
     volume: u64,
     status: AssemblyStatus,
     location: Location,
@@ -38,8 +40,8 @@ public struct Assembly has key {
 // === Events ===
 public struct AssemblyCreatedEvent has copy, drop {
     assembly_id: ID,
+    key: DerivationKey,
     type_id: u64,
-    item_id: u64,
     volume: u64,
 }
 
@@ -69,22 +71,26 @@ public fun status(assembly: &Assembly): &AssemblyStatus {
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
     _: &AdminCap,
-    type_id: u64,
+    tenant: String,
     item_id: u64,
+    type_id: u64,
     volume: u64,
     location_hash: vector<u8>,
     _: &mut TxContext,
 ): Assembly {
     assert!(type_id != 0, EAssemblyTypeIdEmpty);
     assert!(item_id != 0, EAssemblyItemIdEmpty);
-    assert!(!assembly_exists(assembly_registry, item_id), EAssemblyAlreadyExists);
 
-    let assembly_uid = derived_object::claim(&mut assembly_registry.id, item_id);
+    // key to derive assembly object id
+    let assembly_key = game_id::create_key(item_id, tenant);
+    assert!(!assembly_exists(assembly_registry, assembly_key), EAssemblyAlreadyExists);
+
+    let assembly_uid = derived_object::claim(&mut assembly_registry.id, assembly_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
     let assembly = Assembly {
         id: assembly_uid,
+        key: assembly_key,
         type_id,
-        item_id,
         volume,
         status: status::anchor(assembly_id, type_id, item_id),
         location: location::attach(assembly_id, location_hash),
@@ -93,8 +99,8 @@ public fun anchor(
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,
+        key: assembly_key,
         type_id,
-        item_id,
         volume,
     });
     assembly
@@ -108,8 +114,8 @@ public fun share_assembly(assembly: Assembly, _: &AdminCap) {
 public fun unanchor(assembly: Assembly, _: &AdminCap) {
     let Assembly {
         id,
+        key: _,
         type_id: _,
-        item_id: _,
         volume: _,
         status,
         location,
@@ -127,7 +133,7 @@ public fun unanchor(assembly: Assembly, _: &AdminCap) {
 
     // deleting doesnt mean the object id can be reclaimed.
     // however right now according to game design you cannot anchor after unanchor so its safe
-    object::delete(id);
+    id.delete();
     // In future we can do
     // derived_object::reclaim(&mut assembly_registry, id);
 }
@@ -137,8 +143,8 @@ public(package) fun borrow_registry_id(registry: &mut AssemblyRegistry): &mut UI
     &mut registry.id
 }
 
-public(package) fun assembly_exists(registry: &AssemblyRegistry, item_id: u64): bool {
-    derived_object::exists(&registry.id, item_id)
+public(package) fun assembly_exists(registry: &AssemblyRegistry, key: DerivationKey): bool {
+    derived_object::exists(&registry.id, key)
 }
 
 #[test_only]

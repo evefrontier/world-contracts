@@ -9,11 +9,10 @@ use world::{
     character::{Self, Character, CharacterRegistry},
     game_id as character_id,
     metadata,
-    test_helpers::{governor, admin, user_a, user_b},
+    test_helpers::{governor, admin, user_a, user_b, tenant},
     world::{Self, GovernorCap}
 };
 
-const TENANT: vector<u8> = b"TEST";
 const TENANT_A: vector<u8> = b"TESTA";
 const EMPTY_TENANT: vector<u8> = b"";
 
@@ -43,7 +42,7 @@ fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: ve
             &mut registry,
             &admin_cap,
             game_id,
-            string::utf8(TENANT),
+            tenant(),
             tribe_id,
             user_a(),
             utf8(name),
@@ -119,7 +118,7 @@ fun deterministic_character_id() {
         // Pre-compute the character ID before creation
         // Pre-computation formula: blake2b_hash(registry_id || type_tag || bcs_serialize(CharacterKey))
         // where type_tag = "sui::derived_object::DerivedObjectKey<CharacterKey>"
-        let character_key = character_id::create_key(game_id as u64, string::utf8(TENANT));
+        let character_key = character_id::create_key(game_id as u64, tenant());
         let precomputed_addr = derived_object::derive_address(
             object::id(&registry),
             character_key,
@@ -130,7 +129,7 @@ fun deterministic_character_id() {
             &mut registry,
             &admin_cap,
             game_id,
-            string::utf8(TENANT),
+            tenant(),
             100,
             user_a(),
             utf8(b"test1"),
@@ -168,7 +167,7 @@ fun different_game_ids_produce_different_character_ids() {
             &mut registry,
             &admin_cap,
             1u32,
-            string::utf8(TENANT),
+            tenant(),
             100,
             user_a(),
             utf8(b"character1"),
@@ -189,7 +188,7 @@ fun different_game_ids_produce_different_character_ids() {
             &mut registry,
             &admin_cap,
             2u32,
-            string::utf8(TENANT),
+            tenant(),
             100,
             user_a(),
             utf8(b"character2"),
@@ -231,7 +230,7 @@ fun different_tenant_create_character_id() {
             &mut registry,
             &admin_cap,
             game_id,
-            string::utf8(TENANT),
+            tenant(),
             100,
             user_a(),
             utf8(b"characterA"),
@@ -381,7 +380,7 @@ fun create_character_with_empty_address() {
             &mut registry,
             &admin_cap,
             123u32,
-            string::utf8(TENANT),
+            tenant(),
             100,
             @0x0,
             utf8(b"test1"),
@@ -444,7 +443,7 @@ fun duplicate_game_id_fails() {
             &mut registry,
             &admin_cap,
             game_id,
-            string::utf8(TENANT),
+            tenant(),
             100,
             user_a(),
             utf8(b"test1"),
@@ -466,7 +465,7 @@ fun duplicate_game_id_fails() {
             &mut registry,
             &admin_cap,
             game_id,
-            string::utf8(TENANT),
+            tenant(),
             200,
             user_a(),
             utf8(b"test2"),
@@ -500,7 +499,7 @@ fun delete_recreate_character() {
             &mut registry,
             &admin_cap,
             1u32,
-            string::utf8(TENANT),
+            tenant(),
             100,
             user_a(),
             utf8(b"character1"),
@@ -530,7 +529,7 @@ fun delete_recreate_character() {
             &mut registry,
             &admin_cap,
             1u32,
-            string::utf8(TENANT),
+            tenant(),
             200,
             user_a(),
             utf8(b"test2"),
@@ -564,7 +563,7 @@ fun create_character_without_admin_cap() {
             &mut registry,
             &admin_cap,
             1,
-            string::utf8(TENANT),
+            tenant(),
             100,
             user_a(),
             utf8(b"test"),
