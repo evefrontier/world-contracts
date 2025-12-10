@@ -31,6 +31,7 @@ public struct AdminCap has key {
 /// Fields:
 /// - `authorized_object_id`: The ID of the specific object this KeyCard grants mutation access to.
 public struct OwnerCap has key {
+    // todo: make it Phantom type OwnerCap<phantom T>
     id: UID,
     authorized_object_id: ID,
 }
