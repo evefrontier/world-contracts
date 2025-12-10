@@ -7,6 +7,7 @@
 /// - The `game to chain`(mint) action is restricted by an admin capability and the `chain to game`(burn) action is restricted by a proximity proof.
 module world::inventory;
 
+use std::string::String;
 use sui::{clock::Clock, derived_object, event, vec_map::{Self, VecMap}};
 use world::{authority::ServerAddressRegistry, location::{Self, Location}};
 
@@ -44,6 +45,7 @@ public struct Inventory has store {
 // It has store ability as it needs to be wrapped in a parent. Item should always have a parent eg: Inventory, ship etc.
 public struct Item has key, store {
     id: UID,
+    tenant: String,
     type_id: u64,
     item_id: u64,
     volume: u64,
@@ -100,6 +102,10 @@ public fun id(inventory: &Inventory): ID {
     inventory.id
 }
 
+public fun tenant(item: &Item): String {
+    item.tenant
+}
+
 public fun contains_item(inventory: &Inventory, item_id: u64): bool {
     inventory.items.contains(&item_id)
 }
@@ -139,6 +145,7 @@ public(package) fun create(assembly_id: ID, character_id: ID, max_capacity: u64)
 /// Creates new item or adds to existing if item_id already exists
 public(package) fun mint_items(
     inventory: &mut Inventory,
+    tenant: String,
     item_id: u64,
     type_id: u64,
     volume: u64,
@@ -156,6 +163,7 @@ public(package) fun mint_items(
         let item_uid_value = object::uid_to_inner(&item_uid);
         let item = Item {
             id: item_uid,
+            tenant,
             type_id,
             item_id,
             volume,
@@ -306,7 +314,7 @@ fun burn_items(inventory: &mut Inventory, item_id: u64, quantity: u32) {
 }
 
 fun destroy_item(item: Item, inventory_id: ID, character_id: ID) {
-    let Item { id, type_id: _, item_id, volume: _, quantity, location } = item;
+    let Item { id, tenant: _, type_id: _, item_id, volume: _, quantity, location } = item;
 
     event::emit(ItemBurnedEvent {
         inventory_id,

@@ -49,6 +49,8 @@ const EExtensionNotAuthorized: vector<u8> =
 const EInventoryNotAuthorized: vector<u8> = b"Inventory Access not authorized";
 #[error(code = 6)]
 const ENotOnline: vector<u8> = b"Storage Unit is not online";
+#[error(code = 7)]
+const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -132,6 +134,7 @@ public fun deposit_item<Auth: drop>(
         EExtensionNotAuthorized,
     );
     assert!(storage_unit.status.is_online(), ENotOnline);
+    assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
     let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         storage_unit.owner_id,
@@ -168,9 +171,9 @@ public fun deposit_by_owner(
     ctx: &mut TxContext,
 ) {
     assert!(storage_unit.status.is_online(), ENotOnline);
-
     let inventory_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
     assert!(authority::is_authorized(owner_cap, inventory_ref.id()), EInventoryNotAuthorized);
+    assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
 
     // This check is only required for ephemeral inventory
     location::verify_same_location(
@@ -369,6 +372,7 @@ public fun game_item_to_chain_inventory(
         character_id,
     );
     inventory.mint_items(
+        storage_unit.key.tenant(),
         item_id,
         type_id,
         volume,

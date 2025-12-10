@@ -16,7 +16,8 @@ use world::{
         user_b,
         server_admin,
         user_a_character_id,
-        user_b_character_id
+        user_b_character_id,
+        tenant
     }
 };
 
@@ -79,6 +80,7 @@ fun mint_ammo(ts: &mut ts::Scenario) {
         let character_id = user_a_character_id();
         let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
         inventory.mint_items(
+            tenant(),
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
             AMMO_VOLUME,
@@ -160,6 +162,7 @@ fun mint_items_increases_quantity_when_exists() {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
         inventory.mint_items(
+            tenant(),
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
             AMMO_VOLUME,
@@ -182,6 +185,7 @@ fun mint_items_increases_quantity_when_exists() {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
         inventory.mint_items(
+            tenant(),
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
             AMMO_VOLUME,
@@ -401,6 +405,7 @@ fun burn_items_with_proof() {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
         inventory.mint_items(
+            tenant(),
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
             AMMO_VOLUME,
@@ -494,6 +499,7 @@ fun mint_items_fail_empty_item_id() {
         );
 
         inventory.mint_items(
+            tenant(),
             0,
             AMMO_TYPE_ID,
             AMMO_VOLUME,
@@ -528,6 +534,7 @@ fun mint_items_fail_empty_type_id() {
         );
 
         inventory.mint_items(
+            tenant(),
             AMMO_ITEM_ID,
             0,
             AMMO_VOLUME,
@@ -562,6 +569,7 @@ fun mint_fail_inventory_insufficient_capacity() {
         );
 
         inventory.mint_items(
+            tenant(),
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
             AMMO_VOLUME,

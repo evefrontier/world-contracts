@@ -1,6 +1,6 @@
 module world::storage_unit_tests;
 
-use std::{bcs, unit_test::assert_eq};
+use std::{bcs, string::String, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     assembly::AssemblyRegistry,
@@ -37,6 +37,8 @@ const LENS_VOLUME: u64 = 50;
 const LENS_QUANTITY: u32 = 5;
 
 const STATUS_ONLINE: u8 = 1;
+
+const DIFFERENT_TENANT: vector<u8> = b"DIFFERENT";
 
 // Mock 3rd Party Extension Witness Types
 /// Authorized extension witness type
@@ -98,6 +100,17 @@ fun create_storage_unit(
     item_id: u64,
     type_id: u64,
 ): ID {
+    create_storage_unit_with_tenant(ts, character_id, location, item_id, type_id, tenant())
+}
+
+fun create_storage_unit_with_tenant(
+    ts: &mut ts::Scenario,
+    character_id: ID,
+    location: vector<u8>,
+    item_id: u64,
+    type_id: u64,
+    tenant: String,
+): ID {
     ts::next_tx(ts, admin());
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
     let storage_unit_id = {
@@ -106,7 +119,7 @@ fun create_storage_unit(
             &mut assembly_registry,
             &admin_cap,
             character_id,
-            tenant(),
+            tenant,
             item_id,
             type_id,
             MAX_CAPACITY,
@@ -178,6 +191,22 @@ fun create_owner_cap_for_inventory(ts: &mut ts::Scenario, character_id: ID, user
     ts::next_tx(ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(ts);
+        let inventory = storage_unit.inventory(character_id);
+
+        test_helpers::setup_owner_cap(ts, user, inventory.id());
+        ts::return_shared(storage_unit);
+    };
+}
+
+fun create_owner_cap_for_inventory_by_id(
+    ts: &mut ts::Scenario,
+    storage_id: ID,
+    character_id: ID,
+    user: address,
+) {
+    ts::next_tx(ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let inventory = storage_unit.inventory(character_id);
 
         test_helpers::setup_owner_cap(ts, user, inventory.id());
@@ -1234,5 +1263,209 @@ fun offline_fail_by_unauthorized_owner() {
 
     // B tries to offline A's storage unit fails
     online_storage_unit(&mut ts, user_b(), storage_a_id);
+    ts::end(ts);
+}
+
+/// Test that depositing an item with a different tenant fails
+/// Scenario: Create two storage units with different tenants, mint item in one, try to deposit in the other
+/// Expected: Transaction aborts with ETenantMismatch error
+#[test]
+#[expected_failure(abort_code = storage_unit::ETenantMismatch)]
+fun test_deposit_by_owner_fail_tenant_mismatch() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::register_server_address(&mut ts);
+    let character_id = user_a_character_id();
+
+    let different_tenant = DIFFERENT_TENANT.to_string();
+
+    // Create storage unit A with default tenant "TEST"
+    let storage_a_id = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_a_id);
+    online_storage_unit(&mut ts, user_a(), storage_a_id);
+
+    // Create storage unit B with different tenant
+    let storage_b_id = create_storage_unit_with_tenant(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+        different_tenant,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_b_id);
+    online_storage_unit(&mut ts, user_a(), storage_b_id);
+
+    // Mint ammo in storage unit B tenant test
+    mint_ammo(&mut ts, storage_b_id, character_id);
+    create_owner_cap_for_inventory_by_id(&mut ts, storage_b_id, character_id, user_a());
+
+    // Withdraw item from storage unit B in different tenant
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let clock = clock::create_for_testing(ts.ctx());
+
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
+
+        item =
+            storage_unit.withdraw_by_owner(
+                &server_registry,
+                &owner_cap,
+                character_id,
+                AMMO_ITEM_ID,
+                proof_bytes,
+                &clock,
+                ts.ctx(),
+            );
+
+        clock.destroy_for_testing();
+        ts::return_shared(storage_unit);
+        ts::return_shared(server_registry);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Create owner cap for storage unit A's inventory (needed for deposit)
+    // This must be created right before deposit so it's the one used
+    create_owner_cap_for_inventory_by_id(&mut ts, storage_a_id, character_id, user_a());
+
+    // Try to deposit item from storage unit B into storage unit A
+    // This should fail with ETenantMismatch
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let clock = clock::create_for_testing(ts.ctx());
+
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
+
+        storage_unit.deposit_by_owner(
+            item,
+            &server_registry,
+            &owner_cap,
+            character_id,
+            proof_bytes,
+            &clock,
+            ts.ctx(),
+        );
+
+        clock.destroy_for_testing();
+        ts::return_shared(storage_unit);
+        ts::return_shared(server_registry);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    ts::end(ts);
+}
+
+/// Test that depositing an item via extension with a different tenant fails
+/// Scenario: Create two storage units with different tenants, mint item in one, authorize extension, try to deposit via extension in the other
+/// Expected: Transaction aborts with ETenantMismatch error
+#[test]
+#[expected_failure(abort_code = storage_unit::ETenantMismatch)]
+fun test_deposit_via_extension_fail_tenant_mismatch() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::register_server_address(&mut ts);
+    let character_id = user_a_character_id();
+
+    let different_tenant = DIFFERENT_TENANT.to_string();
+
+    // Create storage unit A with default tenant
+    let storage_a_id = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_a_id);
+    online_storage_unit(&mut ts, user_a(), storage_a_id);
+
+    // Authorize extension for storage unit A
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Create storage unit B with different tenant
+    let storage_b_id = create_storage_unit_with_tenant(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+        different_tenant,
+    );
+    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_b_id);
+    online_storage_unit(&mut ts, user_a(), storage_b_id);
+
+    // Mint ammo in storage unit B
+    mint_ammo(&mut ts, storage_b_id, character_id);
+
+    create_owner_cap_for_inventory(&mut ts, character_id, user_a());
+
+    // Withdraw item from storage unit B
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let clock = clock::create_for_testing(ts.ctx());
+
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
+
+        item =
+            storage_unit.withdraw_by_owner(
+                &server_registry,
+                &owner_cap,
+                character_id,
+                AMMO_ITEM_ID,
+                proof_bytes,
+                &clock,
+                ts.ctx(),
+            );
+
+        clock.destroy_for_testing();
+        ts::return_shared(storage_unit);
+        ts::return_shared(server_registry);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Try to deposit item from storage unit B into storage unit A via extension
+    // This should fail with ETenantMismatch
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        storage_unit.deposit_item<SwapAuth>(
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        ts::return_shared(storage_unit);
+    };
     ts::end(ts);
 }
