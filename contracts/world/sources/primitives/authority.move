@@ -136,7 +136,7 @@ public fun register_server_address(
     _: &GovernorCap,
     server_address: address,
 ) {
-    table::add(&mut server_address_registry.authorized_address, server_address, true);
+    server_address_registry.authorized_address.add(server_address, true);
 }
 
 public fun remove_server_address(
@@ -144,7 +144,7 @@ public fun remove_server_address(
     _: &GovernorCap,
     server_address: address,
 ) {
-    table::remove(&mut server_address_registry.authorized_address, server_address);
+    server_address_registry.authorized_address.remove(server_address);
 }
 
 /// Checks if an address is an authorized server address.
@@ -152,7 +152,7 @@ public fun is_authorized_server_address(
     server_address_registry: &ServerAddressRegistry,
     address: address,
 ): bool {
-    table::contains(&server_address_registry.authorized_address, address)
+    server_address_registry.authorized_address.contains(address)
 }
 
 // Ideally only the owner can delete the owner cap

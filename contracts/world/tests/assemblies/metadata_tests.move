@@ -63,7 +63,7 @@ fun test_metadata_lifecycle() {
     };
 
     // Delete : Ideally the calling function is admin capped
-    metadata::delete(metadata);
+    metadata.delete();
     ts::end(ts);
 }
 
@@ -95,7 +95,7 @@ fun test_update_name_unauthorized() {
         ts::return_to_sender(&ts, owner_cap);
     };
 
-    metadata::delete(metadata);
+    metadata.delete();
     ts::end(ts);
 }
 
@@ -127,7 +127,7 @@ fun test_update_description_unauthorized() {
         ts::return_to_sender(&ts, owner_cap);
     };
 
-    metadata::delete(metadata);
+    metadata.delete();
     ts::end(ts);
 }
 
@@ -159,6 +159,6 @@ fun test_update_url_unauthorized() {
         ts::return_to_sender(&ts, owner_cap);
     };
 
-    metadata::delete(metadata);
+    metadata.delete();
     ts::end(ts);
 }

@@ -114,22 +114,15 @@ public fun share_assembly(assembly: Assembly, _: &AdminCap) {
 public fun unanchor(assembly: Assembly, _: &AdminCap) {
     let Assembly {
         id,
-        key: _,
-        type_id: _,
-        volume: _,
         status,
         location,
         metadata,
+        ..,
     } = assembly;
 
     location.remove();
     status.unanchor();
-    if (metadata.is_some()) {
-        let _meta_data = metadata.destroy_some();
-        _meta_data.delete();
-    } else {
-        metadata.destroy_none();
-    };
+    metadata.do!(|metadata| metadata.delete());
 
     // deleting doesnt mean the object id can be reclaimed.
     // however right now according to game design you cannot anchor after unanchor so its safe

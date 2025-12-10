@@ -5,7 +5,7 @@
 
 module world::character;
 
-use std::string::{Self, String};
+use std::string::String;
 use sui::{derived_object, event};
 use world::{
     authority::{Self, AdminCap},
@@ -36,7 +36,6 @@ public struct Character has key {
     id: UID,
     key: DerivationKey, // The derivation key used to generate the character's object ID
     tribe_id: u32,
-    character_address: address,
     metadata: Option<Metadata>,
 }
 
@@ -44,7 +43,6 @@ public struct Character has key {
 public struct CharacterCreatedEvent has copy, drop {
     character_id: ID,
     key: DerivationKey,
-    tenant: String,
     tribe_id: u32,
     character_address: address,
 }
@@ -68,8 +66,8 @@ public fun create_character(
 ): Character {
     assert!(game_character_id != 0, EGameCharacterIdEmpty);
     assert!(tribe_id != 0, ETribeIdEmpty);
-    assert!(std::string::length(&tenant) > 0, ETenantEmpty);
     assert!(character_address != @0x0, EAddressEmpty);
+    assert!(tenant.length() > 0, ETenantEmpty);
 
     // Claim a derived UID using the game character id and tenant id as the key
     // This ensures deterministic character id  generation and prevents duplicate character creation under the same game id.
@@ -82,7 +80,6 @@ public fun create_character(
         id: character_uid,
         key: character_key,
         tribe_id,
-        character_address,
         metadata: std::option::some(
             metadata::create_metadata(
                 character_id,
@@ -100,7 +97,6 @@ public fun create_character(
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),
         key: character_key,
-        tenant,
         tribe_id,
         character_address,
     });
@@ -116,18 +112,9 @@ public fun update_tribe(character: &mut Character, _: &AdminCap, tribe_id: u32) 
     character.tribe_id = tribe_id;
 }
 
-public fun update_character_address(
-    character: &mut Character,
-    _: &AdminCap,
-    character_address: address,
-) {
-    assert!(character_address != @0x0, EAddressEmpty);
-    character.character_address = character_address;
-}
-
 // for emergencies
 public fun update_tenent_id(character: &mut Character, _: &AdminCap, tenant: String) {
-    assert!(string::length(&tenant) > 0, ETenantEmpty);
+    assert!(tenant.length() > 0, ETenantEmpty);
     let current_id = game_id::item_id(&character.key);
     character.key = game_id::create_key(current_id, tenant);
 }
@@ -173,11 +160,6 @@ public fun name(character: &Character): String {
 #[test_only]
 public fun tenant(character: &Character): String {
     game_id::tenant(&character.key)
-}
-
-#[test_only]
-public fun character_address(character: &Character): address {
-    character.character_address
 }
 
 #[test_only]
