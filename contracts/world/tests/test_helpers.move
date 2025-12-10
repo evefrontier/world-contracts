@@ -1,7 +1,7 @@
 #[test_only]
 module world::test_helpers;
 
-use std::string::{Self, String};
+use std::string::String;
 use sui::test_scenario as ts;
 use world::{
     assembly,
@@ -14,7 +14,7 @@ use world::{
 const TEST: vector<u8> = b"TEST";
 
 public fun tenant(): String {
-    string::utf8(TEST)
+    TEST.to_string()
 }
 
 public fun game_id(item_id: u64): DerivationKey {

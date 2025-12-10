@@ -1,7 +1,7 @@
 #[test_only]
 module world::metadata_tests;
 
-use std::{string, unit_test::assert_eq};
+use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{authority::OwnerCap, metadata, test_helpers::{Self, governor, user_a, user_b}};
 
@@ -26,21 +26,21 @@ fun test_metadata_lifecycle() {
     let mut metadata = metadata::create_metadata(
         assembly_id,
         ITEM_ID,
-        string::utf8(NAME),
-        string::utf8(DESCRIPTION),
-        string::utf8(URL),
+        NAME.to_string(),
+        DESCRIPTION.to_string(),
+        URL.to_string(),
     );
 
-    assert_eq!(metadata::name(&metadata), string::utf8(NAME));
-    assert_eq!(metadata::description(&metadata), string::utf8(DESCRIPTION));
-    assert_eq!(metadata::url(&metadata), string::utf8(URL));
+    assert_eq!(metadata::name(&metadata), NAME.to_string());
+    assert_eq!(metadata::description(&metadata), DESCRIPTION.to_string());
+    assert_eq!(metadata::url(&metadata), URL.to_string());
 
     // Update Name
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        metadata::update_name(&mut metadata, &owner_cap, string::utf8(NEW_NAME));
-        assert_eq!(metadata::name(&metadata), string::utf8(NEW_NAME));
+        metadata::update_name(&mut metadata, &owner_cap, NEW_NAME.to_string());
+        assert_eq!(metadata::name(&metadata), NEW_NAME.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -48,8 +48,8 @@ fun test_metadata_lifecycle() {
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        metadata::update_description(&mut metadata, &owner_cap, string::utf8(NEW_DESC));
-        assert_eq!(metadata::description(&metadata), string::utf8(NEW_DESC));
+        metadata::update_description(&mut metadata, &owner_cap, NEW_DESC.to_string());
+        assert_eq!(metadata::description(&metadata), NEW_DESC.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -57,8 +57,8 @@ fun test_metadata_lifecycle() {
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        metadata::update_url(&mut metadata, &owner_cap, string::utf8(NEW_URL));
-        assert_eq!(metadata::url(&metadata), string::utf8(NEW_URL));
+        metadata::update_url(&mut metadata, &owner_cap, NEW_URL.to_string());
+        assert_eq!(metadata::url(&metadata), NEW_URL.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -79,9 +79,9 @@ fun test_update_name_unauthorized() {
     let mut metadata = metadata::create_metadata(
         assembly_id,
         ITEM_ID,
-        string::utf8(NAME),
-        string::utf8(DESCRIPTION),
-        string::utf8(URL),
+        NAME.to_string(),
+        DESCRIPTION.to_string(),
+        URL.to_string(),
     );
 
     // Try to update with wrong owner cap (user_b)
@@ -91,7 +91,7 @@ fun test_update_name_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        metadata::update_name(&mut metadata, &owner_cap, string::utf8(NEW_NAME));
+        metadata::update_name(&mut metadata, &owner_cap, NEW_NAME.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -111,9 +111,9 @@ fun test_update_description_unauthorized() {
     let mut metadata = metadata::create_metadata(
         assembly_id,
         ITEM_ID,
-        string::utf8(NAME),
-        string::utf8(DESCRIPTION),
-        string::utf8(URL),
+        NAME.to_string(),
+        DESCRIPTION.to_string(),
+        URL.to_string(),
     );
 
     // Try to update with wrong owner cap
@@ -123,7 +123,7 @@ fun test_update_description_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        metadata::update_description(&mut metadata, &owner_cap, string::utf8(NEW_DESC));
+        metadata::update_description(&mut metadata, &owner_cap, NEW_DESC.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -143,9 +143,9 @@ fun test_update_url_unauthorized() {
     let mut metadata = metadata::create_metadata(
         assembly_id,
         ITEM_ID,
-        string::utf8(NAME),
-        string::utf8(DESCRIPTION),
-        string::utf8(URL),
+        NAME.to_string(),
+        DESCRIPTION.to_string(),
+        URL.to_string(),
     );
 
     // Try to update with wrong owner cap
@@ -155,7 +155,7 @@ fun test_update_url_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        metadata::update_url(&mut metadata, &owner_cap, string::utf8(NEW_URL));
+        metadata::update_url(&mut metadata, &owner_cap, NEW_URL.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 

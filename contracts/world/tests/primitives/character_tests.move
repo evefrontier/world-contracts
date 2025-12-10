@@ -2,7 +2,7 @@
 
 module world::character_tests;
 
-use std::{string::{Self, utf8}, unit_test::assert_eq};
+use std::{string::utf8, unit_test::assert_eq};
 use sui::{derived_object, test_scenario as ts};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
@@ -250,7 +250,7 @@ fun different_tenant_create_character_id() {
             &mut registry,
             &admin_cap,
             game_id,
-            string::utf8(TENANT_A),
+            TENANT_A.to_string(),
             100,
             user_a(),
             utf8(b"characterA"),
@@ -409,7 +409,7 @@ fun create_character_with_empty_tenant() {
             &mut registry,
             &admin_cap,
             123u32,
-            string::utf8(EMPTY_TENANT),
+            EMPTY_TENANT.to_string(),
             100,
             user_a(),
             utf8(b"test1"),

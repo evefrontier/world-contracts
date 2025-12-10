@@ -88,8 +88,8 @@ public fun create_character(
                 character_id,
                 game_character_id as u64,
                 name,
-                string::utf8(b""),
-                string::utf8(b""),
+                b"".to_string(),
+                b"".to_string(),
             ),
         ),
     };
