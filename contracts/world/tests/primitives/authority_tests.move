@@ -5,7 +5,7 @@ use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
     authority::{Self, AdminCap, OwnerCap},
-    test_helpers::{Self, governor, admin, user_a},
+    test_helpers::{Self, governor, admin, user_a, user_b},
     world::{Self, GovernorCap}
 };
 
@@ -71,7 +71,7 @@ fun create_transfer_and_delete_owner_cap() {
 /// Scenario: Admin creates owner cap, transfers it, then verifies authorization
 /// Expected: Authorization check returns true for correct object ID
 #[test]
-fun test_owner_cap_authorization_after_transfer() {
+fun owner_cap_authorization_after_transfer() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
@@ -96,4 +96,48 @@ fun test_owner_cap_authorization_after_transfer() {
     };
 
     ts::end(ts);
+}
+
+/// Tests that owner cap authorization works correctly after transfer
+/// Scenario: Admin creates owner cap, transfers it, then verifies authorization
+/// The owner then transfers the OwnerCap
+/// Expected: Authorization should fail for the old owner
+#[test]
+#[expected_failure]
+fun owner_cap_authorisation_fail_after_transfer() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+
+    let target_object_id = object::id_from_address(@0x1234);
+
+    // Admin creates owner cap
+    test_helpers::setup_owner_cap(&mut ts, user_a(), target_object_id);
+
+    // User verifies authorization
+    ts::next_tx(&mut ts, user_a());
+    {
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        // Should be authorized for the correct object
+        assert_eq!(authority::is_authorized(&owner_cap, target_object_id), true);
+
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // User A transfers OwnerCap to User B,
+    // Now authorisation should fail
+    // User verifies authorization
+    ts::next_tx(&mut ts, user_a());
+    {
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        authority::transfer_owner_cap(owner_cap, user_b(), ts.ctx());
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        // fail here
+        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    abort
 }

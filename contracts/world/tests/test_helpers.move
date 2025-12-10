@@ -62,10 +62,9 @@ public fun setup_owner_cap(ts: &mut ts::Scenario, owner: address, object_id: ID)
         let owner_cap = authority::create_owner_cap(
             &admin_cap,
             object_id,
-            user_a_character_id(),
             ts.ctx(),
         );
-        authority::transfer_owner_cap(owner_cap, &admin_cap, user_a_character_id(), owner);
+        authority::transfer_owner_cap(owner_cap, owner, ts.ctx());
         ts::return_to_sender(ts, admin_cap);
     };
 }
