@@ -44,7 +44,6 @@ public struct Character has key {
 public struct CharacterCreatedEvent has copy, drop {
     character_id: ID,
     key: DerivationKey,
-    tenant: String,
     tribe_id: u32,
     character_address: address,
 }
@@ -100,7 +99,6 @@ public fun create_character(
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),
         key: character_key,
-        tenant,
         tribe_id,
         character_address,
     });
