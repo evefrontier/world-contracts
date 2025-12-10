@@ -43,7 +43,7 @@ public struct Character has key {
 // Events
 public struct CharacterCreatedEvent has copy, drop {
     character_id: ID,
-    game_character_id: u32,
+    key: DerivationKey,
     tenant: String,
     tribe_id: u32,
     character_address: address,
@@ -94,12 +94,12 @@ public fun create_character(
         ),
     };
 
-    let owner_cap = authority::create_owner_cap(admin_cap, character_id, character_id, ctx);
-    authority::transfer_owner_cap(owner_cap, admin_cap, character_id, character_address);
+    let owner_cap = authority::create_owner_cap(admin_cap, character_id, ctx);
+    authority::transfer_owner_cap(owner_cap, character_address, ctx);
 
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),
-        game_character_id: game_character_id,
+        key: character_key,
         tenant,
         tribe_id,
         character_address,

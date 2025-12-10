@@ -1,5 +1,4 @@
-/// This module defines the key type used to derive object IDs in world contracts
-/// using game ID and tenant.
+/// This module holds all the identifiers used in-game to refer to entities
 module world::game_id;
 
 use std::string::String;
