@@ -299,34 +299,20 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
 public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     let StorageUnit {
         mut id,
-        owner_id: _,
-        type_id: _,
-        item_id: _,
         status,
         location,
         inventory_keys,
         metadata,
-        extension: _,
+        ..,
     } = storage_unit;
 
     status.unanchor();
     location.remove();
 
     // loop through inventory_keys
-    let mut i = 0;
-    while (i < inventory_keys.length()) {
-        let inventory = df::remove<ID, Inventory>(&mut id, inventory_keys[i]);
-        inventory.delete();
-        i = i +1;
-    };
-
-    if (metadata.is_some()) {
-        let _meta_data = metadata.destroy_some();
-        _meta_data.delete();
-    } else {
-        metadata.destroy_none();
-    };
-    object::delete(id);
+    inventory_keys.destroy!(|key| df::remove<ID, Inventory>(&mut id, key).delete());
+    metadata.do!(|metadata| metadata.delete());
+    id.delete();
 }
 
 public fun game_item_to_chain_inventory(

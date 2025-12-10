@@ -88,7 +88,7 @@ public(package) fun unanchor(assembly_status: AssemblyStatus) {
         action: Action::UNANCHORED,
     });
 
-    let AssemblyStatus { assembly_id: _, status: _, type_id: _, item_id: _ } = assembly_status;
+    let AssemblyStatus { .. } = assembly_status;
 }
 
 /// Online an assembly

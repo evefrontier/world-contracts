@@ -110,10 +110,7 @@ public fun verify_proximity(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let LocationProof {
-        message,
-        signature,
-    } = proof;
+    let LocationProof { message, signature } = proof;
 
     validate_proof_message(&message, location, server_registry, ctx.sender());
 
@@ -209,7 +206,7 @@ public(package) fun attach(structure_id: ID, location_hash: vector<u8>): Locatio
 }
 
 public(package) fun remove(location: Location) {
-    let Location { structure_id: _, location_hash: _ } = location;
+    let Location { .. } = location;
 }
 
 // === Private Functions ===
@@ -238,18 +235,18 @@ fun unpack_proof(proof_bytes: vector<u8>): (LocationProofMessage, vector<u8>) {
     let mut bcs_data = bcs::new(proof_bytes);
 
     // Deserialize LocationProofMessage fields
-    let server_address = bcs::peel_address(&mut bcs_data);
-    let player_address = bcs::peel_address(&mut bcs_data);
-    let source_structure_id = object::id_from_address(bcs::peel_address(&mut bcs_data));
-    let source_location_hash = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
-    let target_structure_id = object::id_from_address(bcs::peel_address(&mut bcs_data));
-    let target_location_hash = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
-    let distance = bcs::peel_u64(&mut bcs_data);
-    let data = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
-    let deadline_ms = bcs::peel_u64(&mut bcs_data);
+    let server_address = bcs_data.peel_address();
+    let player_address = bcs_data.peel_address();
+    let source_structure_id = object::id_from_address(bcs_data.peel_address());
+    let source_location_hash = bcs_data.peel_vec!(|bcs| bcs.peel_u8());
+    let target_structure_id = object::id_from_address(bcs_data.peel_address());
+    let target_location_hash = bcs_data.peel_vec!(|bcs| bcs.peel_u8());
+    let distance = bcs_data.peel_u64();
+    let data = bcs_data.peel_vec!(|bcs| bcs.peel_u8());
+    let deadline_ms = bcs_data.peel_u64();
 
     // Deserialize signature
-    let signature = bcs::peel_vec!(&mut bcs_data, |bcs| bcs::peel_u8(bcs));
+    let signature = bcs_data.peel_vec!(|bcs| bcs.peel_u8());
 
     let message = LocationProofMessage {
         server_address,
@@ -285,10 +282,7 @@ public fun verify_proximity_without_deadline(
     proof: LocationProof,
     ctx: &mut TxContext,
 ): bool {
-    let LocationProof {
-        message,
-        signature,
-    } = proof;
+    let LocationProof { message, signature } = proof;
 
     validate_proof_message(&message, location, server_registry, ctx.sender());
 

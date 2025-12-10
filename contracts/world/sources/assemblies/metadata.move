@@ -31,19 +31,19 @@ public struct MetadataChangedEvent has copy, drop {
 public fun update_name(metadata: &mut Metadata, owner_cap: &OwnerCap, name: String) {
     assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.name = name;
-    emit_metadata_changed(metadata);
+    metadata.emit_metadata_changed();
 }
 
 public fun update_description(metadata: &mut Metadata, owner_cap: &OwnerCap, description: String) {
     assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.description = description;
-    emit_metadata_changed(metadata);
+    metadata.emit_metadata_changed();
 }
 
 public fun update_url(metadata: &mut Metadata, owner_cap: &OwnerCap, url: String) {
     assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.url = url;
-    emit_metadata_changed(metadata);
+    metadata.emit_metadata_changed();
 }
 
 // === Package Functions ===
@@ -62,19 +62,12 @@ public(package) fun create_metadata(
         url,
     };
 
-    emit_metadata_changed(&metadata);
-
+    metadata.emit_metadata_changed();
     metadata
 }
 
 public(package) fun delete(metadata: Metadata) {
-    let Metadata {
-        assembly_id: _,
-        item_id: _,
-        name: _,
-        description: _,
-        url: _,
-    } = metadata;
+    let Metadata { .. } = metadata;
 }
 
 // === Private Functions ===

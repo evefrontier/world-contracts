@@ -48,7 +48,7 @@ fun destroy_storage_unit(ts: &mut ts::Scenario) {
         let StorageUnit { id, status, max_capacity: _ } = storage_unit;
 
         status::unanchor(status);
-        object::delete(id);
+        id.delete();
 
         ts::return_to_sender(ts, admin_cap);
     }

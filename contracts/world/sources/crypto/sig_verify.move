@@ -54,7 +54,7 @@ public fun verify_signature(
     expected_address: address,
 ): bool {
     // Verify signature length
-    let len = vector::length(&signature);
+    let len = signature.length();
 
     assert!(len >= 1, EInvalidLen);
 

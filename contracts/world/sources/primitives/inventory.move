@@ -245,10 +245,8 @@ public(package) fun delete(inventory: Inventory) {
     let Inventory {
         id,
         owner_id: owner_id,
-        assembly_id: _,
-        max_capacity: _,
-        used_capacity: _,
         mut items,
+        ..,
     } = inventory;
 
     // Burn the items one by one
@@ -306,7 +304,7 @@ fun burn_items(inventory: &mut Inventory, item_id: u64, quantity: u32) {
 }
 
 fun destroy_item(item: Item, inventory_id: ID, character_id: ID) {
-    let Item { id, type_id: _, item_id, volume: _, quantity, location } = item;
+    let Item { id, item_id, quantity, location, .. } = item;
 
     event::emit(ItemBurnedEvent {
         inventory_id,
@@ -316,7 +314,7 @@ fun destroy_item(item: Item, inventory_id: ID, character_id: ID) {
     });
 
     location.remove();
-    object::delete(id);
+    id.delete();
 }
 
 /// Increases the quantity value of an existing item in the specified inventory.
