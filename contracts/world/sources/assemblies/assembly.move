@@ -6,7 +6,7 @@ use std::string::String;
 use sui::{derived_object, event};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
-    game_id::{Self, DerivationKey},
+    game_id::{Self, TenantItemDrvKey},
     location::{Self, Location},
     metadata::Metadata,
     status::{Self, AssemblyStatus}
@@ -29,7 +29,7 @@ public struct AssemblyRegistry has key {
 
 public struct Assembly has key {
     id: UID,
-    key: DerivationKey,
+    key: TenantItemDrvKey,
     type_id: u64,
     volume: u64,
     status: AssemblyStatus,
@@ -40,7 +40,7 @@ public struct Assembly has key {
 // === Events ===
 public struct AssemblyCreatedEvent has copy, drop {
     assembly_id: ID,
-    key: DerivationKey,
+    key: TenantItemDrvKey,
     type_id: u64,
     volume: u64,
 }
@@ -136,7 +136,7 @@ public(package) fun borrow_registry_id(registry: &mut AssemblyRegistry): &mut UI
     &mut registry.id
 }
 
-public(package) fun assembly_exists(registry: &AssemblyRegistry, key: DerivationKey): bool {
+public(package) fun assembly_exists(registry: &AssemblyRegistry, key: TenantItemDrvKey): bool {
     derived_object::exists(&registry.id, key)
 }
 

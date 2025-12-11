@@ -9,7 +9,7 @@ use std::string::String;
 use sui::{derived_object, event};
 use world::{
     authority::{Self, AdminCap},
-    game_id::{Self, DerivationKey},
+    game_id::{Self, TenantItemDrvKey},
     metadata::{Self, Metadata}
 };
 
@@ -34,7 +34,7 @@ public struct CharacterRegistry has key {
 
 public struct Character has key {
     id: UID,
-    key: DerivationKey, // The derivation key used to generate the character's object ID
+    key: TenantItemDrvKey, // The derivation key used to generate the character's object ID
     tribe_id: u32,
     metadata: Option<Metadata>,
 }
@@ -42,7 +42,7 @@ public struct Character has key {
 // Events
 public struct CharacterCreatedEvent has copy, drop {
     character_id: ID,
-    key: DerivationKey,
+    key: TenantItemDrvKey,
     tribe_id: u32,
     character_address: address,
 }
@@ -71,7 +71,7 @@ public fun create_character(
 
     // Claim a derived UID using the game character id and tenant id as the key
     // This ensures deterministic character id  generation and prevents duplicate character creation under the same game id.
-    // The character id can be pre-computed using the registry object id and DerivationKey
+    // The character id can be pre-computed using the registry object id and TenantItemDrvKey
     let character_key = game_id::create_key(game_character_id as u64, tenant);
     assert!(!derived_object::exists(&registry.id, character_key), ECharacterAlreadyExists);
     let character_uid = derived_object::claim(&mut registry.id, character_key);

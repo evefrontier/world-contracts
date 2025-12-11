@@ -6,7 +6,7 @@ use sui::test_scenario as ts;
 use world::{
     assembly,
     authority::{Self, AdminCap, ServerAddressRegistry},
-    game_id::{Self, DerivationKey},
+    game_id::{Self, TenantItemDrvKey},
     location::{Self, LocationProof},
     world::{Self, GovernorCap}
 };
@@ -17,7 +17,7 @@ public fun tenant(): String {
     TEST.to_string()
 }
 
-public fun game_id(item_id: u64): DerivationKey {
+public fun game_id(item_id: u64): TenantItemDrvKey {
     game_id::create_key(item_id, tenant())
 }
 
