@@ -112,7 +112,7 @@ public fun create_owner_cap(_: &AdminCap, object_id: ID, ctx: &mut TxContext): O
     owner_cap
 }
 
-// Note: Currently, OwnerCap transfers are restrited via contracts
+// Note: Currently, OwnerCap transfers are restricted via contracts
 // Future: This restriction may be lifted to allow free transfers
 /// Transfers an OwnerCap to a new owner.
 ///
