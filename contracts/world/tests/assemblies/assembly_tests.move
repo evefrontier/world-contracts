@@ -8,7 +8,7 @@ use world::{
     authority::{AdminCap, OwnerCap},
     location,
     status,
-    test_helpers::{Self, governor, admin, user_a, tenant, game_id}
+    test_helpers::{Self, governor, admin, user_a, tenant, in_game_id}
 };
 
 const LOCATION_HASH: vector<u8> =
@@ -53,7 +53,7 @@ fun test_anchor_assembly() {
     ts::next_tx(&mut ts, admin());
     {
         let assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
-        assert!(assembly::assembly_exists(&assembly_registry, game_id(ITEM_ID)), 0);
+        assert!(assembly::assembly_exists(&assembly_registry, in_game_id(ITEM_ID)), 0);
         ts::return_shared(assembly_registry);
     };
 
@@ -129,7 +129,7 @@ fun test_unanchor() {
 
     // As per implementation, derived object is not reclaimed, so assembly_exists should be true
     // but object is gone.
-    assert!(assembly::assembly_exists(&assembly_registry, game_id(ITEM_ID)), 0);
+    assert!(assembly::assembly_exists(&assembly_registry, in_game_id(ITEM_ID)), 0);
 
     ts::return_to_sender(&ts, admin_cap);
     ts::return_shared(assembly_registry);

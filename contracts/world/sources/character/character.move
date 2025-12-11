@@ -9,7 +9,7 @@ use std::string::String;
 use sui::{derived_object, event};
 use world::{
     authority::{Self, AdminCap},
-    game_id::{Self, TenantItemDrvKey},
+    in_game_id::{Self, TenantItemId},
     metadata::{Self, Metadata}
 };
 
@@ -34,7 +34,7 @@ public struct CharacterRegistry has key {
 
 public struct Character has key {
     id: UID,
-    key: TenantItemDrvKey, // The derivation key used to generate the character's object ID
+    key: TenantItemId, // The derivation key used to generate the character's object ID
     tribe_id: u32,
     metadata: Option<Metadata>,
 }
@@ -42,7 +42,7 @@ public struct Character has key {
 // Events
 public struct CharacterCreatedEvent has copy, drop {
     character_id: ID,
-    key: TenantItemDrvKey,
+    key: TenantItemId,
     tribe_id: u32,
     character_address: address,
 }
@@ -71,8 +71,8 @@ public fun create_character(
 
     // Claim a derived UID using the game character id and tenant id as the key
     // This ensures deterministic character id  generation and prevents duplicate character creation under the same game id.
-    // The character id can be pre-computed using the registry object id and TenantItemDrvKey
-    let character_key = game_id::create_key(game_character_id as u64, tenant);
+    // The character id can be pre-computed using the registry object id and TenantItemId
+    let character_key = in_game_id::create_key(game_character_id as u64, tenant);
     assert!(!derived_object::exists(&registry.id, character_key), ECharacterAlreadyExists);
     let character_uid = derived_object::claim(&mut registry.id, character_key);
     let character_id = object::uid_to_inner(&character_uid);
@@ -115,8 +115,8 @@ public fun update_tribe(character: &mut Character, _: &AdminCap, tribe_id: u32) 
 // for emergencies
 public fun update_tenent_id(character: &mut Character, _: &AdminCap, tenant: String) {
     assert!(tenant.length() > 0, ETenantEmpty);
-    let current_id = game_id::item_id(&character.key);
-    character.key = game_id::create_key(current_id, tenant);
+    let current_id = in_game_id::item_id(&character.key);
+    character.key = in_game_id::create_key(current_id, tenant);
 }
 
 public fun delete_character(character: Character, _: &AdminCap) {
@@ -143,7 +143,7 @@ public fun id(character: &Character): ID {
 
 #[test_only]
 public fun game_character_id(character: &Character): u32 {
-    game_id::item_id(&character.key) as u32
+    in_game_id::item_id(&character.key) as u32
 }
 
 #[test_only]
@@ -159,7 +159,7 @@ public fun name(character: &Character): String {
 
 #[test_only]
 public fun tenant(character: &Character): String {
-    game_id::tenant(&character.key)
+    in_game_id::tenant(&character.key)
 }
 
 #[test_only]

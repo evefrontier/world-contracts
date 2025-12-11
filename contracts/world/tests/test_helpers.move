@@ -6,7 +6,7 @@ use sui::test_scenario as ts;
 use world::{
     assembly,
     authority::{Self, AdminCap, ServerAddressRegistry},
-    game_id::{Self, TenantItemDrvKey},
+    in_game_id::{Self, TenantItemId},
     location::{Self, LocationProof},
     world::{Self, GovernorCap}
 };
@@ -17,8 +17,8 @@ public fun tenant(): String {
     TEST.to_string()
 }
 
-public fun game_id(item_id: u64): TenantItemDrvKey {
-    game_id::create_key(item_id, tenant())
+public fun in_game_id(item_id: u64): TenantItemId {
+    in_game_id::create_key(item_id, tenant())
 }
 
 public fun governor(): address { @0xA }

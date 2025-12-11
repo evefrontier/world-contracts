@@ -7,7 +7,7 @@ use sui::{derived_object, test_scenario as ts};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
     character::{Self, Character, CharacterRegistry},
-    game_id as character_id,
+    in_game_id as character_id,
     metadata,
     test_helpers::{governor, admin, user_a, user_b, tenant},
     world::{Self, GovernorCap}
@@ -33,7 +33,12 @@ fun setup_world(ts: &mut ts::Scenario) {
     };
 }
 
-fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: vector<u8>) {
+fun setup_character(
+    ts: &mut ts::Scenario,
+    in_game_character_id: u32,
+    tribe_id: u32,
+    name: vector<u8>,
+) {
     ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
@@ -41,7 +46,7 @@ fun setup_character(ts: &mut ts::Scenario, game_id: u32, tribe_id: u32, name: ve
         let character = character::create_character(
             &mut registry,
             &admin_cap,
-            game_id,
+            in_game_character_id,
             tenant(),
             tribe_id,
             user_a(),
@@ -76,7 +81,7 @@ fun character_registry_initialized() {
 }
 
 /// Tests creating a character with valid parameters
-/// Scenario: Admin creates a character with game_id=1, tribe_id=100, name="test"
+/// Scenario: Admin creates a character with gamin_game_character_ide_id=1, tribe_id=100, name="test"
 /// Expected: Character is created successfully with correct attributes
 #[test]
 fun create_character() {
@@ -105,11 +110,11 @@ fun deterministic_character_id() {
     let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
-    let game_id = 42u32;
+    let in_game_character_id = 42u32;
     let character_id_1: ID;
     let precomputed_id: ID;
 
-    // Create first character with game_id = 42
+    // Create first character with in_game_character_id = 42
     ts::next_tx(&mut ts, admin());
     {
         let mut registry = ts::take_shared<CharacterRegistry>(&ts);
@@ -118,7 +123,7 @@ fun deterministic_character_id() {
         // Pre-compute the character ID before creation
         // Pre-computation formula: blake2b_hash(registry_id || type_tag || bcs_serialize(CharacterKey))
         // where type_tag = "sui::derived_object::DerivedObjectKey<CharacterKey>"
-        let character_key = character_id::create_key(game_id as u64, tenant());
+        let character_key = character_id::create_key(in_game_character_id as u64, tenant());
         let precomputed_addr = derived_object::derive_address(
             object::id(&registry),
             character_key,
@@ -128,7 +133,7 @@ fun deterministic_character_id() {
         let character = character::create_character(
             &mut registry,
             &admin_cap,
-            game_id,
+            in_game_character_id,
             tenant(),
             100,
             user_a(),
@@ -148,17 +153,17 @@ fun deterministic_character_id() {
 }
 
 /// Tests that different game IDs produce different character IDs
-/// Scenario: Create two characters with different game_ids (1 and 2)
+/// Scenario: Create two characters with different in_game_character_ids (1 and 2)
 /// Expected: The two characters have different IDs
 #[test]
-fun different_game_ids_produce_different_character_ids() {
+fun different_character_ids_produce_different_character_ids() {
     let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
     let character_id_1: ID;
     let character_id_2: ID;
 
-    // Create first character with game_id = 1
+    // Create first character with in_game_character_id = 1
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
@@ -179,7 +184,7 @@ fun different_game_ids_produce_different_character_ids() {
         ts::return_to_sender(&ts, admin_cap);
     };
 
-    // Create second character with game_id = 2
+    // Create second character with in_game_character_id = 2
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
@@ -220,7 +225,7 @@ fun different_tenant_create_character_id() {
     let character_id_1: ID;
     let character_id_2: ID;
 
-    let game_id: u32 = 12345;
+    let in_game_character_id: u32 = 12345;
 
     ts::next_tx(&mut ts, admin());
     {
@@ -229,7 +234,7 @@ fun different_tenant_create_character_id() {
         let character = character::create_character(
             &mut registry,
             &admin_cap,
-            game_id,
+            in_game_character_id,
             tenant(),
             100,
             user_a(),
@@ -249,7 +254,7 @@ fun different_tenant_create_character_id() {
         let character = character::create_character(
             &mut registry,
             &admin_cap,
-            game_id,
+            in_game_character_id,
             TENANT_A.to_string(),
             100,
             user_a(),
@@ -423,18 +428,18 @@ fun create_character_with_empty_tenant() {
     abort
 }
 
-/// Tests that creating a character with duplicate game_id fails
-/// Scenario: Create character with game_id=123, then attempt to create another with same game_id
+/// Tests that creating a character with duplicate in_game_character_id fails
+/// Scenario: Create character with in_game_character_id=123, then attempt to create another with same in_game_character_id
 /// Expected: Second creation aborts with ECharacterAlreadyExists error
 #[test]
 #[expected_failure(abort_code = character::ECharacterAlreadyExists)]
-fun duplicate_game_id_fails() {
+fun duplicate_character_id_fails() {
     let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
-    let game_id = 123u32;
+    let in_game_character_id = 123u32;
 
-    // Create first character with game_id = 123
+    // Create first character with in_game_character_id = 123
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
@@ -442,7 +447,7 @@ fun duplicate_game_id_fails() {
         let character = character::create_character(
             &mut registry,
             &admin_cap,
-            game_id,
+            in_game_character_id,
             tenant(),
             100,
             user_a(),
@@ -455,7 +460,7 @@ fun duplicate_game_id_fails() {
         ts::return_to_sender(&ts, admin_cap);
     };
 
-    // Try to create another character with the same game_id = 123
+    // Try to create another character with the same in_game_character_id = 123
     // This should fail because the derived UID was already claimed
     ts::next_tx(&mut ts, admin());
     {
@@ -464,7 +469,7 @@ fun duplicate_game_id_fails() {
         let character = character::create_character(
             &mut registry,
             &admin_cap,
-            game_id,
+            in_game_character_id,
             tenant(),
             200,
             user_a(),
@@ -481,7 +486,7 @@ fun duplicate_game_id_fails() {
 }
 
 // Current limitation: derived UIDs cannot be reclaimed after deletion.
-// Recreating a character with the same game_id fails,
+// Recreating a character with the same in_game_character_id fails,
 // even after the original character is deleted.
 // The Sui team plans to lift this restriction in the future.
 #[test]
@@ -490,7 +495,7 @@ fun delete_recreate_character() {
     let mut ts = ts::begin(governor());
     setup_world(&mut ts);
 
-    // Create first character with game_id = 1
+    // Create first character with in_game_character_id = 1
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
@@ -520,7 +525,7 @@ fun delete_recreate_character() {
         ts::return_to_sender(&ts, admin_cap);
     };
 
-    // Create another character with the same game_id = 42
+    // Create another character with the same in_game_character_id = 42
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);

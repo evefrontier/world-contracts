@@ -26,7 +26,7 @@ use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     assembly::{Self, AssemblyRegistry},
     authority::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
-    game_id::{Self, TenantItemDrvKey},
+    in_game_id::{Self, TenantItemId},
     inventory::{Self, Inventory, Item},
     location::{Self, Location},
     metadata::Metadata,
@@ -56,7 +56,7 @@ const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants"
 // === Structs ===
 public struct StorageUnit has key {
     id: UID,
-    key: TenantItemDrvKey,
+    key: TenantItemId,
     owner_id: ID,
     type_id: u64,
     status: AssemblyStatus,
@@ -69,7 +69,7 @@ public struct StorageUnit has key {
 // === Events ===
 public struct StorageUnitCreatedEvent has copy, drop {
     storage_unit_id: ID,
-    key: TenantItemDrvKey,
+    key: TenantItemId,
     type_id: u64,
     max_capacity: u64,
     location_hash: vector<u8>,
@@ -258,7 +258,7 @@ public fun anchor(
     assert!(type_id != 0, EStorageUnitTypeIdEmpty);
     assert!(item_id != 0, EStorageUnitItemIdEmpty);
 
-    let storage_unit_key = game_id::create_key(item_id, tenant);
+    let storage_unit_key = in_game_id::create_key(item_id, tenant);
     assert!(
         !assembly::assembly_exists(assembly_registry, storage_unit_key),
         EStorageUnitAlreadyExists,

@@ -6,7 +6,7 @@ use std::string::String;
 use sui::{derived_object, event};
 use world::{
     authority::{Self, AdminCap, OwnerCap},
-    game_id::{Self, TenantItemDrvKey},
+    in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::Metadata,
     status::{Self, AssemblyStatus}
@@ -29,7 +29,7 @@ public struct AssemblyRegistry has key {
 
 public struct Assembly has key {
     id: UID,
-    key: TenantItemDrvKey,
+    key: TenantItemId,
     type_id: u64,
     volume: u64,
     status: AssemblyStatus,
@@ -40,7 +40,7 @@ public struct Assembly has key {
 // === Events ===
 public struct AssemblyCreatedEvent has copy, drop {
     assembly_id: ID,
-    key: TenantItemDrvKey,
+    key: TenantItemId,
     type_id: u64,
     volume: u64,
 }
@@ -82,7 +82,7 @@ public fun anchor(
     assert!(item_id != 0, EAssemblyItemIdEmpty);
 
     // key to derive assembly object id
-    let assembly_key = game_id::create_key(item_id, tenant);
+    let assembly_key = in_game_id::create_key(item_id, tenant);
     assert!(!assembly_exists(assembly_registry, assembly_key), EAssemblyAlreadyExists);
 
     let assembly_uid = derived_object::claim(&mut assembly_registry.id, assembly_key);
@@ -136,7 +136,7 @@ public(package) fun borrow_registry_id(registry: &mut AssemblyRegistry): &mut UI
     &mut registry.id
 }
 
-public(package) fun assembly_exists(registry: &AssemblyRegistry, key: TenantItemDrvKey): bool {
+public(package) fun assembly_exists(registry: &AssemblyRegistry, key: TenantItemId): bool {
     derived_object::exists(&registry.id, key)
 }
 
