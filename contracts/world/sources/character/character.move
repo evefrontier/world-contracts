@@ -36,6 +36,7 @@ public struct Character has key {
     id: UID,
     key: TenantItemId, // The derivation key used to generate the character's object ID
     tribe_id: u32,
+    character_address: address,
     metadata: Option<Metadata>,
 }
 
@@ -80,6 +81,7 @@ public fun create_character(
         id: character_uid,
         key: character_key,
         tribe_id,
+        character_address,
         metadata: std::option::some(
             metadata::create_metadata(
                 character_id,
@@ -110,6 +112,11 @@ public fun share_character(character: Character, _: &AdminCap) {
 public fun update_tribe(character: &mut Character, _: &AdminCap, tribe_id: u32) {
     assert!(tribe_id != 0, ETribeIdEmpty);
     character.tribe_id = tribe_id;
+}
+
+public fun update_address(character: &mut Character, _: &AdminCap, character_address: address) {
+    assert!(character_address != @0x0, EAddressEmpty);
+    character.character_address = character_address;
 }
 
 // for emergencies
