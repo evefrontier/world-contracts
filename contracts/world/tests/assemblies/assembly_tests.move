@@ -36,12 +36,12 @@ fun create_assembly(ts: &mut ts::Scenario): ID {
         LOCATION_HASH,
         ts.ctx(),
     );
-    let assembly_id = object::id(&assembly);
+    let id = object::id(&assembly);
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(assembly_registry);
-    assembly_id
+    id
 }
 
 #[test]

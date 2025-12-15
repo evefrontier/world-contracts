@@ -217,7 +217,7 @@ fun create_character_with_tenant(
     character_id
 }
 
-// Character Owner Caps are created for Ephemeral Inventory
+// Character Owner Caps for Ephemeral Inventory interaction
 fun character_owner_cap(ts: &mut ts::Scenario, user: address): ID {
     ts::next_tx(ts, user);
     let owner_cap_id = {
@@ -236,10 +236,10 @@ fun character_owner_cap(ts: &mut ts::Scenario, user: address): ID {
 fun test_anchor_storage_unit() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -273,12 +273,12 @@ fun test_anchor_storage_unit() {
 fun test_create_items_on_chain() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
 
     // Create a storage unit for user_a
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -310,11 +310,11 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -349,7 +349,7 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         storage_unit.chain_item_to_game_inventory_test(
             &server_registry,
             &owner_cap,
-            character_a_id,
+            character_id,
             AMMO_ITEM_ID,
             AMMO_QUANTITY,
             proof_bytes,
@@ -442,11 +442,11 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
 fun test_authorize_extension() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -472,11 +472,11 @@ fun test_authorize_extension() {
 fun test_deposit_and_withdraw_via_extension() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -530,11 +530,11 @@ fun test_deposit_and_withdraw_by_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -560,7 +560,7 @@ fun test_deposit_and_withdraw_by_owner() {
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &owner_cap,
-                character_a_id,
+                character_id,
                 AMMO_ITEM_ID,
                 proof_bytes,
                 &clock,
@@ -589,7 +589,7 @@ fun test_deposit_and_withdraw_by_owner() {
             item,
             &server_registry,
             &owner_cap,
-            character_a_id,
+            character_id,
             proof_bytes,
             &clock,
             ts.ctx(),
@@ -727,12 +727,12 @@ fun test_unachor_storage_unit() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_b_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
+    let character_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
 
     // Create storage unit for User A
     let storage_id = create_storage_unit(
         &mut ts,
-        character_b_id,
+        character_id,
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -770,12 +770,11 @@ fun test_unachor_storage_unit() {
 fun test_authorize_extension_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_a_id = create_character(&mut ts, user_b(), CHARACTER_A_ITEM_ID);
-    let character_b_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
+    let character_id = create_character(&mut ts, user_b(), CHARACTER_A_ITEM_ID);
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -783,7 +782,7 @@ fun test_authorize_extension_fail_wrong_owner() {
 
     create_storage_unit(
         &mut ts,
-        character_b_id,
+        character_id,
         LOCATION_A_HASH,
         DUMMY_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -810,11 +809,11 @@ fun test_authorize_extension_fail_wrong_owner() {
 fun test_withdraw_via_extension_fail_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -851,11 +850,11 @@ fun test_deposit_via_extension_fail_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -882,7 +881,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &owner_cap,
-                character_a_id,
+                character_id,
                 AMMO_ITEM_ID,
                 proof_bytes,
                 &clock,
@@ -1083,13 +1082,13 @@ fun test_swap_fail_extension_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
     create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
 
     // Create storage unit with lens
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
@@ -1204,11 +1203,11 @@ fun mint_items_fail_inventory_offline() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
 
     let storage_unit_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        character_id,
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,

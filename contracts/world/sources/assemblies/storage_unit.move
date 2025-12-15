@@ -242,12 +242,12 @@ public fun location(storage_unit: &StorageUnit): &Location {
     &storage_unit.location
 }
 
-public fun owner_cap_id(storage_unit: &StorageUnit): ID {
-    storage_unit.owner_cap_id
-}
-
 public fun inventory(storage_unit: &StorageUnit, owner_cap_id: ID): &Inventory {
     df::borrow(&storage_unit.id, owner_cap_id)
+}
+
+public fun owner_cap_id(storage_unit: &StorageUnit): ID {
+    storage_unit.owner_cap_id
 }
 
 // === Admin Functions ===
