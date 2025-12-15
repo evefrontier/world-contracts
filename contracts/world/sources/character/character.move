@@ -54,6 +54,19 @@ fun init(ctx: &mut TxContext) {
     });
 }
 
+// === View Functions ===
+public fun id(character: &Character): ID {
+    object::id(character)
+}
+
+public fun character_address(character: &Character): address {
+    character.character_address
+}
+
+public fun tenant(character: &Character): String {
+    in_game_id::tenant(&character.key)
+}
+
 // === Admin Functions ===
 public fun create_character(
     registry: &mut CharacterRegistry,
@@ -144,11 +157,6 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-public fun id(character: &Character): ID {
-    object::id(character)
-}
-
-#[test_only]
 public fun game_character_id(character: &Character): u32 {
     in_game_id::item_id(&character.key) as u32
 }
@@ -162,11 +170,6 @@ public fun tribe_id(character: &Character): u32 {
 public fun name(character: &Character): String {
     let metadata = std::option::borrow(&character.metadata);
     metadata::name(metadata)
-}
-
-#[test_only]
-public fun tenant(character: &Character): String {
-    in_game_id::tenant(&character.key)
 }
 
 #[test_only]

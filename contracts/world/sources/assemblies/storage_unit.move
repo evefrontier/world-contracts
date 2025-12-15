@@ -21,7 +21,7 @@
 /// Example on how a storage unit can be customised : //todo:
 module world::storage_unit;
 
-use std::{string::String, type_name::{Self, TypeName}};
+use std::type_name::{Self, TypeName};
 use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     assembly::{Self, AssemblyRegistry},
@@ -253,9 +253,8 @@ public fun inventory(storage_unit: &StorageUnit, owner_cap_id: ID): &Inventory {
 // === Admin Functions ===
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
+    character: &Character,
     admin_cap: &AdminCap,
-    character_addres: address,
-    tenant: String,
     item_id: u64,
     type_id: u64,
     max_capacity: u64,
@@ -265,7 +264,7 @@ public fun anchor(
     assert!(type_id != 0, EStorageUnitTypeIdEmpty);
     assert!(item_id != 0, EStorageUnitItemIdEmpty);
 
-    let storage_unit_key = in_game_id::create_key(item_id, tenant);
+    let storage_unit_key = in_game_id::create_key(item_id, character.tenant());
     assert!(
         !assembly::assembly_exists(assembly_registry, storage_unit_key),
         EStorageUnitAlreadyExists,
@@ -299,7 +298,7 @@ public fun anchor(
     let owner_cap = authority::create_owner_cap(admin_cap, &storage_unit, ctx);
     let owner_cap_id = object::id(&owner_cap);
     storage_unit.owner_cap_id = owner_cap_id; // Update with actual owner_cap_id
-    authority::transfer_owner_cap(owner_cap, character_addres, ctx);
+    authority::transfer_owner_cap(owner_cap, character.character_address(), ctx);
 
     let inventory = inventory::create(
         assembly_id,
