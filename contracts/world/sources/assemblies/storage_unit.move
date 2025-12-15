@@ -274,10 +274,14 @@ public fun anchor(
     let assembly_uid = derived_object::claim(registry_id, item_id);
     let assembly_id = object::uid_to_inner(&assembly_uid);
 
+    // Create owner cap first with just the ID
+    let owner_cap = authority::create_owner_cap_by_id<StorageUnit>(admin_cap, assembly_id, ctx);
+    let owner_cap_id = object::id(&owner_cap);
+
     let mut storage_unit = StorageUnit {
         id: assembly_uid,
         key: storage_unit_key,
-        owner_cap_id: assembly_id, // Temporary: will be updated below (catch22 problem)
+        owner_cap_id,
         type_id: type_id,
         status: status::anchor(assembly_id, type_id, item_id),
         location: location::attach(assembly_id, location_hash),
@@ -295,9 +299,6 @@ public fun anchor(
     };
 
     // Create ownerCap for storage unit
-    let owner_cap = authority::create_owner_cap(admin_cap, &storage_unit, ctx);
-    let owner_cap_id = object::id(&owner_cap);
-    storage_unit.owner_cap_id = owner_cap_id; // Update with actual owner_cap_id
     authority::transfer_owner_cap(owner_cap, character.character_address(), ctx);
 
     let inventory = inventory::create(

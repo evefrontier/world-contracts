@@ -153,6 +153,22 @@ public fun create_owner_cap<T: key>(_: &AdminCap, obj: &T, ctx: &mut TxContext):
     owner_cap
 }
 
+public fun create_owner_cap_by_id<T: key>(
+    _: &AdminCap, 
+    object_id: ID, 
+    ctx: &mut TxContext
+): OwnerCap<T> {
+    let owner_cap = OwnerCap<T> {
+        id: object::new(ctx),
+        authorized_object_id: object_id,
+    };
+    event::emit(OwnerCapCreatedEvent {
+        owner_cap_id: object::id(&owner_cap),
+        authorized_object_id: object_id,
+    });
+    owner_cap
+}
+
 public fun register_server_address(
     server_address_registry: &mut ServerAddressRegistry,
     _: &GovernorCap,

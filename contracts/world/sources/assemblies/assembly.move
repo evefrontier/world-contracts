@@ -89,10 +89,15 @@ public fun anchor(
 
     let assembly_uid = derived_object::claim(&mut assembly_registry.id, assembly_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
-    let mut assembly = Assembly {
+
+    // Create owner cap first with just the ID
+    let owner_cap = authority::create_owner_cap_by_id<Assembly>(admin_cap, assembly_id, ctx);
+    let owner_cap_id = object::id(&owner_cap);
+
+    let assembly = Assembly {
         id: assembly_uid,
         key: assembly_key,
-        owner_cap_id: assembly_id, // Temporary: will be updated below (catch22 problem)
+        owner_cap_id,
         type_id,
         volume,
         status: status::anchor(assembly_id, type_id, item_id),
@@ -107,9 +112,6 @@ public fun anchor(
             ),
         ),
     };
-
-    let owner_cap = authority::create_owner_cap(admin_cap, &assembly, ctx);
-    assembly.owner_cap_id = object::id(&owner_cap);
     authority::transfer_owner_cap(owner_cap, character_addres, ctx);
 
     event::emit(AssemblyCreatedEvent {
