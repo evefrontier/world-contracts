@@ -154,9 +154,9 @@ public fun create_owner_cap<T: key>(_: &AdminCap, obj: &T, ctx: &mut TxContext):
 }
 
 public fun create_owner_cap_by_id<T: key>(
-    _: &AdminCap, 
-    object_id: ID, 
-    ctx: &mut TxContext
+    _: &AdminCap,
+    object_id: ID,
+    ctx: &mut TxContext,
 ): OwnerCap<T> {
     let owner_cap = OwnerCap<T> {
         id: object::new(ctx),
