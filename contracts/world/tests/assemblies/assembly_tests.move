@@ -28,6 +28,7 @@ fun create_assembly(ts: &mut ts::Scenario): ID {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a(),
         tenant(),
         ITEM_ID,
         TYPE_ID,
@@ -35,12 +36,12 @@ fun create_assembly(ts: &mut ts::Scenario): ID {
         LOCATION_HASH,
         ts.ctx(),
     );
-    let id = object::id(&assembly);
+    let assembly_id = object::id(&assembly);
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(assembly_registry);
-    id
+    assembly_id
 }
 
 #[test]
@@ -76,12 +77,11 @@ fun test_online_offline() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let assembly_id = create_assembly(&mut ts);
-    test_helpers::setup_owner_cap(&mut ts, user_a(), assembly_id);
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
 
         assembly::online(&mut assembly, &owner_cap);
         assert_eq!(status::status_to_u8(assembly::status(&assembly)), STATUS_ONLINE);
@@ -93,7 +93,7 @@ fun test_online_offline() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
 
         assembly::offline(&mut assembly, &owner_cap);
         assert_eq!(status::status_to_u8(assembly::status(&assembly)), STATUS_OFFLINE);
@@ -116,6 +116,7 @@ fun test_unanchor() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a(),
         tenant(),
         ITEM_ID,
         TYPE_ID,
@@ -149,6 +150,7 @@ fun test_anchor_duplicate_item_id() {
     let assembly1 = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a(),
         tenant(),
         ITEM_ID,
         TYPE_ID,
@@ -162,6 +164,7 @@ fun test_anchor_duplicate_item_id() {
     let assembly2 = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a(),
         tenant(),
         ITEM_ID,
         TYPE_ID,
@@ -189,6 +192,7 @@ fun test_anchor_invalid_type_id() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a(),
         tenant(),
         ITEM_ID,
         0, // Invalid Type ID
@@ -216,6 +220,7 @@ fun test_anchor_invalid_item_id() {
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &admin_cap,
+        user_a(),
         tenant(),
         0, // Invalid Item ID
         TYPE_ID,

@@ -8,7 +8,7 @@ use world::{
     authority::{Self, AdminCap, OwnerCap},
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
-    metadata::Metadata,
+    metadata::{Self, Metadata},
     status::{Self, AssemblyStatus}
 };
 
@@ -30,6 +30,7 @@ public struct AssemblyRegistry has key {
 public struct Assembly has key {
     id: UID,
     key: TenantItemId,
+    owner_cap_id: ID,
     type_id: u64,
     volume: u64,
     status: AssemblyStatus,
@@ -52,12 +53,12 @@ fun init(ctx: &mut TxContext) {
 }
 
 // === Public Functions ===
-public fun online(assembly: &mut Assembly, owner_cap: &OwnerCap) {
+public fun online(assembly: &mut Assembly, owner_cap: &OwnerCap<Assembly>) {
     assert!(authority::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
     assembly.status.online();
 }
 
-public fun offline(assembly: &mut Assembly, owner_cap: &OwnerCap) {
+public fun offline(assembly: &mut Assembly, owner_cap: &OwnerCap<Assembly>) {
     assert!(authority::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
     assembly.status.offline();
 }
@@ -70,13 +71,14 @@ public fun status(assembly: &Assembly): &AssemblyStatus {
 // === Admin Functions ===
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
-    _: &AdminCap,
+    admin_cap: &AdminCap,
+    character_addres: address,
     tenant: String,
     item_id: u64,
     type_id: u64,
     volume: u64,
     location_hash: vector<u8>,
-    _: &mut TxContext,
+    ctx: &mut TxContext,
 ): Assembly {
     assert!(type_id != 0, EAssemblyTypeIdEmpty);
     assert!(item_id != 0, EAssemblyItemIdEmpty);
@@ -87,15 +89,28 @@ public fun anchor(
 
     let assembly_uid = derived_object::claim(&mut assembly_registry.id, assembly_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
-    let assembly = Assembly {
+    let mut assembly = Assembly {
         id: assembly_uid,
         key: assembly_key,
+        owner_cap_id: assembly_id, // Temporary: will be updated below (catch22 problem)
         type_id,
         volume,
         status: status::anchor(assembly_id, type_id, item_id),
         location: location::attach(assembly_id, location_hash),
-        metadata: option::none(),
+        metadata: std::option::some(
+            metadata::create_metadata(
+                assembly_id,
+                item_id,
+                b"".to_string(),
+                b"".to_string(),
+                b"".to_string(),
+            ),
+        ),
     };
+
+    let owner_cap = authority::create_owner_cap(admin_cap, &assembly, ctx);
+    assembly.owner_cap_id = object::id(&owner_cap);
+    authority::transfer_owner_cap(owner_cap, character_addres, ctx);
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,

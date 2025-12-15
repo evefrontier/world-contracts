@@ -28,19 +28,23 @@ public struct MetadataChangedEvent has copy, drop {
 }
 
 // === Public Functions ===
-public fun update_name(metadata: &mut Metadata, owner_cap: &OwnerCap, name: String) {
+public fun update_name<T: key>(metadata: &mut Metadata, owner_cap: &OwnerCap<T>, name: String) {
     assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.name = name;
     metadata.emit_metadata_changed();
 }
 
-public fun update_description(metadata: &mut Metadata, owner_cap: &OwnerCap, description: String) {
+public fun update_description<T: key>(
+    metadata: &mut Metadata,
+    owner_cap: &OwnerCap<T>,
+    description: String,
+) {
     assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.description = description;
     metadata.emit_metadata_changed();
 }
 
-public fun update_url(metadata: &mut Metadata, owner_cap: &OwnerCap, url: String) {
+public fun update_url<T: key>(metadata: &mut Metadata, owner_cap: &OwnerCap<T>, url: String) {
     assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.url = url;
     metadata.emit_metadata_changed();

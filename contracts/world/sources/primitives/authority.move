@@ -30,8 +30,7 @@ public struct AdminCap has key {
 ///
 /// Fields:
 /// - `authorized_object_id`: The ID of the specific object this KeyCard grants mutation access to.
-public struct OwnerCap has key {
-    // todo: make it Phantom type OwnerCap<phantom T>
+public struct OwnerCap<phantom T> has key {
     id: UID,
     authorized_object_id: ID,
 }
@@ -82,6 +81,47 @@ fun init(ctx: &mut TxContext) {
     transfer::share_object(server_address_registry);
 }
 
+// === Public Functions ===
+
+// Note: Currently, OwnerCap transfers are restricted via contracts
+// Future: This restriction may be lifted to allow free transfers
+/// Transfers an OwnerCap to a new owner.
+///
+/// Security: Ownership is enforced by the Sui runtime. Only the current owner of the OwnerCap
+/// can call this function - if a non-owner attempts to move the object, the transaction will
+/// be rejected by the runtime before this function is even called.
+public fun transfer_owner_cap<T: key>(
+    owner_cap: OwnerCap<T>,
+    new_owner: address,
+    ctx: &mut TxContext,
+) {
+    // todo: add restrictions for character OwnerCap Transfer
+    // need to add phantom type for OwnerCap
+    event::emit(OwnerCapTransferred {
+        owner_cap_id: object::id(&owner_cap),
+        authorized_object_id: owner_cap.authorized_object_id,
+        previous_owner: ctx.sender(),
+        owner: new_owner,
+    });
+    transfer::transfer(owner_cap, new_owner);
+}
+
+// === View Functions ===
+/// Checks if an address is an authorized server address.
+public fun is_authorized_server_address(
+    server_address_registry: &ServerAddressRegistry,
+    address: address,
+): bool {
+    server_address_registry.authorized_address.contains(address)
+}
+
+// Checks if the `OwnerCap` is allowed to access the object with the given `object_id`.
+/// Returns true iff the `OwnerCap` has mutation access for the specified object.
+public fun is_authorized<T: key>(owner_cap: &OwnerCap<T>, object_id: ID): bool {
+    owner_cap.authorized_object_id == object_id
+}
+
+// === Admin Functions ===
 public fun create_admin_cap(_: &GovernorCap, admin: address, ctx: &mut TxContext) {
     let admin_cap = AdminCap {
         id: object::new(ctx),
@@ -100,8 +140,9 @@ public fun delete_admin_cap(admin_cap: AdminCap, _: &GovernorCap) {
     id.delete();
 }
 
-public fun create_owner_cap(_: &AdminCap, object_id: ID, ctx: &mut TxContext): OwnerCap {
-    let owner_cap = OwnerCap {
+public fun create_owner_cap<T: key>(_: &AdminCap, obj: &T, ctx: &mut TxContext): OwnerCap<T> {
+    let object_id = object::id(obj);
+    let owner_cap = OwnerCap<T> {
         id: object::new(ctx),
         authorized_object_id: object_id,
     };
@@ -110,25 +151,6 @@ public fun create_owner_cap(_: &AdminCap, object_id: ID, ctx: &mut TxContext): O
         authorized_object_id: object_id,
     });
     owner_cap
-}
-
-// Note: Currently, OwnerCap transfers are restricted via contracts
-// Future: This restriction may be lifted to allow free transfers
-/// Transfers an OwnerCap to a new owner.
-///
-/// Security: Ownership is enforced by the Sui runtime. Only the current owner of the OwnerCap
-/// can call this function - if a non-owner attempts to move the object, the transaction will
-/// be rejected by the runtime before this function is even called.
-public fun transfer_owner_cap(owner_cap: OwnerCap, new_owner: address, ctx: &mut TxContext) {
-    // todo: add restrictions for character OwnerCap Transfer
-    // need to add phantom type for OwnerCap
-    event::emit(OwnerCapTransferred {
-        owner_cap_id: object::id(&owner_cap),
-        authorized_object_id: owner_cap.authorized_object_id,
-        previous_owner: ctx.sender(),
-        owner: new_owner,
-    });
-    transfer::transfer(owner_cap, new_owner);
 }
 
 public fun register_server_address(
@@ -147,24 +169,10 @@ public fun remove_server_address(
     server_address_registry.authorized_address.remove(server_address);
 }
 
-/// Checks if an address is an authorized server address.
-public fun is_authorized_server_address(
-    server_address_registry: &ServerAddressRegistry,
-    address: address,
-): bool {
-    server_address_registry.authorized_address.contains(address)
-}
-
 // Ideally only the owner can delete the owner cap
-public fun delete_owner_cap(owner_cap: OwnerCap, _: &AdminCap) {
+public fun delete_owner_cap<T: key>(owner_cap: OwnerCap<T>, _: &AdminCap) {
     let OwnerCap { id, .. } = owner_cap;
     id.delete();
-}
-
-// Checks if the `OwnerCap` is allowed to access the object with the given `object_id`.
-/// Returns true iff the `OwnerCap` has mutation access for the specified object.
-public fun is_authorized(owner_cap: &OwnerCap, object_id: ID): bool {
-    owner_cap.authorized_object_id == object_id
 }
 
 #[test_only]

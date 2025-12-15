@@ -1,10 +1,11 @@
 module world::storage_unit_tests;
 
-use std::{bcs, string::String, unit_test::assert_eq};
+use std::{bcs, string::{utf8, String}, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     assembly::AssemblyRegistry,
     authority::{OwnerCap, AdminCap, ServerAddressRegistry},
+    character::{Self, Character, CharacterRegistry},
     inventory::Item,
     storage_unit::{Self, StorageUnit},
     test_helpers::{
@@ -24,6 +25,7 @@ const LOCATION_A_HASH: vector<u8> =
 const MAX_CAPACITY: u64 = 100000;
 const STORAGE_A_TYPE_ID: u64 = 50001;
 const STORAGE_A_ITEM_ID: u64 = 90002;
+const DUMMY_ITEM_ID: u64 = 002;
 
 // Item constants
 const AMMO_TYPE_ID: u64 = 88069;
@@ -45,9 +47,9 @@ const DIFFERENT_TENANT: vector<u8> = b"DIFFERENT";
 public struct SwapAuth has drop {}
 
 /// mock of a an external marketplace or swap contract
-public fun swap_ammo_for_lens_extension(
+public fun swap_ammo_for_lens_extension<T: key>(
     storage_unit: &mut StorageUnit,
-    owner_cap: &OwnerCap,
+    owner_cap: &OwnerCap<T>,
     character_id: ID,
     server_registry: &ServerAddressRegistry,
     proof_bytes: vector<u8>,
@@ -95,17 +97,17 @@ public fun swap_ammo_for_lens_extension(
 
 fun create_storage_unit(
     ts: &mut ts::Scenario,
-    character_id: ID,
+    character_address: address,
     location: vector<u8>,
     item_id: u64,
     type_id: u64,
 ): ID {
-    create_storage_unit_with_tenant(ts, character_id, location, item_id, type_id, tenant())
+    create_storage_unit_with_tenant(ts, character_address, location, item_id, type_id, tenant())
 }
 
 fun create_storage_unit_with_tenant(
     ts: &mut ts::Scenario,
-    character_id: ID,
+    character_address: address,
     location: vector<u8>,
     item_id: u64,
     type_id: u64,
@@ -118,7 +120,7 @@ fun create_storage_unit_with_tenant(
         let storage_unit = storage_unit::anchor(
             &mut assembly_registry,
             &admin_cap,
-            character_id,
+            character_address,
             tenant,
             item_id,
             type_id,
@@ -139,7 +141,7 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID) {
     ts::next_tx(ts, user);
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(ts);
         storage_unit.online(&owner_cap);
 
         let status = storage_unit.status();
@@ -149,14 +151,14 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID) {
     }
 }
 
-fun mint_ammo(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
+fun mint_ammo(ts: &mut ts::Scenario, storage_id: ID, owner_cap_id: ID) {
     ts::next_tx(ts, admin());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         storage_unit.game_item_to_chain_inventory(
             &admin_cap,
-            character_id,
+            owner_cap_id,
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
             AMMO_VOLUME,
@@ -168,14 +170,14 @@ fun mint_ammo(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
     }
 }
 
-fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
+fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, owner_cap_id: ID) {
     ts::next_tx(ts, admin());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         storage_unit.game_item_to_chain_inventory(
             &admin_cap,
-            character_id,
+            owner_cap_id,
             LENS_ITEM_ID,
             LENS_TYPE_ID,
             LENS_VOLUME,
@@ -187,31 +189,48 @@ fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, character_id: ID) {
     }
 }
 
-fun create_owner_cap_for_inventory(ts: &mut ts::Scenario, character_id: ID, user: address) {
+fun owner_cap_id(ts: &mut ts::Scenario, storage_id: ID): ID {
     ts::next_tx(ts, admin());
-    {
-        let storage_unit = ts::take_shared<StorageUnit>(ts);
-        let inventory = storage_unit.inventory(character_id);
-
-        test_helpers::setup_owner_cap(ts, user, inventory.id());
+    let owner_cap_id = {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
+        let owner_cap_id = storage_unit.owner_cap_id();
         ts::return_shared(storage_unit);
+        owner_cap_id
     };
+    owner_cap_id
 }
 
-fun create_owner_cap_for_inventory_by_id(
-    ts: &mut ts::Scenario,
-    storage_id: ID,
-    character_id: ID,
-    user: address,
-) {
+// Character Owner Caps are created for Ephemeral Inventory
+fun character_owner_cap(ts: &mut ts::Scenario, user: address): (ID, ID) {
     ts::next_tx(ts, admin());
-    {
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
-        let inventory = storage_unit.inventory(character_id);
-
-        test_helpers::setup_owner_cap(ts, user, inventory.id());
-        ts::return_shared(storage_unit);
+    let character_id = {
+        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let mut registry = ts::take_shared<CharacterRegistry>(ts);
+        let character = character::create_character(
+            &mut registry,
+            &admin_cap,
+            123u32,
+            tenant(),
+            100,
+            user,
+            utf8(b"name"),
+            ts::ctx(ts),
+        );
+        let character_id = object::id(&character);
+        character::share_character(character, &admin_cap);
+        ts::return_shared(registry);
+        ts::return_to_sender(ts, admin_cap);
+        character_id
     };
+
+    ts::next_tx(ts, user);
+    let owner_cap_id = {
+        let owner_cap = ts::take_from_sender<OwnerCap<Character>>(ts);
+        let owner_cap_id = object::id(&owner_cap);
+        ts::return_to_sender(ts, owner_cap);
+        owner_cap_id
+    };
+    (character_id, owner_cap_id)
 }
 
 /// Test Anchoring a storage unit
@@ -221,25 +240,25 @@ fun create_owner_cap_for_inventory_by_id(
 fun test_anchor_storage_unit() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
 
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
-        assert!(storage_unit.has_inventory(character_id));
+        assert!(storage_unit.has_inventory(owner_cap_id));
         assert_eq!(inventory_keys.length(), 1);
-        assert_eq!(*inventory_keys.borrow(0), character_id);
+        assert_eq!(*inventory_keys.borrow(0), owner_cap_id);
 
-        let inv_ref = storage_unit.inventory(character_id);
+        let inv_ref = storage_unit.inventory(owner_cap_id);
         let location_ref = storage_unit.location();
 
         assert_eq!(inv_ref.used_capacity(), 0);
@@ -258,26 +277,23 @@ fun test_anchor_storage_unit() {
 fun test_create_items_on_chain() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = user_a_character_id();
 
-    // Create a storage unit for user_a character_id
+    // Create a storage unit for user_a
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
-
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, character_id);
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
 
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let inv_ref = storage_unit.inventory(character_id);
-
+        let inv_ref = storage_unit.inventory(owner_cap_id);
         let used_capacity = (AMMO_QUANTITY as u64 * AMMO_VOLUME);
         assert_eq!(inv_ref.used_capacity(), used_capacity);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
@@ -297,23 +313,22 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, character_id);
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
 
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let inv_ref = storage_unit.inventory(character_id);
+        let inv_ref = storage_unit.inventory(owner_cap_id);
 
         let used_capacity = (AMMO_QUANTITY as u64 * AMMO_VOLUME);
         assert_eq!(inv_ref.used_capacity(), used_capacity);
@@ -323,11 +338,10 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         ts::return_shared(storage_unit);
     };
 
-    create_owner_cap_for_inventory(&mut ts, character_id, user_a());
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
 
         let proof = test_helpers::construct_location_proof(
@@ -337,14 +351,14 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         storage_unit.chain_item_to_game_inventory_test(
             &server_registry,
             &owner_cap,
-            character_id,
+            user_a_character_id(),
             AMMO_ITEM_ID,
             AMMO_QUANTITY,
             proof_bytes,
             ts.ctx(),
         );
 
-        let inv_ref = storage_unit.inventory(character_id);
+        let inv_ref = storage_unit.inventory(owner_cap_id);
         assert_eq!(inv_ref.used_capacity(), 0);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.inventory_item_length(), 0);
@@ -367,53 +381,54 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = user_a_character_id();
-    let character_b_id = user_b_character_id();
 
     // Create storage unit for User A
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_id);
-    online_storage_unit(&mut ts, user_b(), storage_id);
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    online_storage_unit(&mut ts, user_a(), storage_id);
 
     // Mint lens for user A
-    mint_lens(&mut ts, storage_id, character_a_id);
+    mint_lens(&mut ts, storage_id, owner_cap_id);
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
-        assert!(storage_unit.has_inventory(character_a_id));
+        assert!(storage_unit.has_inventory(owner_cap_id));
         assert_eq!(inventory_keys.length(), 1);
-        assert_eq!(*inventory_keys.borrow(0), character_a_id);
+        assert_eq!(*inventory_keys.borrow(0), owner_cap_id);
         ts::return_shared(storage_unit);
     };
 
+    // Create a character owner cap as a biometric to mint items in ephemeral inventory
+    let (_, character_owner_cap_id) = character_owner_cap(&mut ts, user_b());
+
     // Mint lens for user B
-    mint_lens(&mut ts, storage_id, character_b_id);
+    mint_lens(&mut ts, storage_id, character_owner_cap_id);
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
-        assert!(storage_unit.has_inventory(character_b_id));
+        assert!(storage_unit.has_inventory(character_owner_cap_id));
         assert_eq!(inventory_keys.length(), 2);
-        assert_eq!(*inventory_keys.borrow(1), character_b_id);
+        assert_eq!(*inventory_keys.borrow(1), character_owner_cap_id);
         ts::return_shared(storage_unit);
     };
 
     // Mint Ammo for user B
-    mint_ammo(&mut ts, storage_id, character_b_id);
+    mint_ammo(&mut ts, storage_id, character_owner_cap_id);
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
-        assert!(storage_unit.has_inventory(character_b_id));
+        assert!(storage_unit.has_inventory(character_owner_cap_id));
         assert_eq!(inventory_keys.length(), 2);
-        assert_eq!(*inventory_keys.borrow(1), character_b_id);
+        assert_eq!(*inventory_keys.borrow(1), character_owner_cap_id);
         ts::return_shared(storage_unit);
     };
 
@@ -427,21 +442,19 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
 fun test_authorize_extension() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
 
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
 
@@ -458,25 +471,23 @@ fun test_authorize_extension() {
 fun test_deposit_and_withdraw_via_extension() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
-
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, character_id);
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
 
     // Authorize extension
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
         ts::return_shared(storage_unit);
         ts::return_to_sender(&ts, owner_cap);
@@ -503,7 +514,7 @@ fun test_deposit_and_withdraw_via_extension() {
             SwapAuth {},
             ts.ctx(),
         );
-        assert_eq!(storage_unit.item_quantity(character_id, AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_ITEM_ID), AMMO_QUANTITY);
         ts::return_shared(storage_unit);
     };
     ts::end(ts);
@@ -517,27 +528,23 @@ fun test_deposit_and_withdraw_by_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_id);
-
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, character_id);
-
-    create_owner_cap_for_inventory(&mut ts, character_id, user_a());
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
 
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -550,7 +557,7 @@ fun test_deposit_and_withdraw_by_owner() {
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &owner_cap,
-                character_id,
+                user_a_character_id(),
                 AMMO_ITEM_ID,
                 proof_bytes,
                 &clock,
@@ -566,7 +573,7 @@ fun test_deposit_and_withdraw_by_owner() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -579,13 +586,13 @@ fun test_deposit_and_withdraw_by_owner() {
             item,
             &server_registry,
             &owner_cap,
-            character_id,
+            user_a_character_id(),
             proof_bytes,
             &clock,
             ts.ctx(),
         );
 
-        assert_eq!(storage_unit.item_quantity(character_id, AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_ITEM_ID), AMMO_QUANTITY);
 
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
@@ -606,39 +613,37 @@ fun test_swap_ammo_for_lens() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = user_a_character_id();
-    let character_b_id = user_b_character_id();
 
     // Create User B's storage unit with lens
     let storage_id = create_storage_unit(
         &mut ts,
-        character_b_id,
+        user_b(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_id);
+    let storage_owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_b(), storage_id);
 
     // Mint lens for user B
-    mint_lens(&mut ts, storage_id, character_b_id);
+    mint_lens(&mut ts, storage_id, storage_owner_cap_id);
+
+    // Create a character for user A to mint items into epehemeral inventory
+    let (character_a_id, character_owner_cap_id) = character_owner_cap(&mut ts, user_a());
 
     // Mint Ammo for user A
     // minting ammo automatically creates a epehemeral inventory for user A
-    mint_ammo(&mut ts, storage_id, character_a_id);
+    mint_ammo(&mut ts, storage_id, character_owner_cap_id);
 
     // User B authorizes the swap extension for their storage to swap lens for ammo
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap_b = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap_b = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         storage_unit.authorize_extension<SwapAuth>(&owner_cap_b);
         ts::return_shared(storage_unit);
         ts::return_to_sender(&ts, owner_cap_b);
     };
-
-    create_owner_cap_for_inventory(&mut ts, character_a_id, user_a());
-    create_owner_cap_for_inventory(&mut ts, character_b_id, user_b());
 
     // Before swap
     ts::next_tx(&mut ts, admin());
@@ -647,18 +652,18 @@ fun test_swap_ammo_for_lens() {
 
         let used_capacity_a = (AMMO_QUANTITY as u64* AMMO_VOLUME);
         let used_capacity_b = (LENS_QUANTITY as u64* LENS_VOLUME);
-        let inv_ref_a = storage_unit.inventory(character_a_id);
-        let inv_ref_b = storage_unit.inventory(character_b_id);
+        let inv_ref_a = storage_unit.inventory(character_owner_cap_id);
+        let inv_ref_b = storage_unit.inventory(storage_owner_cap_id);
 
         assert_eq!(inv_ref_a.used_capacity(), used_capacity_a);
         assert_eq!(inv_ref_a.remaining_capacity(), MAX_CAPACITY - used_capacity_a);
         assert_eq!(inv_ref_b.used_capacity(), used_capacity_b);
         assert_eq!(inv_ref_b.remaining_capacity(), MAX_CAPACITY - used_capacity_b);
 
-        assert_eq!(storage_unit.item_quantity(character_a_id, AMMO_ITEM_ID), AMMO_QUANTITY);
-        assert!(!storage_unit.contains_item(character_a_id, LENS_ITEM_ID));
-        assert_eq!(storage_unit.item_quantity(character_b_id, LENS_ITEM_ID), LENS_QUANTITY);
-        assert!(!storage_unit.contains_item(character_b_id, AMMO_ITEM_ID));
+        assert_eq!(storage_unit.item_quantity(character_owner_cap_id, AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert!(!storage_unit.contains_item(character_owner_cap_id, LENS_ITEM_ID));
+        assert_eq!(storage_unit.item_quantity(storage_owner_cap_id, LENS_ITEM_ID), LENS_QUANTITY);
+        assert!(!storage_unit.contains_item(storage_owner_cap_id, AMMO_ITEM_ID));
 
         ts::return_shared(storage_unit);
     };
@@ -667,7 +672,7 @@ fun test_swap_ammo_for_lens() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap_a = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap_a = ts::take_from_sender<OwnerCap<Character>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -696,11 +701,11 @@ fun test_swap_ammo_for_lens() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        assert_eq!(storage_unit.item_quantity(character_a_id, LENS_ITEM_ID), LENS_QUANTITY);
-        assert!(!storage_unit.contains_item(character_a_id, AMMO_ITEM_ID));
+        assert_eq!(storage_unit.item_quantity(character_owner_cap_id, LENS_ITEM_ID), LENS_QUANTITY);
+        assert!(!storage_unit.contains_item(character_owner_cap_id, AMMO_ITEM_ID));
 
-        assert_eq!(storage_unit.item_quantity(character_b_id, AMMO_ITEM_ID), AMMO_QUANTITY);
-        assert!(!storage_unit.contains_item(character_b_id, LENS_ITEM_ID));
+        assert_eq!(storage_unit.item_quantity(storage_owner_cap_id, AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert!(!storage_unit.contains_item(storage_owner_cap_id, LENS_ITEM_ID));
 
         ts::return_shared(storage_unit);
     };
@@ -717,28 +722,26 @@ fun test_unachor_storage_unit() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = user_a_character_id();
-    let character_b_id = user_b_character_id();
 
     // Create storage unit for User A
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        user_b(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_id);
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_b(), storage_id);
 
-    mint_lens(&mut ts, storage_id, character_a_id);
-    mint_lens(&mut ts, storage_id, character_b_id);
-    mint_ammo(&mut ts, storage_id, character_b_id);
+    mint_lens(&mut ts, storage_id, owner_cap_id);
+    mint_lens(&mut ts, storage_id, owner_cap_id);
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
-        assert_eq!(inventory_keys.length(), 2);
+        assert_eq!(inventory_keys.length(), 1);
         ts::return_shared(storage_unit);
     };
 
@@ -761,26 +764,27 @@ fun test_unachor_storage_unit() {
 fun test_authorize_extension_fail_wrong_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
 
-    let dummy_id = object::id_from_bytes(
-        x"0000000000000000000000000000000000000000000000000000000000000001",
+    create_storage_unit(
+        &mut ts,
+        user_b(),
+        LOCATION_A_HASH,
+        DUMMY_ITEM_ID,
+        STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
 
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
 
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
 
@@ -798,19 +802,17 @@ fun test_authorize_extension_fail_wrong_owner() {
 fun test_withdraw_via_extension_fail_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         LOCATION_A_HASH,
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
-
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, character_id);
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -840,27 +842,24 @@ fun test_deposit_via_extension_fail_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_id);
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, character_id);
-
-    create_owner_cap_for_inventory(&mut ts, character_id, user_a());
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
 
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -873,7 +872,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &owner_cap,
-                character_id,
+                user_a_character_id(),
                 AMMO_ITEM_ID,
                 proof_bytes,
                 &clock,
@@ -912,25 +911,28 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_id);
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
 
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, character_id);
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
 
-    let dummy_id = object::id_from_bytes(
-        x"0000000000000000000000000000000000000000000000000000000000000001",
+    create_storage_unit(
+        &mut ts,
+        user_b(),
+        LOCATION_A_HASH,
+        DUMMY_ITEM_ID,
+        STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
 
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -980,27 +982,21 @@ fun test_deposit_by_owner_fail_wrong_owner() {
 
     let storage_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_id);
-
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, character_id);
-
-    let dummy_id = object::id_from_bytes(
-        x"0000000000000000000000000000000000000000000000000000000000000001",
-    );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
+    mint_ammo(&mut ts, storage_id, owner_cap_id);
 
     // user_a withdraws item
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1026,11 +1022,19 @@ fun test_deposit_by_owner_fail_wrong_owner() {
         ts::return_to_sender(&ts, owner_cap);
     };
 
+    create_storage_unit(
+        &mut ts,
+        user_b(),
+        LOCATION_A_HASH,
+        DUMMY_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+
     // User B attempts to deposit using wrong OwnerCap - should fail
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1067,32 +1071,29 @@ fun test_swap_fail_extension_not_authorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_a_id = user_a_character_id();
-    let character_b_id = user_b_character_id();
 
-    // Create User B's storage unit with lens
+    // Create storage unit with lens
     let storage_id = create_storage_unit(
         &mut ts,
-        character_b_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_id);
-    online_storage_unit(&mut ts, user_b(), storage_id);
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    online_storage_unit(&mut ts, user_a(), storage_id);
+    mint_lens(&mut ts, storage_id, owner_cap_id);
 
-    mint_lens(&mut ts, storage_id, character_b_id);
-    mint_ammo(&mut ts, storage_id, character_a_id);
+    let (_, character_owner_cap_id) = character_owner_cap(&mut ts, user_b());
+    mint_ammo(&mut ts, storage_id, character_owner_cap_id);
 
-    create_owner_cap_for_inventory(&mut ts, character_a_id, user_a());
-    create_owner_cap_for_inventory(&mut ts, character_b_id, user_b());
     //Skipped authorisation
 
     // call swap
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap_b = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap_b = ts::take_from_sender<OwnerCap<Character>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1104,7 +1105,7 @@ fun test_swap_fail_extension_not_authorized() {
         swap_ammo_for_lens_extension(
             &mut storage_unit,
             &owner_cap_b,
-            character_a_id,
+            character_owner_cap_id,
             &server_registry,
             proof_bytes,
             &clock,
@@ -1133,26 +1134,29 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
     // Create User B's storage unit with lens
     let storage_id = create_storage_unit(
         &mut ts,
-        character_b_id,
+        user_b(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_id);
+    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_b(), storage_id);
 
     // Mint lens for user B
-    mint_lens(&mut ts, storage_id, character_b_id);
+    mint_lens(&mut ts, storage_id, owner_cap_id);
 
-    let dummy_id = object::id_from_bytes(
-        x"0000000000000000000000000000000000000000000000000000000000000001",
+    let user_a_storage_id = create_storage_unit(
+        &mut ts,
+        user_a(),
+        LOCATION_A_HASH,
+        DUMMY_ITEM_ID,
+        STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
 
     ts::next_tx(&mut ts, user_b());
     {
-        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, user_a_storage_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
 
         let proof = test_helpers::construct_location_proof(
@@ -1185,17 +1189,16 @@ fun mint_items_fail_inventory_offline() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
-    let character_id = user_a_character_id();
 
     let storage_unit_id = create_storage_unit(
         &mut ts,
-        character_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_unit_id);
-    mint_ammo(&mut ts, storage_unit_id, character_id);
+    let owner_cap_id = owner_cap_id(&mut ts, storage_unit_id);
+    mint_ammo(&mut ts, storage_unit_id, owner_cap_id);
     ts::end(ts);
 }
 
@@ -1207,22 +1210,23 @@ fun mint_items_fail_inventory_offline() {
 fun online_fail_by_unauthorized_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_a_id = user_a_character_id();
 
     // Create User A Storage unit
     let storage_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_id);
 
-    let dummy_id = object::id_from_bytes(
-        x"0000000000000000000000000000000000000000000000000000000000000001",
+    create_storage_unit(
+        &mut ts,
+        user_b(),
+        LOCATION_A_HASH,
+        DUMMY_ITEM_ID,
+        STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), dummy_id);
 
     online_storage_unit(&mut ts, user_b(), storage_id);
 
@@ -1237,32 +1241,35 @@ fun online_fail_by_unauthorized_owner() {
 fun offline_fail_by_unauthorized_owner() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let character_a_id = user_a_character_id();
-    let character_b_id = user_b_character_id();
 
     // Create User A Storage unit
     let storage_a_id = create_storage_unit(
         &mut ts,
-        character_a_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_a_id);
-    online_storage_unit(&mut ts, user_b(), storage_a_id);
+    online_storage_unit(&mut ts, user_a(), storage_a_id);
 
     // Create User B Storage unit
-    let storage_b_id = create_storage_unit(
+    create_storage_unit(
         &mut ts,
-        character_b_id,
+        user_b(),
         test_helpers::get_verified_location_hash(),
         2343432432,
         5676576576,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_b(), storage_b_id);
 
     // B tries to offline A's storage unit fails
-    online_storage_unit(&mut ts, user_b(), storage_a_id);
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        storage_unit.offline(&owner_cap);
+        ts::return_shared(storage_unit);
+        ts::return_to_sender(&ts, owner_cap);
+    };
     ts::end(ts);
 }
 
@@ -1279,39 +1286,27 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
 
     let different_tenant = DIFFERENT_TENANT.to_string();
 
-    // Create storage unit A with default tenant "TEST"
-    let storage_a_id = create_storage_unit(
-        &mut ts,
-        character_id,
-        test_helpers::get_verified_location_hash(),
-        STORAGE_A_ITEM_ID,
-        STORAGE_A_TYPE_ID,
-    );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_a_id);
-    online_storage_unit(&mut ts, user_a(), storage_a_id);
-
     // Create storage unit B with different tenant
     let storage_b_id = create_storage_unit_with_tenant(
         &mut ts,
-        character_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID + 1,
         STORAGE_A_TYPE_ID,
         different_tenant,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_b_id);
     online_storage_unit(&mut ts, user_a(), storage_b_id);
+    let storage_b_cap_id = owner_cap_id(&mut ts, storage_b_id);
 
     // Mint ammo in storage unit B tenant test
-    mint_ammo(&mut ts, storage_b_id, character_id);
-    create_owner_cap_for_inventory_by_id(&mut ts, storage_b_id, character_id, user_a());
+    mint_ammo(&mut ts, storage_b_id, storage_b_cap_id);
 
-    // Withdraw item from storage unit B in different tenant
+    // Withdraw item from storage unit B and deposit in different tenant
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1337,16 +1332,22 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         ts::return_to_sender(&ts, owner_cap);
     };
 
-    // Create owner cap for storage unit A's inventory (needed for deposit)
-    // This must be created right before deposit so it's the one used
-    create_owner_cap_for_inventory_by_id(&mut ts, storage_a_id, character_id, user_a());
+    // Create storage unit A with default tenant "TEST"
+    let storage_a_id = create_storage_unit(
+        &mut ts,
+        user_a(),
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), storage_a_id);
 
     // Try to deposit item from storage unit B into storage unit A
     // This should fail with ETenantMismatch
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1386,50 +1387,27 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
 
     let different_tenant = DIFFERENT_TENANT.to_string();
 
-    // Create storage unit A with default tenant
-    let storage_a_id = create_storage_unit(
-        &mut ts,
-        character_id,
-        test_helpers::get_verified_location_hash(),
-        STORAGE_A_ITEM_ID,
-        STORAGE_A_TYPE_ID,
-    );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_a_id);
-    online_storage_unit(&mut ts, user_a(), storage_a_id);
-
-    // Authorize extension for storage unit A
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
-        ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
-    };
-
     // Create storage unit B with different tenant
     let storage_b_id = create_storage_unit_with_tenant(
         &mut ts,
-        character_id,
+        user_a(),
         test_helpers::get_verified_location_hash(),
         STORAGE_A_ITEM_ID + 1,
         STORAGE_A_TYPE_ID,
         different_tenant,
     );
-    test_helpers::setup_owner_cap(&mut ts, user_a(), storage_b_id);
     online_storage_unit(&mut ts, user_a(), storage_b_id);
+    let storage_b_cap_id = owner_cap_id(&mut ts, storage_b_id);
 
     // Mint ammo in storage unit B
-    mint_ammo(&mut ts, storage_b_id, character_id);
-
-    create_owner_cap_for_inventory(&mut ts, character_id, user_a());
+    mint_ammo(&mut ts, storage_b_id, storage_b_cap_id);
 
     // Withdraw item from storage unit B
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1452,6 +1430,26 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Create storage unit A with default tenant
+    let storage_a_id = create_storage_unit(
+        &mut ts,
+        user_a(),
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), storage_a_id);
+
+    // Authorize extension for storage unit A
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
         ts::return_to_sender(&ts, owner_cap);
     };
 

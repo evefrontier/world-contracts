@@ -91,7 +91,7 @@ public fun create_character(
         ),
     };
 
-    let owner_cap = authority::create_owner_cap(admin_cap, character_id, ctx);
+    let owner_cap = authority::create_owner_cap(admin_cap, &character, ctx);
     authority::transfer_owner_cap(owner_cap, character_address, ctx);
 
     event::emit(CharacterCreatedEvent {

@@ -84,7 +84,7 @@ fun online() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        test_helpers::setup_owner_cap_for_user_a(&mut ts, object::id(&storage_unit));
+        test_helpers::setup_owner_cap_for_user_a(&mut ts, &storage_unit);
         ts::return_shared(storage_unit);
     };
 
@@ -111,7 +111,7 @@ fun offline() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        test_helpers::setup_owner_cap_for_user_a(&mut ts, object::id(&storage_unit));
+        test_helpers::setup_owner_cap_for_user_a(&mut ts, &storage_unit);
         ts::return_shared(storage_unit);
     };
 

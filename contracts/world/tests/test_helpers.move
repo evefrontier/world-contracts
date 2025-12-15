@@ -6,12 +6,17 @@ use sui::test_scenario as ts;
 use world::{
     assembly,
     authority::{Self, AdminCap, ServerAddressRegistry},
+    character,
     in_game_id::{Self, TenantItemId},
     location::{Self, LocationProof},
     world::{Self, GovernorCap}
 };
 
 const TEST: vector<u8> = b"TEST";
+
+public struct TestObject has key {
+    id: UID,
+}
 
 public fun tenant(): String {
     TEST.to_string()
@@ -53,6 +58,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
     {
         world::init_for_testing(ts.ctx());
         authority::init_for_testing(ts.ctx());
+        character::init_for_testing(ts::ctx(ts));
         assembly::init_for_testing(ts.ctx());
     };
 
@@ -64,23 +70,23 @@ public fun setup_world(ts: &mut ts::Scenario) {
     };
 }
 
-/// Create and transfer an owner cap for a specific object id
-public fun setup_owner_cap(ts: &mut ts::Scenario, owner: address, object_id: ID) {
+/// Create and transfer an owner cap for a specific object
+public fun setup_owner_cap<T: key>(ts: &mut ts::Scenario, owner: address, object: &T) {
     ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let owner_cap = authority::create_owner_cap(
+        let owner_cap = authority::create_owner_cap<T>(
             &admin_cap,
-            object_id,
+            object,
             ts.ctx(),
         );
-        authority::transfer_owner_cap(owner_cap, owner, ts.ctx());
+        authority::transfer_owner_cap<T>(owner_cap, owner, ts.ctx());
         ts::return_to_sender(ts, admin_cap);
     };
 }
 
-public fun setup_owner_cap_for_user_a(ts: &mut ts::Scenario, object_id: ID) {
-    setup_owner_cap(ts, user_a(), object_id);
+public fun setup_owner_cap_for_user_a<T: key>(ts: &mut ts::Scenario, obj: &T) {
+    setup_owner_cap<T>(ts, user_a(), obj);
 }
 
 public fun register_server_address(ts: &mut ts::Scenario) {
@@ -126,4 +132,25 @@ public fun construct_location_proof(location_hash: vector<u8>): LocationProof {
         signature,
     );
     proof
+}
+
+public fun create_test_object(ts: &mut ts::Scenario, owner: address): ID {
+    ts::next_tx(ts, admin());
+    let test_object_id;
+    {
+        let test_object = TestObject {
+            id: object::new(ts.ctx()),
+        };
+        test_object_id = object::id(&test_object);
+        transfer::share_object(test_object);
+    };
+
+    ts::next_tx(ts, admin());
+    {
+        let test_object = ts::take_shared_by_id<TestObject>(ts, test_object_id);
+        setup_owner_cap(ts, owner, &test_object);
+        ts::return_shared(test_object);
+    };
+
+    test_object_id
 }

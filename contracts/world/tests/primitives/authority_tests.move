@@ -5,7 +5,7 @@ use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
     authority::{Self, AdminCap, OwnerCap},
-    test_helpers::{Self, governor, admin, user_a, user_b},
+    test_helpers::{Self, TestObject, governor, admin, user_a, user_b},
     world::{Self, GovernorCap}
 };
 
@@ -49,21 +49,18 @@ fun create_and_delete_admin_cap() {
 fun create_transfer_and_delete_owner_cap() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-
-    let dummy_character_object_id = object::id_from_address(@0x1234);
-    test_helpers::setup_owner_cap(&mut ts, user_a(), dummy_character_object_id);
+    test_helpers::create_test_object(&mut ts, user_a());
 
     ts::next_tx(&mut ts, admin());
     {
-        let owner_cap = ts::take_from_address<authority::OwnerCap>(&ts, user_a());
-        let admin_cap = ts::take_from_sender<authority::AdminCap>(&ts);
+        let owner_cap = ts::take_from_address<OwnerCap<TestObject>>(&ts, user_a());
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
         // Only possible in tests
         authority::delete_owner_cap(owner_cap, &admin_cap);
 
         ts::return_to_sender(&ts, admin_cap);
     };
-
     ts::end(ts);
 }
 
@@ -75,22 +72,18 @@ fun owner_cap_authorization_after_transfer() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
-    let target_object_id = object::id_from_address(@0x1234);
+    let target_object_id = test_helpers::create_test_object(&mut ts, user_a());
     let wrong_object_id = object::id_from_address(@0x5678);
-
-    // Admin creates owner cap
-    test_helpers::setup_owner_cap(&mut ts, user_a(), target_object_id);
 
     // User verifies authorization
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
 
         // Should be authorized for the correct object
-        assert_eq!(authority::is_authorized(&owner_cap, target_object_id), true);
-
+        assert_eq!(authority::is_authorized<TestObject>(&owner_cap, target_object_id), true);
         // Should NOT be authorized for a different object
-        assert_eq!(authority::is_authorized(&owner_cap, wrong_object_id), false);
+        assert_eq!(authority::is_authorized<TestObject>(&owner_cap, wrong_object_id), false);
 
         ts::return_to_sender(&ts, owner_cap);
     };
@@ -108,17 +101,14 @@ fun owner_cap_authorisation_fail_after_transfer() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
-    let target_object_id = object::id_from_address(@0x1234);
-
-    // Admin creates owner cap
-    test_helpers::setup_owner_cap(&mut ts, user_a(), target_object_id);
+    let target_object_id = test_helpers::create_test_object(&mut ts, user_a());
 
     // User verifies authorization
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
         // Should be authorized for the correct object
-        assert_eq!(authority::is_authorized(&owner_cap, target_object_id), true);
+        assert_eq!(authority::is_authorized<TestObject>(&owner_cap, target_object_id), true);
 
         ts::return_to_sender(&ts, owner_cap);
     };
@@ -128,14 +118,14 @@ fun owner_cap_authorisation_fail_after_transfer() {
     // User verifies authorization
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
-        authority::transfer_owner_cap(owner_cap, user_b(), ts.ctx());
+        let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
+        authority::transfer_owner_cap<TestObject>(owner_cap, user_b(), ts.ctx());
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         // fail here
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
         ts::return_to_sender(&ts, owner_cap);
     };
 

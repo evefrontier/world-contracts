@@ -59,6 +59,13 @@ fun create_storage_unit(ts: &mut ts::Scenario): ID {
         transfer::share_object(storage_unit);
         assembly_id
     };
+
+    ts::next_tx(ts, admin());
+    {
+        let storage_unit = ts::take_shared<StorageUnit>(ts);
+        test_helpers::setup_owner_cap_for_user_a(ts, &storage_unit);
+        ts::return_shared(storage_unit);
+    };
     assembly_id
 }
 
@@ -122,8 +129,7 @@ fun create_assembly_with_inventory() {
 fun mint_items() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     mint_ammo(&mut ts);
@@ -153,8 +159,7 @@ fun mint_items_increases_quantity_when_exists() {
     let character_id = user_a_character_id();
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     ts::next_tx(&mut ts, admin());
@@ -214,19 +219,10 @@ public fun burn_items() {
     let character_id = user_a_character_id();
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     mint_ammo(&mut ts);
-
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_id);
-        test_helpers::setup_owner_cap_for_user_a(&mut ts, inventory.id());
-        ts::return_shared(storage_unit);
-    };
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -258,8 +254,7 @@ public fun burn_partial_items() {
     let character_id = user_a_character_id();
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     mint_ammo(&mut ts);
@@ -297,22 +292,9 @@ public fun deposit_items() {
     test_helpers::setup_world(&mut ts);
     // Creating a storage unit creates a inventory by default for the owner
     let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
 
     online(&mut ts);
     mint_ammo(&mut ts);
-
-    // Setup inventory owner cap for user_a
-    ts::next_tx(&mut ts, admin());
-    {
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(
-            &ts,
-            storage_unit_id,
-        );
-        let inventory = df::borrow<ID, Inventory>(&storage_unit.id, character_a_id);
-        test_helpers::setup_owner_cap(&mut ts, user_a(), inventory.id());
-        ts::return_shared(storage_unit);
-    };
 
     // Create a ephemeral inventory for user b
     ts::next_tx(&mut ts, admin());
@@ -399,7 +381,6 @@ fun burn_items_with_proof() {
         transfer::share_object(storage_unit);
     };
 
-    test_helpers::setup_owner_cap(&mut ts, user_a(), test_helpers::get_storage_unit_id());
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
@@ -485,8 +466,7 @@ fun create_assembly_fail_on_empty_capacity() {
 fun mint_items_fail_empty_item_id() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
     online(&mut ts);
 
     ts::next_tx(&mut ts, admin());
@@ -520,8 +500,7 @@ fun mint_items_fail_empty_item_id() {
 fun mint_items_fail_empty_type_id() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
     online(&mut ts);
 
     ts::next_tx(&mut ts, admin());
@@ -555,8 +534,7 @@ fun mint_items_fail_empty_type_id() {
 fun mint_fail_inventory_insufficient_capacity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
     online(&mut ts);
 
     ts::next_tx(&mut ts, admin());
@@ -590,8 +568,7 @@ fun mint_fail_inventory_insufficient_capacity() {
 public fun burn_items_fail_item_not_found() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
     online(&mut ts);
 
     ts::next_tx(&mut ts, user_a());
@@ -620,8 +597,7 @@ public fun burn_items_fail_item_not_found() {
 public fun burn_items_fail_insufficient_quantity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
+    create_storage_unit(&mut ts);
 
     online(&mut ts);
     mint_ammo(&mut ts);
@@ -652,7 +628,6 @@ fun deposit_item_fail_insufficient_capacity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
 
     online(&mut ts);
     mint_ammo(&mut ts);
@@ -667,16 +642,6 @@ fun deposit_item_fail_insufficient_capacity() {
             10,
         );
         df::add(&mut storage_unit.id, character_b_id, inventory);
-        ts::return_shared(storage_unit);
-    };
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory_a = df::borrow<ID, Inventory>(&storage_unit.id, character_a_id);
-        let inventory_b = df::borrow<ID, Inventory>(&storage_unit.id, character_b_id);
-        test_helpers::setup_owner_cap(&mut ts, user_a(), inventory_a.id());
-        test_helpers::setup_owner_cap(&mut ts, user_b(), inventory_b.id());
         ts::return_shared(storage_unit);
     };
 
@@ -711,7 +676,6 @@ fun withdraw_item_fail_item_not_found() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let storage_unit_id = create_storage_unit(&mut ts);
-    test_helpers::setup_owner_cap_for_user_a(&mut ts, storage_unit_id);
 
     online(&mut ts);
     ts::next_tx(&mut ts, user_a());

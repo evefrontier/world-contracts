@@ -287,7 +287,7 @@ fun rename_character() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<Character>>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
         let metadata = character.mutable_metadata();
         metadata::update_name(metadata, &owner_cap, utf8(b"new_name"));
@@ -591,7 +591,7 @@ fun test_rename_character_without_owner_cap() {
 
     ts::next_tx(&mut ts, user_b());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<Character>>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
         let metadata = character.mutable_metadata();
         metadata::update_name(metadata, &owner_cap, utf8(b"new_name"));
