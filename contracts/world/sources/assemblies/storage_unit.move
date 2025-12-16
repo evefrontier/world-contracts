@@ -347,17 +347,20 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     id.delete();
 }
 
-public fun game_item_to_chain_inventory(
+public fun game_item_to_chain_inventory<T: key>(
     storage_unit: &mut StorageUnit,
     _: &AdminCap,
-    owner_cap_id: ID,
+    owner_cap: &OwnerCap<T>,
+    character_id: ID,
     item_id: u64,
     type_id: u64,
     volume: u64,
     quantity: u32,
     ctx: &mut TxContext,
 ) {
+    let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
+    check_inventory_authorization(owner_cap, storage_unit, character_id);
 
     // create a ephemeral inventory if it does not exists for a character
     if (!df::exists_(&storage_unit.id, owner_cap_id)) {

@@ -135,14 +135,20 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID) {
     }
 }
 
-fun mint_ammo(ts: &mut ts::Scenario, storage_id: ID, owner_cap_id: ID) {
+fun mint_ammo<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, user: address) {
+    ts::next_tx(ts, user);
+    let owner_cap = {
+        let owner_cap = ts::take_from_sender<OwnerCap<T>>(ts);
+        owner_cap
+    };
     ts::next_tx(ts, admin());
-    {
+    let owner_cap = {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        storage_unit.game_item_to_chain_inventory(
+        storage_unit.game_item_to_chain_inventory<T>(
             &admin_cap,
-            owner_cap_id,
+            &owner_cap,
+            character_id,
             AMMO_ITEM_ID,
             AMMO_TYPE_ID,
             AMMO_VOLUME,
@@ -151,17 +157,28 @@ fun mint_ammo(ts: &mut ts::Scenario, storage_id: ID, owner_cap_id: ID) {
         );
         ts::return_shared(storage_unit);
         ts::return_to_sender(ts, admin_cap);
+        owner_cap
+    };
+    ts::next_tx(ts, user);
+    {
+        ts::return_to_sender(ts, owner_cap);
     }
 }
 
-fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, owner_cap_id: ID) {
+fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, user: address) {
+    ts::next_tx(ts, user);
+    let owner_cap = {
+        let owner_cap = ts::take_from_sender<OwnerCap<T>>(ts);
+        owner_cap
+    };
     ts::next_tx(ts, admin());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        storage_unit.game_item_to_chain_inventory(
+        storage_unit.game_item_to_chain_inventory<T>(
             &admin_cap,
-            owner_cap_id,
+            &owner_cap,
+            character_id,
             LENS_ITEM_ID,
             LENS_TYPE_ID,
             LENS_VOLUME,
@@ -170,18 +187,11 @@ fun mint_lens(ts: &mut ts::Scenario, storage_id: ID, owner_cap_id: ID) {
         );
         ts::return_shared(storage_unit);
         ts::return_to_sender(ts, admin_cap);
-    }
-}
-
-fun owner_cap_id(ts: &mut ts::Scenario, storage_id: ID): ID {
-    ts::next_tx(ts, admin());
-    let owner_cap_id = {
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
-        let owner_cap_id = storage_unit.owner_cap_id();
-        ts::return_shared(storage_unit);
-        owner_cap_id
     };
-    owner_cap_id
+    ts::next_tx(ts, user);
+    {
+        ts::return_to_sender(ts, owner_cap);
+    }
 }
 
 fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
@@ -218,12 +228,23 @@ fun create_character_with_tenant(
 }
 
 // Character Owner Caps for Ephemeral Inventory interaction
-fun character_owner_cap(ts: &mut ts::Scenario, user: address): ID {
+fun character_owner_cap_id(ts: &mut ts::Scenario, user: address): ID {
     ts::next_tx(ts, user);
     let owner_cap_id = {
         let owner_cap = ts::take_from_sender<OwnerCap<Character>>(ts);
         let owner_cap_id = object::id(&owner_cap);
         ts::return_to_sender(ts, owner_cap);
+        owner_cap_id
+    };
+    owner_cap_id
+}
+
+fun storage_owner_cap_id(ts: &mut ts::Scenario, storage_id: ID): ID {
+    ts::next_tx(ts, admin());
+    let owner_cap_id = {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
+        let owner_cap_id = storage_unit.owner_cap_id();
+        ts::return_shared(storage_unit);
         owner_cap_id
     };
     owner_cap_id
@@ -244,7 +265,7 @@ fun test_anchor_storage_unit() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
 
     ts::next_tx(&mut ts, admin());
     {
@@ -283,9 +304,9 @@ fun test_create_items_on_chain() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, admin());
     {
@@ -319,9 +340,9 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, admin());
     {
@@ -380,7 +401,7 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
     let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
-    create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
+    let character_b_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
 
     // Create storage unit for User A
     let storage_id = create_storage_unit(
@@ -390,11 +411,11 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
 
     // Mint lens for user A
-    mint_lens(&mut ts, storage_id, owner_cap_id);
+    mint_lens<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -406,10 +427,10 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
     };
 
     // Create a character owner cap as a biometric to mint items in ephemeral inventory
-    let character_owner_cap_id = character_owner_cap(&mut ts, user_b());
+    let character_owner_cap_id = character_owner_cap_id(&mut ts, user_b());
 
     // Mint lens for user B
-    mint_lens(&mut ts, storage_id, character_owner_cap_id);
+    mint_lens<Character>(&mut ts, storage_id, character_b_id, user_b());
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -421,7 +442,7 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
     };
 
     // Mint Ammo for user B
-    mint_ammo(&mut ts, storage_id, character_owner_cap_id);
+    mint_ammo<Character>(&mut ts, storage_id, character_b_id, user_b());
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -481,9 +502,9 @@ fun test_deposit_and_withdraw_via_extension() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     // Authorize extension
     ts::next_tx(&mut ts, user_a());
@@ -539,9 +560,9 @@ fun test_deposit_and_withdraw_by_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, user_a());
     let item: Item;
@@ -627,18 +648,18 @@ fun test_swap_ammo_for_lens() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let storage_owner_cap_id = owner_cap_id(&mut ts, storage_id);
+    let storage_owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_b(), storage_id);
 
     // Mint lens for user B
-    mint_lens(&mut ts, storage_id, storage_owner_cap_id);
+    mint_lens<StorageUnit>(&mut ts, storage_id, character_b_id, user_b());
 
     // Create a character for user A to mint items into epehemeral inventory
-    let character_owner_cap_id = character_owner_cap(&mut ts, user_a());
+    let character_owner_cap_id = character_owner_cap_id(&mut ts, user_a());
 
     // Mint Ammo for user A
     // minting ammo automatically creates a epehemeral inventory for user A
-    mint_ammo(&mut ts, storage_id, character_owner_cap_id);
+    mint_ammo<Character>(&mut ts, storage_id, character_a_id, user_a());
 
     // User B authorizes the swap extension for their storage to swap lens for ammo
     ts::next_tx(&mut ts, user_b());
@@ -737,12 +758,11 @@ fun test_unachor_storage_unit() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_b(), storage_id);
 
-    mint_lens(&mut ts, storage_id, owner_cap_id);
-    mint_lens(&mut ts, storage_id, owner_cap_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_b());
+    mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_b());
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_b());
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -818,9 +838,8 @@ fun test_withdraw_via_extension_fail_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -859,10 +878,8 @@ fun test_deposit_via_extension_fail_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
-
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, user_a());
     let item: Item;
@@ -926,10 +943,8 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
-
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
 
     create_storage_unit(
         &mut ts,
@@ -998,9 +1013,8 @@ fun test_deposit_by_owner_fail_wrong_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_ammo(&mut ts, storage_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
 
     // user_a withdraws item
     ts::next_tx(&mut ts, user_a());
@@ -1083,7 +1097,7 @@ fun test_swap_fail_extension_not_authorized() {
     test_helpers::setup_world(&mut ts);
     test_helpers::register_server_address(&mut ts);
     let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
-    create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
+    let character_b_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
 
     // Create storage unit with lens
     let storage_id = create_storage_unit(
@@ -1093,12 +1107,11 @@ fun test_swap_fail_extension_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_a(), storage_id);
-    mint_lens(&mut ts, storage_id, owner_cap_id);
+    mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
-    let character_owner_cap_id = character_owner_cap(&mut ts, user_b());
-    mint_ammo(&mut ts, storage_id, character_owner_cap_id);
+    let character_owner_cap_id = character_owner_cap_id(&mut ts, user_b());
+    mint_ammo<Character>(&mut ts, storage_id, character_b_id, user_b());
 
     //Skipped authorisation
 
@@ -1153,11 +1166,10 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_id);
     online_storage_unit(&mut ts, user_b(), storage_id);
 
     // Mint lens for user B
-    mint_lens(&mut ts, storage_id, owner_cap_id);
+    mint_lens<StorageUnit>(&mut ts, storage_id, character_b_id, user_b());
 
     let user_a_storage_id = create_storage_unit(
         &mut ts,
@@ -1212,8 +1224,7 @@ fun mint_items_fail_inventory_offline() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    let owner_cap_id = owner_cap_id(&mut ts, storage_unit_id);
-    mint_ammo(&mut ts, storage_unit_id, owner_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_unit_id, character_id, user_a());
     ts::end(ts);
 }
 
@@ -1320,10 +1331,9 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         STORAGE_A_TYPE_ID,
     );
     online_storage_unit(&mut ts, user_a(), storage_b_id);
-    let storage_b_cap_id = owner_cap_id(&mut ts, storage_b_id);
 
     // Mint ammo in storage unit B tenant test
-    mint_ammo(&mut ts, storage_b_id, storage_b_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_b_id, character_id, user_a());
 
     // Withdraw item from storage unit B and deposit in different tenant
     ts::next_tx(&mut ts, user_a());
@@ -1426,10 +1436,9 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         STORAGE_A_TYPE_ID,
     );
     online_storage_unit(&mut ts, user_a(), storage_b_id);
-    let storage_b_cap_id = owner_cap_id(&mut ts, storage_b_id);
 
     // Mint ammo in storage unit B
-    mint_ammo(&mut ts, storage_b_id, storage_b_cap_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_b_id, character_id, user_a());
 
     // Withdraw item from storage unit B
     ts::next_tx(&mut ts, user_a());
