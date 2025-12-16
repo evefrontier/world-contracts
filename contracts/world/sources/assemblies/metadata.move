@@ -1,4 +1,4 @@
-/// Metadata for any structure is managed here
+/// Metadata for any assembly is managed here
 module world::metadata;
 
 use std::string::String;

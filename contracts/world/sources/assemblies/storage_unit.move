@@ -85,7 +85,6 @@ public fun authorize_extension<Auth: drop>(
     storage_unit.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
 }
 
-// We can do wrappers like this, or directly call respective modules
 public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap<StorageUnit>) {
     assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
     storage_unit.status.online();
@@ -96,6 +95,7 @@ public fun offline(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap<StorageU
     storage_unit.status.offline();
 }
 
+/// Bridges items from chain to game inventory
 public fun chain_item_to_game_inventory<T: key>(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,
@@ -346,6 +346,7 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     id.delete();
 }
 
+/// Bridges items from game to chain inventory
 public fun game_item_to_chain_inventory<T: key>(
     storage_unit: &mut StorageUnit,
     _: &AdminCap,
