@@ -18,10 +18,10 @@ const ETribeIdEmpty: vector<u8> = b"Tribe ID is empty";
 #[error(code = 2)]
 const ECharacterAlreadyExists: vector<u8> = b"Character with this game character ID already exists";
 
-#[error(code = 4)]
+#[error(code = 3)]
 const ETenantEmpty: vector<u8> = b"Tenant name cannot be empty";
 
-#[error(code = 5)]
+#[error(code = 4)]
 const EAddressEmpty: vector<u8> = b"Address name cannot be empty";
 
 public struct CharacterRegistry has key {
@@ -129,7 +129,7 @@ public fun update_address(character: &mut Character, _: &AdminCap, character_add
 }
 
 // for emergencies
-public fun update_tenent_id(character: &mut Character, _: &AdminCap, tenant: String) {
+public fun update_tenant_id(character: &mut Character, _: &AdminCap, tenant: String) {
     assert!(tenant.length() > 0, ETenantEmpty);
     let current_id = in_game_id::item_id(&character.key);
     character.key = in_game_id::create_key(current_id, tenant);

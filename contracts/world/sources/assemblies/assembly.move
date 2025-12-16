@@ -72,7 +72,7 @@ public fun status(assembly: &Assembly): &AssemblyStatus {
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
     admin_cap: &AdminCap,
-    character_addres: address,
+    character_address: address,
     tenant: String,
     item_id: u64,
     type_id: u64,
@@ -112,7 +112,7 @@ public fun anchor(
             ),
         ),
     };
-    access::transfer_owner_cap(owner_cap, character_addres, ctx);
+    access::transfer_owner_cap(owner_cap, character_address, ctx);
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,

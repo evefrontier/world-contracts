@@ -55,7 +55,7 @@ public fun is_online(assembly_status: &AssemblyStatus): bool {
 }
 
 // === Package Functions ===
-/// Anchors an assmebly and returns an instance of the status
+/// Anchors an assembly and returns an instance of the status
 public(package) fun anchor(assembly_id: ID, type_id: u64, item_id: u64): AssemblyStatus {
     let assembly_status = AssemblyStatus {
         assembly_id: assembly_id,
