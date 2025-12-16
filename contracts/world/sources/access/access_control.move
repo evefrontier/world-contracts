@@ -13,6 +13,7 @@
 
 module world::access;
 
+use std::{ascii::String, type_name::{Self, TypeName}};
 use sui::{event, table::{Self, Table}};
 use world::world::GovernorCap;
 
@@ -20,6 +21,9 @@ public struct AdminCap has key {
     id: UID,
     admin: address,
 }
+
+#[error(code = 0)]
+const ECharacterTransfer: vector<u8> = b"Character cannot be transferred";
 
 /// `OwnerCap` serves as a transferable capability ("KeyCard") for accessing and mutating shared objects.
 ///
@@ -95,15 +99,10 @@ public fun transfer_owner_cap<T: key>(
     new_owner: address,
     ctx: &mut TxContext,
 ) {
-    // todo: add restrictions for character OwnerCap Transfer
-    // need to add phantom type for OwnerCap
-    event::emit(OwnerCapTransferred {
-        owner_cap_id: object::id(&owner_cap),
-        authorized_object_id: owner_cap.authorized_object_id,
-        previous_owner: ctx.sender(),
-        owner: new_owner,
-    });
-    transfer::transfer(owner_cap, new_owner);
+    let type_name: TypeName = type_name::with_defining_ids<T>();
+    let str: &String = type_name.as_string();
+    assert!(str == &std::ascii::string(b"Character"), ECharacterTransfer);
+    transfer<T>(owner_cap, ctx.sender(), new_owner);
 }
 
 // === View Functions ===
@@ -119,6 +118,19 @@ public fun is_authorized_server_address(
 /// Returns true iff the `OwnerCap` has mutation access for the specified object.
 public fun is_authorized<T: key>(owner_cap: &OwnerCap<T>, object_id: ID): bool {
     owner_cap.authorized_object_id == object_id
+}
+
+// === Package Functions ===
+public(package) fun create_and_transfer_owner_cap<T: key>(
+    admin_cap: &AdminCap,
+    object_id: ID,
+    owner: address,
+    ctx: &mut TxContext,
+): ID {
+    let owner_cap = create_owner_cap_by_id<T>(admin_cap, object_id, ctx);
+    let owner_cap_id = object::id(&owner_cap);
+    transfer<T>(owner_cap, @0x0, owner);
+    owner_cap_id
 }
 
 // === Admin Functions ===
@@ -189,6 +201,17 @@ public fun remove_server_address(
 public fun delete_owner_cap<T: key>(owner_cap: OwnerCap<T>, _: &AdminCap) {
     let OwnerCap { id, .. } = owner_cap;
     id.delete();
+}
+
+// === Private Functions ===
+fun transfer<T: key>(owner_cap: OwnerCap<T>, previous_owner: address, new_owner: address) {
+    event::emit(OwnerCapTransferred {
+        owner_cap_id: object::id(&owner_cap),
+        authorized_object_id: owner_cap.authorized_object_id,
+        previous_owner: previous_owner,
+        owner: new_owner,
+    });
+    transfer::transfer(owner_cap, new_owner);
 }
 
 #[test_only]

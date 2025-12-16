@@ -273,9 +273,13 @@ public fun anchor(
     let assembly_uid = derived_object::claim(registry_id, storage_unit_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
 
-    // Create owner cap first with just the ID
-    let owner_cap = access::create_owner_cap_by_id<StorageUnit>(admin_cap, assembly_id, ctx);
-    let owner_cap_id = object::id(&owner_cap);
+    // Create owner cap
+    let owner_cap_id = access::create_and_transfer_owner_cap<StorageUnit>(
+        admin_cap,
+        assembly_id,
+        character.character_address(),
+        ctx,
+    );
 
     let mut storage_unit = StorageUnit {
         id: assembly_uid,
@@ -296,9 +300,6 @@ public fun anchor(
         ),
         extension: option::none(),
     };
-
-    // Create ownerCap for storage unit
-    access::transfer_owner_cap(owner_cap, character.character_address(), ctx);
 
     let inventory = inventory::create(
         assembly_id,

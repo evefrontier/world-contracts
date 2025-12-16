@@ -22,7 +22,7 @@ const ECharacterAlreadyExists: vector<u8> = b"Character with this game character
 const ETenantEmpty: vector<u8> = b"Tenant name cannot be empty";
 
 #[error(code = 4)]
-const EAddressEmpty: vector<u8> = b"Address name cannot be empty";
+const EAddressEmpty: vector<u8> = b"Address cannot be empty";
 
 public struct CharacterRegistry has key {
     id: UID,
@@ -102,8 +102,12 @@ public fun create_character(
         ),
     };
 
-    let owner_cap = access::create_owner_cap(admin_cap, &character, ctx);
-    access::transfer_owner_cap(owner_cap, character_address, ctx);
+    access::create_and_transfer_owner_cap<Character>(
+        admin_cap,
+        character_id,
+        character_address,
+        ctx,
+    );
 
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),

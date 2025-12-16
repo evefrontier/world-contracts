@@ -75,12 +75,12 @@ public fun setup_owner_cap<T: key>(ts: &mut ts::Scenario, owner: address, object
     ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let owner_cap = access::create_owner_cap<T>(
+        access::create_and_transfer_owner_cap<T>(
             &admin_cap,
-            object,
+            object::id(object),
+            owner,
             ts.ctx(),
         );
-        access::transfer_owner_cap<T>(owner_cap, owner, ts.ctx());
         ts::return_to_sender(ts, admin_cap);
     };
 }
