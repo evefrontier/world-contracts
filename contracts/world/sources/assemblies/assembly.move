@@ -5,7 +5,7 @@ module world::assembly;
 use std::string::String;
 use sui::{derived_object, event};
 use world::{
-    authority::{Self, AdminCap, OwnerCap},
+    access::{Self, AdminCap, OwnerCap},
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
@@ -54,12 +54,12 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 public fun online(assembly: &mut Assembly, owner_cap: &OwnerCap<Assembly>) {
-    assert!(authority::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
+    assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
     assembly.status.online();
 }
 
 public fun offline(assembly: &mut Assembly, owner_cap: &OwnerCap<Assembly>) {
-    assert!(authority::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
+    assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
     assembly.status.offline();
 }
 
@@ -91,7 +91,7 @@ public fun anchor(
     let assembly_id = object::uid_to_inner(&assembly_uid);
 
     // Create owner cap first with just the ID
-    let owner_cap = authority::create_owner_cap_by_id<Assembly>(admin_cap, assembly_id, ctx);
+    let owner_cap = access::create_owner_cap_by_id<Assembly>(admin_cap, assembly_id, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let assembly = Assembly {
@@ -112,7 +112,7 @@ public fun anchor(
             ),
         ),
     };
-    authority::transfer_owner_cap(owner_cap, character_addres, ctx);
+    access::transfer_owner_cap(owner_cap, character_addres, ctx);
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,

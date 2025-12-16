@@ -4,8 +4,8 @@ module world::test_helpers;
 use std::string::String;
 use sui::test_scenario as ts;
 use world::{
+    access::{Self, AdminCap, ServerAddressRegistry},
     assembly,
-    authority::{Self, AdminCap, ServerAddressRegistry},
     character,
     in_game_id::{Self, TenantItemId},
     location::{Self, LocationProof},
@@ -57,7 +57,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
     {
         world::init_for_testing(ts.ctx());
-        authority::init_for_testing(ts.ctx());
+        access::init_for_testing(ts.ctx());
         character::init_for_testing(ts::ctx(ts));
         assembly::init_for_testing(ts.ctx());
     };
@@ -65,7 +65,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
     {
         let gov_cap = ts::take_from_sender<GovernorCap>(ts);
-        authority::create_admin_cap(&gov_cap, admin(), ts.ctx());
+        access::create_admin_cap(&gov_cap, admin(), ts.ctx());
         ts::return_to_sender(ts, gov_cap);
     };
 }
@@ -75,12 +75,12 @@ public fun setup_owner_cap<T: key>(ts: &mut ts::Scenario, owner: address, object
     ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let owner_cap = authority::create_owner_cap<T>(
+        let owner_cap = access::create_owner_cap<T>(
             &admin_cap,
             object,
             ts.ctx(),
         );
-        authority::transfer_owner_cap<T>(owner_cap, owner, ts.ctx());
+        access::transfer_owner_cap<T>(owner_cap, owner, ts.ctx());
         ts::return_to_sender(ts, admin_cap);
     };
 }
@@ -94,8 +94,8 @@ public fun register_server_address(ts: &mut ts::Scenario) {
     {
         let gov_cap = ts::take_from_sender<GovernorCap>(ts);
         let mut server_registry = ts::take_shared<ServerAddressRegistry>(ts);
-        authority::create_admin_cap(&gov_cap, server_admin(), ts.ctx());
-        authority::register_server_address(&mut server_registry, &gov_cap, server_admin());
+        access::create_admin_cap(&gov_cap, server_admin(), ts.ctx());
+        access::register_server_address(&mut server_registry, &gov_cap, server_admin());
         ts::return_to_sender(ts, gov_cap);
         ts::return_shared(server_registry);
     };

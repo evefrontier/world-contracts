@@ -9,7 +9,7 @@ module world::inventory;
 
 use std::string::String;
 use sui::{clock::Clock, event, vec_map::{Self, VecMap}};
-use world::{authority::ServerAddressRegistry, location::{Self, Location}};
+use world::{access::ServerAddressRegistry, location::{Self, Location}};
 
 // === Errors ===
 #[error(code = 0)]

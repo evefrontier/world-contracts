@@ -5,7 +5,7 @@ module world::status_tests;
 use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
-    authority::AdminCap,
+    access::AdminCap,
     status::{Self, AssemblyStatus},
     test_helpers::{Self, governor, admin, user_a}
 };

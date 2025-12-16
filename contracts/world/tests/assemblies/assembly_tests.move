@@ -4,8 +4,8 @@ module world::assembly_tests;
 use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
+    access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly, AssemblyRegistry},
-    authority::{AdminCap, OwnerCap},
     location,
     status,
     test_helpers::{Self, governor, admin, user_a, tenant, in_game_id}

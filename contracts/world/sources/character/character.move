@@ -7,11 +7,7 @@ module world::character;
 
 use std::string::String;
 use sui::{derived_object, event};
-use world::{
-    authority::{Self, AdminCap},
-    in_game_id::{Self, TenantItemId},
-    metadata::{Self, Metadata}
-};
+use world::{access::{Self, AdminCap}, in_game_id::{Self, TenantItemId}, metadata::{Self, Metadata}};
 
 #[error(code = 0)]
 const EGameCharacterIdEmpty: vector<u8> = b"Game character ID is empty";
@@ -106,8 +102,8 @@ public fun create_character(
         ),
     };
 
-    let owner_cap = authority::create_owner_cap(admin_cap, &character, ctx);
-    authority::transfer_owner_cap(owner_cap, character_address, ctx);
+    let owner_cap = access::create_owner_cap(admin_cap, &character, ctx);
+    access::transfer_owner_cap(owner_cap, character_address, ctx);
 
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),

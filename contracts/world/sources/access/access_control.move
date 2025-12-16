@@ -11,7 +11,7 @@
 /// Future: Capability registry to support multi party access/shared control. (eg: A capability for corporation/tribe with multiple members)
 /// Capabilities based on different roles/permission in a corporation/tribe.
 
-module world::authority;
+module world::access;
 
 use sui::{event, table::{Self, Table}};
 use world::world::GovernorCap;

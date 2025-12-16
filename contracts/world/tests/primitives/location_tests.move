@@ -3,7 +3,7 @@ module world::location_tests;
 use std::{bcs, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
-    authority::{AdminCap, ServerAddressRegistry},
+    access::{AdminCap, ServerAddressRegistry},
     location::{Self, Location},
     test_helpers::{Self, governor, admin, server_admin, user_a, user_b}
 };

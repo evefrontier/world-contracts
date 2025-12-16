@@ -36,6 +36,6 @@ export const MODULES = {
     GATE: "gate",
     STORAGE_UNIT: "storage_unit",
     CHARACTER: "character",
-    AUTHORITY: "authority",
+    ACCESS: "access",
     WORLD: "world",
 } as const;

@@ -7,7 +7,7 @@
 module world::location;
 
 use sui::{bcs, clock::Clock};
-use world::{authority::{Self, AdminCap, ServerAddressRegistry}, sig_verify};
+use world::{access::{Self, AdminCap, ServerAddressRegistry}, sig_verify};
 
 // === Errors ===
 #[error(code = 0)]
@@ -219,7 +219,7 @@ fun validate_proof_message(
     sender: address,
 ) {
     assert!(
-        authority::is_authorized_server_address(server_registry, message.server_address),
+        access::is_authorized_server_address(server_registry, message.server_address),
         EUnauthorizedServer,
     );
     assert!(message.player_address == sender, EUnverifiedSender);

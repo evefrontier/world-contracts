@@ -3,7 +3,7 @@ module world::metadata;
 
 use std::string::String;
 use sui::event;
-use world::authority::{Self, OwnerCap};
+use world::access::{Self, OwnerCap};
 
 // === Errors ===
 #[error(code = 0)]
@@ -29,7 +29,7 @@ public struct MetadataChangedEvent has copy, drop {
 
 // === Public Functions ===
 public fun update_name<T: key>(metadata: &mut Metadata, owner_cap: &OwnerCap<T>, name: String) {
-    assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
+    assert!(access::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.name = name;
     metadata.emit_metadata_changed();
 }
@@ -39,13 +39,13 @@ public fun update_description<T: key>(
     owner_cap: &OwnerCap<T>,
     description: String,
 ) {
-    assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
+    assert!(access::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.description = description;
     metadata.emit_metadata_changed();
 }
 
 public fun update_url<T: key>(metadata: &mut Metadata, owner_cap: &OwnerCap<T>, url: String) {
-    assert!(authority::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
+    assert!(access::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
     metadata.url = url;
     metadata.emit_metadata_changed();
 }

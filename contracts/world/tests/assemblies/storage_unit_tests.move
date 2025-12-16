@@ -3,8 +3,8 @@ module world::storage_unit_tests;
 use std::{bcs, string::{utf8, String}, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
+    access::{OwnerCap, AdminCap, ServerAddressRegistry},
     assembly::AssemblyRegistry,
-    authority::{OwnerCap, AdminCap, ServerAddressRegistry},
     character::{Self, Character, CharacterRegistry},
     inventory::Item,
     storage_unit::{Self, StorageUnit},

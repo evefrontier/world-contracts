@@ -231,7 +231,7 @@ else
         # Call create_admin_cap function
         ADMIN_CAP_OUTPUT=$(sui client call \
             --package $PACKAGE_ID \
-            --module authority \
+            --module access \
             --function create_admin_cap \
             --args $GOVERNOR_CAP_ID $ADMIN_ADDR \
             --gas-budget ${GAS_BUDGET:-100000000} \

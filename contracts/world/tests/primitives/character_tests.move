@@ -5,7 +5,7 @@ module world::character_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::{derived_object, test_scenario as ts};
 use world::{
-    authority::{Self, AdminCap, OwnerCap},
+    access::{Self, AdminCap, OwnerCap},
     character::{Self, Character, CharacterRegistry},
     in_game_id as character_id,
     metadata,
@@ -28,7 +28,7 @@ fun setup_world(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
     {
         let gov_cap = ts::take_from_sender<GovernorCap>(ts);
-        authority::create_admin_cap(&gov_cap, admin(), ts::ctx(ts));
+        access::create_admin_cap(&gov_cap, admin(), ts::ctx(ts));
         ts::return_to_sender(ts, gov_cap);
     };
 }

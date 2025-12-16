@@ -4,7 +4,7 @@ module world::inventory_tests;
 use std::{bcs, unit_test::assert_eq};
 use sui::{dynamic_field as df, test_scenario as ts};
 use world::{
-    authority::ServerAddressRegistry,
+    access::ServerAddressRegistry,
     inventory::{Self, Inventory},
     location::{Self, Location},
     status::{Self, AssemblyStatus},

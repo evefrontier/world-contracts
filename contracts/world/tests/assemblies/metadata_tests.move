@@ -4,8 +4,8 @@ module world::metadata_tests;
 use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
+    access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly, AssemblyRegistry},
-    authority::{AdminCap, OwnerCap},
     metadata,
     test_helpers::{Self, admin, governor, user_a, user_b, tenant}
 };
