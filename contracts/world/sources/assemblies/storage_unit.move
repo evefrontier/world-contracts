@@ -270,7 +270,7 @@ public fun anchor(
     );
 
     let registry_id = assembly::borrow_registry_id(assembly_registry);
-    let assembly_uid = derived_object::claim(registry_id, item_id);
+    let assembly_uid = derived_object::claim(registry_id, storage_unit_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
 
     // Create owner cap first with just the ID
