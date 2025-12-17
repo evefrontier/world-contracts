@@ -145,7 +145,7 @@ fun mint_ammo<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
     let owner_cap = {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let admin_acl = ts::take_shared<AdminACL>(ts);
-        storage_unit.game_item_to_chain_inventory<T>(
+        storage_unit.game_item_to_chain_inventory_test<T>(
             &admin_acl,
             &owner_cap,
             character_id,
@@ -175,7 +175,7 @@ fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let admin_acl = ts::take_shared<AdminACL>(ts);
-        storage_unit.game_item_to_chain_inventory<T>(
+        storage_unit.game_item_to_chain_inventory_test<T>(
             &admin_acl,
             &owner_cap,
             character_id,

@@ -53,6 +53,8 @@ const ENotOnline: vector<u8> = b"Storage Unit is not online";
 const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants";
 #[error(code = 8)]
 const EUnuthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
+#[error(code = 8)]
+const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -361,8 +363,11 @@ public fun game_item_to_chain_inventory<T: key>(
     quantity: u32,
     ctx: &mut TxContext,
 ) {
-    // Check that transaction is sponsored by the admin
-    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnuthorizedSponsor);
+    let sponsor_opt = tx_context::sponsor(ctx);
+    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
+    let sponsor = *option::borrow(&sponsor_opt);
+    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnuthorizedSponsor);
+
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
     check_inventory_authorization(owner_cap, storage_unit, character_id);
@@ -475,4 +480,53 @@ public fun chain_item_to_game_inventory_test<T: key>(
         quantity,
         ctx,
     );
+}
+
+#[test_only]
+public fun game_item_to_chain_inventory_test<T: key>(
+    storage_unit: &mut StorageUnit,
+    admin_acl: &AdminACL,
+    owner_cap: &OwnerCap<T>,
+    character_id: ID,
+    item_id: u64,
+    type_id: u64,
+    volume: u64,
+    quantity: u32,
+    ctx: &mut TxContext,
+) {
+    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnuthorizedSponsor);
+
+    let owner_cap_id = object::id(owner_cap);
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    check_inventory_authorization(owner_cap, storage_unit, character_id);
+
+    // create a ephemeral inventory if it does not exists for a character
+    if (!df::exists_(&storage_unit.id, owner_cap_id)) {
+        let owner_inv = df::borrow<ID, Inventory>(
+            &storage_unit.id,
+            storage_unit.owner_cap_id,
+        );
+        let inventory = inventory::create(
+            object::id(storage_unit),
+            owner_cap_id,
+            owner_inv.max_capacity(),
+        );
+
+        storage_unit.inventory_keys.push_back(owner_cap_id);
+        df::add(&mut storage_unit.id, owner_cap_id, inventory);
+    };
+
+    let inventory = df::borrow_mut<ID, Inventory>(
+        &mut storage_unit.id,
+        owner_cap_id,
+    );
+    inventory.mint_items(
+        storage_unit.key.tenant(),
+        item_id,
+        type_id,
+        volume,
+        quantity,
+        storage_unit.location.hash(),
+        ctx,
+    )
 }
