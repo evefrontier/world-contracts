@@ -13,7 +13,10 @@
     "fmt:ts:check": "prettier --check \"examples/**/*.ts\"",
     "sig-verify": "tsx examples/crypto/sig-verify.ts",
     "generate-test-sig": "tsx examples/location/generate-test-signature.ts",
-    "create-character": "tsx examples/character/create-character.ts"
+    "create-character": "tsx examples/character/create-character.ts",
+    "create-storage-unit": "tsx examples/storage-unit/create-storage-unit.ts",
+    "online": "tsx examples/storage-unit/online.ts",
+    "game-item-to-chain": "tsx examples/storage-unit/game-item-to-chain.ts"
   },
   "dependencies": {
     "@mysten/prettier-plugin-move": "^0.3.3",

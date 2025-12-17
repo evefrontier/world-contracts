@@ -12,6 +12,7 @@ const TRIBE_ID = 100;
 
 async function createCharacter(
     tenant: string,
+    characterAddress: string,
     client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -39,6 +40,7 @@ async function createCharacter(
             tx.pure.u32(GAME_CHARACTER_ID),
             tx.pure.string(tenant),
             tx.pure.u32(TRIBE_ID),
+            tx.pure.address(characterAddress),
             tx.pure.string("frontier-character-a"),
         ],
     });
@@ -72,6 +74,7 @@ async function main() {
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
         const exportedKey = process.env.PRIVATE_KEY;
+        const playerAddress = process.env.PLAYER_A_ADDRESS || "";
         const tenant = process.env.TENANT || "";
 
         if (!exportedKey) {
@@ -84,7 +87,7 @@ async function main() {
         const keypair = keypairFromPrivateKey(exportedKey);
         const config = getConfig(network);
 
-        await createCharacter(tenant, client, keypair, config);
+        await createCharacter(tenant, playerAddress, client, keypair, config);
     } catch (error) {
         console.error("\n=== Error ===");
         console.error("Error:", error instanceof Error ? error.message : error);

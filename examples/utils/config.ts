@@ -6,13 +6,17 @@ export const NETWORKS = {
         adminCapObjectId: "",
         characterRegisterId: "",
         serverAddressRegistry: "",
+        assemblyRegistry: "",
+        adminAclObjectId: "",
     },
     testnet: {
         url: "https://fullnode.testnet.sui.io:443",
-        packageId: "0x8941524ae368d91a7f9ee95466d3e60b75ddc16de3c3b9233dc11f85ce86c258",
-        adminCapObjectId: "0x73361a1cbe38e33010363cd727b54fbca3a58c7ac95ca3b647a167c57f79f95f",
-        characterRegisterId: "0x70c704eb8ee89c910a31ecf550a85514d5a4d3d2742cc2fbd5b2131c3513b79c",
-        serverAddressRegistry: "0xc259666e108ef25275566f3a2e4843ae113f86d42d89e1e31f752426c99c9e7d",
+        packageId: "0xc2756811d528e036189e011974a2fded87b2738a0a2fd301d263b0d9014a825f",
+        adminCapObjectId: "0xbb68059059785e339301e46f5bd01eb4ff498617e08aa4e8ce40dcd700bedf6c",
+        characterRegisterId: "0x648c0447a5acc1a5ba263264c0e674e3b73bb0e7ab5a94c06705b8b0bf9760c1",
+        serverAddressRegistry: "0xe462e407b8479125b939357de767f3d0a149ea50c03f867f60b5c975f81b33ce",
+        assemblyRegistry: "0xb142b80782fc818f89a941eeafd7d7bddac8beb322c5efe7151e2a09647004a6",
+        adminAclObjectId: "0xba92c8a4085abf584d433fed140299a50dd682b5311b22beeac688441cd929f8",
     },
     mainnet: {
         url: "https://fullnode.mainnet.sui.io:443",
@@ -20,6 +24,8 @@ export const NETWORKS = {
         adminCapObjectId: "",
         characterRegisterId: "",
         serverAddressRegistry: "",
+        assemblyRegistry: "",
+        adminAclObjectId: "",
     },
 };
 
