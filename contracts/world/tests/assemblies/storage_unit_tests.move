@@ -3,7 +3,7 @@ module world::storage_unit_tests;
 use std::{bcs, string::{utf8, String}, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{OwnerCap, AdminCap, ServerAddressRegistry},
+    access::{OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
     assembly::AssemblyRegistry,
     character::{Self, Character, CharacterRegistry},
     inventory::Item,
@@ -144,9 +144,9 @@ fun mint_ammo<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
     ts::next_tx(ts, admin());
     let owner_cap = {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         storage_unit.game_item_to_chain_inventory<T>(
-            &admin_cap,
+            &admin_acl,
             &owner_cap,
             character_id,
             AMMO_ITEM_ID,
@@ -155,8 +155,8 @@ fun mint_ammo<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
             AMMO_QUANTITY,
             ts.ctx(),
         );
+        ts::return_shared(admin_acl);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(ts, admin_cap);
         owner_cap
     };
     ts::next_tx(ts, user);
@@ -174,9 +174,9 @@ fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
     ts::next_tx(ts, admin());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         storage_unit.game_item_to_chain_inventory<T>(
-            &admin_cap,
+            &admin_acl,
             &owner_cap,
             character_id,
             LENS_ITEM_ID,
@@ -185,8 +185,8 @@ fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
             LENS_QUANTITY,
             ts.ctx(),
         );
+        ts::return_shared(admin_acl);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(ts, admin_cap);
     };
     ts::next_tx(ts, user);
     {

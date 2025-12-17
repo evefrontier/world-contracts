@@ -4,7 +4,7 @@ module world::test_helpers;
 use std::string::String;
 use sui::test_scenario as ts;
 use world::{
-    access::{Self, AdminCap, ServerAddressRegistry},
+    access::{Self, AdminCap, ServerAddressRegistry, AdminACL},
     assembly,
     character,
     in_game_id::{Self, TenantItemId},
@@ -65,8 +65,11 @@ public fun setup_world(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
     {
         let gov_cap = ts::take_from_sender<GovernorCap>(ts);
+        let mut admin_acl = ts::take_shared<AdminACL>(ts);
         access::create_admin_cap(&gov_cap, admin(), ts.ctx());
+        access::add_sponsor_to_acl(&mut admin_acl, &gov_cap, admin()); // here admin and sponsor is the same
         ts::return_to_sender(ts, gov_cap);
+        ts::return_shared(admin_acl);
     };
 }
 

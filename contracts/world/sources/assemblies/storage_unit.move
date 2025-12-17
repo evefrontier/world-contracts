@@ -23,7 +23,7 @@ module world::storage_unit;
 use std::type_name::{Self, TypeName};
 use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
-    access::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
+    access::{Self, OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
     assembly::{Self, AssemblyRegistry},
     character::Character,
     in_game_id::{Self, TenantItemId},
@@ -51,6 +51,8 @@ const EInventoryNotAuthorized: vector<u8> = b"Inventory Access not authorized";
 const ENotOnline: vector<u8> = b"Storage Unit is not online";
 #[error(code = 7)]
 const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants";
+#[error(code = 8)]
+const EUnuthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -350,7 +352,7 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
 /// Bridges items from game to chain inventory
 public fun game_item_to_chain_inventory<T: key>(
     storage_unit: &mut StorageUnit,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     owner_cap: &OwnerCap<T>,
     character_id: ID,
     item_id: u64,
@@ -359,6 +361,8 @@ public fun game_item_to_chain_inventory<T: key>(
     quantity: u32,
     ctx: &mut TxContext,
 ) {
+    // Check that transaction is sponsored by the admin
+    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnuthorizedSponsor);
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
     check_inventory_authorization(owner_cap, storage_unit, character_id);

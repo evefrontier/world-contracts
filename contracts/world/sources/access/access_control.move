@@ -17,13 +17,18 @@ use std::{ascii::String, type_name::{Self, TypeName}};
 use sui::{event, table::{Self, Table}};
 use world::world::GovernorCap;
 
+#[error(code = 0)]
+const ECharacterTransfer: vector<u8> = b"Character cannot be transferred";
+
+public struct AdminACL has key {
+    id: UID,
+    authorized_sponsors: Table<address, bool>,
+}
+
 public struct AdminCap has key {
     id: UID,
     admin: address,
 }
-
-#[error(code = 0)]
-const ECharacterTransfer: vector<u8> = b"Character cannot be transferred";
 
 /// `OwnerCap` serves as a transferable capability ("KeyCard") for accessing and mutating shared objects.
 ///
@@ -76,6 +81,11 @@ fun init(ctx: &mut TxContext) {
         authorized_address: table::new(ctx),
     };
 
+    let admin_acl = AdminACL {
+        id: object::new(ctx),
+        authorized_sponsors: table::new(ctx),
+    };
+
     event::emit(ServerAddressRegistryCreated {
         server_address_registry_id: object::id(&server_address_registry),
         registry_admin: deployer,
@@ -83,6 +93,7 @@ fun init(ctx: &mut TxContext) {
 
     // Share the registry so anyone can read it for verification
     transfer::share_object(server_address_registry);
+    transfer::share_object(admin_acl);
 }
 
 // === Public Functions ===
@@ -120,6 +131,10 @@ public fun is_authorized<T: key>(owner_cap: &OwnerCap<T>, object_id: ID): bool {
     owner_cap.authorized_object_id == object_id
 }
 
+public fun is_authorized_sponsor(admin_acl: &AdminACL, sponsor: address): bool {
+    admin_acl.authorized_sponsors.contains(sponsor)
+}
+
 // === Package Functions ===
 public(package) fun create_and_transfer_owner_cap<T: key>(
     admin_cap: &AdminCap,
@@ -134,6 +149,14 @@ public(package) fun create_and_transfer_owner_cap<T: key>(
 }
 
 // === Admin Functions ===
+public fun add_sponsor_to_acl(
+    admin_acl: &mut AdminACL,
+    _: &GovernorCap, // Its governorCap, so its part of initial configuration
+    sponsor: address,
+) {
+    admin_acl.authorized_sponsors.add(sponsor, true);
+}
+
 public fun create_admin_cap(_: &GovernorCap, admin: address, ctx: &mut TxContext) {
     let admin_cap = AdminCap {
         id: object::new(ctx),
