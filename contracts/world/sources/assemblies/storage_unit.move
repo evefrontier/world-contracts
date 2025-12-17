@@ -53,7 +53,7 @@ const ENotOnline: vector<u8> = b"Storage Unit is not online";
 const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants";
 #[error(code = 8)]
 const EUnuthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
-#[error(code = 8)]
+#[error(code = 9)]
 const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
