@@ -52,7 +52,7 @@ const ENotOnline: vector<u8> = b"Storage Unit is not online";
 #[error(code = 7)]
 const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants";
 #[error(code = 8)]
-const EUnuthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
+const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
 #[error(code = 9)]
 const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
 
@@ -366,7 +366,7 @@ public fun game_item_to_chain_inventory<T: key>(
     let sponsor_opt = tx_context::sponsor(ctx);
     assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
     let sponsor = *option::borrow(&sponsor_opt);
-    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnuthorizedSponsor);
+    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
 
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
@@ -494,7 +494,7 @@ public fun game_item_to_chain_inventory_test<T: key>(
     quantity: u32,
     ctx: &mut TxContext,
 ) {
-    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnuthorizedSponsor);
+    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
 
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
