@@ -7,12 +7,21 @@ use world::{
     access::{Self, AdminCap, ServerAddressRegistry, AdminACL},
     assembly,
     character,
+    fuel::{Self, FuelConfig},
     in_game_id::{Self, TenantItemId},
     location::{Self, LocationProof},
     world::{Self, GovernorCap}
 };
 
 const TEST: vector<u8> = b"TEST";
+
+// Test fuel types and efficiencies
+const FUEL_TYPE_1: u64 = 1;
+const FUEL_TYPE_2: u64 = 2;
+const FUEL_TYPE_3: u64 = 3;
+const FUEL_EFFICIENCY_1: u64 = 100;
+const FUEL_EFFICIENCY_2: u64 = 90;
+const FUEL_EFFICIENCY_3: u64 = 75;
 
 public struct TestObject has key {
     id: UID,
@@ -52,6 +61,18 @@ public fun get_verified_location_hash(): vector<u8> {
     x"16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049"
 }
 
+public fun fuel_type_1(): u64 { FUEL_TYPE_1 }
+
+public fun fuel_type_2(): u64 { FUEL_TYPE_2 }
+
+public fun fuel_type_3(): u64 { FUEL_TYPE_3 }
+
+public fun fuel_efficiency_1(): u64 { FUEL_EFFICIENCY_1 }
+
+public fun fuel_efficiency_2(): u64 { FUEL_EFFICIENCY_2 }
+
+public fun fuel_efficiency_3(): u64 { FUEL_EFFICIENCY_3 }
+
 /// Initialize world and create admin cap for ADMIN
 public fun setup_world(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
@@ -60,6 +81,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
         access::init_for_testing(ts.ctx());
         character::init_for_testing(ts::ctx(ts));
         assembly::init_for_testing(ts.ctx());
+        fuel::init_for_testing(ts.ctx());
     };
 
     ts::next_tx(ts, governor());
@@ -156,4 +178,19 @@ public fun create_test_object(ts: &mut ts::Scenario, owner: address): ID {
     };
 
     test_object_id
+}
+
+public fun configure_fuel(ts: &mut ts::Scenario) {
+    ts::next_tx(ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let mut fuel_config = ts::take_shared<FuelConfig>(ts);
+
+        fuel::set_fuel_efficiency(&mut fuel_config, &admin_cap, FUEL_TYPE_1, FUEL_EFFICIENCY_1);
+        fuel::set_fuel_efficiency(&mut fuel_config, &admin_cap, FUEL_TYPE_2, FUEL_EFFICIENCY_2);
+        fuel::set_fuel_efficiency(&mut fuel_config, &admin_cap, FUEL_TYPE_3, FUEL_EFFICIENCY_3);
+
+        ts::return_shared(fuel_config);
+        ts::return_to_sender(ts, admin_cap);
+    }
 }
