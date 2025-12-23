@@ -7,6 +7,7 @@ use world::{
     access::{Self, AdminCap, ServerAddressRegistry, AdminACL},
     assembly,
     character,
+    energy::{Self, EnergyConfig},
     fuel::{Self, FuelConfig},
     in_game_id::{Self, TenantItemId},
     location::{Self, LocationProof},
@@ -15,13 +16,21 @@ use world::{
 
 const TEST: vector<u8> = b"TEST";
 
-// Test fuel types and efficiencies
+// fuel configs
 const FUEL_TYPE_1: u64 = 1;
 const FUEL_TYPE_2: u64 = 2;
 const FUEL_TYPE_3: u64 = 3;
 const FUEL_EFFICIENCY_1: u64 = 100;
 const FUEL_EFFICIENCY_2: u64 = 90;
 const FUEL_EFFICIENCY_3: u64 = 75;
+
+// Energy configs
+const ASSEMBLY_TYPE_1: u64 = 8888;
+const ASSEMBLY_TYPE_2: u64 = 5555;
+const ASSEMBLY_TYPE_3: u64 = 6666;
+const ASSEMBLY_TYPE_1_ENERGY: u64 = 50;
+const ASSEMBLY_TYPE_2_ENERGY: u64 = 30;
+const ASSEMBLY_TYPE_3_ENERGY: u64 = 20;
 
 public struct TestObject has key {
     id: UID,
@@ -73,6 +82,18 @@ public fun fuel_efficiency_2(): u64 { FUEL_EFFICIENCY_2 }
 
 public fun fuel_efficiency_3(): u64 { FUEL_EFFICIENCY_3 }
 
+public fun assembly_type_1(): u64 { ASSEMBLY_TYPE_1 }
+
+public fun assembly_type_2(): u64 { ASSEMBLY_TYPE_2 }
+
+public fun assembly_type_3(): u64 { ASSEMBLY_TYPE_3 }
+
+public fun assembly_type_1_energy(): u64 { ASSEMBLY_TYPE_1_ENERGY }
+
+public fun assembly_type_2_energy(): u64 { ASSEMBLY_TYPE_2_ENERGY }
+
+public fun assembly_type_3_energy(): u64 { ASSEMBLY_TYPE_3_ENERGY }
+
 /// Initialize world and create admin cap for ADMIN
 public fun setup_world(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
@@ -82,6 +103,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
         character::init_for_testing(ts::ctx(ts));
         assembly::init_for_testing(ts.ctx());
         fuel::init_for_testing(ts.ctx());
+        energy::init_for_testing(ts.ctx());
     };
 
     ts::next_tx(ts, governor());
@@ -186,11 +208,26 @@ public fun configure_fuel(ts: &mut ts::Scenario) {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(ts);
 
-        fuel::set_fuel_efficiency(&mut fuel_config, &admin_cap, FUEL_TYPE_1, FUEL_EFFICIENCY_1);
-        fuel::set_fuel_efficiency(&mut fuel_config, &admin_cap, FUEL_TYPE_2, FUEL_EFFICIENCY_2);
-        fuel::set_fuel_efficiency(&mut fuel_config, &admin_cap, FUEL_TYPE_3, FUEL_EFFICIENCY_3);
+        fuel_config.set_fuel_efficiency(&admin_cap, FUEL_TYPE_1, FUEL_EFFICIENCY_1);
+        fuel_config.set_fuel_efficiency(&admin_cap, FUEL_TYPE_2, FUEL_EFFICIENCY_2);
+        fuel_config.set_fuel_efficiency(&admin_cap, FUEL_TYPE_3, FUEL_EFFICIENCY_3);
 
         ts::return_shared(fuel_config);
+        ts::return_to_sender(ts, admin_cap);
+    }
+}
+
+public fun configure_assembly_energy(ts: &mut ts::Scenario) {
+    ts::next_tx(ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let mut energy_config = ts::take_shared<EnergyConfig>(ts);
+
+        energy_config.set_energy_config(&admin_cap, ASSEMBLY_TYPE_1, ASSEMBLY_TYPE_1_ENERGY);
+        energy_config.set_energy_config(&admin_cap, ASSEMBLY_TYPE_2, ASSEMBLY_TYPE_2_ENERGY);
+        energy_config.set_energy_config(&admin_cap, ASSEMBLY_TYPE_3, ASSEMBLY_TYPE_3_ENERGY);
+
+        ts::return_shared(energy_config);
         ts::return_to_sender(ts, admin_cap);
     }
 }
