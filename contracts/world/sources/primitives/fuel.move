@@ -1,7 +1,7 @@
 // TODO: Add Fuel module to handle fuel operations like refueling, etc.
 module world::fuel;
 
-use sui::{clock::Clock, table::{Self, Table}};
+use sui::{clock::Clock, event, table::{Self, Table}};
 use world::access::AdminCap;
 
 // === Errors ===
@@ -39,10 +39,11 @@ const EConsumeFuelBeforeStop: vector<u8> = b"Call update before stop_burning";
 
 // === Constants ===
 const MIN_BURN_RATE_SECONDS: u64 = 60;
+const MILLISECONDS_PER_SECOND: u64 = 1000;
+const MIN_BURN_RATE_MS: u64 = MIN_BURN_RATE_SECONDS * MILLISECONDS_PER_SECOND;
 const MIN_FUEL_EFFICIENCY: u64 = 10;
 const MAX_FUEL_EFFICIENCY: u64 = 100;
 const PERCENTAGE_DIVISOR: u64 = 100;
-const MILLISECONDS_PER_SECOND: u64 = 1000;
 
 // === Structs ===
 public struct FuelConfig has key {
@@ -53,7 +54,7 @@ public struct FuelConfig has key {
 public struct Fuel has store {
     assembly_id: ID,
     max_capacity: u64,
-    burn_rate_in_ms: u64, // Stored in milliseconds for efficiency
+    burn_rate_in_ms: u64,
     type_id: u64,
     volume: u64,
     quantity: u64,
@@ -64,22 +65,61 @@ public struct Fuel has store {
 }
 
 // === Events ===
+public struct FuelDepositedEvent has copy, drop {
+    assembly_id: ID,
+    type_id: u64,
+    volume: u64,
+    quantity: u64,
+    total_quantity: u64,
+}
+
+public struct FuelWithdrawnEvent has copy, drop {
+    assembly_id: ID,
+    type_id: u64,
+    quantity: u64,
+    remaining_quantity: u64,
+}
+
+public struct FuelBurningStartedEvent has copy, drop {
+    assembly_id: ID,
+    type_id: u64,
+    quantity: u64,
+    burn_start_time: u64,
+}
+
+public struct FuelBurningStoppedEvent has copy, drop {
+    assembly_id: ID,
+    type_id: u64,
+    quantity: u64,
+    previous_cycle_elapsed_time: u64,
+}
+
+public struct FuelUpdatedEvent has copy, drop {
+    assembly_id: ID,
+    type_id: u64,
+    units_consumed: u64,
+    remaining_quantity: u64,
+    is_burning: bool,
+}
+
+public struct FuelEfficiencySetEvent has copy, drop {
+    fuel_type_id: u64,
+    efficiency: u64,
+}
+
+public struct FuelEfficiencyRemovedEvent has copy, drop {
+    fuel_type_id: u64,
+}
 
 // === Public Functions ===
 
 // === View Functions ===
-// get fuel efficiency by fuel type
 public fun fuel_efficiency(fuel_config: &FuelConfig, fuel_type_id: u64): u64 {
     if (fuel_config.fuel_efficiency.contains(fuel_type_id)) {
         *fuel_config.fuel_efficiency.borrow(fuel_type_id)
     } else {
         abort EIncorrectFuelType
     }
-}
-
-public fun min_burn_rate(fuel: &Fuel): u64 {
-    // Convert back to seconds for external API
-    fuel.burn_rate_in_ms / MILLISECONDS_PER_SECOND
 }
 
 public fun quantity(fuel: &Fuel): u64 {
@@ -98,7 +138,7 @@ public fun is_burning(fuel: &Fuel): bool {
     fuel.is_burning
 }
 
-// fun to check if it has enough fuel to keep running at current time in ms
+/// Checks if fuel has enough quantity to cover units that would be consumed at current time
 public fun has_enough_fuel(fuel: &Fuel, fuel_config: &FuelConfig, clock: &Clock): bool {
     if (!fuel.is_burning) return false;
 
@@ -112,6 +152,7 @@ public fun has_enough_fuel(fuel: &Fuel, fuel_config: &FuelConfig, clock: &Clock)
 }
 
 // === Admin Functions ===
+/// Sets or updates the fuel efficiency percentage for a fuel type (10-100%)
 public fun set_fuel_efficiency(
     fuel_config: &mut FuelConfig,
     _: &AdminCap,
@@ -127,21 +168,26 @@ public fun set_fuel_efficiency(
         fuel_config.fuel_efficiency.remove(fuel_type_id);
     };
     fuel_config.fuel_efficiency.add(fuel_type_id, fuel_efficiency);
+    event::emit(FuelEfficiencySetEvent {
+        fuel_type_id,
+        efficiency: fuel_efficiency,
+    });
 }
 
+/// Removes the fuel efficiency configuration for a fuel type
 public fun remove_fuel_efficiency(fuel_config: &mut FuelConfig, _: &AdminCap, fuel_type_id: u64) {
     assert!(fuel_type_id != 0, ETypeIdEmtpy);
     fuel_config.fuel_efficiency.remove(fuel_type_id);
+    event::emit(FuelEfficiencyRemovedEvent {
+        fuel_type_id,
+    });
 }
 
 // === Package Functions ===
-// create fuel object for the parent assembly and assembly_id set fuel max capacity, burn rate in seconds
-// Converts burn_rate_in_seconds to milliseconds and stores it for efficiency
-public(package) fun create(assembly_id: ID, max_capacity: u64, burn_rate_in_seconds: u64): Fuel {
+/// Creates a new fuel object with specified capacity and burn rate (in milliseconds)
+public(package) fun create(assembly_id: ID, max_capacity: u64, burn_rate_in_ms: u64): Fuel {
     assert!(max_capacity > 0, EInvalidMaxCapacity);
-    assert!(burn_rate_in_seconds >= MIN_BURN_RATE_SECONDS, EInvalidBurnRate);
-    // Convert to milliseconds once at creation time
-    let burn_rate_in_ms = burn_rate_in_seconds * MILLISECONDS_PER_SECOND;
+    assert!(burn_rate_in_ms >= MIN_BURN_RATE_MS, EInvalidBurnRate);
     Fuel {
         assembly_id,
         max_capacity,
@@ -156,6 +202,8 @@ public(package) fun create(assembly_id: ID, max_capacity: u64, burn_rate_in_seco
     }
 }
 
+/// Deposits fuel of a specific type. Initializes fuel type if empty, or verifies type matches.
+/// Resets time tracking if fuel was empty and burning was active.
 public(package) fun deposit(
     fuel: &mut Fuel,
     type_id: u64,
@@ -186,15 +234,30 @@ public(package) fun deposit(
     let new_quantity = fuel.quantity + quantity;
     assert!(fuel.volume * new_quantity <= fuel.max_capacity, EFuelCapacityExceeded);
     fuel.quantity = new_quantity;
+    event::emit(FuelDepositedEvent {
+        assembly_id: fuel.assembly_id,
+        type_id,
+        volume,
+        quantity,
+        total_quantity: new_quantity,
+    });
 }
 
-// withdraw fuel by owner, decrease the fuel quantity if it has enough fuel
+/// Withdraws specified quantity of fuel. Fails if insufficient fuel available.
 public(package) fun withdraw(fuel: &mut Fuel, quantity: u64) {
     assert!(quantity > 0, EInvalidWithdrawQuantity);
     assert!(fuel.quantity >= quantity, EInsufficientFuel);
     fuel.quantity = fuel.quantity - quantity;
+    event::emit(FuelWithdrawnEvent {
+        assembly_id: fuel.assembly_id,
+        type_id: fuel.type_id,
+        quantity,
+        remaining_quantity: fuel.quantity,
+    });
 }
 
+/// Starts burning fuel. Consumes 1 unit immediately and sets burn_start_time.
+/// Requires fuel quantity > 0 or previous_cycle_elapsed_time > 0.
 public(package) fun start_burning(fuel: &mut Fuel, clock: &Clock) {
     assert!(!fuel.is_burning, EFuelAlreadyBurning);
     assert!(fuel.quantity > 0 || fuel.previous_cycle_elapsed_time > 0, ENoFuelToBurn);
@@ -206,14 +269,17 @@ public(package) fun start_burning(fuel: &mut Fuel, clock: &Clock) {
     fuel.burn_start_time = clock.timestamp_ms();
     if (fuel.quantity != 0) {
         fuel.quantity = fuel.quantity - 1; // Consume 1 unit to start the clock
-    }
+    };
+    event::emit(FuelBurningStartedEvent {
+        assembly_id: fuel.assembly_id,
+        type_id: fuel.type_id,
+        quantity: fuel.quantity,
+        burn_start_time: fuel.burn_start_time,
+    });
 }
 
-// stop burning fuel
-// check if its burning, then
-// set the burn start time to 0
-// and update the previous cycle elapsed time if the fuel has not reached its burn rate
-// Uses calculate_units_to_consume to avoid code duplication
+/// Stops burning fuel. Saves remaining elapsed time for next burn cycle.
+/// Requires units_to_consume == 0 (call update first if units are pending).
 public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Clock) {
     assert!(fuel.is_burning, EFuelNotBurning);
     // todo : should we check if last_updated is the current block ?
@@ -231,8 +297,16 @@ public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, cloc
     fuel.previous_cycle_elapsed_time = remaining_elapsed_ms;
     fuel.burn_start_time = 0;
     fuel.is_burning = false;
+    event::emit(FuelBurningStoppedEvent {
+        assembly_id: fuel.assembly_id,
+        type_id: fuel.type_id,
+        quantity: fuel.quantity,
+        previous_cycle_elapsed_time: fuel.previous_cycle_elapsed_time,
+    });
 }
 
+/// Updates fuel consumption state. Consumes units based on elapsed time since last update.
+/// Handles empty fuel state and last unit burning scenarios.
 public(package) fun update(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Clock) {
     if (!fuel.is_burning || fuel.burn_start_time == 0) {
         return
@@ -270,6 +344,8 @@ public(package) fun update(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Cl
 }
 
 // === Private Functions ===
+/// Handles fuel state when quantity is 0. Stops burning if units are consumed or last unit finished.
+/// Otherwise, continues burning the last unit with remaining elapsed time.
 fun handle_empty_fuel_state(
     fuel: &mut Fuel,
     units_to_consume: u64,
@@ -289,6 +365,8 @@ fun handle_empty_fuel_state(
     fuel.last_updated = current_time_ms;
 }
 
+/// Consumes fuel units based on elapsed time, capping at available quantity.
+/// Updates burn_start_time and emits FuelUpdatedEvent when units are consumed.
 fun consume_fuel_units(
     fuel: &mut Fuel,
     units_to_consume: u64,
@@ -309,9 +387,17 @@ fun consume_fuel_units(
             remaining_elapsed_ms,
             current_time_ms,
         );
+        event::emit(FuelUpdatedEvent {
+            assembly_id: fuel.assembly_id,
+            type_id: fuel.type_id,
+            units_consumed: actual_units_to_consume,
+            remaining_quantity: fuel.quantity,
+            is_burning: fuel.is_burning,
+        });
     };
 }
 
+/// Updates burn_start_time after consumption. Handles last unit burning scenario when quantity becomes 0.
 fun update_burn_start_time_after_consumption(
     fuel: &mut Fuel,
     remaining_elapsed_ms: u64,
@@ -331,6 +417,8 @@ fun update_burn_start_time_after_consumption(
     };
 }
 
+/// Calculates units to consume and remaining elapsed time based on total elapsed time and actual consumption rate.
+/// Accounts for previous_cycle_elapsed_time from interrupted burn cycles.
 fun calculate_units_to_consume(
     fuel: &Fuel,
     fuel_config: &FuelConfig,
@@ -346,7 +434,6 @@ fun calculate_units_to_consume(
     } else {
         abort EIncorrectFuelType
     };
-    // Efficiency is validated when set, so we can safely calculate
     let actual_consumption_rate_ms = (fuel.burn_rate_in_ms * fuel_efficiency) / PERCENTAGE_DIVISOR;
 
     // Calculate elapsed time since burn started
