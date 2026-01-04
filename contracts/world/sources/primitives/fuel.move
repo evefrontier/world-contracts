@@ -151,6 +151,8 @@ public fun has_enough_fuel(fuel: &Fuel, fuel_config: &FuelConfig, clock: &Clock)
     fuel.quantity >= units_to_consume
 }
 
+// todo : return if the network node needs to consume any fuel at current time stamp
+
 // === Admin Functions ===
 /// Sets or updates the fuel efficiency percentage for a fuel type (10-100%)
 public fun set_fuel_efficiency(
@@ -282,7 +284,6 @@ public(package) fun start_burning(fuel: &mut Fuel, clock: &Clock) {
 /// Requires units_to_consume == 0 (call update first if units are pending).
 public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Clock) {
     assert!(fuel.is_burning, EFuelNotBurning);
-    // todo : should we check if last_updated is the current block ?
 
     let current_time_ms = clock.timestamp_ms();
     let (units_to_consume, remaining_elapsed_ms) = calculate_units_to_consume(
@@ -291,6 +292,7 @@ public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, cloc
         current_time_ms,
     );
 
+    // todo : remove this condition and make sure if its updated in the same block
     assert!(units_to_consume == 0, EConsumeFuelBeforeStop);
 
     // Update previous_cycle_elapsed_time with remaining time for next cycle
@@ -305,8 +307,14 @@ public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, cloc
     });
 }
 
+public(package) fun delete(fuel: Fuel) {
+    let Fuel {
+        ..,
+    } = fuel;
+}
+
 /// Updates fuel consumption state. Consumes units based on elapsed time since last update.
-/// Handles empty fuel state and last unit burning scenarios.
+/// or handles last unit burning on empty fuel or stops burning
 public(package) fun update(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Clock) {
     if (!fuel.is_burning || fuel.burn_start_time == 0) {
         return
@@ -323,6 +331,9 @@ public(package) fun update(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Cl
         current_time_ms,
     );
 
+    // todo: if units to consume is greater than fuel quantity and remaining elapsed time is 0
+    // then stop burning, consider hot potato so that function calling this will update the connected assemblies
+
     if (fuel.quantity == 0) {
         handle_empty_fuel_state(
             fuel,
@@ -333,6 +344,7 @@ public(package) fun update(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Cl
         return
     };
 
+    // todo : consume in the else statement
     consume_fuel_units(
         fuel,
         units_to_consume,
@@ -485,4 +497,14 @@ public fun burn_start_time(fuel: &Fuel): u64 {
 #[test_only]
 public fun previous_cycle_elapsed_time(fuel: &Fuel): u64 {
     fuel.previous_cycle_elapsed_time
+}
+
+#[test_only]
+public fun max_capacity(fuel: &Fuel): u64 {
+    fuel.max_capacity
+}
+
+#[test_only]
+public fun burn_rate_in_ms(fuel: &Fuel): u64 {
+    fuel.burn_rate_in_ms
 }

@@ -35,6 +35,7 @@ public struct Assembly has key {
     volume: u64,
     status: AssemblyStatus,
     location: Location,
+    // energy source : nwn
     metadata: Option<Metadata>,
 }
 
@@ -55,11 +56,13 @@ fun init(ctx: &mut TxContext) {
 // === Public Functions ===
 public fun online(assembly: &mut Assembly, owner_cap: &OwnerCap<Assembly>) {
     assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
+    // todo : get the nwn energy source and call reserve_energy from energy module
     assembly.status.online();
 }
 
 public fun offline(assembly: &mut Assembly, owner_cap: &OwnerCap<Assembly>) {
     assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
+    // todo : get the nwn energy source and release_energy from energy module
     assembly.status.offline();
 }
 
@@ -130,8 +133,12 @@ public fun share_assembly(assembly: Assembly, _: &AdminCap) {
     transfer::share_object(assembly);
 }
 
+// TODO: create function for offline assemblies
+
 // TODO: this is a placeholder, the implementation may change based on discussions with game design
 public fun unanchor(assembly: Assembly, _: &AdminCap) {
+    // todo: if its online, then release_energy from energy module
+    // and disconnect from the network node
     let Assembly {
         id,
         status,

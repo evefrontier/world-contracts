@@ -230,6 +230,12 @@ public(package) fun release_energy(
     });
 }
 
+public(package) fun delete(energy_source: EnergySource) {
+    let EnergySource {
+        ..,
+    } = energy_source;
+}
+
 // === Private Functions ===
 /// Initializes the EnergyConfig and shares it
 fun init(ctx: &mut TxContext) {

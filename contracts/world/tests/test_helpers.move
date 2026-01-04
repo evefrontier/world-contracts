@@ -11,6 +11,7 @@ use world::{
     fuel::{Self, FuelConfig},
     in_game_id::{Self, TenantItemId},
     location::{Self, LocationProof},
+    network_node,
     world::{Self, GovernorCap}
 };
 
@@ -104,6 +105,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
         assembly::init_for_testing(ts.ctx());
         fuel::init_for_testing(ts.ctx());
         energy::init_for_testing(ts.ctx());
+        network_node::init_for_testing(ts.ctx());
     };
 
     ts::next_tx(ts, governor());
