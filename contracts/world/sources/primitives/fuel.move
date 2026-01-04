@@ -34,8 +34,6 @@ const EFuelNotBurning: vector<u8> = b"Fuel is not currently burning";
 const EFuelAlreadyBurning: vector<u8> = b"Fuel is already burning";
 #[error(code = 13)]
 const ENoFuelToBurn: vector<u8> = b"No fuel available to burn";
-#[error(code = 14)]
-const EConsumeFuelBeforeStop: vector<u8> = b"Call update before stop_burning";
 
 // === Constants ===
 const MIN_BURN_RATE_SECONDS: u64 = 60;
@@ -280,8 +278,7 @@ public(package) fun start_burning(fuel: &mut Fuel, clock: &Clock) {
     });
 }
 
-/// Stops burning fuel. Saves remaining elapsed time for next burn cycle.
-/// Requires units_to_consume == 0 (call update first if units are pending).
+/// Stops burning fuel. Saves remaining elapsed time for next burn cycle
 public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Clock) {
     assert!(fuel.is_burning, EFuelNotBurning);
 
@@ -292,11 +289,13 @@ public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, cloc
         current_time_ms,
     );
 
-    // todo : remove this condition and make sure if its updated in the same block
-    assert!(units_to_consume == 0, EConsumeFuelBeforeStop);
-
     // Update previous_cycle_elapsed_time with remaining time for next cycle
-    fuel.previous_cycle_elapsed_time = remaining_elapsed_ms;
+    // only if the last unit is being burned
+    if (fuel.quantity >= units_to_consume) {
+        fuel.previous_cycle_elapsed_time = remaining_elapsed_ms;
+    }else {
+        fuel.previous_cycle_elapsed_time = 0;
+    };
     fuel.burn_start_time = 0;
     fuel.is_burning = false;
     event::emit(FuelBurningStoppedEvent {
@@ -314,7 +313,7 @@ public(package) fun delete(fuel: Fuel) {
 }
 
 /// Updates fuel consumption state. Consumes units based on elapsed time since last update.
-/// or handles last unit burning on empty fuel or stops burning
+/// If there is no enough fuel to consume, then stop burning
 public(package) fun update(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Clock) {
     if (!fuel.is_burning || fuel.burn_start_time == 0) {
         return
@@ -331,52 +330,23 @@ public(package) fun update(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Cl
         current_time_ms,
     );
 
-    // todo: if units to consume is greater than fuel quantity and remaining elapsed time is 0
-    // then stop burning, consider hot potato so that function calling this will update the connected assemblies
-
-    if (fuel.quantity == 0) {
-        handle_empty_fuel_state(
+    // consume only if there is enough fuel
+    if (fuel.quantity >= units_to_consume) {
+        consume_fuel_units(
             fuel,
             units_to_consume,
             remaining_elapsed_ms,
             current_time_ms,
         );
-        return
-    };
 
-    // todo : consume in the else statement
-    consume_fuel_units(
-        fuel,
-        units_to_consume,
-        remaining_elapsed_ms,
-        current_time_ms,
-    );
-
-    fuel.last_updated = current_time_ms;
+        fuel.last_updated = current_time_ms;
+    } else {
+        // stop burning
+        stop_burning(fuel, fuel_config, clock);
+    }
 }
 
 // === Private Functions ===
-/// Handles fuel state when quantity is 0. Stops burning if units are consumed or last unit finished.
-/// Otherwise, continues burning the last unit with remaining elapsed time.
-fun handle_empty_fuel_state(
-    fuel: &mut Fuel,
-    units_to_consume: u64,
-    remaining_elapsed_ms: u64,
-    current_time_ms: u64,
-) {
-    // Stop burning if trying to consume units or last unit finished
-    if (units_to_consume > 0 || remaining_elapsed_ms == 0) {
-        fuel.is_burning = false;
-        fuel.previous_cycle_elapsed_time = 0;
-        fuel.burn_start_time = 0;
-    } else {
-        // Last unit still burning (has remaining elapsed time)
-        fuel.burn_start_time = current_time_ms - remaining_elapsed_ms;
-        fuel.previous_cycle_elapsed_time = 0;
-    };
-    fuel.last_updated = current_time_ms;
-}
-
 /// Consumes fuel units based on elapsed time, capping at available quantity.
 /// Updates burn_start_time and emits FuelUpdatedEvent when units are consumed.
 fun consume_fuel_units(
@@ -385,47 +355,17 @@ fun consume_fuel_units(
     remaining_elapsed_ms: u64,
     current_time_ms: u64,
 ) {
-    let actual_units_to_consume = if (units_to_consume > fuel.quantity) {
-        fuel.quantity
-    } else {
-        units_to_consume
-    };
-
-    if (actual_units_to_consume > 0) {
-        fuel.quantity = fuel.quantity - actual_units_to_consume;
+    if (units_to_consume > 0) {
+        fuel.quantity = fuel.quantity - units_to_consume;
         fuel.previous_cycle_elapsed_time = 0;
-        update_burn_start_time_after_consumption(
-            fuel,
-            remaining_elapsed_ms,
-            current_time_ms,
-        );
+        fuel.burn_start_time = current_time_ms - remaining_elapsed_ms;
         event::emit(FuelUpdatedEvent {
             assembly_id: fuel.assembly_id,
             type_id: fuel.type_id,
-            units_consumed: actual_units_to_consume,
+            units_consumed: units_to_consume,
             remaining_quantity: fuel.quantity,
             is_burning: fuel.is_burning,
         });
-    };
-}
-
-/// Updates burn_start_time after consumption. Handles last unit burning scenario when quantity becomes 0.
-fun update_burn_start_time_after_consumption(
-    fuel: &mut Fuel,
-    remaining_elapsed_ms: u64,
-    current_time_ms: u64,
-) {
-    if (fuel.quantity == 0) {
-        if (remaining_elapsed_ms == 0) {
-            // Consumed exactly the right amount, start burning the last unit
-            fuel.burn_start_time = current_time_ms;
-        } else {
-            // Last unit still burning with remaining time
-            fuel.burn_start_time = current_time_ms - remaining_elapsed_ms;
-        };
-    } else {
-        // Still have fuel, update burn_start_time normally
-        fuel.burn_start_time = current_time_ms - remaining_elapsed_ms;
     };
 }
 

@@ -910,43 +910,6 @@ fun start_burning_with_empty_type_id() {
     ts::end(ts);
 }
 
-#[test]
-#[expected_failure(abort_code = fuel::EConsumeFuelBeforeStop)]
-fun stop_burning_when_units_consumed() {
-    let mut ts = ts::begin(user_a());
-    test_helpers::setup_world(&mut ts);
-    test_helpers::configure_fuel(&mut ts);
-    create_network_node(&mut ts, FUEL_MAX_CAPACITY, FUEL_BURN_RATE_IN_SECONDS);
-    let mut clock = clock::create_for_testing(ts.ctx());
-    let time_start = 1000;
-    let time_after_1_unit = time_start + MS_PER_HOUR + MS_PER_SECOND; // 1 unit consumed (1 hour)
-
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
-        clock.set_for_testing(time_start);
-        nwn.fuel.start_burning(&clock);
-        ts::return_shared(nwn);
-        ts::return_shared(fuel_config);
-    };
-
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        clock.set_for_testing(time_after_1_unit);
-        // units_to_consume = 1, should abort
-        nwn.fuel.stop_burning(&fuel_config, &clock); // Should abort
-        ts::return_shared(nwn);
-        ts::return_shared(fuel_config);
-    };
-
-    clock.destroy_for_testing();
-    ts::end(ts);
-}
-
 /// Tests complete scenario with stop/start/update when quantity = 0
 #[test]
 fun last_unit_burning_scenario() {
