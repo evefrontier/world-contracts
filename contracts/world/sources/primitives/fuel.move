@@ -175,7 +175,7 @@ public fun set_fuel_efficiency(
 }
 
 /// Removes the fuel efficiency configuration for a fuel type
-public fun remove_fuel_efficiency(fuel_config: &mut FuelConfig, _: &AdminCap, fuel_type_id: u64) {
+public fun unset_fuel_efficiency(fuel_config: &mut FuelConfig, _: &AdminCap, fuel_type_id: u64) {
     assert!(fuel_type_id != 0, ETypeIdEmtpy);
     fuel_config.fuel_efficiency.remove(fuel_type_id);
     event::emit(FuelEfficiencyRemovedEvent {
