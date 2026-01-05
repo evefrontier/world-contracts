@@ -323,7 +323,7 @@ public(package) fun disconnect_assembly(nwn: &mut NetworkNode, assembly_id: ID) 
 }
 
 /// Updates fuel and returns a hot potato if the network node goes offline due to fuel depletion
-/// The caller must bring all connected assemblies offline using the hot potato
+/// The client must bring all connected assemblies offline using the hot potato
 public(package) fun update_fuel(
     nwn: &mut NetworkNode,
     fuel_config: &FuelConfig,
