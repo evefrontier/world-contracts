@@ -6,9 +6,11 @@ use std::string::String;
 use sui::{derived_object, event};
 use world::{
     access::{Self, AdminCap, OwnerCap},
+    energy::{Self, EnergyConfig},
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
+    network_node::{Self, NetworkNode, OfflineAssemblies},
     status::{Self, AssemblyStatus}
 };
 
@@ -21,6 +23,11 @@ const EAssemblyItemIdEmpty: vector<u8> = b"Assembly ItemId is empty";
 const EAssemblyAlreadyExists: vector<u8> = b"Assembly with this ItemId already exists";
 #[error(code = 3)]
 const EAssemblyNotAuthorized: vector<u8> = b"Assembly access not authorized";
+#[error(code = 4)]
+const EAssemblyNotInList: vector<u8> = b"Assembly is not in the offline assemblies list";
+#[error(code = 5)]
+const ENetworkNodeDoesNotExist: vector<u8> =
+    b"Provided network node does not match the assembly's configured energy source";
 
 // === Structs ===
 public struct AssemblyRegistry has key {
@@ -35,7 +42,7 @@ public struct Assembly has key {
     volume: u64,
     status: AssemblyStatus,
     location: Location,
-    // energy source : nwn
+    energy_source_id: ID,
     metadata: Option<Metadata>,
 }
 
@@ -54,15 +61,31 @@ fun init(ctx: &mut TxContext) {
 }
 
 // === Public Functions ===
-public fun online(assembly: &mut Assembly, owner_cap: &OwnerCap<Assembly>) {
+public fun online(
+    assembly: &mut Assembly,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    owner_cap: &OwnerCap<Assembly>,
+) {
     assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
-    // todo : get the nwn energy source and call reserve_energy from energy module
+    assert!(assembly.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+    reserve_energy(assembly, network_node, energy_config);
+
     assembly.status.online();
 }
 
-public fun offline(assembly: &mut Assembly, owner_cap: &OwnerCap<Assembly>) {
+public fun offline(
+    assembly: &mut Assembly,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    owner_cap: &OwnerCap<Assembly>,
+) {
     assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
-    // todo : get the nwn energy source and release_energy from energy module
+
+    // Verify network node matches the assembly's energy source
+    assert!(assembly.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+    release_energy(assembly, network_node, energy_config);
+
     assembly.status.offline();
 }
 
@@ -71,9 +94,14 @@ public fun status(assembly: &Assembly): &AssemblyStatus {
     &assembly.status
 }
 
+public fun owner_cap_id(assembly: &Assembly): ID {
+    assembly.owner_cap_id
+}
+
 // === Admin Functions ===
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
+    network_node: &mut NetworkNode,
     admin_cap: &AdminCap,
     character_address: address,
     tenant: String,
@@ -92,6 +120,7 @@ public fun anchor(
 
     let assembly_uid = derived_object::claim(&mut assembly_registry.id, assembly_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
+    let network_node_id = object::id(network_node);
 
     // Create owner cap first with just the ID
     let owner_cap_id = access::create_and_transfer_owner_cap<Assembly>(
@@ -109,6 +138,7 @@ public fun anchor(
         volume,
         status: status::anchor(assembly_id, type_id, item_id),
         location: location::attach(assembly_id, location_hash),
+        energy_source_id: network_node_id,
         metadata: std::option::some(
             metadata::create_metadata(
                 assembly_id,
@@ -119,6 +149,9 @@ public fun anchor(
             ),
         ),
     };
+
+    // Connect assembly to network node
+    network_node::connect_assembly(network_node, assembly_id);
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,
@@ -133,19 +166,64 @@ public fun share_assembly(assembly: Assembly, _: &AdminCap) {
     transfer::share_object(assembly);
 }
 
-// TODO: create function for offline assemblies
+/// Brings a connected assembly offline and removes it from the hot potato
+/// Must be called for each assembly in the hot potato list
+/// Returns the updated hot potato with the processed assembly removed
+/// After all assemblies are processed, call destroy_offline_assemblies to consume the hot potato
+public fun offline_connected_assembly(
+    mut offline_assemblies: OfflineAssemblies,
+    assembly: &mut Assembly,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    _: &AdminCap,
+): OfflineAssemblies {
+    let assembly_id = object::id(assembly);
+
+    // Remove the assembly ID from the hot potato using package function
+    let found = network_node::remove_assembly_id(&mut offline_assemblies, assembly_id);
+    assert!(found, EAssemblyNotInList);
+
+    // Bring the assembly offline if it's online and release energy
+    if (status::is_online(&assembly.status)) {
+        assembly.status.offline();
+        release_energy(assembly, network_node, energy_config);
+    };
+
+    offline_assemblies
+}
+
+/// Destroys the hot potato, ensuring all assemblies were processed
+public fun destroy_offline_assemblies(offline_assemblies: OfflineAssemblies, _: &AdminCap) {
+    network_node::destroy_offline_assemblies(offline_assemblies);
+}
 
 // TODO: this is a placeholder, the implementation may change based on discussions with game design
-public fun unanchor(assembly: Assembly, _: &AdminCap) {
-    // todo: if its online, then release_energy from energy module
-    // and disconnect from the network node
+public fun unanchor(
+    assembly: Assembly,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    _: &AdminCap,
+) {
     let Assembly {
         id,
         status,
         location,
         metadata,
+        energy_source_id,
+        type_id,
         ..,
     } = assembly;
+
+    assert!(energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+
+    // Release energy if assembly is online
+    if (status::is_online(&status)) {
+        release_energy_by_type(network_node, energy_config, type_id);
+    };
+
+    // Disconnect assembly from network node
+    let assembly_id = object::uid_to_inner(&id);
+    network_node::disconnect_assembly(network_node, assembly_id);
 
     location.remove();
     status.unanchor();
@@ -165,6 +243,42 @@ public(package) fun borrow_registry_id(registry: &mut AssemblyRegistry): &mut UI
 
 public(package) fun assembly_exists(registry: &AssemblyRegistry, key: TenantItemId): bool {
     derived_object::exists(&registry.id, key)
+}
+
+// === Private Functions ===
+/// Reserves energy from the network node for the assembly
+fun reserve_energy(
+    assembly: &Assembly,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+) {
+    energy::reserve_energy(
+        network_node::borrow_energy_source(network_node),
+        energy_config,
+        assembly.type_id,
+    );
+}
+
+/// Releases energy to the network node for the assembly
+fun release_energy(
+    assembly: &Assembly,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+) {
+    release_energy_by_type(network_node, energy_config, assembly.type_id);
+}
+
+/// Releases energy to the network node by assembly type
+fun release_energy_by_type(
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    type_id: u64,
+) {
+    energy::release_energy(
+        network_node::borrow_energy_source(network_node),
+        energy_config,
+        type_id,
+    );
 }
 
 #[test_only]

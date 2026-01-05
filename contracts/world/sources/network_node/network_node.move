@@ -38,13 +38,14 @@ const EAssembliesConnected: vector<u8> = b"Assemblies needs to be disconnected b
 #[error(code = 7)]
 const ENetworkNodeOffline: vector<u8> = b"Network Node is offline";
 
-// ENetworkNodeDoesNotExist
-// ENetworkNodeInsufficientEnergy
-// ENetworkNodeNotProducingEnergy
-
 // === Structs ===
 public struct NetworkNodeRegistry has key {
     id: UID,
+}
+
+/// Hot potato struct to enforce all connected assemblies are brought offline
+public struct OfflineAssemblies {
+    assembly_ids: vector<ID>,
 }
 
 public struct NetworkNode has key {
@@ -97,14 +98,14 @@ public fun online(nwn: &mut NetworkNode, owner_cap: &OwnerCap<NetworkNode>, cloc
     nwn.status.online();
 }
 
-// todo : this should also bring all the connected assemblies offline
-// this can be done in PTB, but to enforce this we should consider hot potato pattern
+/// Takes the network node offline and returns a hot potato that must be consumed
+/// by bringing all connected assemblies offline in the same transaction
 public fun offline(
     nwn: &mut NetworkNode,
     fuel_config: &FuelConfig,
     owner_cap: &OwnerCap<NetworkNode>,
     clock: &Clock,
-) {
+): OfflineAssemblies {
     assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
     assert!(nwn.status.is_online(), ENetworkNodeOffline);
 
@@ -120,6 +121,10 @@ public fun offline(
     };
 
     nwn.status.offline();
+
+    OfflineAssemblies {
+        assembly_ids: copy_connected_assembly_ids(nwn),
+    }
 }
 
 // === View Functions ===
@@ -143,6 +148,12 @@ public fun is_assembly_connected(nwn: &NetworkNode, assembly_id: ID): bool {
 
 public fun is_network_node_online(nwn: &NetworkNode): bool {
     nwn.status.is_online()
+}
+
+/// Returns a mutable reference to the energy source
+/// Package function to allow assembly module to access energy source
+public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySource {
+    &mut nwn.energy_source
 }
 
 // === Admin Functions ===
@@ -236,7 +247,8 @@ public fun disconnect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_i
 }
 
 /// Unanchors the network node
-/// Requires all connected assemblies to be disconnected
+/// A cron job must call assembly::offline() for each connected assembly
+/// TODO: adopt hot potato pattern to enforce it
 public fun unanchor(nwn: NetworkNode, _: &AdminCap) {
     let NetworkNode {
         id,
@@ -248,9 +260,6 @@ public fun unanchor(nwn: NetworkNode, _: &AdminCap) {
         connected_assembly_ids,
         ..,
     } = nwn;
-
-    // A cron job must call assembly::offline() for each connected assembly and disconnect assemblies
-    assert!(vector::length(&connected_assembly_ids) == 0, EAssembliesConnected);
 
     // Delete fuel and energy
     fuel::delete(fuel);
@@ -266,6 +275,33 @@ public fun unanchor(nwn: NetworkNode, _: &AdminCap) {
 }
 
 // === Package Functions ===
+/// Removes an assembly ID from the OfflineAssemblies list
+public(package) fun remove_assembly_id(
+    offline_assemblies: &mut OfflineAssemblies,
+    assembly_id: ID,
+): bool {
+    let mut i = 0;
+    let len = vector::length(&offline_assemblies.assembly_ids);
+    while (i < len) {
+        if (*vector::borrow(&offline_assemblies.assembly_ids, i) == assembly_id) {
+            vector::remove(&mut offline_assemblies.assembly_ids, i);
+            return true
+        };
+        i = i + 1;
+    };
+    false
+}
+
+/// Destroys the hot potato, ensuring all assemblies have been processed
+/// Must be called at the end of the transaction after all assemblies are offline
+public fun destroy_offline_assemblies(offline_assemblies: OfflineAssemblies) {
+    assert!(vector::length(&offline_assemblies.assembly_ids) == 0, EAssembliesConnected);
+    let OfflineAssemblies {
+        assembly_ids,
+    } = offline_assemblies;
+    assembly_ids.destroy_empty();
+}
+
 public(package) fun connect_assembly(nwn: &mut NetworkNode, assembly_id: ID) {
     assert!(!is_assembly_connected(nwn, assembly_id), EAssemblyAlreadyConnected);
     vector::push_back(&mut nwn.connected_assembly_ids, assembly_id);
@@ -286,10 +322,13 @@ public(package) fun disconnect_assembly(nwn: &mut NetworkNode, assembly_id: ID) 
     assert!(found, EAssemblyNotConnected);
 }
 
-// Note: The cron job should iterate through connected_assemblies() and call
-// assembly::offline() for each connected assembly that is still online
-// consider hot potato pattern
-public(package) fun update_fuel(nwn: &mut NetworkNode, fuel_config: &FuelConfig, clock: &Clock) {
+/// Updates fuel and returns a hot potato if the network node goes offline due to fuel depletion
+/// The caller must bring all connected assemblies offline using the hot potato
+public(package) fun update_fuel(
+    nwn: &mut NetworkNode,
+    fuel_config: &FuelConfig,
+    clock: &Clock,
+): Option<OfflineAssemblies> {
     // Update fuel first
     nwn.fuel.update(fuel_config, clock);
 
@@ -299,7 +338,13 @@ public(package) fun update_fuel(nwn: &mut NetworkNode, fuel_config: &FuelConfig,
         };
 
         nwn.status.offline();
+
+        return std::option::some(OfflineAssemblies {
+                assembly_ids: copy_connected_assembly_ids(nwn),
+            })
     };
+
+    std::option::none()
 }
 
 public(package) fun nwn_exists(registry: &NetworkNodeRegistry, key: TenantItemId): bool {
@@ -307,6 +352,18 @@ public(package) fun nwn_exists(registry: &NetworkNodeRegistry, key: TenantItemId
 }
 
 // === Private Functions ===
+/// Creates a copy of the connected assembly IDs vector
+fun copy_connected_assembly_ids(nwn: &NetworkNode): vector<ID> {
+    let mut assembly_ids = vector[];
+    let mut i = 0;
+    let len = vector::length(&nwn.connected_assembly_ids);
+    while (i < len) {
+        vector::push_back(&mut assembly_ids, *vector::borrow(&nwn.connected_assembly_ids, i));
+        i = i + 1;
+    };
+    assembly_ids
+}
+
 fun init(ctx: &mut TxContext) {
     transfer::share_object(NetworkNodeRegistry {
         id: object::new(ctx),

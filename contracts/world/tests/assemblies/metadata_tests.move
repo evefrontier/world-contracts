@@ -7,6 +7,7 @@ use world::{
     access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly, AssemblyRegistry},
     metadata,
+    network_node::{Self, NetworkNode, NetworkNodeRegistry},
     test_helpers::{Self, admin, governor, user_a, user_b, tenant}
 };
 
@@ -25,13 +26,48 @@ const NEW_URL: vector<u8> = b"https://example.com/updated.png";
 
 const USER_B_ITEM_ID: u64 = 1002;
 
-fun create_assembly(ts: &mut ts::Scenario, owner: address, item_id: u64): ID {
+const NWN_ITEM_ID: u64 = 5000;
+const NWN_TYPE_ID: u64 = 111000;
+const FUEL_MAX_CAPACITY: u64 = 1000;
+const FUEL_BURN_RATE_IN_MS: u64 = 3600 * 1000;
+const MAX_PRODUCTION: u64 = 100;
+
+fun create_network_node(ts: &mut ts::Scenario): ID {
+    ts::next_tx(ts, admin());
+    let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(ts);
+    let admin_cap = ts::take_from_sender<AdminCap>(ts);
+
+    let nwn = network_node::anchor(
+        &mut nwn_registry,
+        &admin_cap,
+        user_a(),
+        tenant(),
+        NWN_ITEM_ID,
+        NWN_TYPE_ID,
+        VOLUME,
+        LOCATION_HASH,
+        FUEL_MAX_CAPACITY,
+        FUEL_BURN_RATE_IN_MS,
+        MAX_PRODUCTION,
+        ts.ctx(),
+    );
+    let id = object::id(&nwn);
+    network_node::share_network_node(nwn, &admin_cap);
+
+    ts::return_to_sender(ts, admin_cap);
+    ts::return_shared(nwn_registry);
+    id
+}
+
+fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, owner: address, item_id: u64): ID {
     ts::next_tx(ts, admin());
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
+    let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let assembly = assembly::anchor(
         &mut assembly_registry,
+        &mut nwn,
         &admin_cap,
         owner,
         tenant(),
@@ -46,6 +82,7 @@ fun create_assembly(ts: &mut ts::Scenario, owner: address, item_id: u64): ID {
 
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(assembly_registry);
+    ts::return_shared(nwn);
     assembly_id
 }
 
@@ -53,7 +90,8 @@ fun create_assembly(ts: &mut ts::Scenario, owner: address, item_id: u64): ID {
 fun test_metadata_lifecycle() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
-    let assembly_id = create_assembly(&mut ts, user_a(), ITEM_ID);
+    let nwn_id = create_network_node(&mut ts);
+    let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
 
     // Create
     let mut metadata = metadata::create_metadata(
@@ -106,7 +144,8 @@ fun test_update_name_unauthorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
-    let assembly_id = create_assembly(&mut ts, user_a(), ITEM_ID);
+    let nwn_id = create_network_node(&mut ts);
+    let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
     let mut metadata = metadata::create_metadata(
         assembly_id,
         ITEM_ID,
@@ -116,7 +155,7 @@ fun test_update_name_unauthorized() {
     );
 
     // Create a second assembly for user_b to get an OwnerCap for a different assembly
-    create_assembly(&mut ts, user_b(), USER_B_ITEM_ID);
+    create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
 
     // Try to update with wrong owner cap (user_b)
     ts::next_tx(&mut ts, user_b());
@@ -136,7 +175,8 @@ fun test_update_description_unauthorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
-    let assembly_id = create_assembly(&mut ts, user_a(), ITEM_ID);
+    let nwn_id = create_network_node(&mut ts);
+    let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
 
     let mut metadata = metadata::create_metadata(
         assembly_id,
@@ -147,7 +187,7 @@ fun test_update_description_unauthorized() {
     );
 
     // Create a second assembly for user_b to get an OwnerCap for a different assembly
-    create_assembly(&mut ts, user_b(), USER_B_ITEM_ID);
+    create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
 
     // Try to update with wrong owner cap
     ts::next_tx(&mut ts, user_b());
@@ -167,7 +207,8 @@ fun test_update_url_unauthorized() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
-    let assembly_id = create_assembly(&mut ts, user_a(), ITEM_ID);
+    let nwn_id = create_network_node(&mut ts);
+    let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
 
     let mut metadata = metadata::create_metadata(
         assembly_id,
@@ -178,7 +219,7 @@ fun test_update_url_unauthorized() {
     );
 
     // Create a second assembly for user_b to get an OwnerCap for a different assembly
-    create_assembly(&mut ts, user_b(), USER_B_ITEM_ID);
+    create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
 
     // Try to update with wrong owner cap
     ts::next_tx(&mut ts, user_b());
