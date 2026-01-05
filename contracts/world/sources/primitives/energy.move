@@ -16,8 +16,6 @@ const EInsufficientAvailableEnergy: vector<u8> = b"Insufficient available energy
 #[error(code = 4)]
 const EInvalidMaxEnergyProduction: vector<u8> = b"Max energy production must be greater than 0";
 #[error(code = 5)]
-const ENoReservedEnergy: vector<u8> = b"No energy is currently reserved";
-#[error(code = 6)]
 const ENotProducingEnergy: vector<u8> = b"Energy source is currently not producing energy";
 #[error(code = 6)]
 const EProducingEnergy: vector<u8> = b"Energy source is already producing energy";
@@ -208,14 +206,17 @@ public(package) fun reserve_energy(
 }
 
 /// Releases energy for an assembly type
-/// Requires that the energy source has reserved energy for this type
 public(package) fun release_energy(
     energy_source: &mut EnergySource,
     energy_config: &EnergyConfig,
     type_id: u64,
 ) {
     assert!(type_id != 0, ETypeIdEmpty);
-    assert!(energy_source.total_reserved_energy > 0, ENoReservedEnergy);
+
+    // If no energy is reserved, nothing to release (may have been released by stop_energy_production)
+    if (energy_source.total_reserved_energy == 0) {
+        return
+    };
 
     let energy_required = assembly_energy(energy_config, type_id);
     assert!(energy_source.total_reserved_energy >= energy_required, EInsufficientAvailableEnergy);

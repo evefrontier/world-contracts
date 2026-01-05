@@ -293,7 +293,7 @@ public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, cloc
     // only if the last unit is being burned
     if (fuel.quantity >= units_to_consume) {
         fuel.previous_cycle_elapsed_time = remaining_elapsed_ms;
-    }else {
+    } else {
         fuel.previous_cycle_elapsed_time = 0;
     };
     fuel.burn_start_time = 0;
