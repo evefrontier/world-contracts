@@ -106,7 +106,7 @@ fun set_new_fuel_efficiency() {
 }
 
 #[test]
-fun remove_fuel_efficiency() {
+fun unset_fuel_efficiency() {
     let mut ts = ts::begin(user_a());
     test_helpers::setup_world(&mut ts);
     test_helpers::configure_fuel(&mut ts);
@@ -115,7 +115,7 @@ fun remove_fuel_efficiency() {
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.remove_fuel_efficiency(&admin_cap, fuel_type_2());
+        fuel_config.unset_fuel_efficiency(&admin_cap, fuel_type_2());
 
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, admin_cap);
@@ -649,7 +649,7 @@ fun set_fuel_efficiency_exceeding_max() {
 
 #[test]
 #[expected_failure(abort_code = fuel::ETypeIdEmtpy)]
-fun remove_fuel_efficiency_with_empty_type_id() {
+fun unset_fuel_efficiency_with_empty_type_id() {
     let mut ts = ts::begin(user_a());
     test_helpers::setup_world(&mut ts);
     test_helpers::configure_fuel(&mut ts);
@@ -658,7 +658,7 @@ fun remove_fuel_efficiency_with_empty_type_id() {
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.remove_fuel_efficiency(&admin_cap, 0); // Should abort
+        fuel_config.unset_fuel_efficiency(&admin_cap, 0); // Should abort
 
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, admin_cap);
