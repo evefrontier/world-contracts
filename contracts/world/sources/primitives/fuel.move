@@ -8,7 +8,7 @@ use world::access::AdminCap;
 #[error(code = 0)]
 const ETypeIdEmtpy: vector<u8> = b"Fuel Type Id cannot be empty";
 #[error(code = 1)]
-const EInvalidFuelEfficiency: vector<u8> = b"Invalid Fuel Efficienct";
+const EInvalidFuelEfficiency: vector<u8> = b"Invalid Fuel Efficiency";
 #[error(code = 2)]
 const EIncorrectFuelType: vector<u8> = b"Fuel Efficiency for this fuel type is not configured";
 #[error(code = 3)]
@@ -56,7 +56,7 @@ public struct Fuel has store {
     max_capacity: u64,
     burn_rate_in_ms: u64,
     type_id: u64,
-    volume: u64,
+    unit_volume: u64,
     quantity: u64,
     is_burning: bool,
     previous_cycle_elapsed_time: u64,
@@ -68,7 +68,7 @@ public struct Fuel has store {
 public struct FuelDepositedEvent has copy, drop {
     assembly_id: ID,
     type_id: u64,
-    volume: u64,
+    unit_volume: u64,
     quantity: u64,
     total_quantity: u64,
 }
@@ -131,7 +131,7 @@ public fun type_id(fuel: &Fuel): u64 {
 }
 
 public fun volume(fuel: &Fuel): u64 {
-    fuel.volume
+    fuel.unit_volume
 }
 
 public fun is_burning(fuel: &Fuel): bool {
@@ -193,7 +193,7 @@ public(package) fun create(assembly_id: ID, max_capacity: u64, burn_rate_in_ms: 
         max_capacity,
         burn_rate_in_ms,
         type_id: 0,
-        volume: 0,
+        unit_volume: 0,
         quantity: 0,
         is_burning: false,
         previous_cycle_elapsed_time: 0,
@@ -207,12 +207,12 @@ public(package) fun create(assembly_id: ID, max_capacity: u64, burn_rate_in_ms: 
 public(package) fun deposit(
     fuel: &mut Fuel,
     type_id: u64,
-    volume: u64,
+    unit_volume: u64,
     quantity: u64,
     clock: &Clock,
 ) {
     assert!(quantity > 0, EInvalidDepositQuantity);
-    assert!(volume > 0, EInvalidVolume);
+    assert!(unit_volume > 0, EInvalidVolume);
     assert!(type_id != 0, ETypeIdEmtpy);
 
     // Initialize or verify fuel type matches
@@ -226,18 +226,18 @@ public(package) fun deposit(
             fuel.previous_cycle_elapsed_time = 0;
         };
         fuel.type_id = type_id;
-        fuel.volume = volume;
+        fuel.unit_volume = unit_volume;
     } else {
         assert!(fuel.type_id == type_id, EFuelTypeMismatch);
     };
 
     let new_quantity = fuel.quantity + quantity;
-    assert!(fuel.volume * new_quantity <= fuel.max_capacity, EFuelCapacityExceeded);
+    assert!(fuel.unit_volume * new_quantity <= fuel.max_capacity, EFuelCapacityExceeded);
     fuel.quantity = new_quantity;
     event::emit(FuelDepositedEvent {
         assembly_id: fuel.assembly_id,
         type_id,
-        volume,
+        unit_volume,
         quantity,
         total_quantity: new_quantity,
     });
