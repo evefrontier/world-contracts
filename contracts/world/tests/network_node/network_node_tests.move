@@ -7,7 +7,7 @@ use sui::{clock, test_scenario as ts};
 use world::{
     access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly, AssemblyRegistry},
-    energy::{Self, EnergyConfig},
+    energy::EnergyConfig,
     fuel::{Self, FuelConfig},
     network_node::{Self, NetworkNodeRegistry, NetworkNode},
     test_helpers::{Self, governor, admin, in_game_id, tenant, user_a, user_b}
@@ -68,7 +68,7 @@ fun create_network_node(
         ts.ctx(),
     );
     let id = object::id(&nwn);
-    network_node::share_network_node(nwn, &admin_cap);
+    nwn.share_network_node(&admin_cap);
 
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(nwn_registry);
@@ -111,6 +111,15 @@ fun get_owner_cap_for_assembly(
     ts::take_from_address_by_id<OwnerCap<Assembly>>(ts, sender, owner_cap_id)
 }
 
+fun get_owner_cap_for_network_node(
+    ts: &ts::Scenario,
+    nwn: &NetworkNode,
+    sender: address,
+): OwnerCap<NetworkNode> {
+    let owner_cap_id = network_node::owner_cap_id(nwn);
+    ts::take_from_address_by_id<OwnerCap<NetworkNode>>(ts, sender, owner_cap_id)
+}
+
 fun do_deposit_fuel(
     ts: &mut ts::Scenario,
     nwn_id: ID,
@@ -121,7 +130,7 @@ fun do_deposit_fuel(
     ts::next_tx(ts, sender);
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(ts);
+        let owner_cap = get_owner_cap_for_network_node(ts, &nwn, sender);
         nwn.deposit_fuel(&owner_cap, FUEL_TYPE_ID, FUEL_VOLUME, quantity, clock);
         ts::return_shared(nwn);
         ts::return_to_sender(ts, owner_cap);
@@ -305,7 +314,7 @@ fun connected_assemblies_online_offline() {
         assert_eq!(nwn.status().status_to_u8(), STATUS_ONLINE);
         assert_eq!(nwn.fuel().is_burning(), true);
         assert_eq!(nwn.energy().current_energy_production(), MAX_PRODUCTION);
-        assert_eq!(energy::total_reserved_energy(nwn.energy()), 0);
+        assert_eq!(nwn.energy().total_reserved_energy(), 0);
         ts::return_shared(nwn);
         ts::return_to_sender(&ts, owner_cap);
     };
@@ -315,7 +324,7 @@ fun connected_assemblies_online_offline() {
     ts::next_tx(&mut ts, admin());
     {
         let nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        assert_eq!(energy::total_reserved_energy(nwn.energy()), ASSEMBLY_ENERGY_REQUIRED);
+        assert_eq!(nwn.energy().total_reserved_energy(), ASSEMBLY_ENERGY_REQUIRED);
         ts::return_shared(nwn);
     };
 
@@ -323,7 +332,7 @@ fun connected_assemblies_online_offline() {
     ts::next_tx(&mut ts, admin());
     {
         let nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        assert_eq!(energy::total_reserved_energy(nwn.energy()), ASSEMBLY_ENERGY_REQUIRED * 2);
+        assert_eq!(nwn.energy().total_reserved_energy(), ASSEMBLY_ENERGY_REQUIRED * 2);
         ts::return_shared(nwn);
     };
 
@@ -332,7 +341,7 @@ fun connected_assemblies_online_offline() {
     ts::next_tx(&mut ts, admin());
     {
         let nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        assert_eq!(energy::total_reserved_energy(nwn.energy()), ASSEMBLY_ENERGY_REQUIRED);
+        assert_eq!(nwn.energy().total_reserved_energy(), ASSEMBLY_ENERGY_REQUIRED);
         ts::return_shared(nwn);
     };
 
@@ -340,7 +349,7 @@ fun connected_assemblies_online_offline() {
     ts::next_tx(&mut ts, admin());
     {
         let nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        assert_eq!(energy::total_reserved_energy(nwn.energy()), 0);
+        assert_eq!(nwn.energy().total_reserved_energy(), 0);
         ts::return_shared(nwn);
     };
 
@@ -510,24 +519,110 @@ fun update_fuel_depletion_offline() {
         std::option::destroy_none(offline_assemblies_opt);
         let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let updated_offline_assemblies = assembly::offline_connected_assembly(
+        let updated_offline_assemblies = assembly.offline_connected_assembly(
             offline_assemblies,
-            &mut assembly,
             &mut nwn,
             &energy_config,
             &admin_cap,
         );
         // Energy should be released
-        assert_eq!(energy::total_reserved_energy(nwn.energy()), 0);
+        assert_eq!(nwn.energy().total_reserved_energy(), 0);
 
         // Destroy the offline assemblies struct
-        assembly::destroy_offline_assemblies(updated_offline_assemblies, &admin_cap);
+        updated_offline_assemblies.destroy_offline_assemblies(&admin_cap);
 
         ts::return_shared(nwn);
         ts::return_shared(assembly);
         ts::return_shared(energy_config);
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, admin_cap);
+    };
+
+    clock.destroy_for_testing();
+    ts::end(ts);
+}
+
+#[test]
+fun update_energy_source_after_unanchor() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let clock = clock::create_for_testing(ts.ctx());
+    let assembly_id = create_assembly(&mut ts, nwn1_id, ITEM_ID_1);
+
+    // Deposit fuel and bring network node online
+    do_deposit_fuel(&mut ts, nwn1_id, 10, &clock, user_a());
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        nwn.online(&owner_cap, &clock);
+        ts::return_shared(nwn);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Bring assembly online
+    online_assembly(&mut ts, assembly_id, nwn1_id, user_a());
+
+    // Unanchor the first network node - returns hot potato with connected assemblies
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let offline_assemblies = nwn.unanchor(&admin_cap);
+
+        // Process the connected assembly - brings it offline and releases energy
+        let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let updated_offline_assemblies = assembly.offline_connected_assembly(
+            offline_assemblies,
+            &mut nwn,
+            &energy_config,
+            &admin_cap,
+        );
+
+        // Destroy the network node after all assemblies are processed
+        nwn.destroy_network_node(updated_offline_assemblies, &admin_cap);
+
+        ts::return_shared(assembly);
+        ts::return_shared(energy_config);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    // Create a new network node
+    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, user_a());
+
+    // Update energy source for assembly to the new network node
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        let mut nwn2 = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        assembly.update_energy_source(&mut nwn2, &admin_cap);
+        assert!(nwn2.is_assembly_connected(assembly_id), 0);
+        ts::return_shared(assembly);
+        ts::return_shared(nwn2);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    // Deposit fuel to new network node and bring it online
+    do_deposit_fuel(&mut ts, nwn2_id, 10, &clock, user_a());
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        nwn.online(&owner_cap, &clock);
+        ts::return_shared(nwn);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Assembly online should work with the new network node
+    online_assembly(&mut ts, assembly_id, nwn2_id, user_a());
+    ts::next_tx(&mut ts, admin());
+    {
+        let nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
+        assert_eq!(nwn.energy().total_reserved_energy(), ASSEMBLY_ENERGY_REQUIRED);
+        ts::return_shared(nwn);
     };
 
     clock.destroy_for_testing();
@@ -572,7 +667,7 @@ fun anchor_invalid_type_id() {
         MAX_PRODUCTION,
         ts.ctx(),
     );
-    network_node::share_network_node(nwn, &admin_cap);
+    nwn.share_network_node(&admin_cap);
 
     ts::return_to_sender(&ts, admin_cap);
     ts::return_shared(nwn_registry);
@@ -603,7 +698,7 @@ fun anchor_invalid_item_id() {
         MAX_PRODUCTION,
         ts.ctx(),
     );
-    network_node::share_network_node(nwn, &admin_cap);
+    nwn.share_network_node(&admin_cap);
 
     ts::return_to_sender(&ts, admin_cap);
     ts::return_shared(nwn_registry);
@@ -698,22 +793,122 @@ fun offline_hot_potato_not_consumed() {
         // Process only one assembly (not both)
         let mut assembly1 = ts::take_shared_by_id<Assembly>(&ts, assembly1_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let updated_offline_assemblies = assembly::offline_connected_assembly(
+        let updated_offline_assemblies = assembly1.offline_connected_assembly(
             offline_assemblies,
-            &mut assembly1,
             &mut nwn,
             &energy_config,
             &admin_cap,
         );
 
         // Try to destroy hot potato without processing all assemblies - should fail
-        assembly::destroy_offline_assemblies(updated_offline_assemblies, &admin_cap);
+        updated_offline_assemblies.destroy_offline_assemblies(&admin_cap);
 
         ts::return_shared(nwn);
         ts::return_shared(assembly1);
         ts::return_shared(energy_config);
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, owner_cap);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    clock.destroy_for_testing();
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = assembly::ENetworkNodeDoesNotExist)]
+fun assembly_online_fails_without_updating_energy_source() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let clock = clock::create_for_testing(ts.ctx());
+    let assembly_id = create_assembly(&mut ts, nwn1_id, ITEM_ID_1);
+
+    do_deposit_fuel(&mut ts, nwn1_id, 10, &clock, user_a());
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        nwn.online(&owner_cap, &clock);
+        ts::return_shared(nwn);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    online_assembly(&mut ts, assembly_id, nwn1_id, user_a());
+
+    // Unanchor the first network node - returns hot potato with connected assemblies
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let offline_assemblies = nwn.unanchor(&admin_cap);
+
+        // Process the connected assembly - brings it offline and releases energy
+        let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let updated_offline_assemblies = assembly.offline_connected_assembly(
+            offline_assemblies,
+            &mut nwn,
+            &energy_config,
+            &admin_cap,
+        );
+
+        // Destroy the network node after all assemblies are processed
+        nwn.destroy_network_node(updated_offline_assemblies, &admin_cap);
+
+        ts::return_shared(assembly);
+        ts::return_shared(energy_config);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, user_a());
+    do_deposit_fuel(&mut ts, nwn2_id, 10, &clock, user_a());
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        nwn.online(&owner_cap, &clock);
+        ts::return_shared(nwn);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Try to bring assembly online without updating energy source - should fail
+    // because assembly still points to the deleted nwn1_id
+    online_assembly(&mut ts, assembly_id, nwn2_id, user_a());
+
+    clock.destroy_for_testing();
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = assembly::EAssemblyOnline)]
+fun update_energy_source_when_assembly_online() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, user_a());
+    let clock = clock::create_for_testing(ts.ctx());
+    let assembly_id = create_assembly(&mut ts, nwn1_id, ITEM_ID_1);
+
+    do_deposit_fuel(&mut ts, nwn1_id, 10, &clock, user_a());
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        nwn.online(&owner_cap, &clock);
+        ts::return_shared(nwn);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+    online_assembly(&mut ts, assembly_id, nwn1_id, user_a());
+
+    // Try to update energy source while assembly is online - should fail
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        let mut nwn2 = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        assembly.update_energy_source(&mut nwn2, &admin_cap);
+        ts::return_shared(assembly);
+        ts::return_shared(nwn2);
         ts::return_to_sender(&ts, admin_cap);
     };
 

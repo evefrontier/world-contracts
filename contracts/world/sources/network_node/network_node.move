@@ -150,6 +150,10 @@ public fun is_network_node_online(nwn: &NetworkNode): bool {
     nwn.status.is_online()
 }
 
+public fun owner_cap_id(nwn: &NetworkNode): ID {
+    nwn.owner_cap_id
+}
+
 /// Returns a mutable reference to the energy source
 /// Package function to allow assembly module to access energy source
 public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySource {
@@ -246,10 +250,35 @@ public fun disconnect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_i
     };
 }
 
-/// Unanchors the network node
-/// A cron job must call assembly::offline() for each connected assembly
-/// TODO: adopt hot potato pattern to enforce it
-public fun unanchor(nwn: NetworkNode, _: &AdminCap) {
+/// Unanchors the network node and returns a hot potato that must be consumed
+/// by bringing all connected assemblies offline in the same transaction
+/// Each assembly must be processed using assembly::offline_connected_assembly
+/// which brings the assembly offline and releases energy
+/// After all assemblies are processed, call destroy_network_node to destroy the network node
+public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): OfflineAssemblies {
+    if (nwn.energy_source.current_energy_production() > 0) {
+        nwn.energy_source.stop_energy_production();
+    };
+
+    OfflineAssemblies {
+        assembly_ids: copy_connected_assembly_ids(nwn),
+    }
+}
+
+/// Destroys the network node after all connected assemblies have been disconnected
+/// Must be called after processing all assemblies from the hot potato returned by unanchor
+public fun destroy_network_node(
+    mut nwn: NetworkNode,
+    offline_assemblies: OfflineAssemblies,
+    admin_cap: &AdminCap,
+) {
+    offline_assemblies.destroy_offline_assemblies(admin_cap);
+    // Clean up connected assembliesd
+    let assembly_ids = copy_connected_assembly_ids(&nwn);
+    if (vector::length(&assembly_ids) > 0) {
+        disconnect_assemblies(&mut nwn, admin_cap, assembly_ids);
+    };
+
     let NetworkNode {
         id,
         status,
@@ -264,9 +293,9 @@ public fun unanchor(nwn: NetworkNode, _: &AdminCap) {
     // Delete fuel and energy
     fuel::delete(fuel);
     energy::delete(energy_source);
-
-    // Clean up connected assemblies, location, status, and metadata
     connected_assembly_ids.destroy_empty();
+
+    // Clean up location, status, and metadata
     location.remove();
     status.unanchor();
     metadata.do!(|metadata| metadata.delete());
@@ -294,7 +323,7 @@ public(package) fun remove_assembly_id(
 
 /// Destroys the hot potato, ensuring all assemblies have been processed
 /// Must be called at the end of the transaction after all assemblies are offline
-public fun destroy_offline_assemblies(offline_assemblies: OfflineAssemblies) {
+public fun destroy_offline_assemblies(offline_assemblies: OfflineAssemblies, _: &AdminCap) {
     assert!(vector::length(&offline_assemblies.assembly_ids) == 0, EAssembliesConnected);
     let OfflineAssemblies {
         assembly_ids,
