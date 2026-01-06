@@ -6,11 +6,11 @@ use sui::{derived_object, event};
 use world::{
     access::{Self, AdminCap, OwnerCap},
     character::Character,
-    energy::{Self, EnergyConfig},
+    energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
-    network_node::{Self, NetworkNode, OfflineAssemblies},
+    network_node::{NetworkNode, OfflineAssemblies},
     status::{Self, AssemblyStatus}
 };
 
@@ -153,7 +153,7 @@ public fun anchor(
     };
 
     // Connect assembly to network node
-    network_node::connect_assembly(network_node, assembly_id);
+    network_node.connect_assembly(assembly_id);
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,
@@ -228,7 +228,7 @@ public fun unanchor(
     assert!(energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
 
     // Release energy if assembly is online
-    if (status::is_online(&status)) {
+    if (status.is_online()) {
         release_energy_by_type(network_node, energy_config, type_id);
     };
 
@@ -263,11 +263,12 @@ fun reserve_energy(
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
 ) {
-    energy::reserve_energy(
-        network_node.borrow_energy_source(),
-        energy_config,
-        assembly.type_id,
-    );
+    network_node
+        .borrow_energy_source()
+        .reserve_energy(
+            energy_config,
+            assembly.type_id,
+        );
 }
 
 /// Releases energy to the network node for the assembly
@@ -285,11 +286,12 @@ fun release_energy_by_type(
     energy_config: &EnergyConfig,
     type_id: u64,
 ) {
-    energy::release_energy(
-        network_node::borrow_energy_source(network_node),
-        energy_config,
-        type_id,
-    );
+    network_node
+        .borrow_energy_source()
+        .release_energy(
+            energy_config,
+            type_id,
+        );
 }
 
 #[test_only]

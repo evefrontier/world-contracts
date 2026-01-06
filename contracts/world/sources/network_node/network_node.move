@@ -136,7 +136,7 @@ public fun connected_assemblies(nwn: &NetworkNode): vector<ID> {
 /// Checks if an assembly is connected to this network node
 public fun is_assembly_connected(nwn: &NetworkNode, assembly_id: ID): bool {
     let mut i = 0;
-    let len = vector::length(&nwn.connected_assembly_ids);
+    let len = nwn.connected_assembly_ids.length();
     while (i < len) {
         if (*vector::borrow(&nwn.connected_assembly_ids, i) == assembly_id) {
             return true
@@ -232,7 +232,7 @@ public fun share_network_node(nwn: NetworkNode, _: &AdminCap) {
 
 public fun connect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_ids: vector<ID>) {
     let mut i = 0;
-    let len = vector::length(&assembly_ids);
+    let len = assembly_ids.length();
     while (i < len) {
         let assembly_id = *vector::borrow(&assembly_ids, i);
         connect_assembly(nwn, assembly_id);
@@ -242,7 +242,7 @@ public fun connect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_ids:
 
 public fun disconnect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_ids: vector<ID>) {
     let mut i = 0;
-    let len = vector::length(&assembly_ids);
+    let len = assembly_ids.length();
     while (i < len) {
         let assembly_id = *vector::borrow(&assembly_ids, i);
         disconnect_assembly(nwn, assembly_id);
@@ -275,7 +275,7 @@ public fun destroy_network_node(
     offline_assemblies.destroy_offline_assemblies(admin_cap);
     // Clean up connected assembliesd
     let assembly_ids = copy_connected_assembly_ids(&nwn);
-    if (vector::length(&assembly_ids) > 0) {
+    if (assembly_ids.length() > 0) {
         disconnect_assemblies(&mut nwn, admin_cap, assembly_ids);
     };
 
@@ -336,7 +336,7 @@ public(package) fun remove_assembly_id(
     assembly_id: ID,
 ): bool {
     let mut i = 0;
-    let len = vector::length(&offline_assemblies.assembly_ids);
+    let len = offline_assemblies.assembly_ids.length();
     while (i < len) {
         if (*vector::borrow(&offline_assemblies.assembly_ids, i) == assembly_id) {
             vector::remove(&mut offline_assemblies.assembly_ids, i);
@@ -350,7 +350,7 @@ public(package) fun remove_assembly_id(
 /// Destroys the hot potato, ensuring all assemblies have been processed
 /// Must be called at the end of the transaction after all assemblies are offline
 public fun destroy_offline_assemblies(offline_assemblies: OfflineAssemblies, _: &AdminCap) {
-    assert!(vector::length(&offline_assemblies.assembly_ids) == 0, EAssembliesConnected);
+    assert!(offline_assemblies.assembly_ids.length() == 0, EAssembliesConnected);
     let OfflineAssemblies {
         assembly_ids,
     } = offline_assemblies;
@@ -364,7 +364,7 @@ public(package) fun connect_assembly(nwn: &mut NetworkNode, assembly_id: ID) {
 
 public(package) fun disconnect_assembly(nwn: &mut NetworkNode, assembly_id: ID) {
     let mut i = 0;
-    let len = vector::length(&nwn.connected_assembly_ids);
+    let len = nwn.connected_assembly_ids.length();
     let mut found = false;
     while (i < len) {
         if (*vector::borrow(&nwn.connected_assembly_ids, i) == assembly_id) {
@@ -386,7 +386,7 @@ public(package) fun nwn_exists(registry: &NetworkNodeRegistry, key: TenantItemId
 fun copy_connected_assembly_ids(nwn: &NetworkNode): vector<ID> {
     let mut assembly_ids = vector[];
     let mut i = 0;
-    let len = vector::length(&nwn.connected_assembly_ids);
+    let len = nwn.connected_assembly_ids.length();
     while (i < len) {
         vector::push_back(&mut assembly_ids, *vector::borrow(&nwn.connected_assembly_ids, i));
         i = i + 1;
