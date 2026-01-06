@@ -34,6 +34,7 @@ public struct Character has key {
     tribe_id: u32,
     character_address: address,
     metadata: Option<Metadata>,
+    owner_cap_id: ID,
 }
 
 // Events
@@ -86,6 +87,14 @@ public fun create_character(
     assert!(!derived_object::exists(&registry.id, character_key), ECharacterAlreadyExists);
     let character_uid = derived_object::claim(&mut registry.id, character_key);
     let character_id = object::uid_to_inner(&character_uid);
+
+    let owner_cap_id = access::create_and_transfer_owner_cap<Character>(
+        admin_cap,
+        character_id,
+        character_address,
+        ctx,
+    );
+
     let character = Character {
         id: character_uid,
         key: character_key,
@@ -100,14 +109,8 @@ public fun create_character(
                 b"".to_string(),
             ),
         ),
+        owner_cap_id,
     };
-
-    access::create_and_transfer_owner_cap<Character>(
-        admin_cap,
-        character_id,
-        character_address,
-        ctx,
-    );
 
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),
