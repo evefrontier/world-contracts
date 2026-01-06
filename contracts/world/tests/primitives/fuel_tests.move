@@ -173,8 +173,10 @@ fun deposit_fuel() {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT);
-        assert_eq!(nwn.fuel.type_id(), FUEL_TYPE_ID);
-        assert_eq!(nwn.fuel.volume(), FUEL_VOLUME);
+        assert!(option::is_some(&nwn.fuel.type_id()));
+        assert_eq!(*option::borrow(&nwn.fuel.type_id()), FUEL_TYPE_ID);
+        assert!(option::is_some(&nwn.fuel.volume()));
+        assert_eq!(*option::borrow(&nwn.fuel.volume()), FUEL_VOLUME);
         ts::return_shared(nwn);
     };
 
