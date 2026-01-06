@@ -303,6 +303,32 @@ public fun destroy_network_node(
     id.delete();
 }
 
+/// Updates fuel and returns a hot potato if the network node goes offline due to fuel depletion
+/// The client must bring all connected assemblies offline using the hot potato
+public fun update_fuel(
+    nwn: &mut NetworkNode,
+    fuel_config: &FuelConfig,
+    _: &AdminCap,
+    clock: &Clock,
+): Option<OfflineAssemblies> {
+    // Update fuel first
+    nwn.fuel.update(fuel_config, clock);
+
+    if (!nwn.fuel.is_burning()) {
+        if (nwn.energy_source.current_energy_production() > 0) {
+            nwn.energy_source.stop_energy_production();
+        };
+
+        nwn.status.offline();
+
+        return std::option::some(OfflineAssemblies {
+                assembly_ids: copy_connected_assembly_ids(nwn),
+            })
+    };
+
+    std::option::none()
+}
+
 // === Package Functions ===
 /// Removes an assembly ID from the OfflineAssemblies list
 public(package) fun remove_assembly_id(
@@ -349,31 +375,6 @@ public(package) fun disconnect_assembly(nwn: &mut NetworkNode, assembly_id: ID) 
         i = i + 1;
     };
     assert!(found, EAssemblyNotConnected);
-}
-
-/// Updates fuel and returns a hot potato if the network node goes offline due to fuel depletion
-/// The client must bring all connected assemblies offline using the hot potato
-public(package) fun update_fuel(
-    nwn: &mut NetworkNode,
-    fuel_config: &FuelConfig,
-    clock: &Clock,
-): Option<OfflineAssemblies> {
-    // Update fuel first
-    nwn.fuel.update(fuel_config, clock);
-
-    if (!nwn.fuel.is_burning()) {
-        if (nwn.energy_source.current_energy_production() > 0) {
-            nwn.energy_source.stop_energy_production();
-        };
-
-        nwn.status.offline();
-
-        return std::option::some(OfflineAssemblies {
-                assembly_ids: copy_connected_assembly_ids(nwn),
-            })
-    };
-
-    std::option::none()
 }
 
 public(package) fun nwn_exists(registry: &NetworkNodeRegistry, key: TenantItemId): bool {

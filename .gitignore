@@ -12,6 +12,7 @@ node_modules/
 
 # IDE / Editor files
 .vscode/
+.**/**
 
 # Deployment debug files
 deployments/**
@@ -20,3 +21,6 @@ deployments/**
 # docs
 docs/features/
 prd.md
+
+# contracts
+contracts/world/sources/primitives/template.move
