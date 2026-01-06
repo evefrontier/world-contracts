@@ -29,20 +29,15 @@ public struct NetworkNode has key {
 
 fun create_network_node(ts: &mut ts::Scenario, max_production: u64): ID {
     ts::next_tx(ts, admin());
-    {
-        let network_node_id = {
-            let uid = object::new(ts.ctx());
-            let network_node_id = object::uid_to_inner(&uid);
-            let nwn = NetworkNode {
-                id: uid,
-                energy: energy::create(network_node_id, max_production),
-                connected_assemblies: table::new(ts.ctx()),
-            };
-            transfer::share_object(nwn);
-            network_node_id
-        };
-        network_node_id
-    }
+    let uid = object::new(ts.ctx());
+    let network_node_id = object::uid_to_inner(&uid);
+    let nwn = NetworkNode {
+        id: uid,
+        energy: energy::create(network_node_id, max_production),
+        connected_assemblies: table::new(ts.ctx()),
+    };
+    transfer::share_object(nwn);
+    network_node_id
 }
 
 #[test]
