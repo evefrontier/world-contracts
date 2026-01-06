@@ -53,8 +53,8 @@ public struct Fuel has store {
     assembly_id: ID,
     max_capacity: u64,
     burn_rate_in_ms: u64,
-    type_id: u64,
-    unit_volume: u64,
+    type_id: Option<u64>,
+    unit_volume: Option<u64>,
     quantity: u64,
     is_burning: bool,
     previous_cycle_elapsed_time: u64,
@@ -109,8 +109,6 @@ public struct FuelEfficiencyRemovedEvent has copy, drop {
     fuel_type_id: u64,
 }
 
-// === Public Functions ===
-
 // === View Functions ===
 public fun fuel_efficiency(fuel_config: &FuelConfig, fuel_type_id: u64): u64 {
     if (fuel_config.fuel_efficiency.contains(fuel_type_id)) {
@@ -124,11 +122,11 @@ public fun quantity(fuel: &Fuel): u64 {
     fuel.quantity
 }
 
-public fun type_id(fuel: &Fuel): u64 {
+public fun type_id(fuel: &Fuel): Option<u64> {
     fuel.type_id
 }
 
-public fun volume(fuel: &Fuel): u64 {
+public fun volume(fuel: &Fuel): Option<u64> {
     fuel.unit_volume
 }
 
@@ -149,7 +147,20 @@ public fun has_enough_fuel(fuel: &Fuel, fuel_config: &FuelConfig, clock: &Clock)
     fuel.quantity >= units_to_consume
 }
 
-// todo : return if the network node needs to consume any fuel at current time stamp
+/// Checks if fuel state needs to be updated based on elapsed time since last update.
+/// Returns true if there are any fuel units needs to be consumed, false otherwise.
+/// Useful for cron jobs to determine if `update()` should be called.
+public fun need_update(fuel: &Fuel, fuel_config: &FuelConfig, clock: &Clock): bool {
+    if (!fuel.is_burning) return false;
+
+    let (units_to_consume, _) = calculate_units_to_consume(
+        fuel,
+        fuel_config,
+        clock.timestamp_ms(),
+    );
+
+    units_to_consume > 0
+}
 
 // === Admin Functions ===
 /// Sets or updates the fuel efficiency percentage for a fuel type (10-100%)
@@ -192,8 +203,8 @@ public(package) fun create(assembly_id: ID, max_capacity: u64, burn_rate_in_ms: 
         assembly_id,
         max_capacity,
         burn_rate_in_ms,
-        type_id: 0,
-        unit_volume: 0,
+        type_id: option::none(),
+        unit_volume: option::none(),
         quantity: 0,
         is_burning: false,
         previous_cycle_elapsed_time: 0,
@@ -216,7 +227,7 @@ public(package) fun deposit(
     assert!(type_id != 0, ETypeIdEmtpy);
 
     // Initialize or verify fuel type matches
-    if (fuel.type_id == 0 || fuel.quantity == 0) {
+    if (option::is_none(&fuel.type_id) || fuel.quantity == 0) {
         if (fuel.is_burning) {
             // reset time tracking - the burning will continue with new fuel
             fuel.burn_start_time = clock.timestamp_ms();
@@ -225,14 +236,17 @@ public(package) fun deposit(
             fuel.burn_start_time = 0;
             fuel.previous_cycle_elapsed_time = 0;
         };
-        fuel.type_id = type_id;
-        fuel.unit_volume = unit_volume;
+        fuel.type_id = option::some(type_id);
+        fuel.unit_volume = option::some(unit_volume);
     } else {
-        assert!(fuel.type_id == type_id, EFuelTypeMismatch);
+        assert!(option::is_some(&fuel.type_id), EFuelTypeMismatch);
+        assert!(*option::borrow(&fuel.type_id) == type_id, EFuelTypeMismatch);
     };
 
+    assert!(option::is_some(&fuel.unit_volume), EInvalidVolume);
     let new_quantity = fuel.quantity + quantity;
-    assert!(fuel.unit_volume * new_quantity <= fuel.max_capacity, EFuelCapacityExceeded);
+    let unit_vol = *option::borrow(&fuel.unit_volume);
+    assert!(unit_vol * new_quantity <= fuel.max_capacity, EFuelCapacityExceeded);
     fuel.quantity = new_quantity;
     event::emit(FuelDepositedEvent {
         assembly_id: fuel.assembly_id,
@@ -247,10 +261,11 @@ public(package) fun deposit(
 public(package) fun withdraw(fuel: &mut Fuel, quantity: u64) {
     assert!(quantity > 0, EInvalidWithdrawQuantity);
     assert!(fuel.quantity >= quantity, EInsufficientFuel);
+    assert!(option::is_some(&fuel.type_id), ETypeIdEmtpy);
     fuel.quantity = fuel.quantity - quantity;
     event::emit(FuelWithdrawnEvent {
         assembly_id: fuel.assembly_id,
-        type_id: fuel.type_id,
+        type_id: *option::borrow(&fuel.type_id),
         quantity,
         remaining_quantity: fuel.quantity,
     });
@@ -261,7 +276,7 @@ public(package) fun withdraw(fuel: &mut Fuel, quantity: u64) {
 public(package) fun start_burning(fuel: &mut Fuel, clock: &Clock) {
     assert!(!fuel.is_burning, EFuelAlreadyBurning);
     assert!(fuel.quantity > 0 || fuel.previous_cycle_elapsed_time > 0, ENoFuelToBurn);
-    assert!(fuel.type_id != 0, ETypeIdEmtpy);
+    assert!(option::is_some(&fuel.type_id), ETypeIdEmtpy);
 
     // todo : should we check if last_updated is the current block ?
 
@@ -270,9 +285,10 @@ public(package) fun start_burning(fuel: &mut Fuel, clock: &Clock) {
     if (fuel.quantity != 0) {
         fuel.quantity = fuel.quantity - 1; // Consume 1 unit to start the clock
     };
+    let fuel_type_id = *option::borrow(&fuel.type_id);
     event::emit(FuelBurningStartedEvent {
         assembly_id: fuel.assembly_id,
-        type_id: fuel.type_id,
+        type_id: fuel_type_id,
         quantity: fuel.quantity,
         burn_start_time: fuel.burn_start_time,
     });
@@ -298,9 +314,10 @@ public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, cloc
     };
     fuel.burn_start_time = 0;
     fuel.is_burning = false;
+    let fuel_type_id = *option::borrow(&fuel.type_id);
     event::emit(FuelBurningStoppedEvent {
         assembly_id: fuel.assembly_id,
-        type_id: fuel.type_id,
+        type_id: fuel_type_id,
         quantity: fuel.quantity,
         previous_cycle_elapsed_time: fuel.previous_cycle_elapsed_time,
     });
@@ -381,8 +398,10 @@ fun calculate_units_to_consume(
         return (0, 0)
     };
 
-    let fuel_efficiency = if (fuel_config.fuel_efficiency.contains(fuel.type_id)) {
-        *fuel_config.fuel_efficiency.borrow(fuel.type_id)
+    assert!(option::is_some(&fuel.type_id), ETypeIdEmtpy);
+    let fuel_type_id = *option::borrow(&fuel.type_id);
+    let fuel_efficiency = if (fuel_config.fuel_efficiency.contains(fuel_type_id)) {
+        *fuel_config.fuel_efficiency.borrow(fuel_type_id)
     } else {
         abort EIncorrectFuelType
     };
