@@ -111,8 +111,6 @@ public struct FuelEfficiencyRemovedEvent has copy, drop {
     fuel_type_id: u64,
 }
 
-// === Public Functions ===
-
 // === View Functions ===
 public fun fuel_efficiency(fuel_config: &FuelConfig, fuel_type_id: u64): u64 {
     if (fuel_config.fuel_efficiency.contains(fuel_type_id)) {
@@ -149,6 +147,21 @@ public fun has_enough_fuel(fuel: &Fuel, fuel_config: &FuelConfig, clock: &Clock)
     );
 
     fuel.quantity >= units_to_consume
+}
+
+/// Checks if fuel state needs to be updated based on elapsed time since last update.
+/// Returns true if there are any fuel units needs to be consumed, false otherwise.
+/// Useful for cron jobs to determine if `update()` should be called.
+public fun need_update(fuel: &Fuel, fuel_config: &FuelConfig, clock: &Clock): bool {
+    if (!fuel.is_burning) return false;
+
+    let (units_to_consume, _) = calculate_units_to_consume(
+        fuel,
+        fuel_config,
+        clock.timestamp_ms(),
+    );
+
+    units_to_consume > 0
 }
 
 // === Admin Functions ===
