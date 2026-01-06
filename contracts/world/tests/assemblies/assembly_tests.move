@@ -1,11 +1,12 @@
 #[test_only]
 module world::assembly_tests;
 
-use std::unit_test::assert_eq;
+use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly, AssemblyRegistry},
+    character::{Self, Character, CharacterRegistry},
     energy::{Self, EnergyConfig},
     location,
     network_node::{Self, NetworkNode, NetworkNodeRegistry},
@@ -43,17 +44,44 @@ fun setup(ts: &mut ts::Scenario) {
     test_helpers::configure_assembly_energy(ts);
 }
 
+fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
+    ts::next_tx(ts, admin());
+    {
+        let character_id = {
+            let admin_cap = ts::take_from_sender<AdminCap>(ts);
+            let mut registry = ts::take_shared<CharacterRegistry>(ts);
+            let character = character::create_character(
+                &mut registry,
+                &admin_cap,
+                item_id,
+                tenant(),
+                100,
+                user,
+                utf8(b"name"),
+                ts.ctx(),
+            );
+            let character_id = object::id(&character);
+            character::share_character(character, &admin_cap);
+            ts::return_shared(registry);
+            ts::return_to_sender(ts, admin_cap);
+            character_id
+        };
+        character_id
+    }
+}
+
 // Helper to create network node
 fun create_network_node(ts: &mut ts::Scenario): ID {
+    let character_id = create_character(ts, user_a(), 1);
     ts::next_tx(ts, admin());
     let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(ts);
+    let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let nwn = network_node::anchor(
         &mut nwn_registry,
+        &character,
         &admin_cap,
-        user_a(),
-        tenant(),
         NWN_ITEM_ID,
         NWN_TYPE_ID,
         VOLUME,
@@ -66,6 +94,7 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
     let id = object::id(&nwn);
     network_node::share_network_node(nwn, &admin_cap);
 
+    ts::return_shared(character);
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(nwn_registry);
     id
@@ -73,17 +102,23 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
 
 // Helper to create assembly
 fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID): ID {
+    create_assembly_with_character(ts, nwn_id, (ITEM_ID as u32))
+}
+
+// Helper to create assembly with specific character item_id
+fun create_assembly_with_character(ts: &mut ts::Scenario, nwn_id: ID, character_item_id: u32): ID {
+    let character_id = create_character(ts, user_a(), character_item_id);
     ts::next_tx(ts, admin());
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
+    let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &mut nwn,
+        &character,
         &admin_cap,
-        user_a(),
-        tenant(),
         ITEM_ID,
         TYPE_ID,
         VOLUME,
@@ -93,6 +128,7 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID): ID {
     let id = object::id(&assembly);
     assembly::share_assembly(assembly, &admin_cap);
 
+    ts::return_shared(character);
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(assembly_registry);
     ts::return_shared(nwn);
@@ -215,23 +251,26 @@ fun test_unanchor() {
 
     let nwn_id = create_network_node(&mut ts);
 
+    let character_id = create_character(&mut ts, user_a(), 7);
+
     ts::next_tx(&mut ts, admin());
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &mut nwn,
+        &character,
         &admin_cap,
-        user_a(),
-        tenant(),
         ITEM_ID,
         TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );
+    ts::return_shared(character);
     let assembly_id = object::id(&assembly);
     assert!(network_node::is_assembly_connected(&nwn, assembly_id), 0);
 
@@ -259,17 +298,18 @@ fun test_anchor_duplicate_item_id() {
 
     let nwn_id = create_network_node(&mut ts);
 
+    let character_id = create_character(&mut ts, user_a(), 4);
+
     ts::next_tx(&mut ts, admin());
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-
     let assembly1 = assembly::anchor(
         &mut assembly_registry,
         &mut nwn,
+        &character,
         &admin_cap,
-        user_a(),
-        tenant(),
         ITEM_ID,
         TYPE_ID,
         VOLUME,
@@ -282,15 +322,15 @@ fun test_anchor_duplicate_item_id() {
     let assembly2 = assembly::anchor(
         &mut assembly_registry,
         &mut nwn,
+        &character,
         &admin_cap,
-        user_a(),
-        tenant(),
         ITEM_ID,
         TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );
+    ts::return_shared(character);
     assembly::share_assembly(assembly2, &admin_cap);
 
     ts::return_to_sender(&ts, admin_cap);
@@ -307,23 +347,26 @@ fun test_anchor_invalid_type_id() {
 
     let nwn_id = create_network_node(&mut ts);
 
+    let character_id = create_character(&mut ts, user_a(), 5);
+
     ts::next_tx(&mut ts, admin());
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &mut nwn,
+        &character,
         &admin_cap,
-        user_a(),
-        tenant(),
         ITEM_ID,
         0, // Invalid Type ID
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );
+    ts::return_shared(character);
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_to_sender(&ts, admin_cap);
@@ -340,23 +383,26 @@ fun test_anchor_invalid_item_id() {
 
     let nwn_id = create_network_node(&mut ts);
 
+    let character_id = create_character(&mut ts, user_a(), 6);
+
     ts::next_tx(&mut ts, admin());
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &mut nwn,
+        &character,
         &admin_cap,
-        user_a(),
-        tenant(),
         0, // Invalid Item ID
         TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );
+    ts::return_shared(character);
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_to_sender(&ts, admin_cap);

@@ -2,10 +2,10 @@
 /// Basic operations are anchor, unanchor, online, offline and destroy
 module world::assembly;
 
-use std::string::String;
 use sui::{derived_object, event};
 use world::{
     access::{Self, AdminCap, OwnerCap},
+    character::Character,
     energy::{Self, EnergyConfig},
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
@@ -104,9 +104,8 @@ public fun owner_cap_id(assembly: &Assembly): ID {
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
     network_node: &mut NetworkNode,
+    character: &Character,
     admin_cap: &AdminCap,
-    character_address: address,
-    tenant: String,
     item_id: u64,
     type_id: u64,
     volume: u64,
@@ -116,6 +115,7 @@ public fun anchor(
     assert!(type_id != 0, EAssemblyTypeIdEmpty);
     assert!(item_id != 0, EAssemblyItemIdEmpty);
 
+    let tenant = character.tenant();
     // key to derive assembly object id
     let assembly_key = in_game_id::create_key(item_id, tenant);
     assert!(!assembly_exists(assembly_registry, assembly_key), EAssemblyAlreadyExists);
@@ -128,7 +128,7 @@ public fun anchor(
     let owner_cap_id = access::create_and_transfer_owner_cap<Assembly>(
         admin_cap,
         assembly_id,
-        character_address,
+        character.character_address(),
         ctx,
     );
 

@@ -2,11 +2,12 @@
 
 module world::network_node_tests;
 
-use std::unit_test::assert_eq;
+use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly, AssemblyRegistry},
+    character::{Self, Character, CharacterRegistry},
     energy::EnergyConfig,
     fuel::{Self, FuelConfig},
     network_node::{Self, NetworkNodeRegistry, NetworkNode},
@@ -43,21 +44,47 @@ fun setup(ts: &mut ts::Scenario) {
     test_helpers::configure_assembly_energy(ts);
 }
 
+fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
+    ts::next_tx(ts, admin());
+    {
+        let character_id = {
+            let admin_cap = ts::take_from_sender<AdminCap>(ts);
+            let mut registry = ts::take_shared<CharacterRegistry>(ts);
+            let character = character::create_character(
+                &mut registry,
+                &admin_cap,
+                item_id,
+                tenant(),
+                100,
+                user,
+                utf8(b"name"),
+                ts::ctx(ts),
+            );
+            let character_id = object::id(&character);
+            character::share_character(character, &admin_cap);
+            ts::return_shared(registry);
+            ts::return_to_sender(ts, admin_cap);
+            character_id
+        };
+        character_id
+    }
+}
+
 fun create_network_node(
     ts: &mut ts::Scenario,
     item_id: u64,
     burn_rate_in_seconds: u64,
-    user: address,
+    character_id: ID,
 ): ID {
     ts::next_tx(ts, admin());
     let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(ts);
+    let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let nwn = network_node::anchor(
         &mut nwn_registry,
+        &character,
         &admin_cap,
-        user,
-        tenant(),
         item_id,
         NWN_TYPE_ID,
         VOLUME,
@@ -70,29 +97,31 @@ fun create_network_node(
     let id = object::id(&nwn);
     nwn.share_network_node(&admin_cap);
 
+    ts::return_shared(character);
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(nwn_registry);
     id
 }
 
 fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, item_id: u64): ID {
+    let character_id = create_character(ts, user_a(), (item_id as u32));
     ts::next_tx(ts, admin());
     let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
+    let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
-
     let assembly = assembly::anchor(
         &mut assembly_registry,
         &mut nwn,
+        &character,
         &admin_cap,
-        user_a(),
-        tenant(),
         item_id,
         TYPE_ID,
         VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );
+    ts::return_shared(character);
     let id = object::id(&assembly);
     assembly::share_assembly(assembly, &admin_cap);
 
@@ -171,7 +200,8 @@ fun offline_assembly(ts: &mut ts::Scenario, assembly_id: ID, nwn_id: ID, sender:
 fun anchor_network_node() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
 
     ts::next_tx(&mut ts, admin());
     {
@@ -186,8 +216,8 @@ fun anchor_network_node() {
         assert_eq!(nwn.status().status_to_u8(), STATUS_OFFLINE);
 
         assert_eq!(nwn.fuel().quantity(), 0);
-        assert_eq!(nwn.fuel().type_id(), 0);
-        assert_eq!(nwn.fuel().volume(), 0);
+        assert_eq!(option::is_some(&nwn.fuel().type_id()), false);
+        assert_eq!(option::is_some(&nwn.fuel().volume()), false);
         assert_eq!(nwn.fuel().max_capacity(), FUEL_MAX_CAPACITY);
         assert_eq!(nwn.fuel().burn_rate_in_ms(), FUEL_BURN_RATE_IN_MS);
         assert_eq!(nwn.fuel().is_burning(), false);
@@ -212,7 +242,8 @@ fun anchor_network_node() {
 fun deposit_fuel() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
 
     do_deposit_fuel(&mut ts, nwn_id, 10, &clock, user_a());
@@ -221,8 +252,10 @@ fun deposit_fuel() {
     {
         let nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         assert_eq!(nwn.fuel().quantity(), 10);
-        assert_eq!(nwn.fuel().type_id(), FUEL_TYPE_ID);
-        assert_eq!(nwn.fuel().volume(), FUEL_VOLUME);
+        assert!(option::is_some(&nwn.fuel().type_id()));
+        assert_eq!(*option::borrow(&nwn.fuel().type_id()), FUEL_TYPE_ID);
+        assert!(option::is_some(&nwn.fuel().volume()));
+        assert_eq!(*option::borrow(&nwn.fuel().volume()), FUEL_VOLUME);
         ts::return_shared(nwn);
     };
 
@@ -234,7 +267,8 @@ fun deposit_fuel() {
 fun withdraw_fuel() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
 
     do_deposit_fuel(&mut ts, nwn_id, 10, &clock, user_a());
@@ -259,7 +293,8 @@ fun withdraw_fuel() {
 fun online() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
 
     // Deposit fuel
@@ -296,7 +331,8 @@ fun online() {
 fun connected_assemblies_online_offline() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
 
     // Create two assemblies connected to this network node
@@ -361,7 +397,8 @@ fun connected_assemblies_online_offline() {
 fun update_fuel_intervals() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let mut clock = clock::create_for_testing(ts.ctx());
     let assembly_id = create_assembly(&mut ts, nwn_id, ITEM_ID_1);
 
@@ -430,7 +467,8 @@ fun update_fuel_intervals() {
 fun update_fuel_depletion_offline() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let mut clock = clock::create_for_testing(ts.ctx());
 
     let assembly_id = create_assembly(&mut ts, nwn_id, ITEM_ID_1);
@@ -546,7 +584,8 @@ fun update_fuel_depletion_offline() {
 fun update_energy_source_after_unanchor() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
     let assembly_id = create_assembly(&mut ts, nwn1_id, ITEM_ID_1);
 
@@ -590,7 +629,7 @@ fun update_energy_source_after_unanchor() {
     };
 
     // Create a new network node
-    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, user_a());
+    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, character_id);
 
     // Update energy source for assembly to the new network node
     ts::next_tx(&mut ts, admin());
@@ -635,10 +674,11 @@ fun anchor_duplicate_item_id() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let _ = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let _ = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
 
     // Second anchor with same ITEM_ID should fail
-    let _ = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let _ = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
 
     ts::end(ts);
 }
@@ -649,28 +689,32 @@ fun anchor_invalid_type_id() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
+    let character_id = create_character(&mut ts, user_a(), 1);
+
     ts::next_tx(&mut ts, admin());
-    let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(&ts);
-    let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+    {
+        let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(&ts);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let nwn = network_node::anchor(
+            &mut nwn_registry,
+            &character,
+            &admin_cap,
+            NWN_ITEM_ID,
+            0, // Invalid Type ID
+            VOLUME,
+            LOCATION_HASH,
+            FUEL_MAX_CAPACITY,
+            FUEL_BURN_RATE_IN_MS,
+            MAX_PRODUCTION,
+            ts.ctx(),
+        );
+        ts::return_shared(character);
+        nwn.share_network_node(&admin_cap);
 
-    let nwn = network_node::anchor(
-        &mut nwn_registry,
-        &admin_cap,
-        user_a(),
-        tenant(),
-        NWN_ITEM_ID,
-        0, // Invalid Type ID
-        VOLUME,
-        LOCATION_HASH,
-        FUEL_MAX_CAPACITY,
-        FUEL_BURN_RATE_IN_MS,
-        MAX_PRODUCTION,
-        ts.ctx(),
-    );
-    nwn.share_network_node(&admin_cap);
-
-    ts::return_to_sender(&ts, admin_cap);
-    ts::return_shared(nwn_registry);
+        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(nwn_registry);
+    };
     ts::end(ts);
 }
 
@@ -680,28 +724,32 @@ fun anchor_invalid_item_id() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
+    let character_id = create_character(&mut ts, user_a(), 1);
+
     ts::next_tx(&mut ts, admin());
-    let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(&ts);
-    let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+    {
+        let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(&ts);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let nwn = network_node::anchor(
+            &mut nwn_registry,
+            &character,
+            &admin_cap,
+            0, // Invalid Item ID
+            NWN_TYPE_ID,
+            VOLUME,
+            LOCATION_HASH,
+            FUEL_MAX_CAPACITY,
+            FUEL_BURN_RATE_IN_MS,
+            MAX_PRODUCTION,
+            ts.ctx(),
+        );
+        ts::return_shared(character);
+        nwn.share_network_node(&admin_cap);
 
-    let nwn = network_node::anchor(
-        &mut nwn_registry,
-        &admin_cap,
-        user_a(),
-        tenant(),
-        0, // Invalid Item ID
-        NWN_TYPE_ID,
-        VOLUME,
-        LOCATION_HASH,
-        FUEL_MAX_CAPACITY,
-        FUEL_BURN_RATE_IN_MS,
-        MAX_PRODUCTION,
-        ts.ctx(),
-    );
-    nwn.share_network_node(&admin_cap);
-
-    ts::return_to_sender(&ts, admin_cap);
-    ts::return_shared(nwn_registry);
+        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(nwn_registry);
+    };
     ts::end(ts);
 }
 
@@ -710,7 +758,8 @@ fun anchor_invalid_item_id() {
 fun online_without_fuel() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
 
     // Try to bring online without depositing fuel
@@ -734,8 +783,10 @@ fun online_without_fuel() {
 fun online_unauthorized_owner() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id_a = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
-    let _ = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, user_b());
+    let character_a_id = create_character(&mut ts, user_a(), 1);
+    let character_b_id = create_character(&mut ts, user_b(), 2);
+    let nwn_id_a = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_a_id);
+    let _ = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, character_b_id);
     let clock = clock::create_for_testing(ts.ctx());
 
     do_deposit_fuel(&mut ts, nwn_id_a, 10, &clock, user_a());
@@ -761,7 +812,8 @@ fun online_unauthorized_owner() {
 fun offline_hot_potato_not_consumed() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
 
     // Create two assemblies connected to this network node
@@ -820,7 +872,8 @@ fun offline_hot_potato_not_consumed() {
 fun assembly_online_fails_without_updating_energy_source() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
     let assembly_id = create_assembly(&mut ts, nwn1_id, ITEM_ID_1);
 
@@ -860,7 +913,7 @@ fun assembly_online_fails_without_updating_energy_source() {
         ts::return_to_sender(&ts, admin_cap);
     };
 
-    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, user_a());
+    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, character_id);
     do_deposit_fuel(&mut ts, nwn2_id, 10, &clock, user_a());
     ts::next_tx(&mut ts, user_a());
     {
@@ -884,8 +937,9 @@ fun assembly_online_fails_without_updating_energy_source() {
 fun update_energy_source_when_assembly_online() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, user_a());
-    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, user_a());
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn1_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
+    let nwn2_id = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, character_id);
     let clock = clock::create_for_testing(ts.ctx());
     let assembly_id = create_assembly(&mut ts, nwn1_id, ITEM_ID_1);
 

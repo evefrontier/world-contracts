@@ -8,10 +8,10 @@
 /// Future: There might be multiple power sources connected together to generate more energy that can be used by assemblies in the base
 module world::network_node;
 
-use std::string::String;
 use sui::{clock::Clock, derived_object, event};
 use world::{
     access::{Self, OwnerCap, AdminCap},
+    character::Character,
     energy::{Self, EnergySource},
     fuel::{Self, FuelConfig, Fuel},
     in_game_id::{Self, TenantItemId},
@@ -163,9 +163,8 @@ public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySour
 // === Admin Functions ===
 public fun anchor(
     nwn_registry: &mut NetworkNodeRegistry,
+    character: &Character,
     admin_cap: &AdminCap,
-    character_address: address,
-    tenant: String,
     item_id: u64,
     type_id: u64,
     volume: u64,
@@ -178,6 +177,7 @@ public fun anchor(
     assert!(type_id != 0, ENetworkNodeTypeIdEmpty);
     assert!(item_id != 0, ENetworkNodeItemIdEmpty);
 
+    let tenant = character.tenant();
     let nwn_key = in_game_id::create_key(item_id, tenant);
     assert!(!nwn_exists(nwn_registry, nwn_key), ENetworkNodeAlreadyExists);
 
@@ -187,7 +187,7 @@ public fun anchor(
     let owner_cap_id = access::create_and_transfer_owner_cap<NetworkNode>(
         admin_cap,
         nwn_id,
-        character_address,
+        character.character_address(),
         ctx,
     );
 

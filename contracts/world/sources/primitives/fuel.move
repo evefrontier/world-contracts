@@ -373,12 +373,14 @@ fun consume_fuel_units(
     current_time_ms: u64,
 ) {
     if (units_to_consume > 0) {
+        assert!(option::is_some(&fuel.type_id), ETypeIdEmtpy);
+        let fuel_type_id = *option::borrow(&fuel.type_id);
         fuel.quantity = fuel.quantity - units_to_consume;
         fuel.previous_cycle_elapsed_time = 0;
         fuel.burn_start_time = current_time_ms - remaining_elapsed_ms;
         event::emit(FuelUpdatedEvent {
             assembly_id: fuel.assembly_id,
-            type_id: fuel.type_id,
+            type_id: fuel_type_id,
             units_consumed: units_to_consume,
             remaining_quantity: fuel.quantity,
             is_burning: fuel.is_burning,
