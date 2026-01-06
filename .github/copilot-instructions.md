@@ -29,17 +29,19 @@ contracts/
       assemblies/          # Game-defined assemblies (Layer 2)
         assembly.move
         storage_unit.move
-        metadata.move
       character/           # Character management
         character.move
       crypto/              # Cryptographic utilities
         sig_verify.move
+      metadata/            # Metadata management
+        metadata.move
+      network/             # Network node functionality
+        network_node.move
       primitives/          # Composable primitives (Layer 1)
         fuel.move
         in_game_id.move
         inventory.move
         location.move
-        network_node.move
         status.move
       tokens/              # Token-related modules
       world.move           # Main world module with GovernorCap
@@ -86,7 +88,7 @@ This project uses a three-layer architecture pattern (see `docs/architechture.md
 **Review Checklist:**
 
 - [ ] Does the code maintain proper layer separation?
-- [ ] Are primitive state-mutating functions using `public(package)` visibility?
+- [ ] Are primitive state-mutating functions using `public(package)` visibility or `public` visibility with a capability?
 - [ ] Are primitive view/utility functions appropriately `public`?
 - [ ] Are assemblies using composition (not inheritance)?
 - [ ] Do extensions use the typed witness pattern for authorization?
