@@ -214,12 +214,12 @@ public(package) fun release_energy(
     assert!(type_id != 0, ETypeIdEmpty);
 
     // If no energy is reserved, nothing to release (may have been released by stop_energy_production)
-    if (energy_source.total_reserved_energy == 0) {
+    let energy_required = assembly_energy(energy_config, type_id);
+    if (
+        energy_source.total_reserved_energy == 0 || energy_source.total_reserved_energy < energy_required
+    ) {
         return
     };
-
-    let energy_required = assembly_energy(energy_config, type_id);
-    assert!(energy_source.total_reserved_energy >= energy_required, EInsufficientAvailableEnergy);
 
     energy_source.total_reserved_energy = energy_source.total_reserved_energy - energy_required;
 

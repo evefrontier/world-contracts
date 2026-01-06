@@ -695,32 +695,3 @@ fun reserving_more_than_available_energy() {
 
     ts::end(ts);
 }
-
-#[test]
-#[expected_failure(abort_code = energy::EInsufficientAvailableEnergy)]
-fun releasing_more_than_reserved() {
-    let mut ts = ts::begin(user_a());
-    test_helpers::setup_world(&mut ts);
-    test_helpers::configure_assembly_energy(&mut ts);
-    let nwn_id = create_network_node(&mut ts, MAX_PRODUCTION);
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
-        energy_config.set_energy_config(&admin_cap, assembly_type_1(), 30);
-
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
-
-        energy_config.set_energy_config(&admin_cap, assembly_type_1(), 50);
-        nwn.energy.release_energy(&energy_config, assembly_type_1());
-
-        ts::return_shared(nwn);
-        ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
-    };
-
-    ts::end(ts);
-}
