@@ -561,13 +561,12 @@ fun update_fuel_depletion_offline() {
             offline_assemblies,
             &mut nwn,
             &energy_config,
-            &admin_cap,
         );
         // Energy should be released
         assert_eq!(nwn.energy().total_reserved_energy(), 0);
 
         // Destroy the offline assemblies struct
-        updated_offline_assemblies.destroy_offline_assemblies(&admin_cap);
+        updated_offline_assemblies.destroy_offline_assemblies();
 
         ts::return_shared(nwn);
         ts::return_shared(assembly);
@@ -617,7 +616,6 @@ fun update_energy_source_after_unanchor() {
             offline_assemblies,
             &mut nwn,
             &energy_config,
-            &admin_cap,
         );
 
         // Destroy the network node after all assemblies are processed
@@ -849,11 +847,10 @@ fun offline_hot_potato_not_consumed() {
             offline_assemblies,
             &mut nwn,
             &energy_config,
-            &admin_cap,
         );
 
         // Try to destroy hot potato without processing all assemblies - should fail
-        updated_offline_assemblies.destroy_offline_assemblies(&admin_cap);
+        updated_offline_assemblies.destroy_offline_assemblies();
 
         ts::return_shared(nwn);
         ts::return_shared(assembly1);
@@ -902,7 +899,6 @@ fun assembly_online_fails_without_updating_energy_source() {
             offline_assemblies,
             &mut nwn,
             &energy_config,
-            &admin_cap,
         );
 
         // Destroy the network node after all assemblies are processed

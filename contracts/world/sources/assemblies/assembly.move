@@ -186,12 +186,12 @@ public fun update_energy_source(
 /// Must be called for each assembly in the hot potato list
 /// Returns the updated hot potato with the processed assembly removed
 /// After all assemblies are processed, call destroy_offline_assemblies to consume the hot potato
+/// The hot potato itself serves as authorization since it can only be obtained from capped functions
 public fun offline_connected_assembly(
     assembly: &mut Assembly,
     mut offline_assemblies: OfflineAssemblies,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-    _: &AdminCap,
 ): OfflineAssemblies {
     let assembly_id = object::id(assembly);
 
@@ -208,7 +208,6 @@ public fun offline_connected_assembly(
     offline_assemblies
 }
 
-// TODO: this is a placeholder, the implementation may change based on discussions with game design
 public fun unanchor(
     assembly: Assembly,
     network_node: &mut NetworkNode,

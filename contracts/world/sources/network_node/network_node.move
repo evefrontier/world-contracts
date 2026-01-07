@@ -154,6 +154,10 @@ public fun owner_cap_id(nwn: &NetworkNode): ID {
     nwn.owner_cap_id
 }
 
+public fun fuel_quantity(nwn: &NetworkNode): u64 {
+    nwn.fuel.quantity()
+}
+
 /// Returns a mutable reference to the energy source
 /// Package function to allow assembly module to access energy source
 public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySource {
@@ -240,16 +244,6 @@ public fun connect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_ids:
     };
 }
 
-public fun disconnect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_ids: vector<ID>) {
-    let mut i = 0;
-    let len = assembly_ids.length();
-    while (i < len) {
-        let assembly_id = *vector::borrow(&assembly_ids, i);
-        disconnect_assembly(nwn, assembly_id);
-        i = i + 1;
-    };
-}
-
 /// Unanchors the network node and returns a hot potato that must be consumed
 /// by bringing all connected assemblies offline in the same transaction
 /// Each assembly must be processed using assembly::offline_connected_assembly
@@ -270,13 +264,13 @@ public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): OfflineAssemblies {
 public fun destroy_network_node(
     mut nwn: NetworkNode,
     offline_assemblies: OfflineAssemblies,
-    admin_cap: &AdminCap,
+    _: &AdminCap,
 ) {
-    offline_assemblies.destroy_offline_assemblies(admin_cap);
+    offline_assemblies.destroy_offline_assemblies();
     // Clean up connected assembliesd
     let assembly_ids = copy_connected_assembly_ids(&nwn);
     if (assembly_ids.length() > 0) {
-        disconnect_assemblies(&mut nwn, admin_cap, assembly_ids);
+        disconnect_assemblies(&mut nwn, assembly_ids);
     };
 
     let NetworkNode {
@@ -329,6 +323,17 @@ public fun update_fuel(
     std::option::none()
 }
 
+/// Destroys the hot potato, ensuring all assemblies have been processed
+/// Must be called at the end of the transaction after all assemblies are offline
+/// The hot potato itself serves as authorization since it can only be obtained from capped functions
+public fun destroy_offline_assemblies(offline_assemblies: OfflineAssemblies) {
+    assert!(offline_assemblies.assembly_ids.length() == 0, EAssembliesConnected);
+    let OfflineAssemblies {
+        assembly_ids,
+    } = offline_assemblies;
+    assembly_ids.destroy_empty();
+}
+
 // === Package Functions ===
 /// Removes an assembly ID from the OfflineAssemblies list
 public(package) fun remove_assembly_id(
@@ -345,16 +350,6 @@ public(package) fun remove_assembly_id(
         i = i + 1;
     };
     false
-}
-
-/// Destroys the hot potato, ensuring all assemblies have been processed
-/// Must be called at the end of the transaction after all assemblies are offline
-public fun destroy_offline_assemblies(offline_assemblies: OfflineAssemblies, _: &AdminCap) {
-    assert!(offline_assemblies.assembly_ids.length() == 0, EAssembliesConnected);
-    let OfflineAssemblies {
-        assembly_ids,
-    } = offline_assemblies;
-    assembly_ids.destroy_empty();
 }
 
 public(package) fun connect_assembly(nwn: &mut NetworkNode, assembly_id: ID) {
@@ -392,6 +387,16 @@ fun copy_connected_assembly_ids(nwn: &NetworkNode): vector<ID> {
         i = i + 1;
     };
     assembly_ids
+}
+
+fun disconnect_assemblies(nwn: &mut NetworkNode, assembly_ids: vector<ID>) {
+    let mut i = 0;
+    let len = assembly_ids.length();
+    while (i < len) {
+        let assembly_id = *vector::borrow(&assembly_ids, i);
+        disconnect_assembly(nwn, assembly_id);
+        i = i + 1;
+    };
 }
 
 fun init(ctx: &mut TxContext) {
