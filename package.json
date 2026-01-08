@@ -13,23 +13,32 @@
     "fmt:ts:check": "prettier --check \"examples/**/*.ts\"",
     "sig-verify": "tsx examples/crypto/sig-verify.ts",
     "generate-test-sig": "tsx examples/location/generate-test-signature.ts",
+    "configure-fuel-energy": "tsx examples/network-node/configure-fuel-energy.ts",
     "create-character": "tsx examples/character/create-character.ts",
+    "create-nwn": "tsx examples/network-node/create-nwn.ts",
+    "deposit-fuel": "tsx examples/network-node/deposit-fuel.ts",
+    "start-burning": "tsx examples/network-node/start-burning.ts",
+    "update": "tsx examples/network-node/update-fuel.ts",
+    "offline-nwn": "tsx examples/network-node/offline-nwn.ts",
+    "get-fuel-quantity": "tsx examples/network-node/helper.ts",
+    "create-assembly": "tsx examples/assembly/create-assembly.ts",
+    "online": "tsx examples/assembly/online.ts",
     "create-storage-unit": "tsx examples/storage-unit/create-storage-unit.ts",
-    "online": "tsx examples/storage-unit/online.ts",
+    "ssu-online": "tsx examples/storage-unit/online.ts",
     "game-item-to-chain": "tsx examples/storage-unit/game-item-to-chain.ts"
   },
   "dependencies": {
     "@mysten/prettier-plugin-move": "^0.3.3",
     "@mysten/sui": "^1.45.2",
-    "@noble/hashes": "^1.3.3",
+    "@noble/hashes": "^1.8.0",
     "dotenv": "^17.2.3",
-    "prettier": "^3.1.1"
+    "prettier": "^3.7.4"
   },
   "author": "EVE Frontier",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^24.10.1",
-    "tsx": "^4.7.0",
+    "@types/node": "^24.10.4",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

@@ -1,0 +1,168 @@
+import "dotenv/config";
+import { Transaction } from "@mysten/sui/transactions";
+import { SuiClient } from "@mysten/sui/client";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { getConfig, MODULES, Network } from "../utils/config";
+import { createClient, keypairFromPrivateKey } from "../utils/client";
+
+const FUEL_TYPE_IDS = parseBigIntArray(process.env.FUEL_TYPE_IDS);
+const FUEL_EFFICIENCIES = parseBigIntArray(process.env.FUEL_EFFICIENCIES);
+
+const ASSEMBLY_TYPE_IDS = parseBigIntArray(process.env.ASSEMBLY_TYPE_IDS);
+const ENERGY_REQUIRED_VALUES = parseBigIntArray(process.env.ENERGY_REQUIRED_VALUES);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Parse arrays from environment variables
+function parseBigIntArray(envVar: string | undefined, defaultValue: bigint[] = []): bigint[] {
+    if (!envVar) return defaultValue;
+    return envVar
+        .split(",")
+        .map((val) => BigInt(val.trim()))
+        .filter((val) => val > 0n);
+}
+
+async function setFuelEfficiency(
+    fuelTypeId: bigint,
+    fuelEfficiency: bigint,
+    client: SuiClient,
+    keypair: Ed25519Keypair,
+    config: ReturnType<typeof getConfig>
+) {
+    console.log(`\n==== Setting Fuel Efficiency ====`);
+    console.log(
+        `Fuel Type ID: ${fuelTypeId.toString()}, Efficiency: ${fuelEfficiency.toString()}%`
+    );
+
+    const tx = new Transaction();
+
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.FUEL}::set_fuel_efficiency`,
+        arguments: [
+            tx.object(config.fuelConfig),
+            tx.object(config.adminCapObjectId),
+            tx.pure.u64(fuelTypeId),
+            tx.pure.u64(fuelEfficiency),
+        ],
+    });
+
+    const result = await client.signAndExecuteTransaction({
+        transaction: tx,
+        signer: keypair,
+        options: { showObjectChanges: true, showEffects: true },
+    });
+
+    console.log("\n Fuel efficiency set successfully!");
+    console.log("Transaction digest:", result.digest);
+    return result;
+}
+
+async function setEnergyConfig(
+    assemblyTypeId: bigint,
+    energyRequired: bigint,
+    client: SuiClient,
+    keypair: Ed25519Keypair,
+    config: ReturnType<typeof getConfig>
+) {
+    console.log(`\n==== Setting Energy Configuration ====`);
+    console.log(
+        `Assembly Type ID: ${assemblyTypeId.toString()}, Energy Required: ${energyRequired.toString()}`
+    );
+
+    const tx = new Transaction();
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.ENERGY}::set_energy_config`,
+        arguments: [
+            tx.object(config.energyConfig),
+            tx.object(config.adminCapObjectId),
+            tx.pure.u64(assemblyTypeId),
+            tx.pure.u64(energyRequired),
+        ],
+    });
+
+    const result = await client.signAndExecuteTransaction({
+        transaction: tx,
+        signer: keypair,
+        options: { showObjectChanges: true, showEffects: true },
+    });
+
+    console.log("\n Energy configuration set successfully!");
+    console.log("Transaction digest:", result.digest);
+    return result;
+}
+
+async function main() {
+    console.log("============= Configure Fuel and Energy example ==============\n");
+
+    try {
+        const network = (process.env.SUI_NETWORK as Network) || "localnet";
+        const exportedKey = process.env.PRIVATE_KEY;
+
+        if (!exportedKey) {
+            throw new Error(
+                "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
+            );
+        }
+
+        const client = createClient(network);
+        const keypair = keypairFromPrivateKey(exportedKey);
+        const config = getConfig(network);
+
+        const adminAddress = keypair.getPublicKey().toSuiAddress();
+        console.log("Network:", network);
+        console.log("Admin address:", adminAddress);
+
+        // Configure fuel efficiencies
+        if (FUEL_TYPE_IDS.length > 0 && FUEL_EFFICIENCIES.length > 0) {
+            if (FUEL_TYPE_IDS.length !== FUEL_EFFICIENCIES.length) {
+                throw new Error(
+                    `FUEL_TYPE_IDS and FUEL_EFFICIENCIES arrays must have the same length. Got ${FUEL_TYPE_IDS.length} and ${FUEL_EFFICIENCIES.length}`
+                );
+            }
+
+            for (let i = 0; i < FUEL_TYPE_IDS.length; i++) {
+                await setFuelEfficiency(
+                    FUEL_TYPE_IDS[i],
+                    FUEL_EFFICIENCIES[i],
+                    client,
+                    keypair,
+                    config
+                );
+                await sleep(1000);
+            }
+        } else {
+            console.log("\nNo fuel configurations provided. Skipping fuel efficiency setup.");
+        }
+
+        // Configure energy requirements
+        if (ASSEMBLY_TYPE_IDS.length > 0 && ENERGY_REQUIRED_VALUES.length > 0) {
+            if (ASSEMBLY_TYPE_IDS.length !== ENERGY_REQUIRED_VALUES.length) {
+                throw new Error(
+                    `ASSEMBLY_TYPE_IDS and ENERGY_REQUIRED_VALUES arrays must have the same length. Got ${ASSEMBLY_TYPE_IDS.length} and ${ENERGY_REQUIRED_VALUES.length}`
+                );
+            }
+
+            for (let i = 0; i < ASSEMBLY_TYPE_IDS.length; i++) {
+                await setEnergyConfig(
+                    ASSEMBLY_TYPE_IDS[i],
+                    ENERGY_REQUIRED_VALUES[i],
+                    client,
+                    keypair,
+                    config
+                );
+                await sleep(1000);
+            }
+        } else {
+            console.log("\nNo energy configurations provided. Skipping energy setup.");
+        }
+    } catch (error) {
+        console.error("\n=== Error ===");
+        console.error("Error:", error instanceof Error ? error.message : error);
+        if (error instanceof Error && error.stack) {
+            console.error("Stack:", error.stack);
+        }
+        process.exit(1);
+    }
+}
+
+main().catch(console.error);

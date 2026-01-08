@@ -57,15 +57,7 @@ async function createCharacter(
     });
 
     console.log(result);
-
-    // object id of the character
-    const characterId = result.objectChanges?.find((change) => change.type === "created")?.objectId;
-    if (!characterId) {
-        throw new Error("Failed to create character and object id was not found");
-    }
-
-    console.log("Character created", characterId);
-    return characterId;
+    return precomputedCharacterId;
 }
 
 async function main() {

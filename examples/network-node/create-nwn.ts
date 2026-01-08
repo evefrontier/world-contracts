@@ -7,39 +7,44 @@ import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
 import { hexToBytes } from "../utils/helper";
 
-const STORAGE_A_TYPE_ID = BigInt(Math.floor(Math.random() * 1000000) + 5);
-const STORAGE_A_ITEM_ID = BigInt(Math.floor(Math.random() * 7) + 7);
-const MAX_CAPACITY = 1000000000000n;
+const NWN_TYPE_ID = BigInt(Math.floor(Math.random() * 1000000) + 5);
+const NWN_ITEM_ID = BigInt(Math.floor(Math.random() * 7) + 7);
+const VOLUME = 10;
+const FUEL_MAX_CAPACITY = 10000n;
+const FUEL_BURN_RATE_IN_MS = BigInt(3600 * 1000); // 1 hour
+const MAX_ENERGY_PRODUCTION = 100n;
 const LOCATION_HASH = "0x16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049";
 const CHARACTER_OBJECT_ID = "0x50186a768934da5d173112e202d7d40a474a91aec2df7a724cfd073715afe13a";
 
-async function createStorageUnit(
+async function createNetworkNode(
     characterObjectId: string,
     typeId: bigint,
     itemId: bigint,
-    address: string,
     client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
 ) {
     const tx = new Transaction();
 
-    const [storageUnit] = tx.moveCall({
-        target: `${config.packageId}::${MODULES.STORAGE_UNIT}::anchor`,
+    const [nwn] = tx.moveCall({
+        target: `${config.packageId}::${MODULES.NETWORK_NODE}::anchor`,
         arguments: [
-            tx.object(config.assemblyRegistry),
+            tx.object(config.networkNodeRegistry),
             tx.object(characterObjectId),
             tx.object(config.adminCapObjectId),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
-            tx.pure.u64(MAX_CAPACITY),
+            tx.pure.u64(VOLUME),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
+            tx.pure.u64(FUEL_MAX_CAPACITY),
+            tx.pure.u64(FUEL_BURN_RATE_IN_MS),
+            tx.pure.u64(MAX_ENERGY_PRODUCTION),
         ],
     });
 
     tx.moveCall({
-        target: `${config.packageId}::${MODULES.STORAGE_UNIT}::share_storage_unit`,
-        arguments: [storageUnit, tx.object(config.adminCapObjectId)],
+        target: `${config.packageId}::${MODULES.NETWORK_NODE}::share_network_node`,
+        arguments: [nwn, tx.object(config.adminCapObjectId)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -50,24 +55,23 @@ async function createStorageUnit(
 
     console.log(result);
 
-    const storageUnitEvent = result.events?.find((event) =>
-        event.type.endsWith("::storage_unit::StorageUnitCreatedEvent")
+    const networkNodeEvent = result.events?.find((event) =>
+        event.type.endsWith("::network_node::NetworkNodeCreatedEvent")
     );
 
-    if (!storageUnitEvent?.parsedJson) {
-        throw new Error("StorageUnitCreatedEvent not found in transaction result");
+    if (!networkNodeEvent?.parsedJson) {
+        throw new Error("NetworkNodeCreatedEvent not found in transaction result");
     }
 
-    const storageUnitId = (storageUnitEvent.parsedJson as { storage_unit_id: string })
-        .storage_unit_id;
-    console.log("Storage Unit Object Id: ", storageUnitId);
+    const nwnId = (networkNodeEvent.parsedJson as { network_node_id: string }).network_node_id;
+    console.log("NWN Object Id: ", nwnId);
 
-    const ownerCapObjectId = (storageUnitEvent.parsedJson as { owner_cap_id: string }).owner_cap_id;
+    const ownerCapObjectId = (networkNodeEvent.parsedJson as { owner_cap_id: string }).owner_cap_id;
     console.log("OwnerCap Object Id: ", ownerCapObjectId);
 }
 
 async function main() {
-    console.log("============= Create Storage Unit example ==============\n");
+    console.log("============= Create Network Node example ==============\n");
 
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
@@ -89,11 +93,10 @@ async function main() {
         const playerAddress = playerKeypair.getPublicKey().toSuiAddress();
         const adminAddress = keypair.getPublicKey().toSuiAddress();
 
-        await createStorageUnit(
+        await createNetworkNode(
             CHARACTER_OBJECT_ID,
-            STORAGE_A_TYPE_ID,
-            STORAGE_A_ITEM_ID,
-            adminAddress,
+            NWN_TYPE_ID,
+            NWN_ITEM_ID,
             client,
             keypair,
             config
