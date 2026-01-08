@@ -303,9 +303,9 @@ public fun destroy_network_node(
     id.delete();
 }
 
-/// Updates fuel and returns OfflineAssemblies hot potato
-/// Returns empty hot potato if fuel is still burning, populated with assembly IDs if fuel is depleted
-/// Client must process all assemblies in the hot potato and destroy it when done
+// TODO : This does not work as expected
+/// Updates fuel and returns a hot potato if the network node goes offline due to fuel depletion
+/// The client must bring all connected assemblies offline using the hot potato
 public fun update_fuel(
     nwn: &mut NetworkNode,
     fuel_config: &FuelConfig,
