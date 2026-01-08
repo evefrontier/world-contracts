@@ -430,13 +430,13 @@ fun update_fuel_intervals() {
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         clock.set_for_testing(time_after_1_hour);
-        let offline_assemblies_opt = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
-        // Should still be online, no hot potato
-        assert!(std::option::is_none(&offline_assemblies_opt), 0);
+        let offline_assemblies = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
+        // Should still be online, empty hot potato
+        assert_eq!(offline_assemblies.ids_length(), 0);
         assert_eq!(nwn.fuel().quantity(), 8);
         assert_eq!(nwn.status().status_to_u8(), STATUS_ONLINE);
-        // Consume the Option
-        std::option::destroy_none(offline_assemblies_opt);
+        // Destroy the empty hot potato
+        offline_assemblies.destroy_offline_assemblies();
         ts::return_shared(nwn);
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, admin_cap);
@@ -449,11 +449,11 @@ fun update_fuel_intervals() {
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         clock.set_for_testing(time_after_2_hours);
-        let offline_assemblies_opt = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
-        assert!(std::option::is_none(&offline_assemblies_opt), 0);
+        let offline_assemblies = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
+        assert_eq!(offline_assemblies.ids_length(), 0);
         assert_eq!(nwn.fuel().quantity(), 7);
-        // Consume the Option
-        std::option::destroy_none(offline_assemblies_opt);
+        // Destroy the empty hot potato
+        offline_assemblies.destroy_offline_assemblies();
         ts::return_shared(nwn);
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, admin_cap);
@@ -501,14 +501,14 @@ fun update_fuel_depletion_offline() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let offline_assemblies_opt = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
+        let offline_assemblies = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
 
         // Quantity is 0, but still burning (last unit is burning)
-        assert!(std::option::is_none(&offline_assemblies_opt), 0);
+        assert_eq!(offline_assemblies.ids_length(), 0);
         assert_eq!(nwn.fuel().quantity(), 0);
         assert_eq!(nwn.fuel().is_burning(), true);
         assert_eq!(nwn.status().status_to_u8(), STATUS_ONLINE);
-        std::option::destroy_none(offline_assemblies_opt);
+        offline_assemblies.destroy_offline_assemblies();
         ts::return_shared(nwn);
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, admin_cap);
@@ -522,14 +522,14 @@ fun update_fuel_depletion_offline() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let offline_assemblies_opt = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
+        let offline_assemblies = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
 
         // Still burning, still online
-        assert!(std::option::is_none(&offline_assemblies_opt), 0);
+        assert_eq!(offline_assemblies.ids_length(), 0);
         assert_eq!(nwn.fuel().quantity(), 0);
         assert_eq!(nwn.fuel().is_burning(), true);
         assert_eq!(nwn.status().status_to_u8(), STATUS_ONLINE);
-        std::option::destroy_none(offline_assemblies_opt);
+        offline_assemblies.destroy_offline_assemblies();
         ts::return_shared(nwn);
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, admin_cap);
@@ -543,18 +543,16 @@ fun update_fuel_depletion_offline() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut offline_assemblies_opt = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
+        let offline_assemblies = nwn.update_fuel(&fuel_config, &admin_cap, &clock);
 
         // Network node should go offline - burning stopped (2 units consumed)
-        assert!(std::option::is_some(&offline_assemblies_opt), 0);
+        assert_eq!(offline_assemblies.ids_length() > 0, true);
         assert_eq!(nwn.fuel().quantity(), 0);
         assert_eq!(nwn.fuel().is_burning(), false);
         assert_eq!(nwn.status().status_to_u8(), STATUS_OFFLINE);
         assert_eq!(nwn.energy().current_energy_production(), 0);
 
         // Process the offline assemblies - bring connected assembly offline
-        let offline_assemblies = std::option::extract(&mut offline_assemblies_opt);
-        std::option::destroy_none(offline_assemblies_opt);
         let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let updated_offline_assemblies = assembly.offline_connected_assembly(

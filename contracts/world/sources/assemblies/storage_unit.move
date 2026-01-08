@@ -74,6 +74,7 @@ public struct StorageUnit has key {
 public struct StorageUnitCreatedEvent has copy, drop {
     storage_unit_id: ID,
     key: TenantItemId,
+    owner_cap_id: ID,
     type_id: u64,
     max_capacity: u64,
     location_hash: vector<u8>,
@@ -317,6 +318,7 @@ public fun anchor(
     event::emit(StorageUnitCreatedEvent {
         storage_unit_id: assembly_id,
         key: storage_unit_key,
+        owner_cap_id,
         type_id: type_id,
         max_capacity,
         location_hash,

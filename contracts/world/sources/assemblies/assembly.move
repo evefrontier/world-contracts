@@ -52,6 +52,7 @@ public struct Assembly has key {
 public struct AssemblyCreatedEvent has copy, drop {
     assembly_id: ID,
     key: TenantItemId,
+    owner_cap_id: ID,
     type_id: u64,
     volume: u64,
 }
@@ -158,6 +159,7 @@ public fun anchor(
     event::emit(AssemblyCreatedEvent {
         assembly_id,
         key: assembly_key,
+        owner_cap_id,
         type_id,
         volume,
     });
@@ -193,18 +195,19 @@ public fun offline_connected_assembly(
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
 ): OfflineAssemblies {
-    let assembly_id = object::id(assembly);
+    if (offline_assemblies.ids_length() > 0) {
+        let assembly_id = object::id(assembly);
 
-    // Remove the assembly ID from the hot potato using package function
-    let found = offline_assemblies.remove_assembly_id(assembly_id);
-    assert!(found, EAssemblyNotInList);
+        // Remove the assembly ID from the hot potato using package function
+        let found = offline_assemblies.remove_assembly_id(assembly_id);
+        assert!(found, EAssemblyNotInList);
 
-    // Bring the assembly offline if it's online and release energy
-    if (assembly.status.is_online()) {
-        assembly.status.offline();
-        release_energy(assembly, network_node, energy_config);
+        // Bring the assembly offline if it's online and release energy
+        if (assembly.status.is_online()) {
+            assembly.status.offline();
+            release_energy(assembly, network_node, energy_config);
+        };
     };
-
     offline_assemblies
 }
 

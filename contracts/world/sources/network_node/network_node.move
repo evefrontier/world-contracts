@@ -66,6 +66,7 @@ public struct NetworkNode has key {
 public struct NetworkNodeCreatedEvent has copy, drop {
     network_node_id: ID,
     key: TenantItemId,
+    owner_cap_id: ID,
     type_id: u64,
     volume: u64,
     fuel_max_capacity: u64,
@@ -158,6 +159,10 @@ public fun fuel_quantity(nwn: &NetworkNode): u64 {
     nwn.fuel.quantity()
 }
 
+public fun ids_length(offline_assemblies: &OfflineAssemblies): u64 {
+    offline_assemblies.assembly_ids.length()
+}
+
 /// Returns a mutable reference to the energy source
 /// Package function to allow assembly module to access energy source
 public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySource {
@@ -220,6 +225,7 @@ public fun anchor(
     event::emit(NetworkNodeCreatedEvent {
         network_node_id: nwn_id,
         key: nwn_key,
+        owner_cap_id,
         type_id,
         volume,
         fuel_max_capacity,
@@ -297,30 +303,37 @@ public fun destroy_network_node(
     id.delete();
 }
 
-/// Updates fuel and returns a hot potato if the network node goes offline due to fuel depletion
-/// The client must bring all connected assemblies offline using the hot potato
+/// Updates fuel and returns OfflineAssemblies hot potato
+/// Returns empty hot potato if fuel is still burning, populated with assembly IDs if fuel is depleted
+/// Client must process all assemblies in the hot potato and destroy it when done
 public fun update_fuel(
     nwn: &mut NetworkNode,
     fuel_config: &FuelConfig,
     _: &AdminCap,
     clock: &Clock,
-): Option<OfflineAssemblies> {
-    // Update fuel first
-    nwn.fuel.update(fuel_config, clock);
+): OfflineAssemblies {
+    if (nwn.status.is_online()) {
+        // Update fuel first
+        nwn.fuel.update(fuel_config, clock);
 
-    if (!nwn.fuel.is_burning()) {
-        if (nwn.energy_source.current_energy_production() > 0) {
-            nwn.energy_source.stop_energy_production();
-        };
+        if (!nwn.fuel.is_burning()) {
+            // Fuel depleted - bring network node offline
+            if (nwn.energy_source.current_energy_production() > 0) {
+                nwn.energy_source.stop_energy_production();
+            };
 
-        nwn.status.offline();
+            nwn.status.offline();
 
-        return std::option::some(OfflineAssemblies {
+            // Return hot potato with connected assembly IDs
+            return OfflineAssemblies {
                 assembly_ids: copy_connected_assembly_ids(nwn),
-            })
+            }
+        };
     };
-
-    std::option::none()
+    // Fuel still burning or already offline - return empty hot potato
+    OfflineAssemblies {
+        assembly_ids: vector[],
+    }
 }
 
 /// Destroys the hot potato, ensuring all assemblies have been processed
