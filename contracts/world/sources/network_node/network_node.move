@@ -297,6 +297,7 @@ public fun destroy_network_node(
     id.delete();
 }
 
+// TODO : This does not work as expected
 /// Updates fuel and returns a hot potato if the network node goes offline due to fuel depletion
 /// The client must bring all connected assemblies offline using the hot potato
 public fun update_fuel(
