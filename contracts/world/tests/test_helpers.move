@@ -5,11 +5,16 @@ use std::string::String;
 use sui::test_scenario as ts;
 use world::{
     access::{Self, AdminCap, ServerAddressRegistry, AdminACL},
+    assembly,
+    character,
+    crude_lift,
     energy::{Self, EnergyConfig},
     fuel::{Self, FuelConfig},
     in_game_id::{Self, TenantItemId},
     location::{Self, LocationProof},
     object_registry,
+    network_node,
+    rift,
     world::{Self, GovernorCap}
 };
 
@@ -102,6 +107,9 @@ public fun setup_world(ts: &mut ts::Scenario) {
         object_registry::init_for_testing(ts.ctx());
         fuel::init_for_testing(ts.ctx());
         energy::init_for_testing(ts.ctx());
+        network_node::init_for_testing(ts.ctx());
+        rift::init_for_testing(ts.ctx());
+        crude_lift::init_for_testing(ts.ctx());
     };
 
     ts::next_tx(ts, governor());
