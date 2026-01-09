@@ -301,7 +301,7 @@ fun burn_items(inventory: &mut Inventory, character: &Character, item_id: u64, q
                 character_key: character.key(),
                 item_id,
                 type_id: item.type_id,
-                quantity: item.quantity,
+                quantity: quantity,
             });
             false
         }
