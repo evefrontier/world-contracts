@@ -330,7 +330,7 @@ public(package) fun delete(fuel: Fuel) {
 }
 
 /// Updates fuel consumption state. Consumes units based on elapsed time since last update.
-/// If there is no enough fuel to consume, then stop burning
+/// If there is not enough fuel to consume, then stop burning
 public(package) fun update(fuel: &mut Fuel, fuel_config: &FuelConfig, clock: &Clock) {
     if (!fuel.is_burning || fuel.burn_start_time == 0) {
         return
