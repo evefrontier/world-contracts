@@ -3,7 +3,7 @@
 /// The Network node is an energy source for all the assemblies connected to it
 /// It can be fuelled and burn fuel to produce energy in GJ
 /// This energy can be used by the assemblies to perform actions like online, bridging items, etc
-/// Assemblies have to be connected to network node to reserve and release energy
+/// Assemblies have to be connected to a network node to reserve and release energy
 ///
 /// Future: There might be multiple power sources connected together to generate more energy that can be used by assemblies in the base
 module world::network_node;
