@@ -56,6 +56,10 @@ public fun id(character: &Character): ID {
     object::id(character)
 }
 
+public fun key(character: &Character): TenantItemId {
+    character.key
+}
+
 public fun character_address(character: &Character): address {
     character.character_address
 }

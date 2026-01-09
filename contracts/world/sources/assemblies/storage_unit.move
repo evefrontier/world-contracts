@@ -105,14 +105,14 @@ public fun chain_item_to_game_inventory<T: key>(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
-    character_id: ID,
+    character: &Character,
     item_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    check_inventory_authorization(owner_cap, storage_unit, character_id);
+    check_inventory_authorization(owner_cap, storage_unit, character.id());
     assert!(storage_unit.status.is_online(), ENotOnline);
 
     let owner_cap_id = object::id(owner_cap);
@@ -121,6 +121,7 @@ public fun chain_item_to_game_inventory<T: key>(
         owner_cap_id,
     );
     inventory.burn_items_with_proof(
+        character,
         server_registry,
         &storage_unit.location,
         location_proof,
@@ -133,6 +134,7 @@ public fun chain_item_to_game_inventory<T: key>(
 
 public fun deposit_item<Auth: drop>(
     storage_unit: &mut StorageUnit,
+    character: &Character,
     item: Item,
     _: Auth,
     _: &mut TxContext,
@@ -147,11 +149,12 @@ public fun deposit_item<Auth: drop>(
         &mut storage_unit.id,
         storage_unit.owner_cap_id,
     );
-    inventory.deposit_item(item);
+    inventory.deposit_item(character, item);
 }
 
 public fun withdraw_item<Auth: drop>(
     storage_unit: &mut StorageUnit,
+    character: &Character,
     _: Auth,
     item_id: u64,
     _: &mut TxContext,
@@ -165,7 +168,7 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.owner_cap_id,
     );
 
-    inventory.withdraw_item(item_id)
+    inventory.withdraw_item(character, item_id)
 }
 
 public fun deposit_by_owner<T: key>(
@@ -173,14 +176,14 @@ public fun deposit_by_owner<T: key>(
     item: Item,
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
-    character_id: ID,
+    character: &Character,
     proximity_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
-    check_inventory_authorization(owner_cap, storage_unit, character_id);
+    check_inventory_authorization(owner_cap, storage_unit, character.id());
     assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
 
     // This check is only required for ephemeral inventory
@@ -202,14 +205,14 @@ public fun deposit_by_owner<T: key>(
         owner_cap_id,
     );
 
-    inventory.deposit_item(item);
+    inventory.deposit_item(character, item);
 }
 
 public fun withdraw_by_owner<T: key>(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
-    character_id: ID,
+    character: &Character,
     item_id: u64,
     proximity_proof: vector<u8>,
     clock: &Clock,
@@ -217,7 +220,7 @@ public fun withdraw_by_owner<T: key>(
 ): Item {
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
-    check_inventory_authorization(owner_cap, storage_unit, character_id);
+    check_inventory_authorization(owner_cap, storage_unit, character.id());
 
     location::verify_proximity_proof_from_bytes(
         server_registry,
@@ -232,7 +235,7 @@ public fun withdraw_by_owner<T: key>(
         owner_cap_id,
     );
 
-    inventory.withdraw_item(item_id)
+    inventory.withdraw_item(character, item_id)
 }
 
 // TODO: Can also have a transfer function for simplicity
@@ -308,6 +311,7 @@ public fun anchor(
 
     let inventory = inventory::create(
         assembly_id,
+        storage_unit_key,
         owner_cap_id,
         max_capacity,
     );
@@ -334,7 +338,7 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
 
 // On unanchor the storage unit is scooped back into inventory in game
 // So we burn the items and delete the object
-public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
+public fun unanchor(storage_unit: StorageUnit, character: &Character, _: &AdminCap) {
     let StorageUnit {
         mut id,
         status,
@@ -348,7 +352,7 @@ public fun unanchor(storage_unit: StorageUnit, _: &AdminCap) {
     location.remove();
 
     // loop through inventory_keys
-    inventory_keys.destroy!(|key| df::remove<ID, Inventory>(&mut id, key).delete());
+    inventory_keys.destroy!(|key| df::remove<ID, Inventory>(&mut id, key).delete(character));
     metadata.do!(|metadata| metadata.delete());
     id.delete();
 }
@@ -358,7 +362,7 @@ public fun game_item_to_chain_inventory<T: key>(
     storage_unit: &mut StorageUnit,
     admin_acl: &AdminACL,
     owner_cap: &OwnerCap<T>,
-    character_id: ID,
+    character: &Character,
     item_id: u64,
     type_id: u64,
     volume: u64,
@@ -372,7 +376,7 @@ public fun game_item_to_chain_inventory<T: key>(
 
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
-    check_inventory_authorization(owner_cap, storage_unit, character_id);
+    check_inventory_authorization(owner_cap, storage_unit, character.id());
 
     // create a ephemeral inventory if it does not exists for a character
     if (!df::exists_(&storage_unit.id, owner_cap_id)) {
@@ -382,6 +386,7 @@ public fun game_item_to_chain_inventory<T: key>(
         );
         let inventory = inventory::create(
             object::id(storage_unit),
+            storage_unit.key,
             owner_cap_id,
             owner_inv.max_capacity(),
         );
@@ -395,6 +400,7 @@ public fun game_item_to_chain_inventory<T: key>(
         owner_cap_id,
     );
     inventory.mint_items(
+        character,
         storage_unit.key.tenant(),
         item_id,
         type_id,
@@ -463,18 +469,19 @@ public fun chain_item_to_game_inventory_test<T: key>(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
-    character_id: ID,
+    character: &Character,
     item_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
     let owner_cap_id = object::id(owner_cap);
-    check_inventory_authorization(owner_cap, storage_unit, character_id);
+    check_inventory_authorization(owner_cap, storage_unit, character.id());
     assert!(storage_unit.status.is_online(), ENotOnline);
 
     let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, owner_cap_id);
     inventory.burn_items_with_proof_test(
+        character,
         server_registry,
         &storage_unit.location,
         location_proof,
@@ -489,7 +496,7 @@ public fun game_item_to_chain_inventory_test<T: key>(
     storage_unit: &mut StorageUnit,
     admin_acl: &AdminACL,
     owner_cap: &OwnerCap<T>,
-    character_id: ID,
+    character: &Character,
     item_id: u64,
     type_id: u64,
     volume: u64,
@@ -500,7 +507,7 @@ public fun game_item_to_chain_inventory_test<T: key>(
 
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
-    check_inventory_authorization(owner_cap, storage_unit, character_id);
+    check_inventory_authorization(owner_cap, storage_unit, character.id());
 
     // create a ephemeral inventory if it does not exists for a character
     if (!df::exists_(&storage_unit.id, owner_cap_id)) {
@@ -510,6 +517,7 @@ public fun game_item_to_chain_inventory_test<T: key>(
         );
         let inventory = inventory::create(
             object::id(storage_unit),
+            storage_unit.key,
             owner_cap_id,
             owner_inv.max_capacity(),
         );
@@ -523,6 +531,7 @@ public fun game_item_to_chain_inventory_test<T: key>(
         owner_cap_id,
     );
     inventory.mint_items(
+        character,
         storage_unit.key.tenant(),
         item_id,
         type_id,
