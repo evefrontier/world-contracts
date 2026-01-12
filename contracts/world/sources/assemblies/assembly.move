@@ -24,11 +24,9 @@ const EAssemblyAlreadyExists: vector<u8> = b"Assembly with this ItemId already e
 #[error(code = 3)]
 const EAssemblyNotAuthorized: vector<u8> = b"Assembly access not authorized";
 #[error(code = 4)]
-const EAssemblyNotInList: vector<u8> = b"Assembly is not in the offline assemblies list";
-#[error(code = 5)]
 const ENetworkNodeDoesNotExist: vector<u8> =
     b"Provided network node does not match the assembly's configured energy source";
-#[error(code = 6)]
+#[error(code = 5)]
 const EAssemblyOnline: vector<u8> = b"Assembly should be offline";
 
 // === Structs ===
@@ -200,13 +198,14 @@ public fun offline_connected_assembly(
 
         // Remove the assembly ID from the hot potato using package function
         let found = offline_assemblies.remove_assembly_id(assembly_id);
-        assert!(found, EAssemblyNotInList);
 
-        // Bring the assembly offline if it's online and release energy
-        if (assembly.status.is_online()) {
-            assembly.status.offline();
-            release_energy(assembly, network_node, energy_config);
-        };
+        if (found) {
+            // Bring the assembly offline if it's online and release energy
+            if (assembly.status.is_online()) {
+                assembly.status.offline();
+                release_energy(assembly, network_node, energy_config);
+            };
+        }
     };
     offline_assemblies
 }
