@@ -26,10 +26,12 @@ use world::{
     access::{Self, OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
     assembly::{Self, AssemblyRegistry},
     character::Character,
+    energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     inventory::{Self, Inventory, Item},
     location::{Self, Location},
     metadata::{Self, Metadata},
+    network_node::{NetworkNode, OfflineAssemblies},
     status::{Self, AssemblyStatus, Status}
 };
 
@@ -55,6 +57,11 @@ const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants"
 const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
 #[error(code = 9)]
 const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
+#[error(code = 10)]
+const ENetworkNodeDoesNotExist: vector<u8> =
+    b"Provided network node does not match the storage unit's configured energy source";
+#[error(code = 11)]
+const EStorageUnitOnline: vector<u8> = b"Storage Unit should be offline";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -66,6 +73,7 @@ public struct StorageUnit has key {
     status: AssemblyStatus,
     location: Location,
     inventory_keys: vector<ID>,
+    energy_source_id: ID,
     metadata: Option<Metadata>,
     extension: Option<TypeName>,
 }
@@ -90,13 +98,31 @@ public fun authorize_extension<Auth: drop>(
     storage_unit.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
 }
 
-public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap<StorageUnit>) {
+public fun online(
+    storage_unit: &mut StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    owner_cap: &OwnerCap<StorageUnit>,
+) {
     assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+    reserve_energy(storage_unit, network_node, energy_config);
+
     storage_unit.status.online();
 }
 
-public fun offline(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap<StorageUnit>) {
+public fun offline(
+    storage_unit: &mut StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    owner_cap: &OwnerCap<StorageUnit>,
+) {
     assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+
+    // Verify network node matches the storage unit's energy source
+    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+    release_energy(storage_unit, network_node, energy_config);
+
     storage_unit.status.offline();
 }
 
@@ -260,6 +286,7 @@ public fun owner_cap_id(storage_unit: &StorageUnit): ID {
 // === Admin Functions ===
 public fun anchor(
     assembly_registry: &mut AssemblyRegistry,
+    network_node: &mut NetworkNode,
     character: &Character,
     admin_cap: &AdminCap,
     item_id: u64,
@@ -280,6 +307,7 @@ public fun anchor(
     let registry_id = assembly::borrow_registry_id(assembly_registry);
     let assembly_uid = derived_object::claim(registry_id, storage_unit_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
+    let network_node_id = object::id(network_node);
 
     // Create owner cap
     let owner_cap_id = access::create_and_transfer_owner_cap<StorageUnit>(
@@ -297,6 +325,7 @@ public fun anchor(
         status: status::anchor(assembly_id, type_id, item_id),
         location: location::attach(assembly_id, location_hash),
         inventory_keys: vector[],
+        energy_source_id: network_node_id,
         metadata: std::option::some(
             metadata::create_metadata(
                 assembly_id,
@@ -308,6 +337,8 @@ public fun anchor(
         ),
         extension: option::none(),
     };
+
+    network_node.connect_assembly(assembly_id);
 
     let inventory = inventory::create(
         assembly_id,
@@ -336,17 +367,77 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
     transfer::share_object(storage_unit);
 }
 
+public fun update_energy_source(
+    storage_unit: &mut StorageUnit,
+    network_node: &mut NetworkNode,
+    _: &AdminCap,
+) {
+    let storage_unit_id = object::id(storage_unit);
+    let nwn_id = object::id(network_node);
+    assert!(!storage_unit.status.is_online(), EStorageUnitOnline);
+
+    network_node.connect_assembly(storage_unit_id);
+    storage_unit.energy_source_id = nwn_id;
+}
+
+//  TODO : Can we generalise this function for all assembly
+/// Brings a connected storage unit offline and removes it from the hot potato
+/// Must be called for each storage unit in the hot potato list
+/// Returns the updated hot potato with the processed storage unit removed
+/// After all storage units are processed, call destroy_offline_assemblies to consume the hot potato
+/// The hot potato itself serves as authorization since it can only be obtained from capped functions
+public fun offline_connected_storage_unit(
+    storage_unit: &mut StorageUnit,
+    mut offline_assemblies: OfflineAssemblies,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+): OfflineAssemblies {
+    if (offline_assemblies.ids_length() > 0) {
+        let storage_unit_id = object::id(storage_unit);
+
+        // Remove the storage unit ID from the hot potato using package function
+        let found = offline_assemblies.remove_assembly_id(storage_unit_id);
+        if (found) {
+            // Bring the storage unit offline if it's online and release energy
+            if (storage_unit.status.is_online()) {
+                storage_unit.status.offline();
+                release_energy(storage_unit, network_node, energy_config);
+            };
+        }
+    };
+    offline_assemblies
+}
+
 // On unanchor the storage unit is scooped back into inventory in game
 // So we burn the items and delete the object
-public fun unanchor(storage_unit: StorageUnit, character: &Character, _: &AdminCap) {
+public fun unanchor(
+    storage_unit: StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    character: &Character,
+    _: &AdminCap,
+) {
     let StorageUnit {
         mut id,
         status,
         location,
         inventory_keys,
         metadata,
+        energy_source_id,
+        type_id,
         ..,
     } = storage_unit;
+
+    assert!(energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+
+    // Release energy if storage unit is online
+    if (status.is_online()) {
+        release_energy_by_type(network_node, energy_config, type_id);
+    };
+
+    // Disconnect storage unit from network node
+    let storage_unit_id = object::uid_to_inner(&id);
+    network_node.disconnect_assembly(storage_unit_id);
 
     status.unanchor();
     location.remove();
@@ -412,6 +503,40 @@ public fun game_item_to_chain_inventory<T: key>(
 }
 
 // === Private Functions ===
+fun reserve_energy(
+    storage_unit: &StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+) {
+    network_node
+        .borrow_energy_source()
+        .reserve_energy(
+            energy_config,
+            storage_unit.type_id,
+        );
+}
+
+fun release_energy(
+    storage_unit: &StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+) {
+    release_energy_by_type(network_node, energy_config, storage_unit.type_id);
+}
+
+fun release_energy_by_type(
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    type_id: u64,
+) {
+    network_node
+        .borrow_energy_source()
+        .release_energy(
+            energy_config,
+            type_id,
+        );
+}
+
 fun check_inventory_authorization<T: key>(
     owner_cap: &OwnerCap<T>,
     storage_unit: &StorageUnit,
