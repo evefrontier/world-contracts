@@ -5,8 +5,8 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
 
-const ASSEMBLY_ID = "0xf8be2f792c0940b318b63e12a221e201fef08f0ec6186177aded0c539851236d";
-const OWNER_CAP_ID = "0xaaf1e3b6701c80a4a95b96765e9a2b3181a6f7bb83678198e6abac808d56a6db";
+const ASSEMBLY_ID = "0xa7597edbdac993411e11b9b867b7b9eddc395719d7512ef750afdc7cd109c723";
+const OWNER_CAP_ID = "0x6d1a27c2ab7693b26d4c6c19e6d080c44ddbfcd144d9d79bb86ac5c1f74a5a45";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

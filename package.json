@@ -25,7 +25,9 @@
     "online": "tsx examples/assembly/online.ts",
     "create-storage-unit": "tsx examples/storage-unit/create-storage-unit.ts",
     "ssu-online": "tsx examples/storage-unit/online.ts",
-    "game-item-to-chain": "tsx examples/storage-unit/game-item-to-chain.ts"
+    "game-item-to-chain": "tsx examples/storage-unit/game-item-to-chain.ts",
+    "chain-item-to-game": "tsx examples/storage-unit/chain-item-to-game.ts",
+    "withdraw-and-deposit": "tsx examples/storage-unit/withdraw-deposit.ts"
   },
   "dependencies": {
     "@mysten/prettier-plugin-move": "^0.3.3",
