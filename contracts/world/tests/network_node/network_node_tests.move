@@ -157,9 +157,16 @@ fun do_deposit_fuel(
     sender: address,
 ) {
     ts::next_tx(ts, sender);
+    let owner_cap = {
+        let nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
+        let owner_cap = get_owner_cap_for_network_node(ts, &nwn, sender);
+        ts::return_shared(nwn);
+        owner_cap
+    };
+
+    ts::next_tx(ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        let owner_cap = get_owner_cap_for_network_node(ts, &nwn, sender);
         let admin_acl = ts::take_shared<AdminACL>(ts);
         nwn.deposit_fuel_test(
             &admin_acl,
@@ -172,6 +179,9 @@ fun do_deposit_fuel(
         );
         ts::return_shared(admin_acl);
         ts::return_shared(nwn);
+    };
+    ts::next_tx(ts, sender);
+    {
         ts::return_to_sender(ts, owner_cap);
     };
 }
@@ -284,9 +294,11 @@ fun withdraw_fuel() {
     do_deposit_fuel(&mut ts, nwn_id, 10, &clock, user_a());
 
     ts::next_tx(&mut ts, user_a());
+    let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+
+    ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
         let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         nwn.withdraw_fuel_test(&admin_acl, &owner_cap, 5, ts.ctx());
@@ -294,8 +306,10 @@ fun withdraw_fuel() {
 
         ts::return_shared(admin_acl);
         ts::return_shared(nwn);
-        ts::return_to_sender(&ts, owner_cap);
     };
+
+    ts::next_tx(&mut ts, user_a());
+    ts::return_to_sender(&ts, owner_cap);
 
     clock.destroy_for_testing();
     ts::end(ts);

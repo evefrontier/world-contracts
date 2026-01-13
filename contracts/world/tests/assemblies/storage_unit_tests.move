@@ -192,9 +192,13 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nw
     // Deposit fuel and bring network node online
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(ts, user);
+    let owner_cap = {
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(ts);
+        owner_cap
+    };
+    ts::next_tx(ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(ts);
         let admin_acl = ts::take_shared<AdminACL>(ts);
         nwn.deposit_fuel_test(
             &admin_acl,
@@ -207,15 +211,16 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nw
         );
         ts::return_shared(admin_acl);
         ts::return_shared(nwn);
-        ts::return_to_sender(ts, owner_cap);
     };
 
     ts::next_tx(ts, user);
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(ts);
         nwn.online(&owner_cap, &clock);
         ts::return_shared(nwn);
+    };
+    ts::next_tx(ts, user);
+    {
         ts::return_to_sender(ts, owner_cap);
     };
 
@@ -1387,9 +1392,13 @@ fun online_fail_by_unauthorized_owner() {
     // Bring NWN online using user_a (the owner)
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(&mut ts, user_a());
+    let owner_cap = {
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        owner_cap
+    };
+    ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
         let admin_acl = ts::take_shared<AdminACL>(&ts);
         nwn.deposit_fuel_test(
             &admin_acl,
@@ -1402,15 +1411,16 @@ fun online_fail_by_unauthorized_owner() {
         );
         ts::return_shared(admin_acl);
         ts::return_shared(nwn);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
         nwn.online(&owner_cap, &clock);
         ts::return_shared(nwn);
+    };
+    ts::next_tx(&mut ts, user_a());
+    {
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -1718,9 +1728,13 @@ fun test_game_to_chain_fail_network_node_offline() {
 
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(&mut ts, user_a());
+    let owner_cap = {
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        owner_cap
+    };
+    ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
         let admin_acl = ts::take_shared<AdminACL>(&ts);
         nwn.deposit_fuel_test(
             &admin_acl,
@@ -1733,15 +1747,16 @@ fun test_game_to_chain_fail_network_node_offline() {
         );
         ts::return_shared(admin_acl);
         ts::return_shared(nwn);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
         nwn.online(&owner_cap, &clock);
         ts::return_shared(nwn);
+    };
+    ts::next_tx(&mut ts, user_a());
+    {
         ts::return_to_sender(&ts, owner_cap);
     };
 

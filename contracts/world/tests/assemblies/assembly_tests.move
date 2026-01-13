@@ -182,9 +182,13 @@ fun test_online_offline() {
 
     // Deposit fuel to network node
     ts::next_tx(&mut ts, user_a());
+    let owner_cap = {
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        owner_cap
+    };
+    ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
         let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         nwn.deposit_fuel_test(
@@ -199,17 +203,17 @@ fun test_online_offline() {
 
         ts::return_shared(admin_acl);
         ts::return_shared(nwn);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
-
         nwn.online(&owner_cap, &clock);
 
         ts::return_shared(nwn);
+    };
+    ts::next_tx(&mut ts, user_a());
+    {
         ts::return_to_sender(&ts, owner_cap);
     };
 

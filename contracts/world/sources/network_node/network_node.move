@@ -471,6 +471,7 @@ public fun deposit_fuel_test(
     ctx: &mut TxContext,
 ) {
     assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
     nwn.fuel.deposit(type_id, volume, quantity, clock);
 }
 
@@ -483,5 +484,6 @@ public fun withdraw_fuel_test(
     ctx: &mut TxContext,
 ) {
     assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
     nwn.fuel.withdraw(quantity);
 }
