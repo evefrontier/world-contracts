@@ -1452,9 +1452,7 @@ fun offline_fail_by_unauthorized_owner() {
         5676576576,
     );
 
-    // B tries to offline A's storage unit fails
-    // Note: We need nwn_id here, but since this test expects failure, we'll use a dummy approach
-    // In a real scenario, we'd need to track nwn_id from create_storage_unit
+    // B tries to offline A's storage unit — this should fail due to missing authorization
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
