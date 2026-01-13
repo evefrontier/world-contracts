@@ -4,7 +4,7 @@ module world::assembly_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{AdminCap, OwnerCap},
+    access::{AdminCap, OwnerCap, AdminACL},
     assembly::{Self, Assembly},
     character::{Self, Character},
     energy::{Self, EnergyConfig},
@@ -182,24 +182,36 @@ fun test_online_offline() {
 
     // Deposit fuel to network node
     ts::next_tx(&mut ts, user_a());
+    let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+
+    ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
-        nwn.deposit_fuel(&owner_cap, FUEL_TYPE_ID, FUEL_VOLUME, 10, &clock);
+        nwn.deposit_fuel_test(
+            &admin_acl,
+            &owner_cap,
+            FUEL_TYPE_ID,
+            FUEL_VOLUME,
+            10,
+            &clock,
+            ts.ctx(),
+        );
 
+        ts::return_shared(admin_acl);
         ts::return_shared(nwn);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
-
         nwn.online(&owner_cap, &clock);
 
         ts::return_shared(nwn);
+    };
+    ts::next_tx(&mut ts, user_a());
+    {
         ts::return_to_sender(&ts, owner_cap);
     };
 

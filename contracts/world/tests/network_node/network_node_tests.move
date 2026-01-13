@@ -5,7 +5,7 @@ module world::network_node_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{AdminCap, OwnerCap},
+    access::{AdminCap, OwnerCap, AdminACL},
     assembly::{Self, Assembly},
     character::{Self, Character},
     energy::EnergyConfig,
@@ -157,11 +157,28 @@ fun do_deposit_fuel(
     sender: address,
 ) {
     ts::next_tx(ts, sender);
+    let nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
+    let owner_cap = get_owner_cap_for_network_node(ts, &nwn, sender);
+    ts::return_shared(nwn);
+
+    ts::next_tx(ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        let owner_cap = get_owner_cap_for_network_node(ts, &nwn, sender);
-        nwn.deposit_fuel(&owner_cap, FUEL_TYPE_ID, FUEL_VOLUME, quantity, clock);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
+        nwn.deposit_fuel_test(
+            &admin_acl,
+            &owner_cap,
+            FUEL_TYPE_ID,
+            FUEL_VOLUME,
+            quantity,
+            clock,
+            ts.ctx(),
+        );
+        ts::return_shared(admin_acl);
         ts::return_shared(nwn);
+    };
+    ts::next_tx(ts, sender);
+    {
         ts::return_to_sender(ts, owner_cap);
     };
 }
@@ -274,16 +291,22 @@ fun withdraw_fuel() {
     do_deposit_fuel(&mut ts, nwn_id, 10, &clock, user_a());
 
     ts::next_tx(&mut ts, user_a());
+    let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+
+    ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
-        nwn.withdraw_fuel(&owner_cap, 5);
+        nwn.withdraw_fuel_test(&admin_acl, &owner_cap, 5, ts.ctx());
         assert_eq!(nwn.fuel().quantity(), 5);
 
+        ts::return_shared(admin_acl);
         ts::return_shared(nwn);
-        ts::return_to_sender(&ts, owner_cap);
     };
+
+    ts::next_tx(&mut ts, user_a());
+    ts::return_to_sender(&ts, owner_cap);
 
     clock.destroy_for_testing();
     ts::end(ts);
