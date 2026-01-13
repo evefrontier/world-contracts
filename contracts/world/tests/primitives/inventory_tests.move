@@ -5,10 +5,11 @@ use std::{bcs, string::utf8, unit_test::assert_eq};
 use sui::{dynamic_field as df, test_scenario as ts};
 use world::{
     access::{AdminCap, ServerAddressRegistry},
-    character::{Self, Character, CharacterRegistry},
+    character::{Self, Character},
     in_game_id,
     inventory::{Self, Inventory},
     location::{Self, Location},
+    object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus},
     test_helpers::{Self, governor, admin, user_a, user_b, server_admin, tenant}
 };
@@ -37,7 +38,7 @@ fun create_character_for_user_a(ts: &mut ts::Scenario): ID {
     ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
         // Create character with item_id = 1
         let character = character::create_character(
             &mut registry,
@@ -61,7 +62,7 @@ fun create_character_for_user_b(ts: &mut ts::Scenario): ID {
     ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
         // Create character with item_id = 2
         let character = character::create_character(
             &mut registry,

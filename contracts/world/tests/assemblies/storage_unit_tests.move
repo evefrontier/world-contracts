@@ -5,12 +5,13 @@ use sui::{clock, derived_object, test_scenario as ts};
 use world::{
     access::{OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
     assembly::AssemblyRegistry,
-    character::{Self, Character, CharacterRegistry},
+    character::{Self, Character},
     energy::EnergyConfig,
     fuel::FuelConfig,
     in_game_id,
     inventory::Item,
     network_node::{Self, NetworkNode, NetworkNodeRegistry},
+    object_registry::ObjectRegistry,
     storage_unit::{Self, StorageUnit},
     test_helpers::{Self, governor, admin, user_a, user_b, tenant}
 };
@@ -303,7 +304,7 @@ fun create_character_with_tenant(
     ts::next_tx(ts, admin());
     let character_id = {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,

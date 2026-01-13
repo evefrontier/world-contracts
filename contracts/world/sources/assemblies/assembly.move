@@ -11,6 +11,7 @@ use world::{
     location::{Self, Location},
     metadata::{Self, Metadata},
     network_node::{NetworkNode, OfflineAssemblies},
+    object_registry::{Self, ObjectRegistry},
     status::{Self, AssemblyStatus}
 };
 

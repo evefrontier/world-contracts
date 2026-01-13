@@ -6,9 +6,10 @@ use sui::test_scenario as ts;
 use world::{
     access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly, AssemblyRegistry},
-    character::{Self, Character, CharacterRegistry},
+    character::{Self, Character},
     metadata,
     network_node::{Self, NetworkNode, NetworkNodeRegistry},
+    object_registry::ObjectRegistry,
     test_helpers::{Self, admin, governor, user_a, user_b, tenant}
 };
 
@@ -37,7 +38,7 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
     {
         let character_id = {
             let admin_cap = ts::take_from_sender<AdminCap>(ts);
-            let mut registry = ts::take_shared<CharacterRegistry>(ts);
+            let mut registry = ts::take_shared<ObjectRegistry>(ts);
             let character = character::create_character(
                 &mut registry,
                 &admin_cap,
