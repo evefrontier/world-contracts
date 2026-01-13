@@ -157,12 +157,9 @@ fun do_deposit_fuel(
     sender: address,
 ) {
     ts::next_tx(ts, sender);
-    let owner_cap = {
-        let nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        let owner_cap = get_owner_cap_for_network_node(ts, &nwn, sender);
-        ts::return_shared(nwn);
-        owner_cap
-    };
+    let nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
+    let owner_cap = get_owner_cap_for_network_node(ts, &nwn, sender);
+    ts::return_shared(nwn);
 
     ts::next_tx(ts, admin());
     {

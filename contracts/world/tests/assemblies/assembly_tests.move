@@ -182,10 +182,8 @@ fun test_online_offline() {
 
     // Deposit fuel to network node
     ts::next_tx(&mut ts, user_a());
-    let owner_cap = {
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
-        owner_cap
-    };
+    let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
