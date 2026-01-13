@@ -10,14 +10,12 @@ const CLOCK_OBJECT_ID = "0x6";
 const NETWORK_NODE_OBJECT_ID = "0x24e93560b47cd5e8fa8ea532859bc415fa7426f9b5267c8623dacec67d56e175";
 const OWNER_CAP_OBJECT_ID = "0x62deeaf9f6fce5e2b115aa054e6f0a7087cc0bf641dd4a61545ce087e1c1ffab";
 const FUEL_TYPE_ID = 8461n;
-const FUEL_VOLUME = 1n;
 const FUEL_QUANTITY = 2n;
 
 async function depositFuel(
     networkNodeId: string,
     ownerCapId: string,
     typeId: bigint,
-    volume: bigint,
     quantity: bigint,
     client: SuiClient,
     keypair: Ed25519Keypair,
@@ -33,7 +31,6 @@ async function depositFuel(
             tx.object(networkNodeId),
             tx.object(ownerCapId),
             tx.pure.u64(typeId),
-            tx.pure.u64(volume),
             tx.pure.u64(quantity),
             tx.object(CLOCK_OBJECT_ID),
         ],
@@ -72,7 +69,6 @@ async function main() {
             NETWORK_NODE_OBJECT_ID,
             OWNER_CAP_OBJECT_ID,
             FUEL_TYPE_ID,
-            FUEL_VOLUME,
             FUEL_QUANTITY,
             client,
             keypair,

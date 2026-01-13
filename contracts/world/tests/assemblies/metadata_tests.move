@@ -12,7 +12,6 @@ use world::{
     test_helpers::{Self, admin, governor, user_a, user_b, tenant}
 };
 
-const VOLUME: u64 = 10000;
 const ITEM_ID: u64 = 1001;
 const LOCATION_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
@@ -72,7 +71,6 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
         &admin_cap,
         NWN_ITEM_ID,
         NWN_TYPE_ID,
-        VOLUME,
         LOCATION_HASH,
         FUEL_MAX_CAPACITY,
         FUEL_BURN_RATE_IN_MS,
@@ -103,7 +101,6 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, owner: address, item_id: 
         &admin_cap,
         item_id,
         TYPE_ID,
-        VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );

@@ -134,7 +134,6 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
             &admin_cap,
             NWN_ITEM_ID,
             NWN_TYPE_ID,
-            1000, // volume
             LOCATION_A_HASH,
             FUEL_MAX_CAPACITY,
             FUEL_BURN_RATE_IN_MS,

@@ -9,7 +9,6 @@ import { hexToBytes } from "../utils/helper";
 
 const ASSEMBLY_TYPE_ID = 55557n;
 const ASSEMBLY_ITEM_ID = BigInt(Math.floor(Math.random() * 7) + 7);
-const VOLUME = 10;
 const LOCATION_HASH = "0x16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049";
 const CHARACTER_OBJECT_ID = "0x50186a768934da5d173112e202d7d40a474a91aec2df7a724cfd073715afe13a";
 const NETWORK_NODE_OBJECT_ID = "0x24e93560b47cd5e8fa8ea532859bc415fa7426f9b5267c8623dacec67d56e175";
@@ -34,7 +33,6 @@ async function createAssembly(
             tx.object(config.adminCapObjectId),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
-            tx.pure.u64(VOLUME),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
         ],
     });

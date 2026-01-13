@@ -20,7 +20,6 @@ const LOCATION_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const NWN_TYPE_ID: u64 = 111000;
 const NWN_ITEM_ID: u64 = 5000;
-const VOLUME: u64 = 1000;
 const STATUS_ONLINE: u8 = 1;
 const STATUS_OFFLINE: u8 = 2;
 const FUEL_MAX_CAPACITY: u64 = 1000;
@@ -87,7 +86,6 @@ fun create_network_node(
         &admin_cap,
         item_id,
         NWN_TYPE_ID,
-        VOLUME,
         LOCATION_HASH,
         FUEL_MAX_CAPACITY,
         burn_rate_in_seconds,
@@ -117,7 +115,6 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, item_id: u64): ID {
         &admin_cap,
         item_id,
         TYPE_ID,
-        VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );
@@ -698,7 +695,6 @@ fun anchor_invalid_type_id() {
             &admin_cap,
             NWN_ITEM_ID,
             0, // Invalid Type ID
-            VOLUME,
             LOCATION_HASH,
             FUEL_MAX_CAPACITY,
             FUEL_BURN_RATE_IN_MS,
@@ -733,7 +729,6 @@ fun anchor_invalid_item_id() {
             &admin_cap,
             0, // Invalid Item ID
             NWN_TYPE_ID,
-            VOLUME,
             LOCATION_HASH,
             FUEL_MAX_CAPACITY,
             FUEL_BURN_RATE_IN_MS,

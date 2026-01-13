@@ -34,12 +34,12 @@ public struct AssemblyRegistry has key {
     id: UID,
 }
 
+// TODO: find a elegant way to decouple the common fields across all structs
 public struct Assembly has key {
     id: UID,
     key: TenantItemId,
     owner_cap_id: ID,
     type_id: u64,
-    volume: u64,
     status: AssemblyStatus,
     location: Location,
     energy_source_id: ID,
@@ -52,7 +52,6 @@ public struct AssemblyCreatedEvent has copy, drop {
     key: TenantItemId,
     owner_cap_id: ID,
     type_id: u64,
-    volume: u64,
 }
 
 fun init(ctx: &mut TxContext) {
@@ -107,7 +106,6 @@ public fun anchor(
     admin_cap: &AdminCap,
     item_id: u64,
     type_id: u64,
-    volume: u64,
     location_hash: vector<u8>,
     ctx: &mut TxContext,
 ): Assembly {
@@ -136,7 +134,6 @@ public fun anchor(
         key: assembly_key,
         owner_cap_id,
         type_id,
-        volume,
         status: status::anchor(assembly_id, type_id, item_id),
         location: location::attach(assembly_id, location_hash),
         energy_source_id: network_node_id,
@@ -159,7 +156,6 @@ public fun anchor(
         key: assembly_key,
         owner_cap_id,
         type_id,
-        volume,
     });
     assembly
 }
