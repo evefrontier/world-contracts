@@ -10,7 +10,7 @@ module world::network_node;
 
 use sui::{clock::Clock, derived_object, event};
 use world::{
-    access::{Self, OwnerCap, AdminCap},
+    access::{Self, OwnerCap, AdminCap, AdminACL},
     character::Character,
     energy::{Self, EnergySource},
     fuel::{Self, FuelConfig, Fuel},
@@ -37,6 +37,10 @@ const EAssemblyNotConnected: vector<u8> = b"Assembly is not connected to this ne
 const EAssembliesConnected: vector<u8> = b"Assemblies needs to be disconnected before unanchor";
 #[error(code = 7)]
 const ENetworkNodeOffline: vector<u8> = b"Network Node is offline";
+#[error(code = 8)]
+const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
+#[error(code = 9)]
+const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
 
 // === Structs ===
 public struct NetworkNodeRegistry has key {
@@ -77,18 +81,34 @@ public struct NetworkNodeCreatedEvent has copy, drop {
 // === Public Functions ===
 public fun deposit_fuel(
     nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
     owner_cap: &OwnerCap<NetworkNode>,
     type_id: u64,
     volume: u64,
     quantity: u64,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
     assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    let sponsor_opt = tx_context::sponsor(ctx);
+    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
+    let sponsor = *option::borrow(&sponsor_opt);
+    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
     nwn.fuel.deposit(type_id, volume, quantity, clock);
 }
 
-public fun withdraw_fuel(nwn: &mut NetworkNode, owner_cap: &OwnerCap<NetworkNode>, quantity: u64) {
+public fun withdraw_fuel(
+    nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
+    owner_cap: &OwnerCap<NetworkNode>,
+    quantity: u64,
+    ctx: &mut TxContext,
+) {
     assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    let sponsor_opt = tx_context::sponsor(ctx);
+    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
+    let sponsor = *option::borrow(&sponsor_opt);
+    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
     nwn.fuel.withdraw(quantity);
 }
 
@@ -437,4 +457,31 @@ public fun energy(network_node: &NetworkNode): &EnergySource {
 #[test_only]
 public fun status(network_node: &NetworkNode): &AssemblyStatus {
     &network_node.status
+}
+
+#[test_only]
+public fun deposit_fuel_test(
+    nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
+    owner_cap: &OwnerCap<NetworkNode>,
+    type_id: u64,
+    volume: u64,
+    quantity: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    nwn.fuel.deposit(type_id, volume, quantity, clock);
+}
+
+#[test_only]
+public fun withdraw_fuel_test(
+    nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
+    owner_cap: &OwnerCap<NetworkNode>,
+    quantity: u64,
+    ctx: &mut TxContext,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    nwn.fuel.withdraw(quantity);
 }

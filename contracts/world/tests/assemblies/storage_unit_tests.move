@@ -195,7 +195,17 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nw
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
         let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(ts);
-        nwn.deposit_fuel(&owner_cap, FUEL_TYPE_ID, FUEL_VOLUME, 10, &clock);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
+        nwn.deposit_fuel_test(
+            &admin_acl,
+            &owner_cap,
+            FUEL_TYPE_ID,
+            FUEL_VOLUME,
+            10,
+            &clock,
+            ts.ctx(),
+        );
+        ts::return_shared(admin_acl);
         ts::return_shared(nwn);
         ts::return_to_sender(ts, owner_cap);
     };
@@ -1380,7 +1390,17 @@ fun online_fail_by_unauthorized_owner() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
-        nwn.deposit_fuel(&owner_cap, FUEL_TYPE_ID, FUEL_VOLUME, 10, &clock);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        nwn.deposit_fuel_test(
+            &admin_acl,
+            &owner_cap,
+            FUEL_TYPE_ID,
+            FUEL_VOLUME,
+            10,
+            &clock,
+            ts.ctx(),
+        );
+        ts::return_shared(admin_acl);
         ts::return_shared(nwn);
         ts::return_to_sender(&ts, owner_cap);
     };
@@ -1701,7 +1721,17 @@ fun test_game_to_chain_fail_network_node_offline() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
-        nwn.deposit_fuel(&owner_cap, FUEL_TYPE_ID, FUEL_VOLUME, 10, &clock);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        nwn.deposit_fuel_test(
+            &admin_acl,
+            &owner_cap,
+            FUEL_TYPE_ID,
+            FUEL_VOLUME,
+            10,
+            &clock,
+            ts.ctx(),
+        );
+        ts::return_shared(admin_acl);
         ts::return_shared(nwn);
         ts::return_to_sender(&ts, owner_cap);
     };
