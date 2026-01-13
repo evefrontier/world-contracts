@@ -58,10 +58,10 @@ const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
 #[error(code = 9)]
 const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
 #[error(code = 10)]
-const ENetworkNodeDoesNotExist: vector<u8> =
+const ENetworkNodeMismatch: vector<u8> =
     b"Provided network node does not match the storage unit's configured energy source";
 #[error(code = 11)]
-const EStorageUnitOnline: vector<u8> = b"Storage Unit should be offline";
+const EStorageUnitInvalidState: vector<u8> = b"Storage Unit should be offline";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -105,7 +105,7 @@ public fun online(
     owner_cap: &OwnerCap<StorageUnit>,
 ) {
     assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
-    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeMismatch);
     reserve_energy(storage_unit, network_node, energy_config);
 
     storage_unit.status.online();
@@ -120,7 +120,7 @@ public fun offline(
     assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
 
     // Verify network node matches the storage unit's energy source
-    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeMismatch);
     release_energy(storage_unit, network_node, energy_config);
 
     storage_unit.status.offline();
@@ -374,7 +374,7 @@ public fun update_energy_source(
 ) {
     let storage_unit_id = object::id(storage_unit);
     let nwn_id = object::id(network_node);
-    assert!(!storage_unit.status.is_online(), EStorageUnitOnline);
+    assert!(!storage_unit.status.is_online(), EStorageUnitInvalidState);
 
     network_node.connect_assembly(storage_unit_id);
     storage_unit.energy_source_id = nwn_id;
@@ -428,7 +428,7 @@ public fun unanchor(
         ..,
     } = storage_unit;
 
-    assert!(energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
+    assert!(energy_source_id == object::id(network_node), EStorageUnitInvalidState);
 
     // Release energy if storage unit is online
     if (status.is_online()) {
