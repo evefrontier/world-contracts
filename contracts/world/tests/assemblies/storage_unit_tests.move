@@ -68,7 +68,7 @@ public fun swap_ammo_for_lens_extension<T: key>(
     let lens = storage_unit.withdraw_item<SwapAuth>(
         character,
         SwapAuth {},
-        LENS_ITEM_ID,
+        LENS_TYPE_ID,
         ctx,
     );
 
@@ -88,7 +88,7 @@ public fun swap_ammo_for_lens_extension<T: key>(
         server_registry,
         owner_cap,
         character,
-        AMMO_ITEM_ID,
+        AMMO_TYPE_ID,
         proof_bytes,
         clock,
         ctx,
@@ -413,7 +413,7 @@ fun test_create_items_on_chain() {
         let used_capacity = (AMMO_QUANTITY as u64 * AMMO_VOLUME);
         assert_eq!(inv_ref.used_capacity(), used_capacity);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
-        assert_eq!(inv_ref.item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert_eq!(inv_ref.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
         assert_eq!(inv_ref.inventory_item_length(), 1);
         ts::return_shared(storage_unit);
     };
@@ -449,7 +449,7 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         let used_capacity = (AMMO_QUANTITY as u64 * AMMO_VOLUME);
         assert_eq!(inv_ref.used_capacity(), used_capacity);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY - used_capacity);
-        assert_eq!(inv_ref.item_quantity(AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert_eq!(inv_ref.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
         assert_eq!(inv_ref.inventory_item_length(), 1);
         ts::return_shared(storage_unit);
     };
@@ -469,7 +469,7 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
             &server_registry,
             &owner_cap,
             &character,
-            AMMO_ITEM_ID,
+            AMMO_TYPE_ID,
             AMMO_QUANTITY,
             proof_bytes,
             ts.ctx(),
@@ -623,7 +623,7 @@ fun test_deposit_and_withdraw_via_extension() {
             storage_unit.withdraw_item<SwapAuth>(
                 &character,
                 SwapAuth {},
-                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
                 ts.ctx(),
             );
         ts::return_shared(storage_unit);
@@ -640,7 +640,7 @@ fun test_deposit_and_withdraw_via_extension() {
             SwapAuth {},
             ts.ctx(),
         );
-        assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_TYPE_ID), AMMO_QUANTITY);
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
@@ -686,7 +686,7 @@ fun test_deposit_and_withdraw_by_owner() {
                 &server_registry,
                 &owner_cap,
                 &character,
-                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
                 proof_bytes,
                 &clock,
                 ts.ctx(),
@@ -723,7 +723,7 @@ fun test_deposit_and_withdraw_by_owner() {
         );
         ts::return_shared(character);
 
-        assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_ITEM_ID), AMMO_QUANTITY);
+        assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_TYPE_ID), AMMO_QUANTITY);
 
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
@@ -792,10 +792,10 @@ fun test_swap_ammo_for_lens() {
         assert_eq!(inv_ref_b.used_capacity(), used_capacity_b);
         assert_eq!(inv_ref_b.remaining_capacity(), MAX_CAPACITY - used_capacity_b);
 
-        assert_eq!(storage_unit.item_quantity(character_owner_cap_id, AMMO_ITEM_ID), AMMO_QUANTITY);
-        assert!(!storage_unit.contains_item(character_owner_cap_id, LENS_ITEM_ID));
-        assert_eq!(storage_unit.item_quantity(storage_owner_cap_id, LENS_ITEM_ID), LENS_QUANTITY);
-        assert!(!storage_unit.contains_item(storage_owner_cap_id, AMMO_ITEM_ID));
+        assert_eq!(storage_unit.item_quantity(character_owner_cap_id, AMMO_TYPE_ID), AMMO_QUANTITY);
+        assert!(!storage_unit.contains_item(character_owner_cap_id, LENS_TYPE_ID));
+        assert_eq!(storage_unit.item_quantity(storage_owner_cap_id, LENS_TYPE_ID), LENS_QUANTITY);
+        assert!(!storage_unit.contains_item(storage_owner_cap_id, AMMO_TYPE_ID));
 
         ts::return_shared(storage_unit);
     };
@@ -835,11 +835,11 @@ fun test_swap_ammo_for_lens() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        assert_eq!(storage_unit.item_quantity(character_owner_cap_id, LENS_ITEM_ID), LENS_QUANTITY);
-        assert!(!storage_unit.contains_item(character_owner_cap_id, AMMO_ITEM_ID));
+        assert_eq!(storage_unit.item_quantity(character_owner_cap_id, LENS_TYPE_ID), LENS_QUANTITY);
+        assert!(!storage_unit.contains_item(character_owner_cap_id, AMMO_TYPE_ID));
 
-        assert_eq!(storage_unit.item_quantity(storage_owner_cap_id, AMMO_ITEM_ID), AMMO_QUANTITY);
-        assert!(!storage_unit.contains_item(storage_owner_cap_id, LENS_ITEM_ID));
+        assert_eq!(storage_unit.item_quantity(storage_owner_cap_id, AMMO_TYPE_ID), AMMO_QUANTITY);
+        assert!(!storage_unit.contains_item(storage_owner_cap_id, LENS_TYPE_ID));
 
         ts::return_shared(storage_unit);
     };
@@ -961,7 +961,7 @@ fun test_withdraw_via_extension_fail_not_authorized() {
         let item = storage_unit.withdraw_item<SwapAuth>(
             &character,
             SwapAuth {},
-            AMMO_ITEM_ID,
+            AMMO_TYPE_ID,
             ts.ctx(),
         );
 
@@ -1016,7 +1016,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
                 &server_registry,
                 &owner_cap,
                 &character,
-                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
                 proof_bytes,
                 &clock,
                 ts.ctx(),
@@ -1091,7 +1091,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
             &server_registry,
             &owner_cap,
             &character_a,
-            AMMO_ITEM_ID,
+            AMMO_TYPE_ID,
             proof_bytes,
             &clock,
             ts.ctx(),
@@ -1157,7 +1157,7 @@ fun test_deposit_by_owner_fail_wrong_owner() {
                 &server_registry,
                 &owner_cap,
                 &character_a,
-                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
                 proof_bytes,
                 &clock,
                 ts.ctx(),
@@ -1319,7 +1319,7 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
             &server_registry,
             &owner_cap,
             &character_b,
-            LENS_ITEM_ID,
+            LENS_TYPE_ID,
             LENS_QUANTITY,
             proof_bytes,
             ts.ctx(),
@@ -1521,7 +1521,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
                 &server_registry,
                 &owner_cap,
                 &character,
-                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
                 proof_bytes,
                 &clock,
                 ts.ctx(),
@@ -1629,7 +1629,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
                 &server_registry,
                 &owner_cap,
                 &character,
-                AMMO_ITEM_ID,
+                AMMO_TYPE_ID,
                 proof_bytes,
                 &clock,
                 ts.ctx(),

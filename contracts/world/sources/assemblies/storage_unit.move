@@ -132,7 +132,7 @@ public fun chain_item_to_game_inventory<T: key>(
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
     clock: &Clock,
@@ -151,7 +151,7 @@ public fun chain_item_to_game_inventory<T: key>(
         server_registry,
         &storage_unit.location,
         location_proof,
-        item_id,
+        type_id,
         quantity,
         clock,
         ctx,
@@ -182,7 +182,7 @@ public fun withdraw_item<Auth: drop>(
     storage_unit: &mut StorageUnit,
     character: &Character,
     _: Auth,
-    item_id: u64,
+    type_id: u64,
     _: &mut TxContext,
 ): Item {
     assert!(
@@ -194,7 +194,7 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.owner_cap_id,
     );
 
-    inventory.withdraw_item(character, item_id)
+    inventory.withdraw_item(character, type_id)
 }
 
 public fun deposit_by_owner<T: key>(
@@ -239,7 +239,7 @@ public fun withdraw_by_owner<T: key>(
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
     proximity_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -261,7 +261,7 @@ public fun withdraw_by_owner<T: key>(
         owner_cap_id,
     );
 
-    inventory.withdraw_item(character, item_id)
+    inventory.withdraw_item(character, type_id)
 }
 
 // TODO: Can also have a transfer function for simplicity
@@ -568,15 +568,15 @@ public fun borrow_status_mut(storage_unit: &mut StorageUnit): &mut AssemblyStatu
 }
 
 #[test_only]
-public fun item_quantity(storage_unit: &StorageUnit, owner_cap_id: ID, item_id: u64): u32 {
+public fun item_quantity(storage_unit: &StorageUnit, owner_cap_id: ID, type_id: u64): u32 {
     let inventory = df::borrow<ID, Inventory>(&storage_unit.id, owner_cap_id);
-    inventory.item_quantity(item_id)
+    inventory.item_quantity(type_id)
 }
 
 #[test_only]
-public fun contains_item(storage_unit: &StorageUnit, owner_cap_id: ID, item_id: u64): bool {
+public fun contains_item(storage_unit: &StorageUnit, owner_cap_id: ID, type_id: u64): bool {
     let inventory = df::borrow<ID, Inventory>(&storage_unit.id, owner_cap_id);
-    inventory.contains_item(item_id)
+    inventory.contains_item(type_id)
 }
 
 #[test_only]
@@ -595,7 +595,7 @@ public fun chain_item_to_game_inventory_test<T: key>(
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
     ctx: &mut TxContext,
@@ -610,7 +610,7 @@ public fun chain_item_to_game_inventory_test<T: key>(
         server_registry,
         &storage_unit.location,
         location_proof,
-        item_id,
+        type_id,
         quantity,
         ctx,
     );
