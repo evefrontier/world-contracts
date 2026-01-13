@@ -9,7 +9,7 @@ use world::{
     character::{Self, Character},
     energy::{Self, EnergyConfig},
     location,
-    network_node::{Self, NetworkNode, NetworkNodeRegistry},
+    network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
     status,
     test_helpers::{Self, governor, admin, user_a, tenant, in_game_id}
@@ -76,12 +76,12 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
 fun create_network_node(ts: &mut ts::Scenario): ID {
     let character_id = create_character(ts, user_a(), 1);
     ts::next_tx(ts, admin());
-    let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let nwn = network_node::anchor(
-        &mut nwn_registry,
+        &mut registry,
         &character,
         &admin_cap,
         NWN_ITEM_ID,
@@ -97,7 +97,7 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
 
     ts::return_shared(character);
     ts::return_to_sender(ts, admin_cap);
-    ts::return_shared(nwn_registry);
+    ts::return_shared(registry);
     id
 }
 

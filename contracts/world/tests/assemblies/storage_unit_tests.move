@@ -9,7 +9,7 @@ use world::{
     fuel::FuelConfig,
     in_game_id,
     inventory::Item,
-    network_node::{Self, NetworkNode, NetworkNodeRegistry},
+    network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
     storage_unit::{Self, StorageUnit},
     test_helpers::{Self, governor, admin, user_a, user_b, tenant}
@@ -112,24 +112,24 @@ fun setup_nwn(ts: &mut ts::Scenario) {
 
 fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
     ts::next_tx(ts, admin());
-    let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     // Check if network node already exists
     let tenant = character.tenant();
     let nwn_key = in_game_id::create_key(NWN_ITEM_ID, tenant);
-    let id = if (network_node::nwn_exists(&nwn_registry, nwn_key)) {
+    let id = if (registry.object_exists(nwn_key)) {
         // Network node exists, derive its ID
         let nwn_addr = derived_object::derive_address(
-            object::id(&nwn_registry),
+            object::id(&registry),
             nwn_key,
         );
         object::id_from_address(nwn_addr)
     } else {
         // Network node doesn't exist, create it
         let nwn = network_node::anchor(
-            &mut nwn_registry,
+            &mut registry,
             &character,
             &admin_cap,
             NWN_ITEM_ID,
@@ -147,7 +147,7 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
 
     ts::return_shared(character);
     ts::return_to_sender(ts, admin_cap);
-    ts::return_shared(nwn_registry);
+    ts::return_shared(registry);
     id
 }
 

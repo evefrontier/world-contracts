@@ -17,6 +17,7 @@ use world::{
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
+    object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
 };
 
@@ -39,10 +40,6 @@ const EAssembliesConnected: vector<u8> = b"Assemblies needs to be disconnected b
 const ENetworkNodeOffline: vector<u8> = b"Network Node is offline";
 
 // === Structs ===
-public struct NetworkNodeRegistry has key {
-    id: UID,
-}
-
 /// Hot potato struct to enforce all connected assemblies are brought offline
 public struct OfflineAssemblies {
     assembly_ids: vector<ID>,
@@ -169,7 +166,7 @@ public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySour
 
 // === Admin Functions ===
 public fun anchor(
-    nwn_registry: &mut NetworkNodeRegistry,
+    registry: &mut ObjectRegistry,
     character: &Character,
     admin_cap: &AdminCap,
     item_id: u64,
@@ -185,9 +182,9 @@ public fun anchor(
 
     let tenant = character.tenant();
     let nwn_key = in_game_id::create_key(item_id, tenant);
-    assert!(!nwn_exists(nwn_registry, nwn_key), ENetworkNodeAlreadyExists);
+    assert!(!registry.object_exists(nwn_key), ENetworkNodeAlreadyExists);
 
-    let nwn_uid = derived_object::claim(&mut nwn_registry.id, nwn_key);
+    let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);
     let nwn_id = object::uid_to_inner(&nwn_uid);
 
     let owner_cap_id = access::create_and_transfer_owner_cap<NetworkNode>(
@@ -380,10 +377,6 @@ public(package) fun disconnect_assembly(nwn: &mut NetworkNode, assembly_id: ID) 
     assert!(found, EAssemblyNotConnected);
 }
 
-public(package) fun nwn_exists(registry: &NetworkNodeRegistry, key: TenantItemId): bool {
-    derived_object::exists(&registry.id, key)
-}
-
 // === Private Functions ===
 /// Creates a copy of the connected assembly IDs vector
 fun copy_connected_assembly_ids(nwn: &NetworkNode): vector<ID> {
@@ -406,19 +399,7 @@ fun disconnect_assemblies(nwn: &mut NetworkNode, assembly_ids: vector<ID>) {
         i = i + 1;
     };
 }
-
-fun init(ctx: &mut TxContext) {
-    transfer::share_object(NetworkNodeRegistry {
-        id: object::new(ctx),
-    });
-}
-
 // === Test Functions ===
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
-}
-
 #[test_only]
 public fun fuel(network_node: &NetworkNode): &Fuel {
     &network_node.fuel
