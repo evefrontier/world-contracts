@@ -428,7 +428,7 @@ public fun unanchor(
         ..,
     } = storage_unit;
 
-    assert!(energy_source_id == object::id(network_node), EStorageUnitInvalidState);
+    assert!(energy_source_id == object::id(network_node), ENetworkNodeMismatch);
 
     // Release energy if storage unit is online
     if (status.is_online()) {
