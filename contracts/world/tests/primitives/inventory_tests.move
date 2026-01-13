@@ -525,43 +525,6 @@ fun create_assembly_fail_on_empty_capacity() {
     ts::end(ts);
 }
 
-/// Tests that minting items with empty item_id fails
-/// Scenario: Attempt to mint items with item_id = 0
-/// Expected: Transaction aborts with EItemIdEmpty error
-#[test]
-#[expected_failure(abort_code = inventory::EItemIdEmpty)]
-fun mint_items_fail_empty_item_id() {
-    let mut ts = ts::begin(governor());
-    test_helpers::setup_world(&mut ts);
-    let character_id = create_character_for_user_a(&mut ts);
-    create_storage_unit(&mut ts, character_id);
-    online(&mut ts);
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let inventory = df::borrow_mut<ID, Inventory>(
-            &mut storage_unit.id,
-            character_id,
-        );
-
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        inventory.mint_items(
-            &character,
-            tenant(),
-            0,
-            AMMO_TYPE_ID,
-            AMMO_VOLUME,
-            AMMO_QUANTITY,
-            LOCATION_A_HASH,
-            ts.ctx(),
-        );
-        ts::return_shared(character);
-        ts::return_shared(storage_unit);
-    };
-    ts::end(ts);
-}
-
 /// Tests that minting items with empty type_id fails
 /// Scenario: Attempt to mint items with type_id = 0
 /// Expected: Transaction aborts with ETypeIdEmpty error

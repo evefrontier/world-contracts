@@ -150,7 +150,6 @@ public(package) fun mint_items(
     location_hash: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    assert!(item_id != 0, EItemIdEmpty);
     assert!(type_id != 0, ETypeIdEmpty);
 
     if (inventory.items.contains(&item_id)) {
