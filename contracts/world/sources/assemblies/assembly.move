@@ -11,7 +11,7 @@ use world::{
     location::{Self, Location},
     metadata::{Self, Metadata},
     network_node::{NetworkNode, OfflineAssemblies},
-    object_registry::{Self, ObjectRegistry},
+    object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
 };
 
@@ -31,10 +31,6 @@ const ENetworkNodeDoesNotExist: vector<u8> =
 const EAssemblyOnline: vector<u8> = b"Assembly should be offline";
 
 // === Structs ===
-public struct AssemblyRegistry has key {
-    id: UID,
-}
-
 // TODO: find a elegant way to decouple the common fields across all structs
 public struct Assembly has key {
     id: UID,
@@ -53,12 +49,6 @@ public struct AssemblyCreatedEvent has copy, drop {
     key: TenantItemId,
     owner_cap_id: ID,
     type_id: u64,
-}
-
-fun init(ctx: &mut TxContext) {
-    transfer::share_object(AssemblyRegistry {
-        id: object::new(ctx),
-    });
 }
 
 // === Public Functions ===
@@ -101,7 +91,7 @@ public fun owner_cap_id(assembly: &Assembly): ID {
 
 // === Admin Functions ===
 public fun anchor(
-    assembly_registry: &mut AssemblyRegistry,
+    registry: &mut ObjectRegistry,
     network_node: &mut NetworkNode,
     character: &Character,
     admin_cap: &AdminCap,
@@ -116,9 +106,9 @@ public fun anchor(
     let tenant = character.tenant();
     // key to derive assembly object id
     let assembly_key = in_game_id::create_key(item_id, tenant);
-    assert!(!assembly_exists(assembly_registry, assembly_key), EAssemblyAlreadyExists);
+    assert!(!registry.object_exists(assembly_key), EAssemblyAlreadyExists);
 
-    let assembly_uid = derived_object::claim(&mut assembly_registry.id, assembly_key);
+    let assembly_uid = derived_object::claim(registry.borrow_registry_id(), assembly_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
     let network_node_id = object::id(network_node);
 
@@ -242,16 +232,7 @@ public fun unanchor(
     // however right now according to game design you cannot anchor after unanchor so its safe
     id.delete();
     // In future we can do
-    // derived_object::reclaim(&mut assembly_registry, id);
-}
-
-// === Package Functions ===
-public(package) fun borrow_registry_id(registry: &mut AssemblyRegistry): &mut UID {
-    &mut registry.id
-}
-
-public(package) fun assembly_exists(registry: &AssemblyRegistry, key: TenantItemId): bool {
-    derived_object::exists(&registry.id, key)
+    // derived_object::reclaim(&mut registry, id);
 }
 
 // === Private Functions ===
@@ -290,11 +271,6 @@ fun release_energy_by_type(
             energy_config,
             type_id,
         );
-}
-
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
 }
 
 #[test_only]

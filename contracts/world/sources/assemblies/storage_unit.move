@@ -24,7 +24,6 @@ use std::type_name::{Self, TypeName};
 use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     access::{Self, OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
-    assembly::{Self, AssemblyRegistry},
     character::Character,
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
@@ -32,6 +31,7 @@ use world::{
     location::{Self, Location},
     metadata::{Self, Metadata},
     network_node::{NetworkNode, OfflineAssemblies},
+    object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus, Status}
 };
 
@@ -285,7 +285,7 @@ public fun owner_cap_id(storage_unit: &StorageUnit): ID {
 
 // === Admin Functions ===
 public fun anchor(
-    assembly_registry: &mut AssemblyRegistry,
+    registry: &mut ObjectRegistry,
     network_node: &mut NetworkNode,
     character: &Character,
     admin_cap: &AdminCap,
@@ -299,13 +299,9 @@ public fun anchor(
     assert!(item_id != 0, EStorageUnitItemIdEmpty);
 
     let storage_unit_key = in_game_id::create_key(item_id, character.tenant());
-    assert!(
-        !assembly::assembly_exists(assembly_registry, storage_unit_key),
-        EStorageUnitAlreadyExists,
-    );
+    assert!(!registry.object_exists(storage_unit_key), EStorageUnitAlreadyExists);
 
-    let registry_id = assembly::borrow_registry_id(assembly_registry);
-    let assembly_uid = derived_object::claim(registry_id, storage_unit_key);
+    let assembly_uid = derived_object::claim(registry.borrow_registry_id(), storage_unit_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
     let network_node_id = object::id(network_node);
 

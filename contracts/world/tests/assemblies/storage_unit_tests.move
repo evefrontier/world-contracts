@@ -4,7 +4,6 @@ use std::{bcs, string::{utf8, String}, unit_test::assert_eq};
 use sui::{clock, derived_object, test_scenario as ts};
 use world::{
     access::{OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
-    assembly::AssemblyRegistry,
     character::{Self, Character},
     energy::EnergyConfig,
     fuel::FuelConfig,
@@ -161,13 +160,13 @@ fun create_storage_unit(
 ): (ID, ID) {
     let nwn_id = create_network_node(ts, character_id);
     ts::next_tx(ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let storage_unit_id = {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let storage_unit = storage_unit::anchor(
-            &mut assembly_registry,
+            &mut registry,
             &mut nwn,
             &character,
             &admin_cap,
@@ -183,7 +182,7 @@ fun create_storage_unit(
         storage_unit_id
     };
     ts::return_shared(character);
-    ts::return_shared(assembly_registry);
+    ts::return_shared(registry);
     ts::return_shared(nwn);
     (storage_unit_id, nwn_id)
 }

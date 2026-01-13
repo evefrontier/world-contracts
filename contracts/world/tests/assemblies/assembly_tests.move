@@ -5,7 +5,7 @@ use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     access::{AdminCap, OwnerCap},
-    assembly::{Self, Assembly, AssemblyRegistry},
+    assembly::{Self, Assembly},
     character::{Self, Character},
     energy::{Self, EnergyConfig},
     location,
@@ -14,6 +14,8 @@ use world::{
     status,
     test_helpers::{Self, governor, admin, user_a, tenant, in_game_id}
 };
+
+const CHARACTER_ITEM_ID: u32 = 2001;
 
 const MS_PER_SECOND: u64 = 1000;
 const LOCATION_HASH: vector<u8> =
@@ -101,20 +103,20 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
 
 // Helper to create assembly
 fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID): ID {
-    create_assembly_with_character(ts, nwn_id, (ITEM_ID as u32))
+    create_assembly_with_character(ts, nwn_id, (CHARACTER_ITEM_ID as u32))
 }
 
 // Helper to create assembly with specific character item_id
 fun create_assembly_with_character(ts: &mut ts::Scenario, nwn_id: ID, character_item_id: u32): ID {
     let character_id = create_character(ts, user_a(), character_item_id);
     ts::next_tx(ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let assembly = assembly::anchor(
-        &mut assembly_registry,
+        &mut registry,
         &mut nwn,
         &character,
         &admin_cap,
@@ -128,7 +130,7 @@ fun create_assembly_with_character(ts: &mut ts::Scenario, nwn_id: ID, character_
 
     ts::return_shared(character);
     ts::return_to_sender(ts, admin_cap);
-    ts::return_shared(assembly_registry);
+    ts::return_shared(registry);
     ts::return_shared(nwn);
     id
 }
@@ -143,9 +145,9 @@ fun test_anchor_assembly() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
-        assert!(assembly::assembly_exists(&assembly_registry, in_game_id(ITEM_ID)), 0);
-        ts::return_shared(assembly_registry);
+        let registry = ts::take_shared<ObjectRegistry>(&ts);
+        assert!(registry.object_exists(in_game_id(ITEM_ID)), 0);
+        ts::return_shared(registry);
     };
 
     ts::next_tx(&mut ts, admin());
@@ -252,13 +254,13 @@ fun test_unanchor() {
     let character_id = create_character(&mut ts, user_a(), 7);
 
     ts::next_tx(&mut ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
     let assembly = assembly::anchor(
-        &mut assembly_registry,
+        &mut registry,
         &mut nwn,
         &character,
         &admin_cap,
@@ -278,12 +280,12 @@ fun test_unanchor() {
 
     // As per implementation, derived object is not reclaimed, so assembly_exists should be true
     // but object is gone.
-    assert!(assembly::assembly_exists(&assembly_registry, in_game_id(ITEM_ID)), 0);
+    assert!(registry.object_exists(in_game_id(ITEM_ID)), 0);
 
     ts::return_shared(nwn);
     ts::return_shared(energy_config);
     ts::return_to_sender(&ts, admin_cap);
-    ts::return_shared(assembly_registry);
+    ts::return_shared(registry);
     ts::end(ts);
 }
 
@@ -298,12 +300,12 @@ fun test_anchor_duplicate_item_id() {
     let character_id = create_character(&mut ts, user_a(), 4);
 
     ts::next_tx(&mut ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
     let assembly1 = assembly::anchor(
-        &mut assembly_registry,
+        &mut registry,
         &mut nwn,
         &character,
         &admin_cap,
@@ -316,7 +318,7 @@ fun test_anchor_duplicate_item_id() {
 
     // Second anchor with same ITEM_ID should fail
     let assembly2 = assembly::anchor(
-        &mut assembly_registry,
+        &mut registry,
         &mut nwn,
         &character,
         &admin_cap,
@@ -329,7 +331,7 @@ fun test_anchor_duplicate_item_id() {
     assembly::share_assembly(assembly2, &admin_cap);
 
     ts::return_to_sender(&ts, admin_cap);
-    ts::return_shared(assembly_registry);
+    ts::return_shared(registry);
     ts::return_shared(nwn);
     ts::end(ts);
 }
@@ -345,13 +347,13 @@ fun test_anchor_invalid_type_id() {
     let character_id = create_character(&mut ts, user_a(), 5);
 
     ts::next_tx(&mut ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
     let assembly = assembly::anchor(
-        &mut assembly_registry,
+        &mut registry,
         &mut nwn,
         &character,
         &admin_cap,
@@ -364,7 +366,7 @@ fun test_anchor_invalid_type_id() {
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_to_sender(&ts, admin_cap);
-    ts::return_shared(assembly_registry);
+    ts::return_shared(registry);
     ts::return_shared(nwn);
     ts::end(ts);
 }
@@ -380,13 +382,13 @@ fun test_anchor_invalid_item_id() {
     let character_id = create_character(&mut ts, user_a(), 6);
 
     ts::next_tx(&mut ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(&ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
     let assembly = assembly::anchor(
-        &mut assembly_registry,
+        &mut registry,
         &mut nwn,
         &character,
         &admin_cap,
@@ -399,7 +401,7 @@ fun test_anchor_invalid_item_id() {
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_to_sender(&ts, admin_cap);
-    ts::return_shared(assembly_registry);
+    ts::return_shared(registry);
     ts::return_shared(nwn);
     ts::end(ts);
 }

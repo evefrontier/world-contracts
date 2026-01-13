@@ -6,7 +6,7 @@ use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     access::{AdminCap, OwnerCap},
-    assembly::{Self, Assembly, AssemblyRegistry},
+    assembly::{Self, Assembly},
     character::{Self, Character},
     energy::EnergyConfig,
     fuel::{Self, FuelConfig},
@@ -36,6 +36,7 @@ const TYPE_ID: u64 = 8888;
 const ITEM_ID_1: u64 = 1001;
 const ITEM_ID_2: u64 = 1002;
 const ASSEMBLY_ENERGY_REQUIRED: u64 = 50; // Energy required for TYPE_ID 8888
+const CHARACTER_ITEM_ID_OFFSET: u32 = 10000;
 
 // Helper Functions
 fun setup(ts: &mut ts::Scenario) {
@@ -103,14 +104,15 @@ fun create_network_node(
 }
 
 fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, item_id: u64): ID {
-    let character_id = create_character(ts, user_a(), (item_id as u32));
+    let character_item_id = (item_id as u32) + CHARACTER_ITEM_ID_OFFSET;
+    let character_id = create_character(ts, user_a(), character_item_id);
     ts::next_tx(ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
     let assembly = assembly::anchor(
-        &mut assembly_registry,
+        &mut registry,
         &mut nwn,
         &character,
         &admin_cap,
@@ -124,7 +126,7 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, item_id: u64): ID {
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_to_sender(ts, admin_cap);
-    ts::return_shared(assembly_registry);
+    ts::return_shared(registry);
     ts::return_shared(nwn);
     id
 }

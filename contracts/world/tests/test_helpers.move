@@ -5,7 +5,6 @@ use std::string::String;
 use sui::test_scenario as ts;
 use world::{
     access::{Self, AdminCap, ServerAddressRegistry, AdminACL},
-    assembly,
     energy::{Self, EnergyConfig},
     fuel::{Self, FuelConfig},
     in_game_id::{Self, TenantItemId},
@@ -102,7 +101,6 @@ public fun setup_world(ts: &mut ts::Scenario) {
         world::init_for_testing(ts.ctx());
         access::init_for_testing(ts.ctx());
         object_registry::init_for_testing(ts.ctx());
-        assembly::init_for_testing(ts.ctx());
         fuel::init_for_testing(ts.ctx());
         energy::init_for_testing(ts.ctx());
         network_node::init_for_testing(ts.ctx());
