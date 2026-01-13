@@ -7,6 +7,7 @@ use world::{
     assembly::AssemblyRegistry,
     character::{Self, Character, CharacterRegistry},
     energy::EnergyConfig,
+    fuel::FuelConfig,
     in_game_id,
     inventory::Item,
     network_node::{Self, NetworkNode, NetworkNodeRegistry},
@@ -1676,5 +1677,125 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
+    ts::end(ts);
+}
+
+/// Test that game_to_chain operation fails when network node is not burning and not online
+/// Scenario: Network node goes offline (not burning, not online), which brings storage unit offline
+/// Expected: Transaction aborts with ENotOnline error when trying to mint items
+#[test]
+#[expected_failure(abort_code = storage_unit::ENotOnline)]
+fun test_game_to_chain_fail_network_node_offline() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+
+    let clock = clock::create_for_testing(ts.ctx());
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        nwn.deposit_fuel(&owner_cap, FUEL_TYPE_ID, FUEL_VOLUME, 10, &clock);
+        ts::return_shared(nwn);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        nwn.online(&owner_cap, &clock);
+        ts::return_shared(nwn);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        storage_unit.online(&mut nwn, &energy_config, &owner_cap);
+        ts::return_shared(storage_unit);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Take network node offline (stops burning, not online)
+    // This also brings the storage unit offline through the hot potato mechanism
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        let fuel_config = ts::take_shared<FuelConfig>(&ts);
+        let mut offline_assemblies = nwn.offline(&fuel_config, &owner_cap, &clock);
+
+        // Process the storage unit to bring it offline
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        offline_assemblies =
+            storage_unit.offline_connected_storage_unit(
+                offline_assemblies,
+                &mut nwn,
+                &energy_config,
+            );
+        network_node::destroy_offline_assemblies(offline_assemblies);
+
+        ts::return_shared(storage_unit);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(fuel_config);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    // Verify network node is offline and not burning
+    ts::next_tx(&mut ts, admin());
+    {
+        let nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        assert!(!network_node::is_network_node_online(&nwn), 1);
+        assert!(!nwn.fuel().is_burning(), 2);
+        ts::return_shared(nwn);
+    };
+
+    // Try to call game_item_to_chain_inventory_test when network node is offline and not burning
+    // This should fail because the storage unit is offline (brought offline when network node went offline)
+    ts::next_tx(&mut ts, user_a());
+    let owner_cap = {
+        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        owner_cap
+    };
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+
+        // This should fail because storage unit is offline (network node is offline and not burning)
+        storage_unit.game_item_to_chain_inventory_test<StorageUnit>(
+            &admin_acl,
+            &owner_cap,
+            &character,
+            AMMO_ITEM_ID,
+            AMMO_TYPE_ID,
+            AMMO_VOLUME,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        ts::return_shared(admin_acl);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    clock.destroy_for_testing();
     ts::end(ts);
 }
