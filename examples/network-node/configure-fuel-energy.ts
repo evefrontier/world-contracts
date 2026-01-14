@@ -2,8 +2,8 @@ import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { getConfig, MODULES, Network } from "../utils/config";
-import { createClient, keypairFromPrivateKey } from "../utils/client";
+import { getConfig, MODULES } from "../utils/config";
+import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 const FUEL_TYPE_IDS = parseBigIntArray(process.env.FUEL_TYPE_IDS);
 const FUEL_EFFICIENCIES = parseBigIntArray(process.env.FUEL_EFFICIENCIES);
@@ -95,22 +95,9 @@ async function main() {
     console.log("============= Configure Fuel and Energy example ==============\n");
 
     try {
-        const network = (process.env.SUI_NETWORK as Network) || "localnet";
-        const exportedKey = process.env.PRIVATE_KEY;
-
-        if (!exportedKey) {
-            throw new Error(
-                "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-            );
-        }
-
-        const client = createClient(network);
-        const keypair = keypairFromPrivateKey(exportedKey);
-        const config = getConfig(network);
-
-        const adminAddress = keypair.getPublicKey().toSuiAddress();
-        console.log("Network:", network);
-        console.log("Admin address:", adminAddress);
+        const env = getEnvConfig();
+        const ctx = initializeContext(env.network, env.exportedKey);
+        const { client, keypair, config } = ctx;
 
         // Configure fuel efficiencies
         if (FUEL_TYPE_IDS.length > 0 && FUEL_EFFICIENCIES.length > 0) {
@@ -156,12 +143,7 @@ async function main() {
             console.log("\nNo energy configurations provided. Skipping energy setup.");
         }
     } catch (error) {
-        console.error("\n=== Error ===");
-        console.error("Error:", error instanceof Error ? error.message : error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack:", error.stack);
-        }
-        process.exit(1);
+        handleError(error);
     }
 }
 

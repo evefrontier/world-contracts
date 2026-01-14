@@ -3,10 +3,10 @@ import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { getConfig, MODULES, Network } from "../utils/config";
-import { createClient, keypairFromPrivateKey } from "../utils/client";
+import { getConfig, MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { NWN_ITEM_ID, ASSEMBLY_ITEM_ID } from "../utils/constants";
+import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 export async function online(
     networkObjectId: string,
@@ -80,19 +80,9 @@ export async function getOwnerCap(
 
 async function main() {
     try {
-        const network = (process.env.SUI_NETWORK as Network) || "localnet";
-        const exportedKey = process.env.PLAYER_A_PRIVATE_KEY || process.env.PRIVATE_KEY;
-
-        if (!exportedKey) {
-            throw new Error(
-                "PLAYER_A_PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-            );
-        }
-
-        const client = createClient(network);
-        const keypair = keypairFromPrivateKey(exportedKey);
-        const config = getConfig(network);
-        const playerAddress = keypair.getPublicKey().toSuiAddress();
+        const env = getEnvConfig();
+        const ctx = initializeContext(env.network, env.playerExportedKey!);
+        const { client, keypair, config } = ctx;
 
         let networkNodeObject = deriveObjectId(
             config.objectRegistry,
@@ -106,19 +96,14 @@ async function main() {
             config.packageId
         );
 
-        let assemblyOwnerCap = await getOwnerCap(assemblyObject, client, config, playerAddress);
+        let assemblyOwnerCap = await getOwnerCap(assemblyObject, client, config, env.playerAddress);
         if (!assemblyOwnerCap) {
             throw new Error(`OwnerCap not found for ${assemblyObject}`);
         }
 
         await online(networkNodeObject, assemblyObject, assemblyOwnerCap, client, keypair, config);
     } catch (error) {
-        console.error("\n=== Error ===");
-        console.error("Error:", error instanceof Error ? error.message : error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack:", error.stack);
-        }
-        process.exit(1);
+        handleError(error);
     }
 }
 

@@ -1,11 +1,10 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { bcs } from "@mysten/sui/bcs";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { getConfig, MODULES, Network } from "../utils/config";
-import { createClient, keypairFromPrivateKey } from "../utils/client";
+import { getConfig, MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
+import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import {
     GAME_CHARACTER_ID,
     STORAGE_A_ITEM_ID,
@@ -90,22 +89,12 @@ async function gameItemToChain(
 
 async function main() {
     try {
-        const network = (process.env.SUI_NETWORK as Network) || "localnet";
-        const exportedKey = process.env.PRIVATE_KEY;
-        const playerExportedKey = process.env.PLAYER_A_PRIVATE_KEY || exportedKey;
+        const env = getEnvConfig();
+        const ctx = initializeContext(env.network, env.exportedKey);
+        const playerCtx = initializeContext(env.network, env.playerExportedKey!);
+        const { client, keypair, config } = ctx;
 
-        if (!exportedKey || !playerExportedKey) {
-            throw new Error(
-                "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-            );
-        }
-
-        const client = createClient(network);
-        const keypair = keypairFromPrivateKey(exportedKey);
-        const playerKeypair = keypairFromPrivateKey(playerExportedKey);
-        const config = getConfig(network);
-
-        const playerAddress = playerKeypair.getPublicKey().toSuiAddress();
+        const playerAddress = playerCtx.address;
         const adminAddress = keypair.getPublicKey().toSuiAddress();
 
         let characterObject = deriveObjectId(
@@ -136,17 +125,12 @@ async function main() {
             10,
             adminAddress,
             client,
-            playerKeypair,
+            playerCtx.keypair,
             keypair,
             config
         );
     } catch (error) {
-        console.error("\n=== Error ===");
-        console.error("Error:", error instanceof Error ? error.message : error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack:", error.stack);
-        }
-        process.exit(1);
+        handleError(error);
     }
 }
 

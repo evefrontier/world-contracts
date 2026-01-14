@@ -3,8 +3,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { getConfig, MODULES, Network } from "../utils/config";
-import { createClient, keypairFromPrivateKey } from "../utils/client";
+import { getConfig, MODULES } from "../utils/config";
 import { hexToBytes } from "../utils/helper";
 import {
     CLOCK_OBJECT_ID,
@@ -15,6 +14,7 @@ import {
 } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
+import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 async function chainItemToGame(
     storageUnit: string,
@@ -68,20 +68,9 @@ async function chainItemToGame(
 
 async function main() {
     try {
-        const network = (process.env.SUI_NETWORK as Network) || "localnet";
-        const exportedKey = process.env.PRIVATE_KEY;
-        const playerExportedKey = process.env.PLAYER_A_PRIVATE_KEY || exportedKey;
-
-        if (!exportedKey || !playerExportedKey) {
-            throw new Error(
-                "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-            );
-        }
-
-        const client = createClient(network);
-        const playerKeypair = keypairFromPrivateKey(playerExportedKey);
-        const config = getConfig(network);
-        const playerAddress = playerKeypair.getPublicKey().toSuiAddress();
+        const env = getEnvConfig();
+        const playerCtx = initializeContext(env.network, env.playerExportedKey!);
+        const { client, keypair, config } = playerCtx;
 
         let characterObject = deriveObjectId(
             config.objectRegistry,
@@ -95,7 +84,7 @@ async function main() {
             config.packageId
         );
 
-        let storageUnitOwnerCap = await getOwnerCap(storageUnit, client, config, playerAddress);
+        let storageUnitOwnerCap = await getOwnerCap(storageUnit, client, config, env.playerAddress);
         if (!storageUnitOwnerCap) {
             throw new Error(`OwnerCap not found for ${storageUnit}`);
         }
@@ -106,16 +95,11 @@ async function main() {
             ITEM_A_TYPE_ID,
             10,
             client,
-            playerKeypair,
+            keypair,
             config
         );
     } catch (error) {
-        console.error("\n=== Error ===");
-        console.error("Error:", error instanceof Error ? error.message : error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack:", error.stack);
-        }
-        process.exit(1);
+        handleError(error);
     }
 }
 

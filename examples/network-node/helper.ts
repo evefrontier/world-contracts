@@ -4,6 +4,11 @@ import { SuiClient } from "@mysten/sui/client";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { bcs } from "@mysten/sui/bcs";
 
+export interface AssemblyTypeInfo {
+    id: string;
+    isStorageUnit: boolean;
+}
+
 export async function getFuelQuantity(
     networkNodeId: string,
     client: SuiClient,
@@ -167,4 +172,32 @@ export async function getOwnerCap(
         console.warn("Failed to get ownerCap:", error instanceof Error ? error.message : error);
         return null;
     }
+}
+
+export async function getAssemblyTypes(
+    assemblyIds: string[],
+    client: SuiClient
+): Promise<AssemblyTypeInfo[]> {
+    return await Promise.all(
+        assemblyIds.map(async (assemblyId) => {
+            try {
+                const object = await client.getObject({
+                    id: assemblyId,
+                    options: { showType: true },
+                });
+                const type = object.data?.type;
+                return {
+                    id: assemblyId,
+                    isStorageUnit: type?.includes("StorageUnit") ?? false,
+                };
+            } catch (error) {
+                console.warn(`Failed to get type for assembly ${assemblyId}:`, error);
+                // Default to assembly module if we can't determine the type
+                return {
+                    id: assemblyId,
+                    isStorageUnit: false,
+                };
+            }
+        })
+    );
 }

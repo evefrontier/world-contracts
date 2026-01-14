@@ -5,7 +5,7 @@ import { toHex, fromHex } from "../utils/helper";
 import { keypairFromPrivateKey } from "../utils/client";
 import { LOCATION_HASH, GAME_CHARACTER_ID, STORAGE_A_ITEM_ID } from "../utils/constants";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { getConfig, Network } from "../utils/config";
+import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 /**
  * This script generates test signatures for location proof verification in Move tests.
@@ -105,22 +105,15 @@ async function generateTestSignature(
 
 async function main() {
     try {
-        const network = (process.env.SUI_NETWORK as Network) || "localnet";
-        const exportedKey = process.env.PRIVATE_KEY;
-        const playerExportedKey = process.env.PLAYER_A_PRIVATE_KEY || exportedKey;
-
-        if (!exportedKey || !playerExportedKey) {
-            throw new Error(
-                "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-            );
-        }
-
-        const keypair = keypairFromPrivateKey(exportedKey);
-        const playerKeypair = keypairFromPrivateKey(playerExportedKey);
-        const config = getConfig(network);
-
-        const playerAddress = playerKeypair.getPublicKey().toSuiAddress();
+        const env = getEnvConfig();
+        const ctx = initializeContext(env.network, env.exportedKey);
+        const { keypair, config } = ctx;
         const adminAddress = keypair.getPublicKey().toSuiAddress();
+        const playerAddress = env.playerAddress;
+
+        if (!playerAddress) {
+            throw new Error(`Player address empty`);
+        }
 
         let characterId = deriveObjectId(
             config.objectRegistry,
@@ -136,12 +129,7 @@ async function main() {
 
         await generateTestSignature(adminAddress, playerAddress, characterId, targetStructureId);
     } catch (error) {
-        console.error("\n=== Error ===");
-        console.error("Error:", error instanceof Error ? error.message : error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack:", error.stack);
-        }
-        process.exit(1);
+        handleError(error);
     }
 }
 

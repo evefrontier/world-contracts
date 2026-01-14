@@ -4,20 +4,23 @@ import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
-import { getConnectedAssemblies, getOwnerCap } from "./helper";
+import { getConnectedAssemblies, getOwnerCap, getAssemblyTypes } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
+import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 /**
  * Takes the network node offline and handles connected assemblies.
  *
  * Flow:
  * 1. Query connected assemblies from the network node
- * 2. Call offline which returns OfflineAssemblies hot potato
- * 3. Process each assembly:
- *    - Call offline_connected_assembly for each (removes from hot potato)
- *    - Brings assembly offline and releases energy
- * 4. Destroy the hot potato (validates list is empty)
+ * 2. Determine which assemblies are storage units by querying their types
+ * 3. Call offline which returns OfflineAssemblies hot potato
+ * 4. Process each assembly:
+ *    - Call offline_connected_storage_unit for storage units
+ *    - Call offline_connected_assembly for regular assemblies
+ *    - Removes from hot potato and brings assembly offline, releases energy
+ * 5. Destroy the hot potato (validates list is empty)
  */
 async function offline(
     networkNodeId: string,
@@ -31,6 +34,8 @@ async function offline(
     // Get connected assembly IDs
     const assemblyIds = (await getConnectedAssemblies(networkNodeId, client, config)) || [];
     console.log(`Found ${assemblyIds.length} connected assemblies`);
+
+    const assemblyTypes = await getAssemblyTypes(assemblyIds, client);
 
     const tx = new Transaction();
 
@@ -48,9 +53,15 @@ async function offline(
     // Process each assembly from the hot potato
     // The hot potato contains the assembly IDs connected to the network node
     let currentHotPotato = offlineAssemblies;
-    for (const assemblyId of assemblyIds) {
+    for (const { id: assemblyId, isStorageUnit } of assemblyTypes) {
+        // Call the appropriate function based on assembly type
+        const module = isStorageUnit ? MODULES.STORAGE_UNIT : MODULES.ASSEMBLY;
+        const functionName = isStorageUnit
+            ? "offline_connected_storage_unit"
+            : "offline_connected_assembly";
+
         const [updatedHotPotato] = tx.moveCall({
-            target: `${config.packageId}::${MODULES.ASSEMBLY}::offline_connected_assembly`,
+            target: `${config.packageId}::${module}::${functionName}`,
             arguments: [
                 tx.object(assemblyId),
                 currentHotPotato,
@@ -83,19 +94,9 @@ async function offline(
 
 async function main() {
     try {
-        const network = (process.env.SUI_NETWORK as Network) || "localnet";
-        const exportedKey = process.env.PLAYER_A_PRIVATE_KEY || process.env.PRIVATE_KEY;
-
-        if (!exportedKey) {
-            throw new Error(
-                "PLAYER_A_PRIVATE_KEY or PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-            );
-        }
-
-        const client = createClient(network);
-        const keypair = keypairFromPrivateKey(exportedKey);
-        const config = getConfig(network);
-        const playerAddress = keypair.getPublicKey().toSuiAddress();
+        const env = getEnvConfig();
+        const ctx = initializeContext(env.network, env.playerExportedKey!);
+        const { client, keypair, config } = ctx;
 
         let networkNodeObject = deriveObjectId(
             config.objectRegistry,
@@ -106,7 +107,7 @@ async function main() {
             networkNodeObject,
             client,
             config,
-            playerAddress
+            env.playerAddress
         );
         if (!networkNodeOwnerCap) {
             throw new Error(`OwnerCap not found for network node ${networkNodeObject}`);
@@ -114,12 +115,7 @@ async function main() {
 
         await offline(networkNodeObject, networkNodeOwnerCap, client, keypair, config);
     } catch (error) {
-        console.error("\n=== Error ===");
-        console.error("Error:", error instanceof Error ? error.message : error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack:", error.stack);
-        }
-        process.exit(1);
+        handleError(error);
     }
 }
 

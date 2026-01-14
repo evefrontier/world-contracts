@@ -2,11 +2,16 @@ import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { getConfig, MODULES, Network } from "../utils/config";
-import { createClient, keypairFromPrivateKey } from "../utils/client";
-import { getFuelQuantity, getConnectedAssemblies, isNetworkNodeOnline } from "./helper";
+import { getConfig, MODULES } from "../utils/config";
+import {
+    getFuelQuantity,
+    getConnectedAssemblies,
+    isNetworkNodeOnline,
+    getAssemblyTypes,
+} from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
+import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 /**
  * Updates fuel for a network node and handles fuel depletion if it occurs.
@@ -45,28 +50,7 @@ async function updateFuel(
     console.log(`Found ${assemblyIds.length} connected assemblies`);
 
     // Determine which assemblies are storage units by querying their types
-    const assemblyTypes = await Promise.all(
-        assemblyIds.map(async (assemblyId) => {
-            try {
-                const object = await client.getObject({
-                    id: assemblyId,
-                    options: { showType: true },
-                });
-                const type = object.data?.type;
-                return {
-                    id: assemblyId,
-                    isStorageUnit: type?.includes("StorageUnit") ?? false,
-                };
-            } catch (error) {
-                console.warn(`Failed to get type for assembly ${assemblyId}:`, error);
-                // Default to assembly module if we can't determine the type
-                return {
-                    id: assemblyId,
-                    isStorageUnit: false,
-                };
-            }
-        })
-    );
+    const assemblyTypes = await getAssemblyTypes(assemblyIds, client);
 
     const tx = new Transaction();
 
@@ -126,18 +110,9 @@ async function updateFuel(
 
 async function main() {
     try {
-        const network = (process.env.SUI_NETWORK as Network) || "localnet";
-        const exportedKey = process.env.PRIVATE_KEY;
-
-        if (!exportedKey) {
-            throw new Error(
-                "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-            );
-        }
-
-        const client = createClient(network);
-        const keypair = keypairFromPrivateKey(exportedKey);
-        const config = getConfig(network);
+        const env = getEnvConfig();
+        const ctx = initializeContext(env.network, env.exportedKey);
+        const { client, keypair, config } = ctx;
 
         let networkNodeObject = deriveObjectId(
             config.objectRegistry,
@@ -147,12 +122,7 @@ async function main() {
 
         await updateFuel(networkNodeObject, client, keypair, config);
     } catch (error) {
-        console.error("\n=== Error ===");
-        console.error("Error:", error instanceof Error ? error.message : error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack:", error.stack);
-        }
-        process.exit(1);
+        handleError(error);
     }
 }
 

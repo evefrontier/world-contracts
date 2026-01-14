@@ -1,11 +1,14 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
-import { SuiClient } from "@mysten/sui/client";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { getConfig, MODULES, Network } from "../utils/config";
-import { createClient, keypairFromPrivateKey } from "../utils/client";
-import { hexToBytes } from "../utils/helper";
+import { MODULES } from "../utils/config";
+import {
+    initializeContext,
+    handleError,
+    extractEvent,
+    hexToBytes,
+    getEnvConfig,
+} from "../utils/helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { LOCATION_HASH, GAME_CHARACTER_ID, NWN_TYPE_ID, NWN_ITEM_ID } from "../utils/constants";
 
@@ -17,10 +20,9 @@ async function createNetworkNode(
     characterObjectId: string,
     typeId: bigint,
     itemId: bigint,
-    client: SuiClient,
-    keypair: Ed25519Keypair,
-    config: ReturnType<typeof getConfig>
+    ctx: ReturnType<typeof initializeContext>
 ) {
+    const { client, keypair, config } = ctx;
     const tx = new Transaction();
 
     const [nwn] = tx.moveCall({
@@ -51,51 +53,33 @@ async function createNetworkNode(
 
     console.log(result);
 
-    const networkNodeEvent = result.events?.find((event) =>
-        event.type.endsWith("::network_node::NetworkNodeCreatedEvent")
+    const networkNodeEvent = extractEvent<{ network_node_id: string; owner_cap_id: string }>(
+        result,
+        "::network_node::NetworkNodeCreatedEvent"
     );
 
-    if (!networkNodeEvent?.parsedJson) {
+    if (!networkNodeEvent) {
         throw new Error("NetworkNodeCreatedEvent not found in transaction result");
     }
 
-    const nwnId = (networkNodeEvent.parsedJson as { network_node_id: string }).network_node_id;
-    console.log("NWN Object Id: ", nwnId);
-
-    const ownerCapObjectId = (networkNodeEvent.parsedJson as { owner_cap_id: string }).owner_cap_id;
-    console.log("OwnerCap Object Id: ", ownerCapObjectId);
+    console.log("NWN Object Id: ", networkNodeEvent.network_node_id);
+    console.log("OwnerCap Object Id: ", networkNodeEvent.owner_cap_id);
 }
 
 async function main() {
     try {
-        const network = (process.env.SUI_NETWORK as Network) || "localnet";
-        const exportedKey = process.env.PRIVATE_KEY;
-        const playerExportedKey = process.env.PLAYER_A_PRIVATE_KEY || exportedKey;
-
-        if (!exportedKey || !playerExportedKey) {
-            throw new Error(
-                "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-            );
-        }
-
-        const client = createClient(network);
-        const keypair = keypairFromPrivateKey(exportedKey);
-        const config = getConfig(network);
+        const env = getEnvConfig();
+        const ctx = initializeContext(env.network, env.exportedKey);
 
         let characterObject = deriveObjectId(
-            config.objectRegistry,
+            ctx.config.objectRegistry,
             GAME_CHARACTER_ID,
-            config.packageId
+            ctx.config.packageId
         );
 
-        await createNetworkNode(characterObject, NWN_TYPE_ID, NWN_ITEM_ID, client, keypair, config);
+        await createNetworkNode(characterObject, NWN_TYPE_ID, NWN_ITEM_ID, ctx);
     } catch (error) {
-        console.error("\n=== Error ===");
-        console.error("Error:", error instanceof Error ? error.message : error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack:", error.stack);
-        }
-        process.exit(1);
+        handleError(error);
     }
 }
 
