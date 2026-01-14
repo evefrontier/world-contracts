@@ -1,15 +1,15 @@
 import "dotenv/config";
+import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
-
-const NETWORK_NODE_OBJECT_ID = "0x24e93560b47cd5e8fa8ea532859bc415fa7426f9b5267c8623dacec67d56e175";
-const ASSEMBLY_ID = "0xd1d7ce069b1c849501676a6c79c4329eb0d21be85a2ee896f54407614538c5b0";
-const OWNER_CAP_ID = "0x051e0614313016476fe6fe32f81904026d9952e6f1e27edcd30c3467037d64e3";
+import { deriveObjectId } from "../utils/derive-object-id";
+import { NWN_ITEM_ID, ASSEMBLY_ITEM_ID } from "../utils/constants";
 
 export async function online(
+    networkObjectId: string,
     assemblyId: string,
     ownerCapId: string,
     client: SuiClient,
@@ -23,7 +23,7 @@ export async function online(
         target: `${config.packageId}::${MODULES.ASSEMBLY}::online`,
         arguments: [
             tx.object(assemblyId),
-            tx.object(NETWORK_NODE_OBJECT_ID),
+            tx.object(networkObjectId),
             tx.object(config.energyConfig),
             tx.object(ownerCapId),
         ],
@@ -40,9 +40,45 @@ export async function online(
     return result;
 }
 
-async function main() {
-    console.log("============= online assembly example ==============\n");
+export async function getOwnerCap(
+    assemblyId: string,
+    client: SuiClient,
+    config: ReturnType<typeof getConfig>,
+    senderAddress?: string
+): Promise<string | null> {
+    try {
+        const tx = new Transaction();
 
+        tx.moveCall({
+            target: `${config.packageId}::${MODULES.ASSEMBLY}::owner_cap_id`,
+            arguments: [tx.object(assemblyId)],
+        });
+
+        const result = await client.devInspectTransactionBlock({
+            sender: senderAddress || process.env.ADMIN_ADDRESS || "0x",
+            transactionBlock: tx,
+        });
+
+        if (result.effects?.status?.status !== "success") {
+            console.warn("Error checking ownercap id:", result.effects?.status?.error);
+            return null;
+        }
+        const returnValues = result.results?.[0]?.returnValues;
+
+        if (returnValues && returnValues.length > 0) {
+            const [valueBytes] = returnValues[0];
+            const ownerCapId = bcs.Address.parse(Uint8Array.from(valueBytes));
+            return ownerCapId;
+        }
+
+        return null;
+    } catch (error) {
+        console.warn("Failed to get ownerCap:", error instanceof Error ? error.message : error);
+        return null;
+    }
+}
+
+async function main() {
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
         const exportedKey = process.env.PLAYER_A_PRIVATE_KEY || process.env.PRIVATE_KEY;
@@ -56,13 +92,26 @@ async function main() {
         const client = createClient(network);
         const keypair = keypairFromPrivateKey(exportedKey);
         const config = getConfig(network);
-
         const playerAddress = keypair.getPublicKey().toSuiAddress();
 
-        console.log("Network:", network);
-        console.log("Player address:", playerAddress);
+        let networkNodeObject = deriveObjectId(
+            config.objectRegistry,
+            NWN_ITEM_ID,
+            config.packageId
+        );
 
-        await online(ASSEMBLY_ID, OWNER_CAP_ID, client, keypair, config);
+        let assemblyObject = deriveObjectId(
+            config.objectRegistry,
+            ASSEMBLY_ITEM_ID,
+            config.packageId
+        );
+
+        let assemblyOwnerCap = await getOwnerCap(assemblyObject, client, config, playerAddress);
+        if (!assemblyOwnerCap) {
+            throw new Error(`OwnerCap not found for ${assemblyObject}`);
+        }
+
+        await online(networkNodeObject, assemblyObject, assemblyOwnerCap, client, keypair, config);
     } catch (error) {
         console.error("\n=== Error ===");
         console.error("Error:", error instanceof Error ? error.message : error);

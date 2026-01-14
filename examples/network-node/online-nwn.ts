@@ -4,11 +4,9 @@ import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
-
-const CLOCK_OBJECT_ID = "0x6";
-
-const NETWORK_NODE_OBJECT_ID = "0x24e93560b47cd5e8fa8ea532859bc415fa7426f9b5267c8623dacec67d56e175";
-const OWNER_CAP_OBJECT_ID = "0x62deeaf9f6fce5e2b115aa054e6f0a7087cc0bf641dd4a61545ce087e1c1ffab";
+import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
+import { deriveObjectId } from "../utils/derive-object-id";
+import { getOwnerCap } from "./helper";
 
 async function online(
     networkNodeId: string,
@@ -38,8 +36,6 @@ async function online(
 }
 
 async function main() {
-    console.log("============= Network Node Online example ==============\n");
-
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
         const exportedKey = process.env.PLAYER_A_PRIVATE_KEY || process.env.PRIVATE_KEY;
@@ -55,7 +51,22 @@ async function main() {
         const config = getConfig(network);
         const playerAddress = keypair.getPublicKey().toSuiAddress();
 
-        await online(NETWORK_NODE_OBJECT_ID, OWNER_CAP_OBJECT_ID, client, keypair, config);
+        let networkNodeObject = deriveObjectId(
+            config.objectRegistry,
+            NWN_ITEM_ID,
+            config.packageId
+        );
+        let networkNodeOwnerCap = await getOwnerCap(
+            networkNodeObject,
+            client,
+            config,
+            playerAddress
+        );
+        if (!networkNodeOwnerCap) {
+            throw new Error(`OwnerCap not found for network node ${networkNodeObject}`);
+        }
+
+        await online(networkNodeObject, networkNodeOwnerCap, client, keypair, config);
     } catch (error) {
         console.error("\n=== Error ===");
         console.error("Error:", error instanceof Error ? error.message : error);

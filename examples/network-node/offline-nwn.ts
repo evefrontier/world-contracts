@@ -4,12 +4,9 @@ import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
-import { getConnectedAssemblies } from "./helper";
-
-const CLOCK_OBJECT_ID = "0x6";
-
-const NETWORK_NODE_OBJECT_ID = "0x3bda7864385ce8a5b17b7f632d5c5a4137df7ec409dc2a3539174d6d7e686e89";
-const OWNER_CAP_OBJECT_ID = "0x9abbaad89ecb2974d37026f511a7366279a1f9b1eb02d61be8856e112132f746";
+import { getConnectedAssemblies, getOwnerCap } from "./helper";
+import { deriveObjectId } from "../utils/derive-object-id";
+import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
 
 /**
  * Takes the network node offline and handles connected assemblies.
@@ -85,8 +82,6 @@ async function offline(
 }
 
 async function main() {
-    console.log("============= Network Node Offline example ==============\n");
-
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
         const exportedKey = process.env.PLAYER_A_PRIVATE_KEY || process.env.PRIVATE_KEY;
@@ -102,10 +97,22 @@ async function main() {
         const config = getConfig(network);
         const playerAddress = keypair.getPublicKey().toSuiAddress();
 
-        console.log("Network:", network);
-        console.log("Player address:", playerAddress);
+        let networkNodeObject = deriveObjectId(
+            config.objectRegistry,
+            NWN_ITEM_ID,
+            config.packageId
+        );
+        let networkNodeOwnerCap = await getOwnerCap(
+            networkNodeObject,
+            client,
+            config,
+            playerAddress
+        );
+        if (!networkNodeOwnerCap) {
+            throw new Error(`OwnerCap not found for network node ${networkNodeObject}`);
+        }
 
-        await offline(NETWORK_NODE_OBJECT_ID, OWNER_CAP_OBJECT_ID, client, keypair, config);
+        await offline(networkNodeObject, networkNodeOwnerCap, client, keypair, config);
     } catch (error) {
         console.error("\n=== Error ===");
         console.error("Error:", error instanceof Error ? error.message : error);

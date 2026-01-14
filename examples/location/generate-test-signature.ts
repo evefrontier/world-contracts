@@ -3,6 +3,9 @@ import { bcs } from "@mysten/sui/bcs";
 import { signPersonalMessage } from "../crypto/signMessage";
 import { toHex, fromHex } from "../utils/helper";
 import { keypairFromPrivateKey } from "../utils/client";
+import { LOCATION_HASH, GAME_CHARACTER_ID, STORAGE_A_ITEM_ID } from "../utils/constants";
+import { deriveObjectId } from "../utils/derive-object-id";
+import { getConfig, Network } from "../utils/config";
 
 /**
  * This script generates test signatures for location proof verification in Move tests.
@@ -16,15 +19,6 @@ import { keypairFromPrivateKey } from "../utils/client";
  * 3. Copy the "Full signature (hex)" output
  * 4. Update the signature in test_helpers.move::construct_location_proof()
  */
-
-// Test values from test_helpers.move
-const SERVER_ADMIN_ADDRESS = "0x93d3209c7f138aded41dcb008d066ae872ed558bd8dcb562da47d4ef78295333";
-const USER_A_ADDRESS = "0x202d7d52ab5f8e8824e3e8066c0b7458f84e326c5d77b30254c69d807586a7b0";
-const STORAGE_UNIT_ID = "0xb78f2c84dbb71520c4698c4520bfca8da88ea8419b03d472561428cd1e3544e8";
-const CHARACTER_ID = "0x0000000000000000000000000000000000000000000000000000000000000002";
-const LOCATION_HASH = "0x16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049";
-const TIMESTAMP_MS = 1763408644339n;
-
 // BCS schema for LocationProofMessage (must match Move struct exactly)
 const LocationProofMessage = bcs.struct("LocationProofMessage", {
     server_address: bcs.Address,
@@ -38,7 +32,12 @@ const LocationProofMessage = bcs.struct("LocationProofMessage", {
     deadline_ms: bcs.u64(),
 });
 
-async function generateTestSignature() {
+async function generateTestSignature(
+    adminAddress: string,
+    playerAddress: string,
+    characterId: string,
+    targetStructureId: string
+) {
     console.log("=== Generating Test Signature for Move Tests ===\n");
 
     const privateKey = process.env.PRIVATE_KEY;
@@ -49,25 +48,20 @@ async function generateTestSignature() {
 
     const keypair = keypairFromPrivateKey(privateKey);
 
-    const derivedAddress = keypair.getPublicKey().toSuiAddress();
-    console.log("Derived address:", derivedAddress);
-    console.log("Expected address:", SERVER_ADMIN_ADDRESS);
-
-    if (derivedAddress !== SERVER_ADMIN_ADDRESS) {
-        console.warn("Make sure your PRIVATE_KEY corresponds to", SERVER_ADMIN_ADDRESS);
-    }
+    // Current unix time in ms + 5 days
+    const deadline = BigInt(Date.now()) + BigInt(5 * 24 * 60 * 60 * 1000);
 
     // Create the LocationProofMessage
     const message = {
-        server_address: SERVER_ADMIN_ADDRESS,
-        player_address: USER_A_ADDRESS,
-        source_structure_id: CHARACTER_ID,
+        server_address: adminAddress,
+        player_address: playerAddress,
+        source_structure_id: characterId,
         source_location_hash: Array.from(fromHex(LOCATION_HASH)),
-        target_structure_id: STORAGE_UNIT_ID,
+        target_structure_id: targetStructureId,
         target_location_hash: Array.from(fromHex(LOCATION_HASH)),
         distance: 0n,
         data: [],
-        deadline_ms: TIMESTAMP_MS,
+        deadline_ms: deadline,
     };
 
     console.log("\n=== Message Details ===");
@@ -109,8 +103,46 @@ async function generateTestSignature() {
     console.log("Public key:", toHex(signature.slice(65, 97)));
 }
 
-generateTestSignature().catch((error) => {
-    console.error("\n=== Error ===");
-    console.error(error);
-    process.exit(1);
-});
+async function main() {
+    try {
+        const network = (process.env.SUI_NETWORK as Network) || "localnet";
+        const exportedKey = process.env.PRIVATE_KEY;
+        const playerExportedKey = process.env.PLAYER_A_PRIVATE_KEY || exportedKey;
+
+        if (!exportedKey || !playerExportedKey) {
+            throw new Error(
+                "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
+            );
+        }
+
+        const keypair = keypairFromPrivateKey(exportedKey);
+        const playerKeypair = keypairFromPrivateKey(playerExportedKey);
+        const config = getConfig(network);
+
+        const playerAddress = playerKeypair.getPublicKey().toSuiAddress();
+        const adminAddress = keypair.getPublicKey().toSuiAddress();
+
+        let characterId = deriveObjectId(
+            config.objectRegistry,
+            GAME_CHARACTER_ID,
+            config.packageId
+        );
+
+        let targetStructureId = deriveObjectId(
+            config.objectRegistry,
+            STORAGE_A_ITEM_ID,
+            config.packageId
+        );
+
+        await generateTestSignature(adminAddress, playerAddress, characterId, targetStructureId);
+    } catch (error) {
+        console.error("\n=== Error ===");
+        console.error("Error:", error instanceof Error ? error.message : error);
+        if (error instanceof Error && error.stack) {
+            console.error("Stack:", error.stack);
+        }
+        process.exit(1);
+    }
+}
+
+main().catch(console.error);

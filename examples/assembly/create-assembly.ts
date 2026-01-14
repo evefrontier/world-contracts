@@ -6,12 +6,14 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
 import { hexToBytes } from "../utils/helper";
-
-const ASSEMBLY_TYPE_ID = 55557n;
-const ASSEMBLY_ITEM_ID = BigInt(Math.floor(Math.random() * 7) + 7);
-const LOCATION_HASH = "0x16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049";
-const CHARACTER_OBJECT_ID = "0x50186a768934da5d173112e202d7d40a474a91aec2df7a724cfd073715afe13a";
-const NETWORK_NODE_OBJECT_ID = "0x24e93560b47cd5e8fa8ea532859bc415fa7426f9b5267c8623dacec67d56e175";
+import {
+    LOCATION_HASH,
+    GAME_CHARACTER_ID,
+    NWN_ITEM_ID,
+    ASSEMBLY_TYPE_ID,
+    ASSEMBLY_ITEM_ID,
+} from "../utils/constants";
+import { deriveObjectId } from "../utils/derive-object-id";
 
 async function createAssembly(
     characterObjectId: string,
@@ -27,10 +29,10 @@ async function createAssembly(
     const [assembly] = tx.moveCall({
         target: `${config.packageId}::${MODULES.ASSEMBLY}::anchor`,
         arguments: [
-            tx.object(config.assemblyRegistry),
+            tx.object(config.objectRegistry),
             tx.object(networkNodeObjectId),
             tx.object(characterObjectId),
-            tx.object(config.adminCapObjectId),
+            tx.object(config.adminCap),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -39,7 +41,7 @@ async function createAssembly(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.ASSEMBLY}::share_assembly`,
-        arguments: [assembly, tx.object(config.adminCapObjectId)],
+        arguments: [assembly, tx.object(config.adminCap)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -66,14 +68,10 @@ async function createAssembly(
 }
 
 async function main() {
-    console.log("============= Create Assembly Unit example ==============\n");
-
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
         const exportedKey = process.env.PRIVATE_KEY;
         const playerExportedKey = process.env.PLAYER_A_PRIVATE_KEY || exportedKey;
-        const tenant = process.env.TENANT || "";
-
         if (!exportedKey || !playerExportedKey) {
             throw new Error(
                 "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
@@ -88,9 +86,20 @@ async function main() {
         const playerAddress = playerKeypair.getPublicKey().toSuiAddress();
         const adminAddress = keypair.getPublicKey().toSuiAddress();
 
+        let characterObject = deriveObjectId(
+            config.objectRegistry,
+            GAME_CHARACTER_ID,
+            config.packageId
+        );
+        let networkNodeObject = deriveObjectId(
+            config.objectRegistry,
+            NWN_ITEM_ID,
+            config.packageId
+        );
+
         await createAssembly(
-            CHARACTER_OBJECT_ID,
-            NETWORK_NODE_OBJECT_ID,
+            characterObject,
+            networkNodeObject,
             ASSEMBLY_TYPE_ID,
             ASSEMBLY_ITEM_ID,
             client,

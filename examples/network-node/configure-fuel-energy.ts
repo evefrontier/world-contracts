@@ -40,7 +40,7 @@ async function setFuelEfficiency(
         target: `${config.packageId}::${MODULES.FUEL}::set_fuel_efficiency`,
         arguments: [
             tx.object(config.fuelConfig),
-            tx.object(config.adminCapObjectId),
+            tx.object(config.adminCap),
             tx.pure.u64(fuelTypeId),
             tx.pure.u64(fuelEfficiency),
         ],
@@ -74,7 +74,7 @@ async function setEnergyConfig(
         target: `${config.packageId}::${MODULES.ENERGY}::set_energy_config`,
         arguments: [
             tx.object(config.energyConfig),
-            tx.object(config.adminCapObjectId),
+            tx.object(config.adminCap),
             tx.pure.u64(assemblyTypeId),
             tx.pure.u64(energyRequired),
         ],

@@ -5,13 +5,14 @@ import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
-
-const CHARACTER_OBJECT_ID = "0xd84a2c755b063e89799dadbfd769c3e49a4e41a4748b611d87a3bf0fa05271e8";
-const STORAGE_UNIT = "0xa7597edbdac993411e11b9b867b7b9eddc395719d7512ef750afdc7cd109c723";
-const STORAGE_OWNER_CAP = "0x6d1a27c2ab7693b26d4c6c19e6d080c44ddbfcd144d9d79bb86ac5c1f74a5a45";
-
-const ITEM_A_TYPE_ID = BigInt(Math.floor(Math.random() * 1000) + 5);
-const CORPSE_ITEM_ID = BigInt(Math.floor(Math.random() * 777000) + 8);
+import { deriveObjectId } from "../utils/derive-object-id";
+import {
+    GAME_CHARACTER_ID,
+    STORAGE_A_ITEM_ID,
+    ITEM_A_TYPE_ID,
+    ITEM_A_ITEM_ID,
+} from "../utils/constants";
+import { getOwnerCap } from "./helper";
 
 async function gameItemToChain(
     storageUnit: string,
@@ -39,7 +40,7 @@ async function gameItemToChain(
         typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
         arguments: [
             tx.object(storageUnit),
-            tx.object(config.adminAclObjectId),
+            tx.object(config.adminAcl),
             tx.object(owner_cap_objectId),
             tx.object(characterId),
             tx.pure.u64(itemId),
@@ -88,13 +89,10 @@ async function gameItemToChain(
 }
 
 async function main() {
-    console.log("============= Game ToChain ==============\n");
-
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
         const exportedKey = process.env.PRIVATE_KEY;
         const playerExportedKey = process.env.PLAYER_A_PRIVATE_KEY || exportedKey;
-        const tenant = process.env.TENANT || "";
 
         if (!exportedKey || !playerExportedKey) {
             throw new Error(
@@ -110,13 +108,30 @@ async function main() {
         const playerAddress = playerKeypair.getPublicKey().toSuiAddress();
         const adminAddress = keypair.getPublicKey().toSuiAddress();
 
+        let characterObject = deriveObjectId(
+            config.objectRegistry,
+            GAME_CHARACTER_ID,
+            config.packageId
+        );
+
+        let storageUnit = deriveObjectId(
+            config.objectRegistry,
+            STORAGE_A_ITEM_ID,
+            config.packageId
+        );
+
+        let storageUnitOwnerCap = await getOwnerCap(storageUnit, client, config, playerAddress);
+        if (!storageUnitOwnerCap) {
+            throw new Error(`OwnerCap not found for ${storageUnit}`);
+        }
+
         await gameItemToChain(
-            STORAGE_UNIT,
-            CHARACTER_OBJECT_ID,
-            STORAGE_OWNER_CAP,
+            storageUnit,
+            characterObject,
+            storageUnitOwnerCap,
             playerAddress,
             ITEM_A_TYPE_ID,
-            CORPSE_ITEM_ID,
+            ITEM_A_ITEM_ID,
             10n,
             10,
             adminAddress,

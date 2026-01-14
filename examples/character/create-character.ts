@@ -1,13 +1,12 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { bcs } from "@mysten/sui/bcs";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
-import { deriveCharacterId } from "./derive-character-id";
+import { deriveObjectId } from "../utils/derive-object-id";
+import { GAME_CHARACTER_ID } from "../utils/constants";
 
-const GAME_CHARACTER_ID = Math.floor(Math.random() * 1000000) + 1;
 const TRIBE_ID = 100;
 
 async function createCharacter(
@@ -20,13 +19,11 @@ async function createCharacter(
     console.log("\n==== Creating a character ====");
     console.log("Game Character ID:", GAME_CHARACTER_ID);
     console.log("Tribe ID:", TRIBE_ID);
-    console.log("TENANT:", tenant);
 
     // Pre-compute the character ID before creation
-    const precomputedCharacterId = deriveCharacterId(
-        config.characterRegisterId,
+    const precomputedCharacterId = deriveObjectId(
+        config.objectRegistry,
         GAME_CHARACTER_ID,
-        tenant,
         config.packageId
     );
     console.log("Pre-computed Character ID:", precomputedCharacterId);
@@ -35,8 +32,8 @@ async function createCharacter(
     const [character] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::create_character`,
         arguments: [
-            tx.object(config.characterRegisterId),
-            tx.object(config.adminCapObjectId),
+            tx.object(config.objectRegistry),
+            tx.object(config.adminCap),
             tx.pure.u32(GAME_CHARACTER_ID),
             tx.pure.string(tenant),
             tx.pure.u32(TRIBE_ID),
@@ -47,7 +44,7 @@ async function createCharacter(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::share_character`,
-        arguments: [character, tx.object(config.adminCapObjectId)],
+        arguments: [character, tx.object(config.adminCap)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -61,8 +58,6 @@ async function createCharacter(
 }
 
 async function main() {
-    console.log("============= Create Character example ==============\n");
-
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
         const exportedKey = process.env.PRIVATE_KEY;

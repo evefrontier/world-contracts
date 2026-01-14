@@ -6,14 +6,12 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
 import { hexToBytes } from "../utils/helper";
+import { deriveObjectId } from "../utils/derive-object-id";
+import { LOCATION_HASH, GAME_CHARACTER_ID, NWN_TYPE_ID, NWN_ITEM_ID } from "../utils/constants";
 
-const NWN_TYPE_ID = BigInt(Math.floor(Math.random() * 1000000) + 5);
-const NWN_ITEM_ID = BigInt(Math.floor(Math.random() * 7) + 7);
-const FUEL_MAX_CAPACITY = 10000n;
-const FUEL_BURN_RATE_IN_MS = BigInt(3600 * 1000); // 1 hour
-const MAX_ENERGY_PRODUCTION = 100n;
-const LOCATION_HASH = "0x16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049";
-const CHARACTER_OBJECT_ID = "0x50186a768934da5d173112e202d7d40a474a91aec2df7a724cfd073715afe13a";
+export const FUEL_MAX_CAPACITY = 10000n;
+export const FUEL_BURN_RATE_IN_MS = BigInt(3600 * 1000); // 1 hour
+export const MAX_ENERGY_PRODUCTION = 100n;
 
 async function createNetworkNode(
     characterObjectId: string,
@@ -28,9 +26,9 @@ async function createNetworkNode(
     const [nwn] = tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::anchor`,
         arguments: [
-            tx.object(config.networkNodeRegistry),
+            tx.object(config.objectRegistry),
             tx.object(characterObjectId),
-            tx.object(config.adminCapObjectId),
+            tx.object(config.adminCap),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -42,7 +40,7 @@ async function createNetworkNode(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::share_network_node`,
-        arguments: [nwn, tx.object(config.adminCapObjectId)],
+        arguments: [nwn, tx.object(config.adminCap)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -69,13 +67,10 @@ async function createNetworkNode(
 }
 
 async function main() {
-    console.log("============= Create Network Node example ==============\n");
-
     try {
         const network = (process.env.SUI_NETWORK as Network) || "localnet";
         const exportedKey = process.env.PRIVATE_KEY;
         const playerExportedKey = process.env.PLAYER_A_PRIVATE_KEY || exportedKey;
-        const tenant = process.env.TENANT || "";
 
         if (!exportedKey || !playerExportedKey) {
             throw new Error(
@@ -85,20 +80,15 @@ async function main() {
 
         const client = createClient(network);
         const keypair = keypairFromPrivateKey(exportedKey);
-        const playerKeypair = keypairFromPrivateKey(playerExportedKey);
         const config = getConfig(network);
 
-        const playerAddress = playerKeypair.getPublicKey().toSuiAddress();
-        const adminAddress = keypair.getPublicKey().toSuiAddress();
-
-        await createNetworkNode(
-            CHARACTER_OBJECT_ID,
-            NWN_TYPE_ID,
-            NWN_ITEM_ID,
-            client,
-            keypair,
-            config
+        let characterObject = deriveObjectId(
+            config.objectRegistry,
+            GAME_CHARACTER_ID,
+            config.packageId
         );
+
+        await createNetworkNode(characterObject, NWN_TYPE_ID, NWN_ITEM_ID, client, keypair, config);
     } catch (error) {
         console.error("\n=== Error ===");
         console.error("Error:", error instanceof Error ? error.message : error);

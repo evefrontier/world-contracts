@@ -283,6 +283,7 @@ public(package) fun start_burning(fuel: &mut Fuel, clock: &Clock) {
     fuel.is_burning = true;
     fuel.burn_start_time = clock.timestamp_ms();
     if (fuel.quantity != 0) {
+        // todo : fix bug:  consider previous cyle elapsed time 
         fuel.quantity = fuel.quantity - 1; // Consume 1 unit to start the clock
     };
     let fuel_type_id = *option::borrow(&fuel.type_id);

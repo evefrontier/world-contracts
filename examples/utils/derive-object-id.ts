@@ -1,19 +1,19 @@
 import { bcs } from "@mysten/sui/bcs";
 import { deriveObjectID } from "@mysten/sui/utils";
 
-export function deriveCharacterId(
+export function deriveObjectId(
     registryId: string,
-    gameCharacterId: number | bigint,
-    tenant: string,
+    itemId: number | bigint,
     packageId: string
 ): string {
+    const tenant = process.env.TENANT || "";
     const TenantItemId = bcs.struct("TenantItemId", {
         id: bcs.u64(),
         tenant: bcs.string(),
     });
 
     const TenantItemIdValue = {
-        id: BigInt(gameCharacterId),
+        id: BigInt(itemId),
         tenant: tenant,
     };
     const serializedKey = TenantItemId.serialize(TenantItemIdValue).toBytes();
