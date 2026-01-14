@@ -31,7 +31,7 @@ const ENetworkNodeDoesNotExist: vector<u8> =
 const EAssemblyOnline: vector<u8> = b"Assembly should be offline";
 
 // === Structs ===
-// TODO: find a elegant way to decouple the common fields across all structs
+// TODO: find an elegant way to decouple the common fields across all structs
 public struct Assembly has key {
     id: UID,
     key: TenantItemId,
