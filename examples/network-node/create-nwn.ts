@@ -9,7 +9,6 @@ import { hexToBytes } from "../utils/helper";
 
 const NWN_TYPE_ID = BigInt(Math.floor(Math.random() * 1000000) + 5);
 const NWN_ITEM_ID = BigInt(Math.floor(Math.random() * 7) + 7);
-const VOLUME = 10;
 const FUEL_MAX_CAPACITY = 10000n;
 const FUEL_BURN_RATE_IN_MS = BigInt(3600 * 1000); // 1 hour
 const MAX_ENERGY_PRODUCTION = 100n;
@@ -34,7 +33,6 @@ async function createNetworkNode(
             tx.object(config.adminCapObjectId),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
-            tx.pure.u64(VOLUME),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
             tx.pure.u64(FUEL_MAX_CAPACITY),
             tx.pure.u64(FUEL_BURN_RATE_IN_MS),

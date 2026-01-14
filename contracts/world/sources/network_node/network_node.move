@@ -10,13 +10,14 @@ module world::network_node;
 
 use sui::{clock::Clock, derived_object, event};
 use world::{
-    access::{Self, OwnerCap, AdminCap},
+    access::{Self, OwnerCap, AdminCap, AdminACL},
     character::Character,
     energy::{Self, EnergySource},
     fuel::{Self, FuelConfig, Fuel},
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
+    object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
 };
 
@@ -37,12 +38,12 @@ const EAssemblyNotConnected: vector<u8> = b"Assembly is not connected to this ne
 const EAssembliesConnected: vector<u8> = b"Assemblies needs to be disconnected before unanchor";
 #[error(code = 7)]
 const ENetworkNodeOffline: vector<u8> = b"Network Node is offline";
+#[error(code = 8)]
+const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
+#[error(code = 9)]
+const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
 
 // === Structs ===
-public struct NetworkNodeRegistry has key {
-    id: UID,
-}
-
 /// Hot potato struct to enforce all connected assemblies are brought offline
 public struct OfflineAssemblies {
     assembly_ids: vector<ID>,
@@ -53,7 +54,6 @@ public struct NetworkNode has key {
     key: TenantItemId,
     owner_cap_id: ID,
     type_id: u64,
-    volume: u64,
     status: AssemblyStatus,
     location: Location,
     fuel: Fuel,
@@ -68,7 +68,6 @@ public struct NetworkNodeCreatedEvent has copy, drop {
     key: TenantItemId,
     owner_cap_id: ID,
     type_id: u64,
-    volume: u64,
     fuel_max_capacity: u64,
     fuel_burn_rate_in_ms: u64,
     max_energy_production: u64,
@@ -77,18 +76,34 @@ public struct NetworkNodeCreatedEvent has copy, drop {
 // === Public Functions ===
 public fun deposit_fuel(
     nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
     owner_cap: &OwnerCap<NetworkNode>,
     type_id: u64,
     volume: u64,
     quantity: u64,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
     assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    let sponsor_opt = tx_context::sponsor(ctx);
+    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
+    let sponsor = *option::borrow(&sponsor_opt);
+    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
     nwn.fuel.deposit(type_id, volume, quantity, clock);
 }
 
-public fun withdraw_fuel(nwn: &mut NetworkNode, owner_cap: &OwnerCap<NetworkNode>, quantity: u64) {
+public fun withdraw_fuel(
+    nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
+    owner_cap: &OwnerCap<NetworkNode>,
+    quantity: u64,
+    ctx: &mut TxContext,
+) {
     assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    let sponsor_opt = tx_context::sponsor(ctx);
+    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
+    let sponsor = *option::borrow(&sponsor_opt);
+    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
     nwn.fuel.withdraw(quantity);
 }
 
@@ -171,12 +186,11 @@ public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySour
 
 // === Admin Functions ===
 public fun anchor(
-    nwn_registry: &mut NetworkNodeRegistry,
+    registry: &mut ObjectRegistry,
     character: &Character,
     admin_cap: &AdminCap,
     item_id: u64,
     type_id: u64,
-    volume: u64,
     location_hash: vector<u8>,
     fuel_max_capacity: u64,
     fuel_burn_rate_in_ms: u64,
@@ -188,9 +202,9 @@ public fun anchor(
 
     let tenant = character.tenant();
     let nwn_key = in_game_id::create_key(item_id, tenant);
-    assert!(!nwn_exists(nwn_registry, nwn_key), ENetworkNodeAlreadyExists);
+    assert!(!registry.object_exists(nwn_key), ENetworkNodeAlreadyExists);
 
-    let nwn_uid = derived_object::claim(&mut nwn_registry.id, nwn_key);
+    let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);
     let nwn_id = object::uid_to_inner(&nwn_uid);
 
     let owner_cap_id = access::create_and_transfer_owner_cap<NetworkNode>(
@@ -205,7 +219,6 @@ public fun anchor(
         key: nwn_key,
         owner_cap_id,
         type_id,
-        volume,
         status: status::anchor(nwn_id, type_id, item_id),
         location: location::attach(nwn_id, location_hash),
         fuel: fuel::create(nwn_id, fuel_max_capacity, fuel_burn_rate_in_ms),
@@ -227,7 +240,6 @@ public fun anchor(
         key: nwn_key,
         owner_cap_id,
         type_id,
-        volume,
         fuel_max_capacity,
         fuel_burn_rate_in_ms,
         max_energy_production,
@@ -385,10 +397,6 @@ public(package) fun disconnect_assembly(nwn: &mut NetworkNode, assembly_id: ID) 
     assert!(found, EAssemblyNotConnected);
 }
 
-public(package) fun nwn_exists(registry: &NetworkNodeRegistry, key: TenantItemId): bool {
-    derived_object::exists(&registry.id, key)
-}
-
 // === Private Functions ===
 /// Creates a copy of the connected assembly IDs vector
 fun copy_connected_assembly_ids(nwn: &NetworkNode): vector<ID> {
@@ -411,19 +419,7 @@ fun disconnect_assemblies(nwn: &mut NetworkNode, assembly_ids: vector<ID>) {
         i = i + 1;
     };
 }
-
-fun init(ctx: &mut TxContext) {
-    transfer::share_object(NetworkNodeRegistry {
-        id: object::new(ctx),
-    });
-}
-
 // === Test Functions ===
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
-}
-
 #[test_only]
 public fun fuel(network_node: &NetworkNode): &Fuel {
     &network_node.fuel
@@ -437,4 +433,33 @@ public fun energy(network_node: &NetworkNode): &EnergySource {
 #[test_only]
 public fun status(network_node: &NetworkNode): &AssemblyStatus {
     &network_node.status
+}
+
+#[test_only]
+public fun deposit_fuel_test(
+    nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
+    owner_cap: &OwnerCap<NetworkNode>,
+    type_id: u64,
+    volume: u64,
+    quantity: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
+    nwn.fuel.deposit(type_id, volume, quantity, clock);
+}
+
+#[test_only]
+public fun withdraw_fuel_test(
+    nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
+    owner_cap: &OwnerCap<NetworkNode>,
+    quantity: u64,
+    ctx: &mut TxContext,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
+    nwn.fuel.withdraw(quantity);
 }

@@ -7,7 +7,12 @@ module world::character;
 
 use std::string::String;
 use sui::{derived_object, event};
-use world::{access::{Self, AdminCap}, in_game_id::{Self, TenantItemId}, metadata::{Self, Metadata}};
+use world::{
+    access::{Self, AdminCap},
+    in_game_id::{Self, TenantItemId},
+    metadata::{Self, Metadata},
+    object_registry::ObjectRegistry
+};
 
 #[error(code = 0)]
 const EGameCharacterIdEmpty: vector<u8> = b"Game character ID is empty";
@@ -24,10 +29,6 @@ const ETenantEmpty: vector<u8> = b"Tenant name cannot be empty";
 #[error(code = 4)]
 const EAddressEmpty: vector<u8> = b"Address cannot be empty";
 
-public struct CharacterRegistry has key {
-    id: UID,
-}
-
 public struct Character has key {
     id: UID,
     key: TenantItemId, // The derivation key used to generate the character's object ID
@@ -43,12 +44,6 @@ public struct CharacterCreatedEvent has copy, drop {
     key: TenantItemId,
     tribe_id: u32,
     character_address: address,
-}
-
-fun init(ctx: &mut TxContext) {
-    transfer::share_object(CharacterRegistry {
-        id: object::new(ctx),
-    });
 }
 
 // === View Functions ===
@@ -70,7 +65,7 @@ public fun tenant(character: &Character): String {
 
 // === Admin Functions ===
 public fun create_character(
-    registry: &mut CharacterRegistry,
+    registry: &mut ObjectRegistry,
     admin_cap: &AdminCap,
     game_character_id: u32,
     tenant: String,
@@ -88,8 +83,8 @@ public fun create_character(
     // This ensures deterministic character id  generation and prevents duplicate character creation under the same game id.
     // The character id can be pre-computed using the registry object id and TenantItemId
     let character_key = in_game_id::create_key(game_character_id as u64, tenant);
-    assert!(!derived_object::exists(&registry.id, character_key), ECharacterAlreadyExists);
-    let character_uid = derived_object::claim(&mut registry.id, character_key);
+    assert!(!registry.object_exists(character_key), ECharacterAlreadyExists);
+    let character_uid = derived_object::claim(registry.borrow_registry_id(), character_key);
     let character_id = object::uid_to_inner(&character_uid);
 
     let owner_cap_id = access::create_and_transfer_owner_cap<Character>(
@@ -158,11 +153,6 @@ public fun delete_character(character: Character, _: &AdminCap) {
 }
 
 // === Test Functions ===
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
-}
-
 #[test_only]
 public fun game_character_id(character: &Character): u32 {
     in_game_id::item_id(&character.key) as u32

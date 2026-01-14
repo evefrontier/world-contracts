@@ -5,7 +5,8 @@ use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
     access::{Self, AdminCap, OwnerCap},
-    character::{Self, Character, CharacterRegistry},
+    character::{Self, Character},
+    object_registry::ObjectRegistry,
     test_helpers::{Self, TestObject, governor, admin, user_a, user_b},
     world::{Self, GovernorCap}
 };
@@ -143,7 +144,7 @@ fun character_owner_cap_transfer_fail() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,

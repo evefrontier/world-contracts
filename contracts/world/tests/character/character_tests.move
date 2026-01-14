@@ -6,9 +6,10 @@ use std::{string::utf8, unit_test::assert_eq};
 use sui::{derived_object, test_scenario as ts};
 use world::{
     access::{Self, AdminCap, OwnerCap},
-    character::{Self, Character, CharacterRegistry},
+    character::{Self, Character},
     in_game_id as character_id,
     metadata,
+    object_registry::{Self, ObjectRegistry},
     test_helpers::{governor, admin, user_a, user_b, tenant},
     world::{Self, GovernorCap}
 };
@@ -22,7 +23,7 @@ fun setup_world(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
     {
         world::init_for_testing(ts::ctx(ts));
-        character::init_for_testing(ts::ctx(ts));
+        object_registry::init_for_testing(ts.ctx());
     };
 
     ts::next_tx(ts, governor());
@@ -42,7 +43,7 @@ fun setup_character(
     ts::next_tx(ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -57,27 +58,6 @@ fun setup_character(
         ts::return_shared(registry);
         ts::return_to_sender(ts, admin_cap);
     };
-}
-
-/// Tests that the character registry is initialized correctly
-/// Scenario: Initialize character registry and verify it exists as a shared object
-/// Expected: Registry is created and can be accessed as a shared object
-#[test]
-fun character_registry_initialized() {
-    let mut ts = ts::begin(governor());
-    ts::next_tx(&mut ts, governor());
-    {
-        character::init_for_testing(ts::ctx(&mut ts));
-    };
-
-    ts::next_tx(&mut ts, governor());
-    {
-        let registry = ts::take_shared<CharacterRegistry>(&ts);
-        // Registry should exist and be shared
-        ts::return_shared(registry);
-    };
-
-    ts.end();
 }
 
 /// Tests creating a character with valid parameters
@@ -117,7 +97,7 @@ fun deterministic_character_id() {
     // Create first character with in_game_character_id = 42
     ts::next_tx(&mut ts, admin());
     {
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
 
         // Pre-compute the character ID before creation
@@ -167,7 +147,7 @@ fun different_character_ids_produce_different_character_ids() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -188,7 +168,7 @@ fun different_character_ids_produce_different_character_ids() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -230,7 +210,7 @@ fun different_tenant_create_character_id() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -250,7 +230,7 @@ fun different_tenant_create_character_id() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -380,7 +360,7 @@ fun create_character_with_empty_address() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -409,7 +389,7 @@ fun create_character_with_empty_tenant() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -443,7 +423,7 @@ fun duplicate_character_id_fails() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -465,7 +445,7 @@ fun duplicate_character_id_fails() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -499,7 +479,7 @@ fun delete_recreate_character() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -529,7 +509,7 @@ fun delete_recreate_character() {
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -563,7 +543,7 @@ fun create_character_without_admin_cap() {
     ts::next_tx(&mut ts, user_a());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,

@@ -20,14 +20,12 @@ use world::{
 #[error(code = 0)]
 const ETypeIdEmpty: vector<u8> = b"Type ID cannot be empty";
 #[error(code = 1)]
-const EItemIdEmpty: vector<u8> = b"Item ID cannot be empty";
-#[error(code = 2)]
 const EInventoryInvalidCapacity: vector<u8> = b"Inventory Capacity cannot be 0";
-#[error(code = 3)]
+#[error(code = 2)]
 const EInventoryInsufficientCapacity: vector<u8> = b"Insufficient capacity in the inventory";
-#[error(code = 4)]
+#[error(code = 3)]
 const EItemDoesNotExist: vector<u8> = b"Item not found";
-#[error(code = 5)]
+#[error(code = 4)]
 const EInventoryInsufficientQuantity: vector<u8> = b"Insufficient quantity in inventory";
 
 // === Structs ===
@@ -104,8 +102,8 @@ public fun tenant(item: &Item): String {
     item.tenant
 }
 
-public fun contains_item(inventory: &Inventory, item_id: u64): bool {
-    inventory.items.contains(&item_id)
+public fun contains_item(inventory: &Inventory, type_id: u64): bool {
+    inventory.items.contains(&type_id)
 }
 
 public fun get_item_location_hash(item: &Item): vector<u8> {
@@ -138,7 +136,7 @@ public(package) fun create(
 
 /// Mints items into inventory (Game → Chain bridge)
 /// Admin-only function for trusted game server
-/// Creates new item or adds to existing if item_id already exists
+/// Creates new item or adds to existing if type_id already exists
 public(package) fun mint_items(
     inventory: &mut Inventory,
     character: &Character,
@@ -150,22 +148,21 @@ public(package) fun mint_items(
     location_hash: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    assert!(item_id != 0, EItemIdEmpty);
     assert!(type_id != 0, ETypeIdEmpty);
 
-    if (inventory.items.contains(&item_id)) {
-        increase_item_quantity(inventory, character, item_id, quantity);
+    if (inventory.items.contains(&type_id)) {
+        increase_item_quantity(inventory, character, type_id, quantity);
     } else {
-        let item_uid = object::new(ctx);
-        let item_uid_value = object::uid_to_inner(&item_uid);
+        let type_uid = object::new(ctx);
+        let type_uid_value = object::uid_to_inner(&type_uid);
         let item = Item {
-            id: item_uid,
+            id: type_uid,
             tenant,
             type_id,
             item_id,
             volume,
             quantity,
-            location: location::attach(item_uid_value, location_hash),
+            location: location::attach(type_uid_value, location_hash),
         };
 
         let req_capacity = calculate_volume(volume, quantity);
@@ -173,7 +170,7 @@ public(package) fun mint_items(
         assert!(req_capacity <= remaining_capacity, EInventoryInsufficientCapacity);
 
         inventory.used_capacity = inventory.used_capacity + req_capacity;
-        inventory.items.insert(item_id, item);
+        inventory.items.insert(type_id, item);
 
         event::emit(ItemMintedEvent {
             assembly_id: inventory.assembly_id,
@@ -193,7 +190,7 @@ public(package) fun burn_items_with_proof(
     server_registry: &ServerAddressRegistry,
     location: &Location,
     location_proof: vector<u8>,
-    item_id: u64,
+    type_id: u64,
     quantity: u32,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -205,7 +202,7 @@ public(package) fun burn_items_with_proof(
         clock,
         ctx,
     );
-    burn_items(inventory, character, item_id, quantity);
+    burn_items(inventory, character, type_id, quantity);
 }
 
 // A wrapper function to transfer between inventories
@@ -225,19 +222,19 @@ public(package) fun deposit_item(inventory: &mut Inventory, character: &Characte
         type_id: item.type_id,
         quantity: item.quantity,
     });
-    inventory.items.insert(item.item_id, item);
+    inventory.items.insert(item.type_id, item);
 }
 
 // A wrapper function to transfer between inventories
-/// Withdraws the item with the specified item_id and returns the whole Item.
+/// Withdraws the item with the specified type_id and returns the whole Item.
 public(package) fun withdraw_item(
     inventory: &mut Inventory,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
 ): Item {
-    assert!(inventory.items.contains(&item_id), EItemDoesNotExist);
+    assert!(inventory.items.contains(&type_id), EItemDoesNotExist);
 
-    let (_, item) = inventory.items.remove(&item_id);
+    let (_, item) = inventory.items.remove(&type_id);
     let volume_freed = calculate_volume(item.volume, item.quantity);
     inventory.used_capacity = inventory.used_capacity - volume_freed;
 
@@ -278,11 +275,11 @@ public(package) fun delete(inventory: Inventory, character: &Character) {
 /// Burns items from on-chain inventory (Chain → Game bridge)
 /// Emits ItemBurnedEvent for game server to create item in-game
 /// Deletes Item object if param quantity = existing quantity, otherwise reduces quantity
-fun burn_items(inventory: &mut Inventory, character: &Character, item_id: u64, quantity: u32) {
-    assert!(inventory.items.contains(&item_id), EItemDoesNotExist);
+fun burn_items(inventory: &mut Inventory, character: &Character, type_id: u64, quantity: u32) {
+    assert!(inventory.items.contains(&type_id), EItemDoesNotExist);
 
     let should_remove = {
-        let item = &mut inventory.items[&item_id];
+        let item = &mut inventory.items[&type_id];
         assert!(item.quantity >= quantity, EInventoryInsufficientQuantity);
 
         if (item.quantity == quantity) {
@@ -299,8 +296,8 @@ fun burn_items(inventory: &mut Inventory, character: &Character, item_id: u64, q
                 assembly_key: inventory.assembly_key,
                 character_id: character.id(),
                 character_key: character.key(),
-                item_id,
-                type_id: item.type_id,
+                item_id: item.item_id,
+                type_id,
                 quantity: quantity,
             });
             false
@@ -308,7 +305,7 @@ fun burn_items(inventory: &mut Inventory, character: &Character, item_id: u64, q
     };
 
     if (should_remove) {
-        let (_, removed_item) = inventory.items.remove(&item_id);
+        let (_, removed_item) = inventory.items.remove(&type_id);
         let volume_freed = calculate_volume(removed_item.volume, removed_item.quantity);
         inventory.used_capacity = inventory.used_capacity - volume_freed;
 
@@ -342,10 +339,10 @@ fun destroy_item(
 fun increase_item_quantity(
     inventory: &mut Inventory,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
     quantity: u32,
 ) {
-    let item = &mut inventory.items[&item_id];
+    let item = &mut inventory.items[&type_id];
     let req_capacity = calculate_volume(item.volume, quantity);
 
     let remaining_capacity = inventory.max_capacity - inventory.used_capacity;
@@ -356,8 +353,8 @@ fun increase_item_quantity(
         assembly_key: inventory.assembly_key,
         character_id: character.id(),
         character_key: character.key(),
-        item_id: item_id,
-        type_id: item.type_id,
+        item_id: item.item_id,
+        type_id,
         quantity,
     });
 
@@ -381,13 +378,13 @@ public fun used_capacity(inventory: &Inventory): u64 {
 }
 
 #[test_only]
-public fun item_quantity(inventory: &Inventory, item_id: u64): u32 {
-    inventory.items[&item_id].quantity
+public fun item_quantity(inventory: &Inventory, type_id: u64): u32 {
+    inventory.items[&type_id].quantity
 }
 
 #[test_only]
-public fun item_location(inventory: &Inventory, item_id: u64): vector<u8> {
-    let item = &inventory.items[&item_id];
+public fun item_location(inventory: &Inventory, type_id: u64): vector<u8> {
+    let item = &inventory.items[&type_id];
     location::hash(&item.location)
 }
 
@@ -400,10 +397,10 @@ public fun inventory_item_length(inventory: &Inventory): u64 {
 public fun burn_items_test(
     inventory: &mut Inventory,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
     quantity: u32,
 ) {
-    burn_items(inventory, character, item_id, quantity);
+    burn_items(inventory, character, type_id, quantity);
 }
 
 // Mocking without deadline
@@ -414,7 +411,7 @@ public fun burn_items_with_proof_test(
     server_registry: &ServerAddressRegistry,
     location: &Location,
     location_proof: vector<u8>,
-    item_id: u64,
+    type_id: u64,
     quantity: u32,
     ctx: &mut TxContext,
 ) {
@@ -424,5 +421,5 @@ public fun burn_items_with_proof_test(
         location_proof,
         ctx,
     );
-    burn_items(inventory, character, item_id, quantity);
+    burn_items(inventory, character, type_id, quantity);
 }

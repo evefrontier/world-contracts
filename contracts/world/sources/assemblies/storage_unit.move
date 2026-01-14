@@ -24,12 +24,14 @@ use std::type_name::{Self, TypeName};
 use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     access::{Self, OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
-    assembly::{Self, AssemblyRegistry},
     character::Character,
+    energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     inventory::{Self, Inventory, Item},
     location::{Self, Location},
     metadata::{Self, Metadata},
+    network_node::{NetworkNode, OfflineAssemblies},
+    object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus, Status}
 };
 
@@ -55,6 +57,11 @@ const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants"
 const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
 #[error(code = 9)]
 const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
+#[error(code = 10)]
+const ENetworkNodeMismatch: vector<u8> =
+    b"Provided network node does not match the storage unit's configured energy source";
+#[error(code = 11)]
+const EStorageUnitInvalidState: vector<u8> = b"Storage Unit should be offline";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -66,6 +73,7 @@ public struct StorageUnit has key {
     status: AssemblyStatus,
     location: Location,
     inventory_keys: vector<ID>,
+    energy_source_id: ID,
     metadata: Option<Metadata>,
     extension: Option<TypeName>,
 }
@@ -90,13 +98,31 @@ public fun authorize_extension<Auth: drop>(
     storage_unit.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
 }
 
-public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap<StorageUnit>) {
+public fun online(
+    storage_unit: &mut StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    owner_cap: &OwnerCap<StorageUnit>,
+) {
     assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeMismatch);
+    reserve_energy(storage_unit, network_node, energy_config);
+
     storage_unit.status.online();
 }
 
-public fun offline(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap<StorageUnit>) {
+public fun offline(
+    storage_unit: &mut StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    owner_cap: &OwnerCap<StorageUnit>,
+) {
     assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+
+    // Verify network node matches the storage unit's energy source
+    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeMismatch);
+    release_energy(storage_unit, network_node, energy_config);
+
     storage_unit.status.offline();
 }
 
@@ -106,7 +132,7 @@ public fun chain_item_to_game_inventory<T: key>(
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
     clock: &Clock,
@@ -125,7 +151,7 @@ public fun chain_item_to_game_inventory<T: key>(
         server_registry,
         &storage_unit.location,
         location_proof,
-        item_id,
+        type_id,
         quantity,
         clock,
         ctx,
@@ -156,7 +182,7 @@ public fun withdraw_item<Auth: drop>(
     storage_unit: &mut StorageUnit,
     character: &Character,
     _: Auth,
-    item_id: u64,
+    type_id: u64,
     _: &mut TxContext,
 ): Item {
     assert!(
@@ -168,7 +194,7 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.owner_cap_id,
     );
 
-    inventory.withdraw_item(character, item_id)
+    inventory.withdraw_item(character, type_id)
 }
 
 public fun deposit_by_owner<T: key>(
@@ -213,7 +239,7 @@ public fun withdraw_by_owner<T: key>(
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
     proximity_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -235,7 +261,7 @@ public fun withdraw_by_owner<T: key>(
         owner_cap_id,
     );
 
-    inventory.withdraw_item(character, item_id)
+    inventory.withdraw_item(character, type_id)
 }
 
 // TODO: Can also have a transfer function for simplicity
@@ -259,7 +285,8 @@ public fun owner_cap_id(storage_unit: &StorageUnit): ID {
 
 // === Admin Functions ===
 public fun anchor(
-    assembly_registry: &mut AssemblyRegistry,
+    registry: &mut ObjectRegistry,
+    network_node: &mut NetworkNode,
     character: &Character,
     admin_cap: &AdminCap,
     item_id: u64,
@@ -272,14 +299,11 @@ public fun anchor(
     assert!(item_id != 0, EStorageUnitItemIdEmpty);
 
     let storage_unit_key = in_game_id::create_key(item_id, character.tenant());
-    assert!(
-        !assembly::assembly_exists(assembly_registry, storage_unit_key),
-        EStorageUnitAlreadyExists,
-    );
+    assert!(!registry.object_exists(storage_unit_key), EStorageUnitAlreadyExists);
 
-    let registry_id = assembly::borrow_registry_id(assembly_registry);
-    let assembly_uid = derived_object::claim(registry_id, storage_unit_key);
+    let assembly_uid = derived_object::claim(registry.borrow_registry_id(), storage_unit_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
+    let network_node_id = object::id(network_node);
 
     // Create owner cap
     let owner_cap_id = access::create_and_transfer_owner_cap<StorageUnit>(
@@ -297,6 +321,7 @@ public fun anchor(
         status: status::anchor(assembly_id, type_id, item_id),
         location: location::attach(assembly_id, location_hash),
         inventory_keys: vector[],
+        energy_source_id: network_node_id,
         metadata: std::option::some(
             metadata::create_metadata(
                 assembly_id,
@@ -308,6 +333,8 @@ public fun anchor(
         ),
         extension: option::none(),
     };
+
+    network_node.connect_assembly(assembly_id);
 
     let inventory = inventory::create(
         assembly_id,
@@ -336,17 +363,77 @@ public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
     transfer::share_object(storage_unit);
 }
 
+public fun update_energy_source(
+    storage_unit: &mut StorageUnit,
+    network_node: &mut NetworkNode,
+    _: &AdminCap,
+) {
+    let storage_unit_id = object::id(storage_unit);
+    let nwn_id = object::id(network_node);
+    assert!(!storage_unit.status.is_online(), EStorageUnitInvalidState);
+
+    network_node.connect_assembly(storage_unit_id);
+    storage_unit.energy_source_id = nwn_id;
+}
+
+//  TODO : Can we generalise this function for all assembly
+/// Brings a connected storage unit offline and removes it from the hot potato
+/// Must be called for each storage unit in the hot potato list
+/// Returns the updated hot potato with the processed storage unit removed
+/// After all storage units are processed, call destroy_offline_assemblies to consume the hot potato
+/// The hot potato itself serves as authorization since it can only be obtained from capped functions
+public fun offline_connected_storage_unit(
+    storage_unit: &mut StorageUnit,
+    mut offline_assemblies: OfflineAssemblies,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+): OfflineAssemblies {
+    if (offline_assemblies.ids_length() > 0) {
+        let storage_unit_id = object::id(storage_unit);
+
+        // Remove the storage unit ID from the hot potato using package function
+        let found = offline_assemblies.remove_assembly_id(storage_unit_id);
+        if (found) {
+            // Bring the storage unit offline if it's online and release energy
+            if (storage_unit.status.is_online()) {
+                storage_unit.status.offline();
+                release_energy(storage_unit, network_node, energy_config);
+            };
+        }
+    };
+    offline_assemblies
+}
+
 // On unanchor the storage unit is scooped back into inventory in game
 // So we burn the items and delete the object
-public fun unanchor(storage_unit: StorageUnit, character: &Character, _: &AdminCap) {
+public fun unanchor(
+    storage_unit: StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    character: &Character,
+    _: &AdminCap,
+) {
     let StorageUnit {
         mut id,
         status,
         location,
         inventory_keys,
         metadata,
+        energy_source_id,
+        type_id,
         ..,
     } = storage_unit;
+
+    assert!(energy_source_id == object::id(network_node), ENetworkNodeMismatch);
+
+    // Release energy if storage unit is online
+    if (status.is_online()) {
+        release_energy_by_type(network_node, energy_config, type_id);
+    };
+
+    // Disconnect storage unit from network node
+    let storage_unit_id = object::uid_to_inner(&id);
+    network_node.disconnect_assembly(storage_unit_id);
 
     status.unanchor();
     location.remove();
@@ -412,6 +499,40 @@ public fun game_item_to_chain_inventory<T: key>(
 }
 
 // === Private Functions ===
+fun reserve_energy(
+    storage_unit: &StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+) {
+    network_node
+        .borrow_energy_source()
+        .reserve_energy(
+            energy_config,
+            storage_unit.type_id,
+        );
+}
+
+fun release_energy(
+    storage_unit: &StorageUnit,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+) {
+    release_energy_by_type(network_node, energy_config, storage_unit.type_id);
+}
+
+fun release_energy_by_type(
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    type_id: u64,
+) {
+    network_node
+        .borrow_energy_source()
+        .release_energy(
+            energy_config,
+            type_id,
+        );
+}
+
 fun check_inventory_authorization<T: key>(
     owner_cap: &OwnerCap<T>,
     storage_unit: &StorageUnit,
@@ -443,15 +564,15 @@ public fun borrow_status_mut(storage_unit: &mut StorageUnit): &mut AssemblyStatu
 }
 
 #[test_only]
-public fun item_quantity(storage_unit: &StorageUnit, owner_cap_id: ID, item_id: u64): u32 {
+public fun item_quantity(storage_unit: &StorageUnit, owner_cap_id: ID, type_id: u64): u32 {
     let inventory = df::borrow<ID, Inventory>(&storage_unit.id, owner_cap_id);
-    inventory.item_quantity(item_id)
+    inventory.item_quantity(type_id)
 }
 
 #[test_only]
-public fun contains_item(storage_unit: &StorageUnit, owner_cap_id: ID, item_id: u64): bool {
+public fun contains_item(storage_unit: &StorageUnit, owner_cap_id: ID, type_id: u64): bool {
     let inventory = df::borrow<ID, Inventory>(&storage_unit.id, owner_cap_id);
-    inventory.contains_item(item_id)
+    inventory.contains_item(type_id)
 }
 
 #[test_only]
@@ -470,7 +591,7 @@ public fun chain_item_to_game_inventory_test<T: key>(
     server_registry: &ServerAddressRegistry,
     owner_cap: &OwnerCap<T>,
     character: &Character,
-    item_id: u64,
+    type_id: u64,
     quantity: u32,
     location_proof: vector<u8>,
     ctx: &mut TxContext,
@@ -485,7 +606,7 @@ public fun chain_item_to_game_inventory_test<T: key>(
         server_registry,
         &storage_unit.location,
         location_proof,
-        item_id,
+        type_id,
         quantity,
         ctx,
     );

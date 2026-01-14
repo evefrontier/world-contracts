@@ -5,18 +5,19 @@ use std::{string::utf8, unit_test::assert_eq};
 use sui::test_scenario as ts;
 use world::{
     access::{AdminCap, OwnerCap},
-    assembly::{Self, Assembly, AssemblyRegistry},
-    character::{Self, Character, CharacterRegistry},
+    assembly::{Self, Assembly},
+    character::{Self, Character},
     metadata,
-    network_node::{Self, NetworkNode, NetworkNodeRegistry},
+    network_node::{Self, NetworkNode},
+    object_registry::ObjectRegistry,
     test_helpers::{Self, admin, governor, user_a, user_b, tenant}
 };
 
-const VOLUME: u64 = 10000;
 const ITEM_ID: u64 = 1001;
 const LOCATION_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const TYPE_ID: u64 = 1;
+const CHARACTER_ITEM_ID_OFFSET: u32 = 10000;
 const NAME: vector<u8> = b"Candy Machine";
 const DESCRIPTION: vector<u8> = b"I sell candy for kindness";
 const URL: vector<u8> = b"https://example.com/item.png";
@@ -38,7 +39,7 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
     {
         let character_id = {
             let admin_cap = ts::take_from_sender<AdminCap>(ts);
-            let mut registry = ts::take_shared<CharacterRegistry>(ts);
+            let mut registry = ts::take_shared<ObjectRegistry>(ts);
             let character = character::create_character(
                 &mut registry,
                 &admin_cap,
@@ -62,17 +63,16 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
 fun create_network_node(ts: &mut ts::Scenario): ID {
     let character_id = create_character(ts, user_a(), 1);
     ts::next_tx(ts, admin());
-    let mut nwn_registry = ts::take_shared<NetworkNodeRegistry>(ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let nwn = network_node::anchor(
-        &mut nwn_registry,
+        &mut registry,
         &character,
         &admin_cap,
         NWN_ITEM_ID,
         NWN_TYPE_ID,
-        VOLUME,
         LOCATION_HASH,
         FUEL_MAX_CAPACITY,
         FUEL_BURN_RATE_IN_MS,
@@ -84,26 +84,26 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
 
     ts::return_shared(character);
     ts::return_to_sender(ts, admin_cap);
-    ts::return_shared(nwn_registry);
+    ts::return_shared(registry);
     id
 }
 
 fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, owner: address, item_id: u64): ID {
-    let character_id = create_character(ts, owner, (item_id as u32));
+    let character_item_id = (item_id as u32) + CHARACTER_ITEM_ID_OFFSET;
+    let character_id = create_character(ts, owner, character_item_id);
     ts::next_tx(ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
+    let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let assembly = assembly::anchor(
-        &mut assembly_registry,
+        &mut registry,
         &mut nwn,
         &character,
         &admin_cap,
         item_id,
         TYPE_ID,
-        VOLUME,
         LOCATION_HASH,
         ts.ctx(),
     );
@@ -112,7 +112,7 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, owner: address, item_id: 
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_to_sender(ts, admin_cap);
-    ts::return_shared(assembly_registry);
+    ts::return_shared(registry);
     ts::return_shared(nwn);
     assembly_id
 }
