@@ -44,6 +44,30 @@ async function updateFuel(
     const assemblyIds = (await getConnectedAssemblies(networkNodeId, client, config)) || [];
     console.log(`Found ${assemblyIds.length} connected assemblies`);
 
+    // Determine which assemblies are storage units by querying their types
+    const assemblyTypes = await Promise.all(
+        assemblyIds.map(async (assemblyId) => {
+            try {
+                const object = await client.getObject({
+                    id: assemblyId,
+                    options: { showType: true },
+                });
+                const type = object.data?.type;
+                return {
+                    id: assemblyId,
+                    isStorageUnit: type?.includes("StorageUnit") ?? false,
+                };
+            } catch (error) {
+                console.warn(`Failed to get type for assembly ${assemblyId}:`, error);
+                // Default to assembly module if we can't determine the type
+                return {
+                    id: assemblyId,
+                    isStorageUnit: false,
+                };
+            }
+        })
+    );
+
     const tx = new Transaction();
 
     // Step 1: Call update_fuel which returns OfflineAssemblies
@@ -61,11 +85,15 @@ async function updateFuel(
     // Step 2: Process each assembly from the hot potato
     // The hot potato contains the assembly IDs connected to the network node
     let currentHotPotato = offlineAssemblies;
-    for (const assemblyId of assemblyIds) {
-        // todo: if the assemblyId is of storage unit type then call `offline_connected_assembly` from storage unit module
-        // else call assembly module
+    for (const { id: assemblyId, isStorageUnit } of assemblyTypes) {
+        // Call the appropriate function based on assembly type
+        const module = isStorageUnit ? MODULES.STORAGE_UNIT : MODULES.ASSEMBLY;
+        const functionName = isStorageUnit
+            ? "offline_connected_storage_unit"
+            : "offline_connected_assembly";
+
         const [updatedHotPotato] = tx.moveCall({
-            target: `${config.packageId}::${MODULES.ASSEMBLY}::offline_connected_assembly`,
+            target: `${config.packageId}::${module}::${functionName}`,
             arguments: [
                 tx.object(assemblyId),
                 currentHotPotato,
