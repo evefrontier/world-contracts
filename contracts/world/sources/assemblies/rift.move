@@ -111,7 +111,7 @@ public fun location_hash(rift: &Rift): vector<u8> {
 /// Creates and shares a new rift with the specified crude amount and location.
 /// Admin-only function for creating new rifts in the world.
 public fun create_and_share_rift(
-    _: &AdminCap,
+    _admin_cap: &AdminCap,
     crude_amount: u64,
     location_hash: vector<u8>,
     ctx: &mut TxContext,
@@ -223,7 +223,7 @@ public fun init_for_testing(ctx: &mut TxContext) {
 
 #[test_only]
 public fun create_test_rift(
-    admin_cap: &AdminCap,
+    _admin_cap: &AdminCap,
     crude_amount: u64,
     location_hash: vector<u8>,
     ctx: &mut TxContext,
@@ -246,7 +246,7 @@ public fun create_test_rift(
 
 #[test_only]
 public fun create_and_share_test_rift(
-    admin_cap: &AdminCap,
+    _admin_cap: &AdminCap,
     crude_amount: u64,
     location_hash: vector<u8>,
     ctx: &mut TxContext,

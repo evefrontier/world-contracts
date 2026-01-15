@@ -5,8 +5,6 @@ use std::string::String;
 use sui::test_scenario as ts;
 use world::{
     access::{Self, AdminCap, ServerAddressRegistry, AdminACL},
-    assembly,
-    character,
     crude_lift,
     energy::{Self, EnergyConfig},
     fuel::{Self, FuelConfig},
@@ -118,6 +116,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
         let mut admin_acl = ts::take_shared<AdminACL>(ts);
         access::create_admin_cap(&gov_cap, admin(), ts.ctx());
         access::add_sponsor_to_acl(&mut admin_acl, &gov_cap, admin()); // here admin and sponsor is the same
+        access::add_sponsor_to_acl(&mut admin_acl, &gov_cap, user_a()); // allow user_a to sponsor test txns
         ts::return_to_sender(ts, gov_cap);
         ts::return_shared(admin_acl);
     };

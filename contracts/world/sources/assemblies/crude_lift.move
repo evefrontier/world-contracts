@@ -14,15 +14,16 @@ use sui::{
 };
 use world::{
     access::{Self, OwnerCap, AdminCap},
-    assembly::{Self, AssemblyRegistry},
     character::Character,
-    energy::{Self, EnergyConfig},
+    energy,
+    energy::EnergyConfig,
     fuel::{Self, Fuel, FuelConfig},
     in_game_id::{Self, TenantItemId},
     inventory::{Self, Inventory},
     location::{Self, Location},
     metadata::{Self, Metadata},
     network_node::NetworkNode,
+    object_registry::{Self, ObjectRegistry},
     rift::Rift,
     status::{Self, AssemblyStatus}
 };
@@ -149,7 +150,7 @@ public fun crude_amount(crude_lift: &CrudeLift): u64 {
     // Use a deterministic item ID for crude matter
     let crude_item_id = 1; // Fixed item ID for crude matter
     if (inventory.contains_item(crude_item_id)) {
-        0 // Will be updated when we can access item quantity properly
+        inventory::item_quantity(inventory, crude_item_id) as u64
     } else {
         0
     }
@@ -171,8 +172,14 @@ public fun online(
     owner_cap: &OwnerCap<CrudeLift>,
 ) {
     assert!(access::is_authorized(owner_cap, object::id(crude_lift)), ECrudeLiftWrongState);
-    assert!(crude_lift.energy_source_id == object::id(network_node), ECrudeLiftWrongState);
+    if (crude_lift.energy_source_id == object::id_from_address(@0x0)) {
+        network_node.connect_assembly(object::id(crude_lift));
+        crude_lift.energy_source_id = object::id(network_node);
+    } else {
+        assert!(crude_lift.energy_source_id == object::id(network_node), ECrudeLiftWrongState);
+    };
     
+    // Reserve energy from the network node before going online.
     let energy_source = network_node.borrow_energy_source();
     energy::reserve_energy(energy_source, energy_config, crude_lift.type_id);
     crude_lift.status.online();
@@ -235,6 +242,7 @@ public fun stop_mining(
     crude_lift: &mut CrudeLift,
     rift: &mut Rift,
     fuel_config: &FuelConfig,
+    character: &Character,
     clock: &Clock,
     owner_cap: &OwnerCap<CrudeLift>,
     ctx: &mut TxContext,
@@ -285,8 +293,10 @@ public fun stop_mining(
 
     // Remove crude from rift and add to inventory
     if (crude_mined > 0) {
-        rift.remove_crude(crude_mined);
-        add_crude_to_inventory(crude_lift, crude_mined, ctx);
+        if (!rift.is_collapsed()) {
+            rift.remove_crude(crude_mined);
+        };
+        add_crude_to_inventory(crude_lift, character, crude_mined, ctx);
     };
 
     // Stop mining on rift
@@ -305,7 +315,7 @@ public fun stop_mining(
 
 /// Creates and anchors a new CrudeLift
 public fun anchor(
-    assembly_registry: &mut AssemblyRegistry,
+    assembly_registry: &mut ObjectRegistry,
     character: &Character,
     admin_cap: &AdminCap,
     item_id: u64,
@@ -321,11 +331,11 @@ public fun anchor(
     let tenant = character.tenant();
     let crude_lift_key = in_game_id::create_key(item_id, tenant);
     assert!(
-        !assembly::assembly_exists(assembly_registry, crude_lift_key),
+        !object_registry::object_exists(assembly_registry, crude_lift_key),
         ECrudeLiftWrongState,
     );
 
-    let registry_id = assembly::borrow_registry_id(assembly_registry);
+    let registry_id = object_registry::borrow_registry_id(assembly_registry);
     let assembly_uid = derived_object::claim(registry_id, crude_lift_key);
     let assembly_id = object::uid_to_inner(&assembly_uid);
 
@@ -360,6 +370,7 @@ public fun anchor(
     // Create inventories
     let owner_inventory = inventory::create(
         assembly_id,
+        crude_lift_key,
         owner_cap_id,
         max_inventory_capacity,
     );
@@ -392,7 +403,12 @@ public fun share_crude_lift(crude_lift: CrudeLift, _: &AdminCap) {
 // === Private Functions ===
 
 /// Adds crude matter to the CrudeLift's inventory
-fun add_crude_to_inventory(crude_lift: &mut CrudeLift, amount: u64, ctx: &mut TxContext) {
+fun add_crude_to_inventory(
+    crude_lift: &mut CrudeLift,
+    character: &Character,
+    amount: u64,
+    ctx: &mut TxContext,
+) {
     let inventory = df::borrow_mut<ID, Inventory>(
         &mut crude_lift.id,
         crude_lift.owner_cap_id,
@@ -402,6 +418,7 @@ fun add_crude_to_inventory(crude_lift: &mut CrudeLift, amount: u64, ctx: &mut Tx
 
     // Mint crude matter items into inventory
     inventory.mint_items(
+        character,
         crude_lift.key.tenant(),
         crude_item_id,
         CRUDE_MATTER_TYPE_ID,

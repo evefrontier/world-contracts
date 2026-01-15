@@ -5,13 +5,13 @@ module world::crude_lift_tests;
 use std::unit_test::assert_eq;
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{OwnerCap, AdminCap},
-    assembly::AssemblyRegistry,
-    character::{Self, Character, CharacterRegistry},
+    access::{OwnerCap, AdminCap, AdminACL},
+    character::{Self, Character},
     crude_lift::{Self, CrudeLift},
     energy::EnergyConfig,
     fuel::FuelConfig,
     network_node::{Self, NetworkNode},
+    object_registry::ObjectRegistry,
     rift::{Self, Rift},
     test_helpers::{Self, governor, admin, user_a, tenant}
 };
@@ -30,12 +30,12 @@ const MINING_RATE: u64 = 10; // crude per second
 
 fun create_crude_lift(ts: &mut ts::Scenario, character_id: ID): ID {
     ts::next_tx(ts, admin());
-    let mut assembly_registry = ts::take_shared<AssemblyRegistry>(ts);
-    let character = ts::take_shared_by_id<Character>(ts, character_id);
     let crude_lift_id = {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
+        let character = ts::take_shared_by_id<Character>(ts, character_id);
         let crude_lift = crude_lift::anchor(
-            &mut assembly_registry,
+            &mut registry,
             &character,
             &admin_cap,
             CRUDE_LIFT_ITEM_ID,
@@ -47,11 +47,11 @@ fun create_crude_lift(ts: &mut ts::Scenario, character_id: ID): ID {
         );
         let crude_lift_id = object::id(&crude_lift);
         crude_lift.share_crude_lift(&admin_cap);
+        ts::return_shared(registry);
+        ts::return_shared(character);
         ts::return_to_sender(ts, admin_cap);
         crude_lift_id
     };
-    ts::return_shared(character);
-    ts::return_shared(assembly_registry);
     crude_lift_id
 }
 
@@ -108,22 +108,31 @@ fun start_mining(ts: &mut ts::Scenario, user: address, crude_lift_id: ID, rift_i
     };
 }
 
-fun stop_mining(ts: &mut ts::Scenario, user: address, crude_lift_id: ID, rift_id: ID) {
+fun stop_mining(
+    ts: &mut ts::Scenario,
+    user: address,
+    character_id: ID,
+    crude_lift_id: ID,
+    rift_id: ID,
+) {
     ts::next_tx(ts, user);
     {
         let mut crude_lift = ts::take_shared_by_id<CrudeLift>(ts, crude_lift_id);
         let mut rift = ts::take_shared_by_id<Rift>(ts, rift_id);
         let fuel_config = ts::take_shared<FuelConfig>(ts);
-        let clock = clock::create_for_testing(ts.ctx());
+        let character = ts::take_shared_by_id<Character>(ts, character_id);
+        let mut clock = clock::create_for_testing(ts.ctx());
         let owner_cap = ts::take_from_sender<OwnerCap<CrudeLift>>(ts);
 
-        crude_lift.stop_mining(&mut rift, &fuel_config, &clock, &owner_cap, ts.ctx());
+        clock.increment_for_testing(1000);
+        crude_lift.stop_mining(&mut rift, &fuel_config, &character, &clock, &owner_cap, ts.ctx());
 
         assert!(!crude_lift.is_mining());
         clock.destroy_for_testing();
         ts::return_shared(crude_lift);
         ts::return_shared(rift);
         ts::return_shared(fuel_config);
+        ts::return_shared(character);
         ts::return_to_sender(ts, owner_cap);
     };
 }
@@ -163,7 +172,7 @@ fun test_online_offline_crude_lift() {
     test_helpers::setup_world(&mut ts);
     let character_id = create_character(&mut ts, user_a(), CHARACTER_ITEM_ID);
     let crude_lift_id = create_crude_lift(&mut ts, character_id);
-    let network_node_id = create_network_node(&mut ts);
+    let network_node_id = create_network_node(&mut ts, character_id);
 
     // Bring online
     online_crude_lift(&mut ts, user_a(), crude_lift_id, network_node_id);
@@ -206,7 +215,7 @@ fun test_basic_mining_flow() {
     let character_id = create_character(&mut ts, user_a(), CHARACTER_ITEM_ID);
     let crude_lift_id = create_crude_lift(&mut ts, character_id);
     let rift_id = create_rift(&mut ts);
-    let network_node_id = create_network_node(&mut ts);
+    let network_node_id = create_network_node(&mut ts, character_id);
 
     // Setup CrudeLift
     online_crude_lift(&mut ts, user_a(), crude_lift_id, network_node_id);
@@ -221,14 +230,15 @@ fun test_basic_mining_flow() {
 
         assert!(crude_lift.is_mining());
         assert!(rift.is_being_mined());
-        assert_eq!(rift.mining_crude_lift_id().borrow(), &crude_lift_id);
+        let mining_id = *rift.mining_crude_lift_id().borrow();
+        assert_eq!(mining_id, crude_lift_id);
 
         ts::return_shared(crude_lift);
         ts::return_shared(rift);
     };
 
     // Stop mining
-    stop_mining(&mut ts, user_a(), crude_lift_id, rift_id);
+    stop_mining(&mut ts, user_a(), character_id, crude_lift_id, rift_id);
 
     ts::next_tx(&mut ts, admin());
     {
@@ -256,7 +266,7 @@ fun test_start_mining_twice_fails() {
     let character_id = create_character(&mut ts, user_a(), CHARACTER_ITEM_ID);
     let crude_lift_id = create_crude_lift(&mut ts, character_id);
     let rift_id = create_rift(&mut ts);
-    let network_node_id = create_network_node(&mut ts);
+    let network_node_id = create_network_node(&mut ts, character_id);
 
     // Setup CrudeLift
     online_crude_lift(&mut ts, user_a(), crude_lift_id, network_node_id);
@@ -273,6 +283,10 @@ fun test_start_mining_twice_fails() {
         let owner_cap = ts::take_from_sender<OwnerCap<CrudeLift>>(&ts);
 
         crude_lift.start_mining(&mut rift, MINING_RATE, &clock, &owner_cap);
+        ts::return_shared(crude_lift);
+        ts::return_shared(rift);
+        clock.destroy_for_testing();
+        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::end(ts);
@@ -293,10 +307,17 @@ fun test_stop_mining_without_mining_fails() {
         let mut crude_lift = ts::take_shared_by_id<CrudeLift>(&ts, crude_lift_id);
         let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let clock = clock::create_for_testing(ts.ctx());
         let owner_cap = ts::take_from_sender<OwnerCap<CrudeLift>>(&ts);
 
-        crude_lift.stop_mining(&mut rift, &fuel_config, &clock, &owner_cap, ts.ctx());
+        crude_lift.stop_mining(&mut rift, &fuel_config, &character, &clock, &owner_cap, ts.ctx());
+        ts::return_shared(crude_lift);
+        ts::return_shared(rift);
+        ts::return_shared(fuel_config);
+        ts::return_shared(character);
+        clock.destroy_for_testing();
+        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::end(ts);
@@ -312,7 +333,7 @@ fun test_mining_rift_collapse() {
     let character_id = create_character(&mut ts, user_a(), CHARACTER_ITEM_ID);
     let crude_lift_id = create_crude_lift(&mut ts, character_id);
     let rift_id = create_rift(&mut ts);
-    let network_node_id = create_network_node(&mut ts);
+    let network_node_id = create_network_node(&mut ts, character_id);
 
     // Setup CrudeLift
     online_crude_lift(&mut ts, user_a(), crude_lift_id, network_node_id);
@@ -334,7 +355,7 @@ fun test_mining_rift_collapse() {
     };
 
     // Stop mining - should handle collapsed rift
-    stop_mining(&mut ts, user_a(), crude_lift_id, rift_id);
+    stop_mining(&mut ts, user_a(), character_id, crude_lift_id, rift_id);
 
     ts::next_tx(&mut ts, admin());
     {
@@ -356,7 +377,7 @@ fun test_offline_while_mining_fails() {
     let character_id = create_character(&mut ts, user_a(), CHARACTER_ITEM_ID);
     let crude_lift_id = create_crude_lift(&mut ts, character_id);
     let rift_id = create_rift(&mut ts);
-    let network_node_id = create_network_node(&mut ts);
+    let network_node_id = create_network_node(&mut ts, character_id);
 
     // Setup CrudeLift and start mining
     online_crude_lift(&mut ts, user_a(), crude_lift_id, network_node_id);
@@ -371,6 +392,10 @@ fun test_offline_while_mining_fails() {
         let owner_cap = ts::take_from_sender<OwnerCap<CrudeLift>>(&ts);
 
         crude_lift.offline(&mut network_node, &energy_config, &owner_cap);
+        ts::return_shared(crude_lift);
+        ts::return_shared(network_node);
+        ts::return_shared(energy_config);
+        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::end(ts);
@@ -382,7 +407,7 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
     ts::next_tx(ts, admin());
     let character_id = {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let mut registry = ts::take_shared<CharacterRegistry>(ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
         let character = character::create_character(
             &mut registry,
             &admin_cap,
@@ -402,19 +427,24 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
     character_id
 }
 
-fun create_network_node(ts: &mut ts::Scenario): ID {
+fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
     ts::next_tx(ts, admin());
     let network_node_id = {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
-        let mut registry = ts::take_shared<network_node::NetworkNodeRegistry>(ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
+        let mut fuel_config = ts::take_shared<FuelConfig>(ts);
+        let mut energy_config = ts::take_shared<EnergyConfig>(ts);
+        let character = ts::take_shared_by_id<Character>(ts, character_id);
+
+        fuel_config.set_fuel_efficiency(&admin_cap, 1, 100);
+        energy_config.set_energy_config(&admin_cap, CRUDE_LIFT_TYPE_ID, 10);
+
         let network_node = network_node::anchor(
             &mut registry,
+            &character,
             &admin_cap,
-            user_a(),
-            tenant(),
             1, // item_id
             1, // type_id
-            1000, // volume
             LOCATION_HASH,
             10000, // fuel_max_capacity
             3600000, // fuel_burn_rate_in_ms
@@ -424,8 +454,29 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
         let network_node_id = object::id(&network_node);
         network_node::share_network_node(network_node, &admin_cap);
         ts::return_shared(registry);
+        ts::return_shared(fuel_config);
+        ts::return_shared(energy_config);
+        ts::return_shared(character);
         ts::return_to_sender(ts, admin_cap);
         network_node_id
+    };
+    // Deposit minimal fuel and start the node burning/producing energy
+    ts::next_tx(ts, user_a());
+    {
+        let mut network_node = ts::take_shared_by_id<NetworkNode>(ts, network_node_id);
+        let mut fuel_config = ts::take_shared<FuelConfig>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(ts);
+        let clock = clock::create_for_testing(ts.ctx());
+
+        network_node.deposit_fuel_test(&admin_acl, &owner_cap, 1, 1, 10, &clock, ts.ctx());
+        network_node.online(&owner_cap, &clock);
+
+        clock.destroy_for_testing();
+        ts::return_shared(network_node);
+        ts::return_shared(fuel_config);
+        ts::return_shared(admin_acl);
+        ts::return_to_sender(ts, owner_cap);
     };
     network_node_id
 }

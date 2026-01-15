@@ -7,7 +7,8 @@ use sui::{clock, test_scenario as ts};
 use world::{
     access::AdminCap,
     rift::{Self, Rift},
-    test_helpers::{Self, admin}
+    test_helpers,
+    test_helpers::admin
 };
 
 const INITIAL_CRUDE_AMOUNT: u64 = 1000;
@@ -18,30 +19,43 @@ const LOCATION_HASH: vector<u8> = x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d
 const CRUDE_LIFT_ID_1: address = @0x1;
 const CRUDE_LIFT_ID_2: address = @0x2;
 
+fun create_shared_rift(ts: &mut ts::Scenario, crude_amount: u64): ID {
+    test_helpers::setup_world(ts);
+    ts::next_tx(ts, admin());
+    let rift_id = {
+        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let rift_id = rift::create_and_share_test_rift(&admin_cap, crude_amount, LOCATION_HASH, ts.ctx());
+        ts::return_to_sender(ts, admin_cap);
+        rift_id
+    };
+    rift_id
+}
+
+fun destroy_shared_rift(ts: &mut ts::Scenario, rift_id: ID) {
+    ts::next_tx(ts, admin());
+    let rift = ts::take_shared_by_id<Rift>(ts, rift_id);
+    rift::destroy_test_rift(rift);
+}
+
 // === Test Functions ===
 
 // Test creating a rift
 #[test]
 fun test_create_rift() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         assert_eq!(rift.crude_amount(), INITIAL_CRUDE_AMOUNT);
         assert_eq!(rift.is_collapsed(), false);
         assert_eq!(rift.is_being_mined(), false);
         assert_eq!(rift.location_hash(), LOCATION_HASH);
-        rift::destroy_test_rift(rift);
+        ts::return_shared(rift);
     };
 
+    destroy_shared_rift(&mut ts, rift_id);
     ts::end(ts);
 }
 
@@ -50,11 +64,13 @@ fun test_create_rift() {
 #[expected_failure(abort_code = rift::EInvalidCrudeAmount)]
 fun test_create_rift_zero_crude_fails() {
     let mut ts = ts::begin(admin());
+    test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, admin());
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let _rift = rift::create_test_rift(&admin_cap, 0, LOCATION_HASH, ts.ctx());
+        let rift = rift::create_test_rift(&admin_cap, 0, LOCATION_HASH, ts.ctx());
+        rift::destroy_test_rift(rift);
         ts::return_to_sender(&ts, admin_cap);
     };
 
@@ -65,37 +81,32 @@ fun test_create_rift_zero_crude_fails() {
 #[test]
 fun test_start_stop_mining() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
         // Start mining
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         assert_eq!(rift.can_start_mining(), true);
         rift.start_mining(object::id_from_address(CRUDE_LIFT_ID_1));
         assert_eq!(rift.is_being_mined(), true);
-        assert_eq!(rift.mining_crude_lift_id().borrow(), &object::id_from_address(CRUDE_LIFT_ID_1));
+        let mining_id = *rift.mining_crude_lift_id().borrow();
+        assert_eq!(mining_id, object::id_from_address(CRUDE_LIFT_ID_1));
         assert_eq!(rift.can_start_mining(), false);
+        ts::return_shared(rift);
     };
 
     ts::next_tx(&mut ts, admin());
     {
         // Stop mining
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         rift.stop_mining(object::id_from_address(CRUDE_LIFT_ID_1));
         assert_eq!(rift.is_being_mined(), false);
         assert_eq!(rift.can_start_mining(), true);
+        ts::return_shared(rift);
     };
 
-    ts::next_tx(&mut ts, admin());
-    {
-        rift::destroy_test_rift(rift);
-    };
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }
@@ -105,22 +116,19 @@ fun test_start_stop_mining() {
 #[expected_failure(abort_code = rift::ERiftAlreadyBeingMined)]
 fun test_start_mining_already_mined_fails() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         // Start mining with first lift
         rift.start_mining(object::id_from_address(CRUDE_LIFT_ID_1));
         // Try to start mining with second lift - should fail
         rift.start_mining(object::id_from_address(CRUDE_LIFT_ID_2));
+        ts::return_shared(rift);
     };
+
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }
@@ -130,20 +138,17 @@ fun test_start_mining_already_mined_fails() {
 #[expected_failure(abort_code = rift::ERiftNotBeingMined)]
 fun test_stop_mining_not_mined_fails() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
         // Try to stop mining on rift that's not being mined
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         rift.stop_mining(object::id_from_address(CRUDE_LIFT_ID_1));
+        ts::return_shared(rift);
     };
+
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }
@@ -155,20 +160,19 @@ fun test_stop_mining_wrong_lift_fails() {
     let mut ts = ts::begin(admin());
 
     ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
         // Start mining with first lift
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         rift.start_mining(object::id_from_address(CRUDE_LIFT_ID_1));
         // Try to stop mining with different lift - should fail
         rift.stop_mining(object::id_from_address(CRUDE_LIFT_ID_2));
+        ts::return_shared(rift);
     };
+
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }
@@ -177,26 +181,18 @@ fun test_stop_mining_wrong_lift_fails() {
 #[test]
 fun test_remove_crude() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         let removed = rift.remove_crude(REMOVE_AMOUNT);
         assert_eq!(removed, REMOVE_AMOUNT);
         assert_eq!(rift.crude_amount(), INITIAL_CRUDE_AMOUNT - REMOVE_AMOUNT);
+        ts::return_shared(rift);
     };
 
-    ts::next_tx(&mut ts, admin());
-    {
-        rift::destroy_test_rift(rift);
-    };
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }
@@ -205,26 +201,18 @@ fun test_remove_crude() {
 #[test]
 fun test_remove_all_crude() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         let removed = rift.remove_crude(INITIAL_CRUDE_AMOUNT);
         assert_eq!(removed, INITIAL_CRUDE_AMOUNT);
         assert_eq!(rift.crude_amount(), 0);
+        ts::return_shared(rift);
     };
 
-    ts::next_tx(&mut ts, admin());
-    {
-        rift::destroy_test_rift(rift);
-    };
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }
@@ -234,19 +222,16 @@ fun test_remove_all_crude() {
 #[expected_failure(abort_code = rift::EInsufficientCrude)]
 fun test_remove_insufficient_crude_fails() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         let _removed = rift.remove_crude(INITIAL_CRUDE_AMOUNT + 100);
+        ts::return_shared(rift);
     };
+
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }
@@ -256,24 +241,21 @@ fun test_remove_insufficient_crude_fails() {
 fun test_collapse_rift() {
     let mut ts = ts::begin(admin());
     let clock = clock::create_for_testing(ts.ctx());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         assert_eq!(rift.is_collapsed(), false);
         let collapse_time = clock.timestamp_ms();
         rift.collapse_rift(&clock);
         assert_eq!(rift.is_collapsed(), true);
-        assert_eq!(rift.collapsed_at().borrow(), &collapse_time);
+        let recorded_collapse = *rift.collapsed_at().borrow();
+        assert_eq!(recorded_collapse, collapse_time);
+        ts::return_shared(rift);
     };
 
+    destroy_shared_rift(&mut ts, rift_id);
     clock.destroy_for_testing();
     ts::end(ts);
 }
@@ -284,22 +266,18 @@ fun test_collapse_rift() {
 fun test_operations_on_collapsed_rift_fail() {
     let mut ts = ts::begin(admin());
     let clock = clock::create_for_testing(ts.ctx());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         rift.collapse_rift(&clock);
         // These should all fail
         rift.start_mining(object::id_from_address(CRUDE_LIFT_ID_1));
+        ts::return_shared(rift);
     };
 
+    destroy_shared_rift(&mut ts, rift_id);
     clock.destroy_for_testing();
     ts::end(ts);
 }
@@ -310,20 +288,17 @@ fun test_operations_on_collapsed_rift_fail() {
 fun test_remove_crude_from_collapsed_rift_fails() {
     let mut ts = ts::begin(admin());
     let clock = clock::create_for_testing(ts.ctx());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         rift.collapse_rift(&clock);
         let _removed = rift.remove_crude(REMOVE_AMOUNT);
+        ts::return_shared(rift);
     };
+
+    destroy_shared_rift(&mut ts, rift_id);
 
     clock.destroy_for_testing();
     ts::end(ts);
@@ -333,28 +308,26 @@ fun test_remove_crude_from_collapsed_rift_fails() {
 #[test]
 fun test_collapse_already_collapsed_rift() {
     let mut ts = ts::begin(admin());
-    let clock = clock::create_for_testing(ts.ctx());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let mut clock = clock::create_for_testing(ts.ctx());
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         let first_collapse_time = clock.timestamp_ms();
         rift.collapse_rift(&clock);
-        assert_eq!(rift.collapsed_at().borrow(), &first_collapse_time);
+        let recorded_first = *rift.collapsed_at().borrow();
+        assert_eq!(recorded_first, first_collapse_time);
 
         // Advance time and collapse again - should not change collapse time
         clock.increment_for_testing(1000);
         rift.collapse_rift(&clock);
-        assert_eq!(rift.collapsed_at().borrow(), &first_collapse_time);
+        let recorded_second = *rift.collapsed_at().borrow();
+        assert_eq!(recorded_second, first_collapse_time);
+        ts::return_shared(rift);
     };
 
+    destroy_shared_rift(&mut ts, rift_id);
     clock.destroy_for_testing();
     ts::end(ts);
 }
@@ -363,17 +336,11 @@ fun test_collapse_already_collapsed_rift() {
 #[test]
 fun test_view_functions_fresh_rift() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         assert_eq!(rift.crude_amount(), INITIAL_CRUDE_AMOUNT);
         assert_eq!(rift.is_collapsed(), false);
         assert_eq!(rift.is_being_mined(), false);
@@ -381,8 +348,10 @@ fun test_view_functions_fresh_rift() {
         assert_eq!(rift.mining_crude_lift_id().is_none(), true);
         assert_eq!(rift.location_hash(), LOCATION_HASH);
         assert_eq!(rift.can_start_mining(), true);
-        rift::destroy_test_rift(rift);
+        ts::return_shared(rift);
     };
+
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }
@@ -392,24 +361,21 @@ fun test_view_functions_fresh_rift() {
 fun test_view_functions_collapsed_rift() {
     let mut ts = ts::begin(admin());
     let clock = clock::create_for_testing(ts.ctx());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         rift.collapse_rift(&clock);
         assert_eq!(rift.crude_amount(), INITIAL_CRUDE_AMOUNT);
         assert_eq!(rift.is_collapsed(), true);
         assert_eq!(rift.is_being_mined(), false);
         assert_eq!(rift.collapsed_at().is_some(), true);
         assert_eq!(rift.can_start_mining(), false);
+        ts::return_shared(rift);
     };
+
+    destroy_shared_rift(&mut ts, rift_id);
 
     clock.destroy_for_testing();
     ts::end(ts);
@@ -419,24 +385,21 @@ fun test_view_functions_collapsed_rift() {
 #[test]
 fun test_view_functions_mining_rift() {
     let mut ts = ts::begin(admin());
-
-    ts::next_tx(&mut ts, admin());
-    let mut rift: Rift;
-    {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        rift = rift::create_test_rift(&admin_cap, INITIAL_CRUDE_AMOUNT, LOCATION_HASH, ts.ctx());
-        ts::return_to_sender(&ts, admin_cap);
-    };
+    let rift_id = create_shared_rift(&mut ts, INITIAL_CRUDE_AMOUNT);
 
     ts::next_tx(&mut ts, admin());
     {
+        let mut rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
         rift.start_mining(object::id_from_address(CRUDE_LIFT_ID_1));
         assert_eq!(rift.crude_amount(), INITIAL_CRUDE_AMOUNT);
         assert_eq!(rift.is_collapsed(), false);
         assert_eq!(rift.is_being_mined(), true);
         assert_eq!(rift.mining_crude_lift_id().is_some(), true);
         assert_eq!(rift.can_start_mining(), false);
+        ts::return_shared(rift);
     };
+
+    destroy_shared_rift(&mut ts, rift_id);
 
     ts::end(ts);
 }

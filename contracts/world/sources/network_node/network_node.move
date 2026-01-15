@@ -421,6 +421,11 @@ fun disconnect_assemblies(nwn: &mut NetworkNode, assembly_ids: vector<ID>) {
 }
 // === Test Functions ===
 #[test_only]
+public fun init_for_testing(_ctx: &mut TxContext) {
+    // No shared state to initialize for tests
+}
+
+#[test_only]
 public fun fuel(network_node: &NetworkNode): &Fuel {
     &network_node.fuel
 }
