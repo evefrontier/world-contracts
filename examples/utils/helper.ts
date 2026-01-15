@@ -61,7 +61,7 @@ export function handleError(error: unknown): never {
 }
 
 export function getEnvConfig(): EnvConfig {
-    const network = ((process.env.SUI_NETWORK as Network) || "localnet") as Network;
+    const network = (process.env.SUI_NETWORK as Network) || "localnet";
     const exportedKey = process.env.PRIVATE_KEY;
     const playerExportedKey =
         process.env.PLAYER_A_PRIVATE_KEY || process.env.PRIVATE_KEY || exportedKey;

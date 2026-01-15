@@ -17,10 +17,6 @@ export const NWN_TYPE_ID = 555n;
 // Change this value, to create a new network node
 export const NWN_ITEM_ID = 555000001n;
 
-// Fuel Defaults
-export const FUEL_TYPE_ID = 8461n;
-export const FUEL_QUANTITY = 2n;
-
 // Assembly Defaults
 export const ASSEMBLY_TYPE_ID = 87119n;
 // Change this value, to create a new assembly
