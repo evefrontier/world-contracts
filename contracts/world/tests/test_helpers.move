@@ -162,7 +162,7 @@ public fun construct_location_proof(location_hash: vector<u8>): LocationProof {
     // To regenerate: run `npm run generate-test-signature` in examples/location/
     // Then update the signature hex below with the output from the script
     let signature =
-        x"0085ee2824a8a3821be5d779ee912c6947acc36e8a6982024c994a3fdc88f450245e9a13ae23901b3c5b93acc34b0b314fe42a26742e16d3beac782360b65bff0ba94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
+        x"00ab510c2d44e1050f9f328a789d924e71814e5503c3ecb44666ee0dde990f288a4d35d7fda4237b408a3aeb1a8c6d85159f99a710a024ac19778eb7054b849a03a94e21ea26cc336019c11a5e10c4b39160188dda0f6b4bfe198dd689db8f3df9";
     let deadline_ms: u64 = 1763408644339;
     let proof = location::create_location_proof(
         server_admin(), // authorized server
