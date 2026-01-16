@@ -9,6 +9,7 @@ export function createIntentMessage(message: Uint8Array): Uint8Array {
     const intentBytes = new Uint8Array([3, 0, 0]);
 
     // Concatenate intent + message bytes (no BCS serialization)
+    // Note: This implementation uses raw message bytes without BCS serialization to match the Go backend and Move contract behavior.
     const intentMessage = new Uint8Array(intentBytes.length + message.length);
     intentMessage.set(intentBytes, 0);
     intentMessage.set(message, intentBytes.length);

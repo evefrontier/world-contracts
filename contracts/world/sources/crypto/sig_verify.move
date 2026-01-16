@@ -73,11 +73,15 @@ public fun verify_signature(
     // Extract public key bytes (from index 1 + sig_len to expected_len)
     let raw_public_key = extract_bytes(&signature, 1 + sig_len, expected_len);
 
-    // Hash the message with intent
-    // x"030000" based upon `Intent::personal_message()` in Sui's shared-crypto crate:
-    // 0x03 = IntentScope::PersonalMessage intent scope in Sui protocol
-    // 0x00 = IntentVersion::V0 intent version
-    // 0x00 = AppId::Sui
+    // Hash the message with the Sui PersonalMessage intent prefix.
+    // x"030000" is based on `Intent::personal_message()` from Sui's shared-crypto crate:
+    //   0x03 = IntentScope::PersonalMessage intent scope in the Sui protocol
+    //   0x00 = IntentVersion::V0 intent version
+    //   0x00 = AppId::Sui
+    //
+    // Note: The raw `message` bytes are appended directly (no BCS serialization). This
+    // matches the Go backend's `SignPersonalMessage` implementation and intentionally
+    // differs from the original behaviour, which BCS-serializes the message.
     let mut message_with_intent = x"030000";
     message_with_intent.append(message);
     let digest = hash::blake2b256(&message_with_intent);
