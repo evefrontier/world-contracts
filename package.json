@@ -8,9 +8,9 @@
     "deploy": "./scripts/deploy.sh",
     "deploy:dry-run": "chmod +x ./scripts/deploy.sh && ./scripts/deploy.sh --dry-run",
     "fmt": "prettier --plugin=@mysten/prettier-plugin-move --write \"**/**/*.move\"",
-    "fmt:check": "prettier --plugin=@mysten/prettier-plugin-move --check \"**/**/*.move\" \"examples/**/*.ts\"",
-    "fmt:ts": "prettier --write \"examples/**/*.ts\"",
-    "fmt:ts:check": "prettier --check \"examples/**/*.ts\"",
+    "fmt:check": "prettier --plugin=@mysten/prettier-plugin-move --check \"**/**/*.move\" \"examples/**/*.ts\" \"tools/**/*.ts\"",
+    "fmt:ts": "prettier --write \"examples/**/*.ts\" \"tools/**/*.ts\"",
+    "fmt:ts:check": "prettier --check \"examples/**/*.ts\" \"tools/**/*.ts\"",
     "sig-verify": "tsx examples/crypto/sig-verify.ts",
     "generate-test-sig": "tsx examples/location/generate-test-signature.ts",
     "configure-fuel-energy": "tsx examples/network-node/configure-fuel-energy.ts",
@@ -25,7 +25,12 @@
     "online": "tsx examples/assembly/online.ts",
     "create-storage-unit": "tsx examples/storage-unit/create-storage-unit.ts",
     "ssu-online": "tsx examples/storage-unit/online.ts",
-    "game-item-to-chain": "tsx examples/storage-unit/game-item-to-chain.ts"
+    "game-item-to-chain": "tsx examples/storage-unit/game-item-to-chain.ts",
+    "extract:errors": "tsx tools/error-decoder/error-extractor.ts",
+    "compile:decoder": "tsc --project tools/error-decoder/tsconfig.json",
+    "prepare:decoder": "cd tools/error-decoder && cp index.html styles.css dist/",
+    "build:decoder": "npm run extract:errors && npm run compile:decoder && npm run prepare:decoder",
+    "dev:decoder": "npm run extract:errors && npm run compile:decoder -- --watch"
   },
   "dependencies": {
     "@mysten/prettier-plugin-move": "^0.3.3",
