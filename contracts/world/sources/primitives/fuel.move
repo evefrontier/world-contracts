@@ -212,7 +212,7 @@ public(package) fun create(
     assert!(burn_rate_in_ms >= MIN_BURN_RATE_MS, EInvalidBurnRate);
     Fuel {
         assembly_id,
-        assembly_key: assembly_key,
+        assembly_key,
         max_capacity,
         burn_rate_in_ms,
         type_id: option::none(),

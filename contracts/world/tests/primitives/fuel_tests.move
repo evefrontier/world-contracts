@@ -45,8 +45,6 @@ public struct NetworkNode has key {
 fun create_network_node(ts: &mut ts::Scenario, max_capacity: u64, burn_rate_in_seconds: u64): ID {
     ts::next_tx(ts, admin());
     let nwn_id = {
-        // let uid = object::new(ts.ctx());
-        // let assembly_id = object::uid_to_inner(&uid);
         let mut registry = ts::take_shared<ObjectRegistry>(ts);
         let nwn_key = create_key(44444, tenant());
         let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);

@@ -144,7 +144,7 @@ public fun anchor(
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,
-        assembly_key: assembly_key,
+        assembly_key,
         owner_cap_id,
         type_id,
     });
