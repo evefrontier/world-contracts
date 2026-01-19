@@ -30,7 +30,8 @@
     "compile:decoder": "tsc --project tools/error-decoder/tsconfig.json",
     "prepare:decoder": "cd tools/error-decoder && cp index.html styles.css dist/",
     "build:decoder": "npm run extract:errors && npm run compile:decoder && npm run prepare:decoder",
-    "dev:decoder": "npm run extract:errors && npm run compile:decoder -- --watch"
+    "dev:decoder": "npm run extract:errors && npm run compile:decoder -- --watch",
+    "debug:prepare": "chmod +x ./scripts/prepare-debug.sh && ./scripts/prepare-debug.sh"
   },
   "dependencies": {
     "@mysten/prettier-plugin-move": "^0.3.3",
