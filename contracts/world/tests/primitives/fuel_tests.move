@@ -3,12 +3,15 @@
 module world::fuel_tests;
 
 use std::unit_test::assert_eq;
-use sui::{clock, test_scenario as ts};
+use sui::{clock, derived_object, test_scenario as ts};
 use world::{
     access::AdminCap,
     fuel::{Self, FuelConfig, Fuel},
+    in_game_id::create_key,
+    object_registry::ObjectRegistry,
     test_helpers::{
         Self,
+        tenant,
         admin,
         user_a,
         fuel_type_1,
@@ -41,18 +44,24 @@ public struct NetworkNode has key {
 // Helper Functions
 fun create_network_node(ts: &mut ts::Scenario, max_capacity: u64, burn_rate_in_seconds: u64): ID {
     ts::next_tx(ts, admin());
-    let assembly_id = {
-        let uid = object::new(ts.ctx());
-        let assembly_id = object::uid_to_inner(&uid);
+    let nwn_id = {
+        // let uid = object::new(ts.ctx());
+        // let assembly_id = object::uid_to_inner(&uid);
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
+        let nwn_key = create_key(44444, tenant());
+        let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);
+        let nwn_id = object::uid_to_inner(&nwn_uid);
+
         let burn_rate_in_ms = burn_rate_in_seconds * MS_PER_SECOND;
         let nwn = NetworkNode {
-            id: uid,
-            fuel: fuel::create(assembly_id, max_capacity, burn_rate_in_ms),
+            id: nwn_uid,
+            fuel: fuel::create(nwn_id, nwn_key, max_capacity, burn_rate_in_ms),
         };
         transfer::share_object(nwn);
-        assembly_id
+        ts::return_shared(registry);
+        nwn_id
     };
-    assembly_id
+    nwn_id
 }
 
 #[test]

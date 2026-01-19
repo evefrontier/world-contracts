@@ -2,7 +2,7 @@
 module world::fuel;
 
 use sui::{clock::Clock, event, table::{Self, Table}};
-use world::access::AdminCap;
+use world::{access::AdminCap, in_game_id::TenantItemId};
 
 // === Errors ===
 #[error(code = 0)]
@@ -51,6 +51,7 @@ public struct FuelConfig has key {
 
 public struct Fuel has store {
     assembly_id: ID,
+    assembly_key: TenantItemId,
     max_capacity: u64,
     burn_rate_in_ms: u64,
     type_id: Option<u64>,
@@ -65,6 +66,7 @@ public struct Fuel has store {
 // === Events ===
 public struct FuelDepositedEvent has copy, drop {
     assembly_id: ID,
+    assembly_key: TenantItemId,
     type_id: u64,
     unit_volume: u64,
     quantity: u64,
@@ -73,6 +75,7 @@ public struct FuelDepositedEvent has copy, drop {
 
 public struct FuelWithdrawnEvent has copy, drop {
     assembly_id: ID,
+    assembly_key: TenantItemId,
     type_id: u64,
     quantity: u64,
     remaining_quantity: u64,
@@ -80,6 +83,7 @@ public struct FuelWithdrawnEvent has copy, drop {
 
 public struct FuelBurningStartedEvent has copy, drop {
     assembly_id: ID,
+    assembly_key: TenantItemId,
     type_id: u64,
     quantity: u64,
     burn_start_time: u64,
@@ -87,6 +91,7 @@ public struct FuelBurningStartedEvent has copy, drop {
 
 public struct FuelBurningStoppedEvent has copy, drop {
     assembly_id: ID,
+    assembly_key: TenantItemId,
     type_id: u64,
     quantity: u64,
     previous_cycle_elapsed_time: u64,
@@ -94,6 +99,7 @@ public struct FuelBurningStoppedEvent has copy, drop {
 
 public struct FuelUpdatedEvent has copy, drop {
     assembly_id: ID,
+    assembly_key: TenantItemId,
     type_id: u64,
     units_consumed: u64,
     remaining_quantity: u64,
@@ -196,11 +202,17 @@ public fun unset_fuel_efficiency(fuel_config: &mut FuelConfig, _: &AdminCap, fue
 
 // === Package Functions ===
 /// Creates a new fuel object with specified capacity and burn rate (in milliseconds)
-public(package) fun create(assembly_id: ID, max_capacity: u64, burn_rate_in_ms: u64): Fuel {
+public(package) fun create(
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    max_capacity: u64,
+    burn_rate_in_ms: u64,
+): Fuel {
     assert!(max_capacity > 0, EInvalidMaxCapacity);
     assert!(burn_rate_in_ms >= MIN_BURN_RATE_MS, EInvalidBurnRate);
     Fuel {
         assembly_id,
+        assembly_key: assembly_key,
         max_capacity,
         burn_rate_in_ms,
         type_id: option::none(),
@@ -250,6 +262,7 @@ public(package) fun deposit(
     fuel.quantity = new_quantity;
     event::emit(FuelDepositedEvent {
         assembly_id: fuel.assembly_id,
+        assembly_key: fuel.assembly_key,
         type_id,
         unit_volume,
         quantity,
@@ -265,6 +278,7 @@ public(package) fun withdraw(fuel: &mut Fuel, quantity: u64) {
     fuel.quantity = fuel.quantity - quantity;
     event::emit(FuelWithdrawnEvent {
         assembly_id: fuel.assembly_id,
+        assembly_key: fuel.assembly_key,
         type_id: *option::borrow(&fuel.type_id),
         quantity,
         remaining_quantity: fuel.quantity,
@@ -288,6 +302,7 @@ public(package) fun start_burning(fuel: &mut Fuel, clock: &Clock) {
     let fuel_type_id = *option::borrow(&fuel.type_id);
     event::emit(FuelBurningStartedEvent {
         assembly_id: fuel.assembly_id,
+        assembly_key: fuel.assembly_key,
         type_id: fuel_type_id,
         quantity: fuel.quantity,
         burn_start_time: fuel.burn_start_time,
@@ -317,6 +332,7 @@ public(package) fun stop_burning(fuel: &mut Fuel, fuel_config: &FuelConfig, cloc
     let fuel_type_id = *option::borrow(&fuel.type_id);
     event::emit(FuelBurningStoppedEvent {
         assembly_id: fuel.assembly_id,
+        assembly_key: fuel.assembly_key,
         type_id: fuel_type_id,
         quantity: fuel.quantity,
         previous_cycle_elapsed_time: fuel.previous_cycle_elapsed_time,
@@ -380,6 +396,7 @@ fun consume_fuel_units(
         fuel.burn_start_time = current_time_ms - remaining_elapsed_ms;
         event::emit(FuelUpdatedEvent {
             assembly_id: fuel.assembly_id,
+            assembly_key: fuel.assembly_key,
             type_id: fuel_type_id,
             units_consumed: units_to_consume,
             remaining_quantity: fuel.quantity,

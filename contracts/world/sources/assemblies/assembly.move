@@ -46,7 +46,7 @@ public struct Assembly has key {
 // === Events ===
 public struct AssemblyCreatedEvent has copy, drop {
     assembly_id: ID,
-    key: TenantItemId,
+    assembly_key: TenantItemId,
     owner_cap_id: ID,
     type_id: u64,
 }
@@ -144,7 +144,7 @@ public fun anchor(
 
     event::emit(AssemblyCreatedEvent {
         assembly_id,
-        key: assembly_key,
+        assembly_key: assembly_key,
         owner_cap_id,
         type_id,
     });

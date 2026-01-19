@@ -65,7 +65,7 @@ public struct NetworkNode has key {
 // === Events ===
 public struct NetworkNodeCreatedEvent has copy, drop {
     network_node_id: ID,
-    key: TenantItemId,
+    assembly_key: TenantItemId,
     owner_cap_id: ID,
     type_id: u64,
     fuel_max_capacity: u64,
@@ -221,7 +221,7 @@ public fun anchor(
         type_id,
         status: status::anchor(nwn_id, type_id, item_id),
         location: location::attach(nwn_id, location_hash),
-        fuel: fuel::create(nwn_id, fuel_max_capacity, fuel_burn_rate_in_ms),
+        fuel: fuel::create(nwn_id, nwn_key, fuel_max_capacity, fuel_burn_rate_in_ms),
         energy_source: energy::create(nwn_id, max_energy_production),
         metadata: std::option::some(
             metadata::create_metadata(
@@ -237,7 +237,7 @@ public fun anchor(
 
     event::emit(NetworkNodeCreatedEvent {
         network_node_id: nwn_id,
-        key: nwn_key,
+        assembly_key: nwn_key,
         owner_cap_id,
         type_id,
         fuel_max_capacity,
