@@ -6,18 +6,13 @@ import { bcs } from "@mysten/sui/bcs";
  * Creates an intent message following Sui's PersonalMessage format
  */
 export function createIntentMessage(message: Uint8Array): Uint8Array {
-    // BCS serialize the message bytes
-    // BCS encodes the vector<u8> with length prefix
-    const bcsSerializedMessage = bcs.vector(bcs.u8()).serialize(message).toBytes();
-
-    // Prepend intent bytes [0x03]
-    // 0x03 = PersonalMessage intent in Sui protocol
     const intentBytes = new Uint8Array([3, 0, 0]);
 
-    // Step 3: Concatenate intent + bcs_serialized_message
-    const intentMessage = new Uint8Array(intentBytes.length + bcsSerializedMessage.length);
+    // Concatenate intent + message bytes (no BCS serialization)
+    // Note: This implementation uses raw message bytes without BCS serialization to match the Go backend and Move contract behavior.
+    const intentMessage = new Uint8Array(intentBytes.length + message.length);
     intentMessage.set(intentBytes, 0);
-    intentMessage.set(bcsSerializedMessage, intentBytes.length);
+    intentMessage.set(message, intentBytes.length);
 
     return intentMessage;
 }
@@ -36,13 +31,13 @@ export function hashIntentMessage(intentMessage: Uint8Array): Uint8Array {
  * - signature (64 bytes): Ed25519 signature
  * - public_key (32 bytes): Ed25519 public key
  *
- * This matches the format expected by sig_verify.move lines 24-46
+ * This matches the format expected by sig_verify.move::verify_signature
  */
 export async function signPersonalMessage(
     message: Uint8Array,
     keypair: Ed25519Keypair
 ): Promise<Uint8Array> {
-    // Step 1: Create intent message (BCS + intent prepending)
+    // Step 1: Create intent message (prepend intent prefix to raw message bytes)
     const intentMessage = createIntentMessage(message);
 
     // Step 2: Hash the intent message with blake2b256

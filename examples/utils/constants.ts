@@ -20,12 +20,12 @@ export const NWN_ITEM_ID = 555000001n;
 // Assembly Defaults
 export const ASSEMBLY_TYPE_ID = 87119n;
 // Change this value, to create a new assembly
-export const ASSEMBLY_ITEM_ID = 9999000002n;
+export const ASSEMBLY_ITEM_ID = 9999000005n;
 
 // Storage Unit Defaults
 export const STORAGE_A_TYPE_ID = 88082n;
-export const STORAGE_A_ITEM_ID = 888800001n;
+export const STORAGE_A_ITEM_ID = 888800005n;
 
 // Item Default
-export const ITEM_A_TYPE_ID = 444n;
+export const ITEM_A_TYPE_ID = 446n;
 export const ITEM_A_ITEM_ID = 444000001n;

@@ -12,7 +12,8 @@ node_modules/
 
 # IDE / Editor files
 .vscode/
-.**/**
+.idea/
+*.log
 
 # Deployment debug files
 deployments/**
@@ -24,3 +25,12 @@ prd.md
 
 # contracts
 contracts/world/sources/primitives/template.move
+contracts/world/.replay/
+contracts/verify/
+
+# Error decoder build artifacts
+tools/error-decoder/*.js
+tools/error-decoder/*.js.map
+tools/error-decoder/dist/
+dist/
+.replay/

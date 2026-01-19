@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Move Error Decoder - World Contracts</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Move Error Decoder</h1>
+            <p class="subtitle">Decode Move abort codes and parse error messages
+            </p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-button active" data-tab="parser">Parse Move
+                Error String</button>
+            <button class="tab-button" data-tab="decoder">Decode Abort
+                Codes</button>
+        </div>
+
+        <!-- Tab 1: Error String Parser -->
+        <div id="parser-tab" class="tab-content active">
+            <div class="input-section">
+                <label for="error-string-input">Enter Error String:</label>
+                <textarea id="error-string-input"
+                    placeholder='e.g., MoveAbort(MoveLocation { module: ModuleId { address: 25ff0911..., name: Identifier("character") }, function: 4, instruction: 72, function_name: Some("create_character") }, 0xC002005600040005) in command 0'
+                    class="textarea-field" rows="5"></textarea>
+                <button id="parse-button" class="action-button">Parse</button>
+            </div>
+            <div class="output-section">
+                <div class="output-header">
+                    <h3>Parsed Result</h3>
+                    <button id="copy-parser" class="copy-button"
+                        title="Copy to clipboard">Copy</button>
+                </div>
+                <pre id="parser-output"
+                    class="output-box">Enter an error string above to parse it...</pre>
+            </div>
+        </div>
+
+        <!-- Tab 2: Abort Code Decoder -->
+        <div id="decoder-tab" class="tab-content">
+            <div class="input-section">
+                <label for="abort-code-input">Enter Abort Code (hex or
+                    decimal):</label>
+                <input type="text" id="abort-code-input"
+                    placeholder="e.g., 0xC002005600040005 or 13835621374603034629"
+                    class="input-field" />
+                <button id="decode-button" class="action-button">Decode</button>
+            </div>
+            <div class="output-section">
+                <div class="output-header">
+                    <h3>Decoded Result</h3>
+                    <button id="copy-decoder" class="copy-button"
+                        title="Copy to clipboard">Copy</button>
+                </div>
+                <pre id="decoder-output"
+                    class="output-box">Enter an abort code above to decode it...</pre>
+            </div>
+        </div>
+
+        <footer>
+            <p>Part of <a
+                    href="https://github.com/projectawakening/world-contracts"
+                    target="_blank">World Contracts</a></p>
+        </footer>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>
