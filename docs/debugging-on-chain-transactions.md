@@ -137,5 +137,5 @@ If the automated script (`prepare-debug.sh`) fails:
 ## Additional Resources
 
 - [Move Trace Debugger Documentation](https://github.com/MystenLabs/sui/blob/5b1116d82181a2efe66859548a10d6abea1418b3/docs/content/references/ide/debugger.mdx#source-level-debugging-for-on-chain-transactions)
-- [Sui Replay Tool Documentation](/references/cli/replay)
+- [Sui Replay Tool Documentation](https://docs.sui.io/references/cli/client#sui-client-replay)
 - [VS Code Debugging Guide](https://code.visualstudio.com/docs/debugtest/debugging)
