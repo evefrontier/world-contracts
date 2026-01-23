@@ -31,8 +31,8 @@ public struct Killmail has key {
     killmail_id: u32,
     killer_id: u64,
     victim_id: u64,
-    kill_timestamp: u64,
-    loss_type: u8,  // 0=SHIP, 1=POD
+    kill_timestamp: u64, // Unix timestamp in seconds
+    loss_type: u8,  // 0=SHIP, 1=STRUCTURE
     solar_system_id: u64,
 }
 
@@ -44,7 +44,7 @@ public struct KillmailCreatedEvent has copy, drop {
     victim_id: u64,
     solar_system_id: u64,
     loss_type: u8,
-    timestamp: u64,
+    timestamp: u64, // Unix timestamp in seconds
 }
 
 
@@ -67,7 +67,7 @@ public fun create_killmail(
     assert!(victim_id != 0, ECharacterIdEmpty);
     assert!(solar_system_id != 0, ESolarSystemIdEmpty);
     assert!(kill_timestamp > 0, EInvalidTimestamp);
-    assert!(loss_type <= 1, EInvalidLossType); // 0=SHIP, 1=POD
+    assert!(loss_type <= 1, EInvalidLossType); // 0=SHIP, 1=STRUCTURE
 
     // Create the killmail as a shared object on-chain
     let killmail = Killmail {
