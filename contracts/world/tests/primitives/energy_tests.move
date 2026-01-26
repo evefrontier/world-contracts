@@ -131,7 +131,6 @@ fun create_energy_source() {
         assert_eq!(nwn.energy.max_energy_production(), MAX_PRODUCTION);
         assert_eq!(nwn.energy.current_energy_production(), 0);
         assert_eq!(nwn.energy.total_reserved_energy(), 0);
-        assert_eq!(nwn.energy.energy_source_id(), nwn_id);
 
         ts::return_shared(nwn);
     };
@@ -149,11 +148,11 @@ fun start_energy_production() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
         assert_eq!(nwn.energy.current_energy_production(), MAX_PRODUCTION);
 
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
         assert_eq!(nwn.energy.total_reserved_energy(), assembly_type_1_energy());
 
         ts::return_shared(nwn);
@@ -173,15 +172,15 @@ fun stop_energy_production() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
         assert_eq!(nwn.energy.current_energy_production(), MAX_PRODUCTION);
         assert_eq!(nwn.energy.total_reserved_energy(), 0);
 
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
         assert_eq!(nwn.energy.total_reserved_energy(), assembly_type_1_energy());
 
-        nwn.energy.stop_energy_production();
+        nwn.energy.stop_energy_production(nwn_id);
         assert_eq!(nwn.energy.current_energy_production(), 0);
         assert_eq!(nwn.energy.total_reserved_energy(), 0);
 
@@ -202,17 +201,17 @@ fun multiple_start_stop_cycles() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
-        nwn.energy.stop_energy_production();
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
+        nwn.energy.stop_energy_production(nwn_id);
+        nwn.energy.start_energy_production(nwn_id);
         assert_eq!(nwn.energy.current_energy_production(), MAX_PRODUCTION);
 
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
-        nwn.energy.stop_energy_production();
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
+        nwn.energy.stop_energy_production(nwn_id);
         assert_eq!(nwn.energy.total_reserved_energy(), 0);
-        nwn.energy.start_energy_production();
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
+        nwn.energy.start_energy_production(nwn_id);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
         assert_eq!(nwn.energy.total_reserved_energy(), assembly_type_1_energy());
 
         ts::return_shared(nwn);
@@ -232,19 +231,19 @@ fun reserve_energy_updates_total_correctly() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
 
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
         assert_eq!(nwn.energy.total_reserved_energy(), assembly_type_1_energy());
 
-        nwn.energy.reserve_energy(&energy_config, assembly_type_2());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_2());
         assert_eq!(
             nwn.energy.total_reserved_energy(),
             assembly_type_1_energy() + assembly_type_2_energy(),
         );
 
-        nwn.energy.reserve_energy(&energy_config, assembly_type_3());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_3());
         assert_eq!(
             nwn.energy.total_reserved_energy(),
             assembly_type_1_energy() + assembly_type_2_energy() + assembly_type_3_energy(),
@@ -271,8 +270,8 @@ fun reserve_energy_at_capacity() {
         energy_config.set_energy_config(&admin_cap, assembly_type_1(), MAX_PRODUCTION);
 
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
+        nwn.energy.start_energy_production(nwn_id);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
 
         assert_eq!(nwn.energy.total_reserved_energy(), MAX_PRODUCTION);
         assert_eq!(nwn.energy.available_energy(), 0);
@@ -295,23 +294,23 @@ fun release_energy_updates_total_correctly() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
 
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
-        nwn.energy.reserve_energy(&energy_config, assembly_type_2());
-        nwn.energy.reserve_energy(&energy_config, assembly_type_3());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_2());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_3());
 
         let total = assembly_type_1_energy() + assembly_type_2_energy() + assembly_type_3_energy();
         assert_eq!(nwn.energy.total_reserved_energy(), total);
 
-        nwn.energy.release_energy(&energy_config, assembly_type_1());
+        nwn.energy.release_energy(nwn_id, &energy_config, assembly_type_1());
         assert_eq!(nwn.energy.total_reserved_energy(), total - assembly_type_1_energy());
 
-        nwn.energy.release_energy(&energy_config, assembly_type_2());
+        nwn.energy.release_energy(nwn_id, &energy_config, assembly_type_2());
         assert_eq!(nwn.energy.total_reserved_energy(), assembly_type_3_energy());
 
-        nwn.energy.release_energy(&energy_config, assembly_type_3());
+        nwn.energy.release_energy(nwn_id, &energy_config, assembly_type_3());
         assert_eq!(nwn.energy.total_reserved_energy(), 0);
         assert_eq!(nwn.energy.available_energy(), MAX_PRODUCTION);
 
@@ -332,20 +331,20 @@ fun available_energy_view() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
         assert_eq!(nwn.energy.available_energy(), MAX_PRODUCTION);
 
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
         assert_eq!(nwn.energy.available_energy(), MAX_PRODUCTION - assembly_type_1_energy());
 
-        nwn.energy.reserve_energy(&energy_config, assembly_type_2());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_2());
         assert_eq!(
             nwn.energy.available_energy(),
             MAX_PRODUCTION - (assembly_type_1_energy() + assembly_type_2_energy()),
         );
 
-        nwn.energy.release_energy(&energy_config, assembly_type_2());
+        nwn.energy.release_energy(nwn_id, &energy_config, assembly_type_2());
         assert_eq!(nwn.energy.available_energy(), MAX_PRODUCTION - assembly_type_1_energy());
 
         ts::return_shared(nwn);
@@ -366,10 +365,10 @@ fun current_energy_production_view() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         assert_eq!(nwn.energy.current_energy_production(), 0);
 
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
         assert_eq!(nwn.energy.current_energy_production(), MAX_PRODUCTION);
 
-        nwn.energy.stop_energy_production();
+        nwn.energy.stop_energy_production(nwn_id);
         assert_eq!(nwn.energy.current_energy_production(), 0);
 
         ts::return_shared(nwn);
@@ -388,17 +387,17 @@ fun reserve_after_stop_clears_reservations() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
 
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
-        nwn.energy.reserve_energy(&energy_config, assembly_type_2());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_2());
 
-        nwn.energy.stop_energy_production();
+        nwn.energy.stop_energy_production(nwn_id);
         assert_eq!(nwn.energy.total_reserved_energy(), 0);
 
-        nwn.energy.start_energy_production();
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
+        nwn.energy.start_energy_production(nwn_id);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
         assert_eq!(nwn.energy.total_reserved_energy(), assembly_type_1_energy());
 
         ts::return_shared(nwn);
@@ -420,13 +419,13 @@ fun multiple_network_nodes_independently() {
     {
         let mut nwn1 = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
         let mut nwn2 = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
-        nwn1.energy.start_energy_production();
-        nwn2.energy.start_energy_production();
+        nwn1.energy.start_energy_production(nwn1_id);
+        nwn2.energy.start_energy_production(nwn2_id);
 
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn1.energy.reserve_energy(&energy_config, assembly_type_1());
-        nwn2.energy.reserve_energy(&energy_config, assembly_type_1());
-        nwn2.energy.reserve_energy(&energy_config, assembly_type_2());
+        nwn1.energy.reserve_energy(nwn1_id, &energy_config, assembly_type_1());
+        nwn2.energy.reserve_energy(nwn2_id, &energy_config, assembly_type_1());
+        nwn2.energy.reserve_energy(nwn2_id, &energy_config, assembly_type_2());
 
         assert_eq!(nwn1.energy.total_reserved_energy(), assembly_type_1_energy());
         assert_eq!(
@@ -453,9 +452,9 @@ fun reserve_energy_with_empty_type_id() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, 0);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, 0);
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
@@ -552,9 +551,9 @@ fun reserve_energy_for_nonexistent_assembly_type() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, 9999);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, 9999);
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
@@ -574,10 +573,10 @@ fun release_energy_with_empty_type_id() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
-        nwn.energy.release_energy(&energy_config, 0);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
+        nwn.energy.release_energy(nwn_id, &energy_config, 0);
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
@@ -597,10 +596,10 @@ fun release_energy_for_nonexistent_assembly_type() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
+        nwn.energy.start_energy_production(nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
-        nwn.energy.release_energy(&energy_config, 9999);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
+        nwn.energy.release_energy(nwn_id, &energy_config, 9999);
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
@@ -640,7 +639,7 @@ fun reserving_without_starting_production() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
@@ -659,7 +658,7 @@ fun stop_energy_production_when_not_producing() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.stop_energy_production();
+        nwn.energy.stop_energy_production(nwn_id);
         assert_eq!(nwn.energy.current_energy_production(), 0);
         assert_eq!(nwn.energy.total_reserved_energy(), 0);
 
@@ -684,9 +683,9 @@ fun reserving_more_than_available_energy() {
         energy_config.set_energy_config(&admin_cap, assembly_type_2(), 30);
 
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production();
-        nwn.energy.reserve_energy(&energy_config, assembly_type_1());
-        nwn.energy.reserve_energy(&energy_config, assembly_type_2());
+        nwn.energy.start_energy_production(nwn_id);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_2());
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);

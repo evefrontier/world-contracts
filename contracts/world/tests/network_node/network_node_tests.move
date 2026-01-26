@@ -239,7 +239,6 @@ fun anchor_network_node() {
         assert_eq!(nwn.fuel().burn_rate_in_ms(), FUEL_BURN_RATE_IN_MS);
         assert_eq!(nwn.fuel().is_burning(), false);
 
-        assert_eq!(nwn.energy().energy_source_id(), nwn_id);
         assert_eq!(nwn.energy().max_energy_production(), MAX_PRODUCTION);
         assert_eq!(nwn.energy().current_energy_production(), 0);
         assert_eq!(nwn.energy().total_reserved_energy(), 0);

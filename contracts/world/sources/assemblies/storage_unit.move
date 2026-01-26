@@ -535,9 +535,11 @@ fun reserve_energy(
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
 ) {
+    let network_node_id = object::id(network_node);
     network_node
         .borrow_energy_source()
         .reserve_energy(
+            network_node_id,
             energy_config,
             storage_unit.type_id,
         );
@@ -556,9 +558,11 @@ fun release_energy_by_type(
     energy_config: &EnergyConfig,
     type_id: u64,
 ) {
+    let network_node_id = object::id(network_node);
     network_node
         .borrow_energy_source()
         .release_energy(
+            network_node_id,
             energy_config,
             type_id,
         );

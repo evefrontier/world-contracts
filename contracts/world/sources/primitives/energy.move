@@ -27,7 +27,6 @@ public struct EnergyConfig has key {
 }
 
 public struct EnergySource has store {
-    energy_source_id: ID, // network node id
     max_energy_production: u64,
     current_energy_production: u64,
     total_reserved_energy: u64,
@@ -96,11 +95,6 @@ public fun available_energy(energy_source: &EnergySource): u64 {
     }
 }
 
-/// Returns the energy source id
-public fun energy_source_id(energy_source: &EnergySource): ID {
-    energy_source.energy_source_id
-}
-
 /// Returns the current energy production
 public fun current_energy_production(energy_source: &EnergySource): u64 {
     energy_source.current_energy_production
@@ -151,7 +145,6 @@ public fun remove_energy_config(
 public(package) fun create(energy_source_id: ID, max_energy_production: u64): EnergySource {
     assert!(max_energy_production > 0, EInvalidMaxEnergyProduction);
     let energy_source = EnergySource {
-        energy_source_id,
         max_energy_production,
         current_energy_production: 0,
         total_reserved_energy: 0,
@@ -163,21 +156,24 @@ public(package) fun create(energy_source_id: ID, max_energy_production: u64): En
     energy_source
 }
 
-public(package) fun start_energy_production(energy_source: &mut EnergySource) {
+public(package) fun start_energy_production(
+    energy_source: &mut EnergySource,
+    energy_source_id: ID,
+) {
     assert!(energy_source.current_energy_production == 0, EProducingEnergy);
     energy_source.current_energy_production = energy_source.max_energy_production;
     event::emit(StartEnergyProductionEvent {
-        energy_source_id: energy_source.energy_source_id,
+        energy_source_id,
         current_energy_production: energy_source.current_energy_production,
     });
 }
 
-public(package) fun stop_energy_production(energy_source: &mut EnergySource) {
+public(package) fun stop_energy_production(energy_source: &mut EnergySource, energy_source_id: ID) {
     assert!(energy_source.current_energy_production > 0, ENotProducingEnergy);
     energy_source.current_energy_production = 0;
     energy_source.total_reserved_energy = 0;
     event::emit(StopEnergyProductionEvent {
-        energy_source_id: energy_source.energy_source_id,
+        energy_source_id,
     });
 }
 
@@ -185,6 +181,7 @@ public(package) fun stop_energy_production(energy_source: &mut EnergySource) {
 /// Requires that the energy source is currently producing energy and has available capacity
 public(package) fun reserve_energy(
     energy_source: &mut EnergySource,
+    energy_source_id: ID,
     energy_config: &EnergyConfig,
     type_id: u64,
 ) {
@@ -198,7 +195,7 @@ public(package) fun reserve_energy(
     energy_source.total_reserved_energy = energy_source.total_reserved_energy + energy_required;
 
     event::emit(EnergyReservedEvent {
-        energy_source_id: energy_source.energy_source_id,
+        energy_source_id,
         assembly_type_id: type_id,
         energy_reserved: energy_required,
         total_reserved_energy: energy_source.total_reserved_energy,
@@ -208,6 +205,7 @@ public(package) fun reserve_energy(
 /// Releases energy for an assembly type
 public(package) fun release_energy(
     energy_source: &mut EnergySource,
+    energy_source_id: ID,
     energy_config: &EnergyConfig,
     type_id: u64,
 ) {
@@ -224,7 +222,7 @@ public(package) fun release_energy(
     energy_source.total_reserved_energy = energy_source.total_reserved_energy - energy_required;
 
     event::emit(EnergyReleasedEvent {
-        energy_source_id: energy_source.energy_source_id,
+        energy_source_id,
         assembly_type_id: type_id,
         energy_released: energy_required,
         total_reserved_energy: energy_source.total_reserved_energy,

@@ -115,7 +115,7 @@ public fun online(nwn: &mut NetworkNode, owner_cap: &OwnerCap<NetworkNode>, cloc
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
     nwn.fuel.start_burning(nwn_id, nwn.key, clock);
-    nwn.energy_source.start_energy_production();
+    nwn.energy_source.start_energy_production(nwn_id);
     nwn.status.online(nwn_id, nwn.key);
 }
 
@@ -139,7 +139,7 @@ public fun offline(
     };
 
     if (nwn.energy_source.current_energy_production() > 0) {
-        nwn.energy_source.stop_energy_production();
+        nwn.energy_source.stop_energy_production(nwn_id);
     };
 
     nwn.status.offline(nwn_id, nwn.key);
@@ -274,8 +274,9 @@ public fun connect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_ids:
 /// which brings the assembly offline and releases energy
 /// After all assemblies are processed, call destroy_network_node to destroy the network node
 public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): OfflineAssemblies {
+    let nwn_id = object::id(nwn);
     if (nwn.energy_source.current_energy_production() > 0) {
-        nwn.energy_source.stop_energy_production();
+        nwn.energy_source.stop_energy_production(nwn_id);
     };
 
     OfflineAssemblies {
@@ -341,7 +342,7 @@ public fun update_fuel(
         if (!nwn.fuel.is_burning()) {
             // Fuel depleted - bring network node offline
             if (nwn.energy_source.current_energy_production() > 0) {
-                nwn.energy_source.stop_energy_production();
+                nwn.energy_source.stop_energy_production(nwn_id);
             };
 
             nwn.status.offline(nwn_id, nwn.key);
