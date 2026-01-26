@@ -7,6 +7,7 @@ use world::{
     access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly},
     character::{Self, Character},
+    in_game_id,
     metadata,
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
@@ -123,26 +124,27 @@ fun test_metadata_lifecycle() {
     test_helpers::setup_world(&mut ts);
     let nwn_id = create_network_node(&mut ts);
     let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
+    let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
 
     // Create
     let mut metadata = metadata::create_metadata(
         assembly_id,
-        ITEM_ID,
+        assembly_key,
         NAME.to_string(),
         DESCRIPTION.to_string(),
         URL.to_string(),
     );
 
-    assert_eq!(metadata::name(&metadata), NAME.to_string());
-    assert_eq!(metadata::description(&metadata), DESCRIPTION.to_string());
-    assert_eq!(metadata::url(&metadata), URL.to_string());
+    assert_eq!(metadata.name(), NAME.to_string());
+    assert_eq!(metadata.description(), DESCRIPTION.to_string());
+    assert_eq!(metadata.url(), URL.to_string());
 
     // Update Name
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
-        metadata::update_name(&mut metadata, &owner_cap, NEW_NAME.to_string());
-        assert_eq!(metadata::name(&metadata), NEW_NAME.to_string());
+        metadata.update_name(assembly_key, &owner_cap, NEW_NAME.to_string());
+        assert_eq!(metadata.name(), NEW_NAME.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -150,8 +152,8 @@ fun test_metadata_lifecycle() {
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
-        metadata::update_description(&mut metadata, &owner_cap, NEW_DESC.to_string());
-        assert_eq!(metadata::description(&metadata), NEW_DESC.to_string());
+        metadata.update_description(assembly_key, &owner_cap, NEW_DESC.to_string());
+        assert_eq!(metadata.description(), NEW_DESC.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -159,8 +161,8 @@ fun test_metadata_lifecycle() {
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
-        metadata::update_url(&mut metadata, &owner_cap, NEW_URL.to_string());
-        assert_eq!(metadata::url(&metadata), NEW_URL.to_string());
+        metadata.update_url(assembly_key, &owner_cap, NEW_URL.to_string());
+        assert_eq!(metadata.url(), NEW_URL.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -177,9 +179,11 @@ fun test_update_name_unauthorized() {
 
     let nwn_id = create_network_node(&mut ts);
     let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
+    let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
+
     let mut metadata = metadata::create_metadata(
         assembly_id,
-        ITEM_ID,
+        assembly_key,
         NAME.to_string(),
         DESCRIPTION.to_string(),
         URL.to_string(),
@@ -192,7 +196,7 @@ fun test_update_name_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
-        metadata::update_name(&mut metadata, &owner_cap, NEW_NAME.to_string());
+        metadata.update_name(assembly_key, &owner_cap, NEW_NAME.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -208,10 +212,11 @@ fun test_update_description_unauthorized() {
 
     let nwn_id = create_network_node(&mut ts);
     let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
+    let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
 
     let mut metadata = metadata::create_metadata(
         assembly_id,
-        ITEM_ID,
+        assembly_key,
         NAME.to_string(),
         DESCRIPTION.to_string(),
         URL.to_string(),
@@ -224,7 +229,7 @@ fun test_update_description_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
-        metadata::update_description(&mut metadata, &owner_cap, NEW_DESC.to_string());
+        metadata.update_description(assembly_key, &owner_cap, NEW_DESC.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 
@@ -240,10 +245,11 @@ fun test_update_url_unauthorized() {
 
     let nwn_id = create_network_node(&mut ts);
     let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
+    let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
 
     let mut metadata = metadata::create_metadata(
         assembly_id,
-        ITEM_ID,
+        assembly_key,
         NAME.to_string(),
         DESCRIPTION.to_string(),
         URL.to_string(),
@@ -256,7 +262,7 @@ fun test_update_url_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
-        metadata::update_url(&mut metadata, &owner_cap, NEW_URL.to_string());
+        metadata.update_url(assembly_key, &owner_cap, NEW_URL.to_string());
         ts::return_to_sender(&ts, owner_cap);
     };
 

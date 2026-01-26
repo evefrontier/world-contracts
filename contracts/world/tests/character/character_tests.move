@@ -8,7 +8,6 @@ use world::{
     access::{Self, AdminCap, OwnerCap},
     character::{Self, Character},
     in_game_id as character_id,
-    metadata,
     object_registry::{Self, ObjectRegistry},
     test_helpers::{governor, admin, user_a, user_b, tenant},
     world::{Self, GovernorCap}
@@ -269,8 +268,9 @@ fun rename_character() {
     {
         let owner_cap = ts::take_from_sender<OwnerCap<Character>>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
+        let character_key = character.key();
         let metadata = character.mutable_metadata();
-        metadata::update_name(metadata, &owner_cap, utf8(b"new_name"));
+        metadata.update_name(character_key, &owner_cap, utf8(b"new_name"));
         assert_eq!(metadata.name(), utf8(b"new_name"));
 
         ts::return_shared(character);
@@ -573,8 +573,9 @@ fun test_rename_character_without_owner_cap() {
     {
         let owner_cap = ts::take_from_sender<OwnerCap<Character>>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
+        let character_key = character.key();
         let metadata = character.mutable_metadata();
-        metadata::update_name(metadata, &owner_cap, utf8(b"new_name"));
+        metadata.update_name(character_key, &owner_cap, utf8(b"new_name"));
         abort
     }
 }

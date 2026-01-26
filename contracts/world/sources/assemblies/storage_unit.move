@@ -327,7 +327,7 @@ public fun anchor(
         metadata: std::option::some(
             metadata::create_metadata(
                 assembly_id,
-                item_id,
+                storage_unit_key,
                 b"".to_string(),
                 b"".to_string(),
                 b"".to_string(),

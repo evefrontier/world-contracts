@@ -228,7 +228,7 @@ public fun anchor(
         metadata: std::option::some(
             metadata::create_metadata(
                 nwn_id,
-                item_id,
+                nwn_key,
                 b"".to_string(),
                 b"".to_string(),
                 b"".to_string(),

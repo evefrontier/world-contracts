@@ -102,7 +102,7 @@ public fun create_character(
         metadata: std::option::some(
             metadata::create_metadata(
                 character_id,
-                game_character_id as u64,
+                character_key,
                 name,
                 b"".to_string(),
                 b"".to_string(),
