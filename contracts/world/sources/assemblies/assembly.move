@@ -128,7 +128,7 @@ public fun anchor(
         owner_cap_id,
         type_id,
         status: status::anchor(assembly_id, assembly_key),
-        location: location::attach(assembly_id, location_hash),
+        location: location::attach(location_hash),
         energy_source_id: network_node_id,
         metadata: std::option::some(
             metadata::create_metadata(

@@ -33,7 +33,6 @@ const EInvalidDistance: vector<u8> = b"Invalid Distance";
 /// The location_hash should be a Poseidon2 hash of the location coordinates.
 /// See: https://docs.sui.io/references/framework/sui_sui/poseidon
 public struct Location has store {
-    structure_id: ID,
     location_hash: vector<u8>,
 }
 
@@ -197,10 +196,9 @@ public fun update(location: &mut Location, _: &AdminCap, location_hash: vector<u
 
 // === Package Functions ===
 
-public(package) fun attach(structure_id: ID, location_hash: vector<u8>): Location {
+public(package) fun attach(location_hash: vector<u8>): Location {
     assert!(location_hash.length() == 32, EInvalidHashLength);
     Location {
-        structure_id,
         location_hash,
     }
 }

@@ -90,7 +90,7 @@ fun create_storage_unit(ts: &mut ts::Scenario, character_id: ID): ID {
         let mut storage_unit = StorageUnit {
             id: uid,
             status: status::anchor(assembly_id, assembly_key),
-            location: location::attach(assembly_id, LOCATION_A_HASH),
+            location: location::attach(LOCATION_A_HASH),
             inventory_keys: vector[],
         };
         let inv = inventory::create(assembly_id, assembly_key, character_id, MAX_CAPACITY);
@@ -434,7 +434,7 @@ fun burn_items_with_proof() {
         let mut storage_unit = StorageUnit {
             id: uid,
             status: status::anchor(assembly_id, assembly_key),
-            location: location::attach(assembly_id, verified_location_hash),
+            location: location::attach(verified_location_hash),
             inventory_keys: vector[],
         };
         let inv = inventory::create(assembly_id, assembly_key, character_id, MAX_CAPACITY);
@@ -515,7 +515,7 @@ fun create_assembly_fail_on_empty_capacity() {
         let mut storage_unit = StorageUnit {
             id: uid,
             status: status::anchor(assembly_id, assembly_key),
-            location: location::attach(assembly_id, LOCATION_A_HASH),
+            location: location::attach(LOCATION_A_HASH),
             inventory_keys: vector[],
         };
         // This should fail with EInventoryInvalidCapacity

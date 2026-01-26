@@ -222,7 +222,7 @@ public fun anchor(
         owner_cap_id,
         type_id,
         status: status::anchor(nwn_id, nwn_key),
-        location: location::attach(nwn_id, location_hash),
+        location: location::attach(location_hash),
         fuel: fuel::create(nwn_id, nwn_key, fuel_max_capacity, fuel_burn_rate_in_ms),
         energy_source: energy::create(nwn_id, max_energy_production),
         metadata: std::option::some(

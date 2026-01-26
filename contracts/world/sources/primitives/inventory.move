@@ -154,7 +154,6 @@ public(package) fun mint_items(
         increase_item_quantity(inventory, character, type_id, quantity);
     } else {
         let type_uid = object::new(ctx);
-        let type_uid_value = object::uid_to_inner(&type_uid);
         let item = Item {
             id: type_uid,
             tenant,
@@ -162,7 +161,7 @@ public(package) fun mint_items(
             item_id,
             volume,
             quantity,
-            location: location::attach(type_uid_value, location_hash),
+            location: location::attach(location_hash),
         };
 
         let req_capacity = calculate_volume(volume, quantity);
