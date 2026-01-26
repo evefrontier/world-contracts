@@ -33,20 +33,6 @@ public struct EnergySource has store {
 }
 
 // === Events ===
-public struct EnergyConfigSetEvent has copy, drop {
-    assembly_type_id: u64,
-    energy_required: u64,
-}
-
-public struct EnergyConfigRemovedEvent has copy, drop {
-    assembly_type_id: u64,
-}
-
-public struct EnergySourceCreatedEvent has copy, drop {
-    energy_source_id: ID,
-    max_energy_production: u64,
-}
-
 public struct StartEnergyProductionEvent has copy, drop {
     energy_source_id: ID,
     current_energy_production: u64,
@@ -120,10 +106,6 @@ public fun set_energy_config(
         energy_config.assembly_energy.remove(assembly_type_id);
     };
     energy_config.assembly_energy.add(assembly_type_id, energy_required);
-    event::emit(EnergyConfigSetEvent {
-        assembly_type_id,
-        energy_required,
-    });
 }
 
 /// Removes the energy configuration for an assembly type id
@@ -135,24 +117,17 @@ public fun remove_energy_config(
     assert!(assembly_type_id != 0, ETypeIdEmpty);
     assert!(energy_config.assembly_energy.contains(assembly_type_id), EIncorrectAssemblyType);
     energy_config.assembly_energy.remove(assembly_type_id);
-    event::emit(EnergyConfigRemovedEvent {
-        assembly_type_id,
-    });
 }
 
 // === Package Functions ===
 /// Creates a new energy source with specified max energy production
-public(package) fun create(energy_source_id: ID, max_energy_production: u64): EnergySource {
+public(package) fun create(max_energy_production: u64): EnergySource {
     assert!(max_energy_production > 0, EInvalidMaxEnergyProduction);
     let energy_source = EnergySource {
         max_energy_production,
         current_energy_production: 0,
         total_reserved_energy: 0,
     };
-    event::emit(EnergySourceCreatedEvent {
-        energy_source_id,
-        max_energy_production,
-    });
     energy_source
 }
 

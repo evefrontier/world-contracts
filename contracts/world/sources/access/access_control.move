@@ -52,11 +52,6 @@ public struct ServerAddressRegistry has key {
 }
 
 // === Events ===
-public struct AdminCapCreatedEvent has copy, drop {
-    admin_cap_id: ID,
-    admin: address,
-}
-
 public struct OwnerCapCreatedEvent has copy, drop {
     owner_cap_id: ID,
     authorized_object_id: ID,
@@ -69,13 +64,7 @@ public struct OwnerCapTransferred has copy, drop {
     owner: address,
 }
 
-public struct ServerAddressRegistryCreated has copy, drop {
-    server_address_registry_id: ID,
-    registry_admin: address,
-}
-
 fun init(ctx: &mut TxContext) {
-    let deployer = ctx.sender();
     let server_address_registry = ServerAddressRegistry {
         id: object::new(ctx),
         authorized_address: table::new(ctx),
@@ -85,11 +74,6 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
         authorized_sponsors: table::new(ctx),
     };
-
-    event::emit(ServerAddressRegistryCreated {
-        server_address_registry_id: object::id(&server_address_registry),
-        registry_admin: deployer,
-    });
 
     // Share the registry so anyone can read it for verification
     transfer::share_object(server_address_registry);
@@ -162,11 +146,6 @@ public fun create_admin_cap(_: &GovernorCap, admin: address, ctx: &mut TxContext
         id: object::new(ctx),
         admin: admin,
     };
-    event::emit(AdminCapCreatedEvent {
-        admin_cap_id: object::id(&admin_cap),
-        admin: admin,
-    });
-
     transfer::transfer(admin_cap, admin);
 }
 

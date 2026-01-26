@@ -228,7 +228,7 @@ public fun anchor(
         status: status::anchor(nwn_id, nwn_key),
         location: location::attach(location_hash),
         fuel: fuel::create(fuel_max_capacity, fuel_burn_rate_in_ms),
-        energy_source: energy::create(nwn_id, max_energy_production),
+        energy_source: energy::create(max_energy_production),
         metadata: std::option::some(
             metadata::create_metadata(
                 nwn_id,

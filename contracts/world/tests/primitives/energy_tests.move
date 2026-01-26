@@ -33,7 +33,7 @@ fun create_network_node(ts: &mut ts::Scenario, max_production: u64): ID {
     let network_node_id = object::uid_to_inner(&uid);
     let nwn = NetworkNode {
         id: uid,
-        energy: energy::create(network_node_id, max_production),
+        energy: energy::create(max_production),
         connected_assemblies: table::new(ts.ctx()),
     };
     transfer::share_object(nwn);
@@ -532,7 +532,7 @@ fun create_with_zero_max_production() {
         let network_node_id = object::uid_to_inner(&uid);
         let nwn = NetworkNode {
             id: uid,
-            energy: energy::create(network_node_id, 0),
+            energy: energy::create(0),
             connected_assemblies: table::new(ts.ctx()),
         };
         ts::return_shared(nwn);

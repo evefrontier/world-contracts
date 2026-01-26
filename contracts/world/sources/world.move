@@ -1,14 +1,7 @@
 module world::world;
 
-use sui::event;
-
 public struct GovernorCap has key {
     id: UID,
-    governor: address,
-}
-
-public struct WorldCreatedEvent has copy, drop {
-    governor_cap_id: ID,
     governor: address,
 }
 
@@ -18,11 +11,6 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
         governor: ctx.sender(),
     };
-
-    event::emit(WorldCreatedEvent {
-        governor_cap_id: object::id(&gov_cap),
-        governor: ctx.sender(),
-    });
 
     transfer::transfer(gov_cap, ctx.sender());
 }
