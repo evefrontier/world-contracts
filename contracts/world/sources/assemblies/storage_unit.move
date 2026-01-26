@@ -104,11 +104,12 @@ public fun online(
     energy_config: &EnergyConfig,
     owner_cap: &OwnerCap<StorageUnit>,
 ) {
-    assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    let storage_unit_id = object::id(storage_unit);
+    assert!(access::is_authorized(owner_cap, storage_unit_id), EAssemblyNotAuthorized);
     assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeMismatch);
     reserve_energy(storage_unit, network_node, energy_config);
 
-    storage_unit.status.online();
+    storage_unit.status.online(storage_unit_id, storage_unit.key);
 }
 
 public fun offline(
@@ -117,13 +118,14 @@ public fun offline(
     energy_config: &EnergyConfig,
     owner_cap: &OwnerCap<StorageUnit>,
 ) {
-    assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    let storage_unit_id = object::id(storage_unit);
+    assert!(access::is_authorized(owner_cap, storage_unit_id), EAssemblyNotAuthorized);
 
     // Verify network node matches the storage unit's energy source
     assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeMismatch);
     release_energy(storage_unit, network_node, energy_config);
 
-    storage_unit.status.offline();
+    storage_unit.status.offline(storage_unit_id, storage_unit.key);
 }
 
 /// Bridges items from chain to game inventory
@@ -318,7 +320,7 @@ public fun anchor(
         key: storage_unit_key,
         owner_cap_id,
         type_id: type_id,
-        status: status::anchor(assembly_id, type_id, item_id),
+        status: status::anchor(assembly_id, storage_unit_key),
         location: location::attach(assembly_id, location_hash),
         inventory_keys: vector[],
         energy_source_id: network_node_id,
@@ -396,7 +398,7 @@ public fun offline_connected_storage_unit(
         if (found) {
             // Bring the storage unit offline if it's online and release energy
             if (storage_unit.status.is_online()) {
-                storage_unit.status.offline();
+                storage_unit.status.offline(storage_unit_id, storage_unit.key);
                 release_energy(storage_unit, network_node, energy_config);
             };
         }
@@ -415,6 +417,7 @@ public fun unanchor(
 ) {
     let StorageUnit {
         mut id,
+        key,
         status,
         location,
         inventory_keys,
@@ -435,7 +438,7 @@ public fun unanchor(
     let storage_unit_id = object::uid_to_inner(&id);
     network_node.disconnect_assembly(storage_unit_id);
 
-    status.unanchor();
+    status.unanchor(storage_unit_id, key);
     location.remove();
 
     // loop through inventory_keys

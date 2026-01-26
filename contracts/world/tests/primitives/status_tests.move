@@ -6,11 +6,11 @@ use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
     access::AdminCap,
+    in_game_id,
     status::{Self, AssemblyStatus},
-    test_helpers::{Self, governor, admin, user_a}
+    test_helpers::{Self, governor, admin, user_a, tenant}
 };
 
-const STORAGE_TYPE_ID: u64 = 88069;
 const STORAGE_ITEM_ID: u64 = 5500004145107;
 const STATUS_NULL: u8 = 0;
 const STATUS_ONLINE: u8 = 1;
@@ -30,9 +30,10 @@ fun create_storage_unit(ts: &mut ts::Scenario) {
     {
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
         let storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
+            status: status::anchor(assembly_id, assembly_key),
             max_capacity: 10000,
         };
         // share storage unit object
@@ -45,9 +46,11 @@ fun destroy_storage_unit(ts: &mut ts::Scenario) {
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let storage_unit = ts::take_shared<StorageUnit>(ts);
+        let assembly_id = object::id(&storage_unit);
         let StorageUnit { id, status, max_capacity: _ } = storage_unit;
 
-        status::unanchor(status);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        status.unanchor(assembly_id, assembly_key);
         id.delete();
 
         ts::return_to_sender(ts, admin_cap);
@@ -91,7 +94,9 @@ fun online() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        storage_unit.status.online();
+        let assembly_id = object::id(&storage_unit);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        storage_unit.status.online(assembly_id, assembly_key);
 
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_ONLINE);
         ts::return_shared(storage_unit);
@@ -118,8 +123,10 @@ fun offline() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        storage_unit.status.online();
-        storage_unit.status.offline();
+        let assembly_id = object::id(&storage_unit);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        storage_unit.status.online(assembly_id, assembly_key);
+        storage_unit.status.offline(assembly_id, assembly_key);
 
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_OFFLINE);
         ts::return_shared(storage_unit);
@@ -159,7 +166,9 @@ fun offline_without_online_fail() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        storage_unit.status.offline();
+        let assembly_id = object::id(&storage_unit);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        storage_unit.status.offline(assembly_id, assembly_key);
 
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_OFFLINE);
         ts::return_shared(storage_unit);
@@ -180,15 +189,19 @@ fun online_when_already_online_fail() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        storage_unit.status.online();
+        let assembly_id = object::id(&storage_unit);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        storage_unit.status.online(assembly_id, assembly_key);
         ts::return_shared(storage_unit);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let assembly_id = object::id(&storage_unit);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
         // Attempt to bring online again - should fail
-        storage_unit.status.online();
+        storage_unit.status.online(assembly_id, assembly_key);
         ts::return_shared(storage_unit);
     };
     ts::end(ts);
@@ -210,9 +223,8 @@ fun get_assembly_status_after_unanchor_fails() {
     {
         let storage_unit = ts::take_shared<StorageUnit>(&ts);
         assembly_id = object::id(&storage_unit);
+
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_NULL);
-        // Verify we can get the assembly_id from status
-        assert_eq!(status::assembly_id(&storage_unit.status), assembly_id);
         ts::return_shared(storage_unit);
         destroy_storage_unit(&mut ts);
     };

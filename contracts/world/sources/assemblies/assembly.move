@@ -58,11 +58,12 @@ public fun online(
     energy_config: &EnergyConfig,
     owner_cap: &OwnerCap<Assembly>,
 ) {
-    assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
+    let assembly_id = object::id(assembly);
+    assert!(access::is_authorized(owner_cap, assembly_id), EAssemblyNotAuthorized);
     assert!(assembly.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
     reserve_energy(assembly, network_node, energy_config);
 
-    assembly.status.online();
+    assembly.status.online(assembly_id, assembly.key);
 }
 
 public fun offline(
@@ -71,13 +72,14 @@ public fun offline(
     energy_config: &EnergyConfig,
     owner_cap: &OwnerCap<Assembly>,
 ) {
+    let assembly_id = object::id(assembly);
     assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
 
     // Verify network node matches the assembly's energy source
     assert!(assembly.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);
     release_energy(assembly, network_node, energy_config);
 
-    assembly.status.offline();
+    assembly.status.offline(assembly_id, assembly.key);
 }
 
 // === View Functions ===
@@ -125,7 +127,7 @@ public fun anchor(
         key: assembly_key,
         owner_cap_id,
         type_id,
-        status: status::anchor(assembly_id, type_id, item_id),
+        status: status::anchor(assembly_id, assembly_key),
         location: location::attach(assembly_id, location_hash),
         energy_source_id: network_node_id,
         metadata: std::option::some(
@@ -189,7 +191,7 @@ public fun offline_connected_assembly(
         if (found) {
             // Bring the assembly offline if it's online and release energy
             if (assembly.status.is_online()) {
-                assembly.status.offline();
+                assembly.status.offline(assembly_id, assembly.key);
                 release_energy(assembly, network_node, energy_config);
             };
         }
@@ -205,6 +207,7 @@ public fun unanchor(
 ) {
     let Assembly {
         id,
+        key,
         status,
         location,
         metadata,
@@ -225,7 +228,7 @@ public fun unanchor(
     network_node.disconnect_assembly(assembly_id);
 
     location.remove();
-    status.unanchor();
+    status.unanchor(assembly_id, key);
     metadata.do!(|metadata| metadata.delete());
 
     // deleting doesnt mean the object id can be reclaimed.

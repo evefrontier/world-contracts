@@ -14,7 +14,6 @@ use world::{
     test_helpers::{Self, governor, admin, user_a, user_b, server_admin, tenant}
 };
 
-const STORAGE_TYPE_ID: u64 = 77069;
 const STORAGE_ITEM_ID: u64 = 5500004145107;
 const LOCATION_A_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
@@ -90,7 +89,7 @@ fun create_storage_unit(ts: &mut ts::Scenario, character_id: ID): ID {
         let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
         let mut storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
+            status: status::anchor(assembly_id, assembly_key),
             location: location::attach(assembly_id, LOCATION_A_HASH),
             inventory_keys: vector[],
         };
@@ -114,7 +113,9 @@ fun online(ts: &mut ts::Scenario) {
     ts::next_tx(ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(ts);
-        storage_unit.status.online();
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        let assembly_id = object::id(&storage_unit);
+        storage_unit.status.online(assembly_id, assembly_key);
         assert_eq!(storage_unit.status.status_to_u8(), STATUS_ONLINE);
 
         ts::return_shared(storage_unit);
@@ -429,13 +430,13 @@ fun burn_items_with_proof() {
     {
         let uid = object::new(ts.ctx());
         let assembly_id = test_helpers::get_storage_unit_id();
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
         let mut storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
+            status: status::anchor(assembly_id, assembly_key),
             location: location::attach(assembly_id, verified_location_hash),
             inventory_keys: vector[],
         };
-        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
         let inv = inventory::create(assembly_id, assembly_key, character_id, MAX_CAPACITY);
         storage_unit.inventory_keys.push_back(character_id);
         df::add(&mut storage_unit.id, character_id, inv);
@@ -510,14 +511,14 @@ fun create_assembly_fail_on_empty_capacity() {
     {
         let uid = object::new(ts.ctx());
         let assembly_id = object::uid_to_inner(&uid);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
         let mut storage_unit = StorageUnit {
             id: uid,
-            status: status::anchor(assembly_id, STORAGE_TYPE_ID, STORAGE_ITEM_ID),
+            status: status::anchor(assembly_id, assembly_key),
             location: location::attach(assembly_id, LOCATION_A_HASH),
             inventory_keys: vector[],
         };
         // This should fail with EInventoryInvalidCapacity
-        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
         let inv = inventory::create(assembly_id, assembly_key, character_id, 0);
         storage_unit.inventory_keys.push_back(character_id);
         df::add(&mut storage_unit.id, character_id, inv);
