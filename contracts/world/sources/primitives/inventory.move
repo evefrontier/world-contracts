@@ -34,9 +34,6 @@ const EInventoryInsufficientQuantity: vector<u8> = b"Insufficient quantity in in
 // Note: Gas cost is high, lookup and insert complexity for VecMap is o(n). The alternative is to use a Table and a separate Vector.
 // However it is ideal for this use case.
 public struct Inventory has store {
-    assembly_id: ID,
-    assembly_key: TenantItemId,
-    owner_cap_id: ID,
     max_capacity: u64,
     used_capacity: u64,
     items: VecMap<u64, Item>,
@@ -116,18 +113,10 @@ public fun max_capacity(inventory: &Inventory): u64 {
 
 // === Package Functions ===
 
-public(package) fun create(
-    assembly_id: ID,
-    assembly_key: TenantItemId,
-    owner_cap_id: ID,
-    max_capacity: u64,
-): Inventory {
+public(package) fun create(max_capacity: u64): Inventory {
     assert!(max_capacity != 0, EInventoryInvalidCapacity);
 
     Inventory {
-        assembly_id,
-        assembly_key,
-        owner_cap_id,
         max_capacity,
         used_capacity: 0,
         items: vec_map::empty(),
@@ -139,6 +128,8 @@ public(package) fun create(
 /// Creates new item or adds to existing if type_id already exists
 public(package) fun mint_items(
     inventory: &mut Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
     character: &Character,
     tenant: String,
     item_id: u64,
@@ -151,7 +142,7 @@ public(package) fun mint_items(
     assert!(type_id != 0, ETypeIdEmpty);
 
     if (inventory.items.contains(&type_id)) {
-        increase_item_quantity(inventory, character, type_id, quantity);
+        increase_item_quantity(inventory, assembly_id, assembly_key, character, type_id, quantity);
     } else {
         let type_uid = object::new(ctx);
         let item = Item {
@@ -172,8 +163,8 @@ public(package) fun mint_items(
         inventory.items.insert(type_id, item);
 
         event::emit(ItemMintedEvent {
-            assembly_id: inventory.assembly_id,
-            assembly_key: inventory.assembly_key,
+            assembly_id,
+            assembly_key,
             character_id: character.id(),
             character_key: character.key(),
             item_id,
@@ -185,6 +176,8 @@ public(package) fun mint_items(
 
 public(package) fun burn_items_with_proof(
     inventory: &mut Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
     character: &Character,
     server_registry: &ServerAddressRegistry,
     location: &Location,
@@ -201,11 +194,17 @@ public(package) fun burn_items_with_proof(
         clock,
         ctx,
     );
-    burn_items(inventory, character, type_id, quantity);
+    burn_items(inventory, assembly_id, assembly_key, character, type_id, quantity);
 }
 
 // A wrapper function to transfer between inventories
-public(package) fun deposit_item(inventory: &mut Inventory, character: &Character, item: Item) {
+public(package) fun deposit_item(
+    inventory: &mut Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    character: &Character,
+    item: Item,
+) {
     let req_capacity = calculate_volume(item.volume, item.quantity);
     let remaining_capacity = inventory.max_capacity - inventory.used_capacity;
     assert!(req_capacity <= remaining_capacity, EInventoryInsufficientCapacity);
@@ -213,8 +212,8 @@ public(package) fun deposit_item(inventory: &mut Inventory, character: &Characte
     inventory.used_capacity = inventory.used_capacity + req_capacity;
 
     event::emit(ItemDepositedEvent {
-        assembly_id: inventory.assembly_id,
-        assembly_key: inventory.assembly_key,
+        assembly_id,
+        assembly_key,
         character_id: character.id(),
         character_key: character.key(),
         item_id: item.item_id,
@@ -228,6 +227,8 @@ public(package) fun deposit_item(inventory: &mut Inventory, character: &Characte
 /// Withdraws the item with the specified type_id and returns the whole Item.
 public(package) fun withdraw_item(
     inventory: &mut Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
     character: &Character,
     type_id: u64,
 ): Item {
@@ -238,8 +239,8 @@ public(package) fun withdraw_item(
     inventory.used_capacity = inventory.used_capacity - volume_freed;
 
     event::emit(ItemWithdrawnEvent {
-        assembly_id: inventory.assembly_id,
-        assembly_key: inventory.assembly_key,
+        assembly_id,
+        assembly_key,
         character_id: character.id(),
         character_key: character.key(),
         item_id: item.item_id,
@@ -249,10 +250,13 @@ public(package) fun withdraw_item(
     item
 }
 
-public(package) fun delete(inventory: Inventory, character: &Character) {
+public(package) fun delete(
+    inventory: Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    character: &Character,
+) {
     let Inventory {
-        assembly_id,
-        assembly_key,
         mut items,
         ..,
     } = inventory;
@@ -274,7 +278,14 @@ public(package) fun delete(inventory: Inventory, character: &Character) {
 /// Burns items from on-chain inventory (Chain → Game bridge)
 /// Emits ItemBurnedEvent for game server to create item in-game
 /// Deletes Item object if param quantity = existing quantity, otherwise reduces quantity
-fun burn_items(inventory: &mut Inventory, character: &Character, type_id: u64, quantity: u32) {
+fun burn_items(
+    inventory: &mut Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    character: &Character,
+    type_id: u64,
+    quantity: u32,
+) {
     assert!(inventory.items.contains(&type_id), EItemDoesNotExist);
 
     let should_remove = {
@@ -291,8 +302,8 @@ fun burn_items(inventory: &mut Inventory, character: &Character, type_id: u64, q
             inventory.used_capacity = inventory.used_capacity - volume_freed;
 
             event::emit(ItemBurnedEvent {
-                assembly_id: inventory.assembly_id,
-                assembly_key: inventory.assembly_key,
+                assembly_id,
+                assembly_key,
                 character_id: character.id(),
                 character_key: character.key(),
                 item_id: item.item_id,
@@ -308,7 +319,7 @@ fun burn_items(inventory: &mut Inventory, character: &Character, type_id: u64, q
         let volume_freed = calculate_volume(removed_item.volume, removed_item.quantity);
         inventory.used_capacity = inventory.used_capacity - volume_freed;
 
-        destroy_item(removed_item, character, inventory.assembly_id, inventory.assembly_key);
+        destroy_item(removed_item, character, assembly_id, assembly_key);
     };
 }
 
@@ -337,6 +348,8 @@ fun destroy_item(
 /// Increases the quantity value of an existing item in the specified inventory.
 fun increase_item_quantity(
     inventory: &mut Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
     character: &Character,
     type_id: u64,
     quantity: u32,
@@ -348,8 +361,8 @@ fun increase_item_quantity(
     assert!(req_capacity <= remaining_capacity, EInventoryInsufficientCapacity);
 
     event::emit(ItemMintedEvent {
-        assembly_id: inventory.assembly_id,
-        assembly_key: inventory.assembly_key,
+        assembly_id,
+        assembly_key,
         character_id: character.id(),
         character_key: character.key(),
         item_id: item.item_id,
@@ -395,17 +408,21 @@ public fun inventory_item_length(inventory: &Inventory): u64 {
 #[test_only]
 public fun burn_items_test(
     inventory: &mut Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
     character: &Character,
     type_id: u64,
     quantity: u32,
 ) {
-    burn_items(inventory, character, type_id, quantity);
+    burn_items(inventory, assembly_id, assembly_key, character, type_id, quantity);
 }
 
 // Mocking without deadline
 #[test_only]
 public fun burn_items_with_proof_test(
     inventory: &mut Inventory,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
     character: &Character,
     server_registry: &ServerAddressRegistry,
     location: &Location,
@@ -420,5 +437,5 @@ public fun burn_items_with_proof_test(
         location_proof,
         ctx,
     );
-    burn_items(inventory, character, type_id, quantity);
+    burn_items(inventory, assembly_id, assembly_key, character, type_id, quantity);
 }

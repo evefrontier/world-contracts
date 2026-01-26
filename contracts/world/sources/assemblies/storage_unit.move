@@ -140,6 +140,7 @@ public fun chain_item_to_game_inventory<T: key>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    let storage_unit_id = object::id(storage_unit);
     check_inventory_authorization(owner_cap, storage_unit, character.id());
     assert!(storage_unit.status.is_online(), ENotOnline);
 
@@ -149,6 +150,8 @@ public fun chain_item_to_game_inventory<T: key>(
         owner_cap_id,
     );
     inventory.burn_items_with_proof(
+        storage_unit_id,
+        storage_unit.key,
         character,
         server_registry,
         &storage_unit.location,
@@ -167,6 +170,7 @@ public fun deposit_item<Auth: drop>(
     _: Auth,
     _: &mut TxContext,
 ) {
+    let storage_unit_id = object::id(storage_unit);
     assert!(
         storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
         EExtensionNotAuthorized,
@@ -177,7 +181,12 @@ public fun deposit_item<Auth: drop>(
         &mut storage_unit.id,
         storage_unit.owner_cap_id,
     );
-    inventory.deposit_item(character, item);
+    inventory.deposit_item(
+        storage_unit_id,
+        storage_unit.key,
+        character,
+        item,
+    );
 }
 
 public fun withdraw_item<Auth: drop>(
@@ -187,6 +196,7 @@ public fun withdraw_item<Auth: drop>(
     type_id: u64,
     _: &mut TxContext,
 ): Item {
+    let storage_unit_id = object::id(storage_unit);
     assert!(
         storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
         EExtensionNotAuthorized,
@@ -196,7 +206,12 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.owner_cap_id,
     );
 
-    inventory.withdraw_item(character, type_id)
+    inventory.withdraw_item(
+        storage_unit_id,
+        storage_unit.key,
+        character,
+        type_id,
+    )
 }
 
 public fun deposit_by_owner<T: key>(
@@ -209,6 +224,7 @@ public fun deposit_by_owner<T: key>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
     check_inventory_authorization(owner_cap, storage_unit, character.id());
@@ -233,7 +249,12 @@ public fun deposit_by_owner<T: key>(
         owner_cap_id,
     );
 
-    inventory.deposit_item(character, item);
+    inventory.deposit_item(
+        storage_unit_id,
+        storage_unit.key,
+        character,
+        item,
+    );
 }
 
 public fun withdraw_by_owner<T: key>(
@@ -246,6 +267,7 @@ public fun withdraw_by_owner<T: key>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Item {
+    let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
     check_inventory_authorization(owner_cap, storage_unit, character.id());
@@ -263,7 +285,12 @@ public fun withdraw_by_owner<T: key>(
         owner_cap_id,
     );
 
-    inventory.withdraw_item(character, type_id)
+    inventory.withdraw_item(
+        storage_unit_id,
+        storage_unit.key,
+        character,
+        type_id,
+    )
 }
 
 // TODO: Can also have a transfer function for simplicity
@@ -339,9 +366,6 @@ public fun anchor(
     network_node.connect_assembly(assembly_id);
 
     let inventory = inventory::create(
-        assembly_id,
-        storage_unit_key,
-        owner_cap_id,
         max_capacity,
     );
 
@@ -442,7 +466,13 @@ public fun unanchor(
     location.remove();
 
     // loop through inventory_keys
-    inventory_keys.destroy!(|key| df::remove<ID, Inventory>(&mut id, key).delete(character));
+    inventory_keys.destroy!(
+        |inventory_key| df::remove<ID, Inventory>(&mut id, inventory_key).delete(
+            storage_unit_id,
+            key,
+            character,
+        ),
+    );
     metadata.do!(|metadata| metadata.delete());
     id.delete();
 }
@@ -459,6 +489,7 @@ public fun game_item_to_chain_inventory<T: key>(
     quantity: u32,
     ctx: &mut TxContext,
 ) {
+    let storage_unit_id = object::id(storage_unit);
     let sponsor_opt = tx_context::sponsor(ctx);
     assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
     let sponsor = *option::borrow(&sponsor_opt);
@@ -474,12 +505,7 @@ public fun game_item_to_chain_inventory<T: key>(
             &storage_unit.id,
             storage_unit.owner_cap_id,
         );
-        let inventory = inventory::create(
-            object::id(storage_unit),
-            storage_unit.key,
-            owner_cap_id,
-            owner_inv.max_capacity(),
-        );
+        let inventory = inventory::create(owner_inv.max_capacity());
 
         storage_unit.inventory_keys.push_back(owner_cap_id);
         df::add(&mut storage_unit.id, owner_cap_id, inventory);
@@ -490,6 +516,8 @@ public fun game_item_to_chain_inventory<T: key>(
         owner_cap_id,
     );
     inventory.mint_items(
+        storage_unit_id,
+        storage_unit.key,
         character,
         storage_unit.key.tenant(),
         item_id,
@@ -599,12 +627,15 @@ public fun chain_item_to_game_inventory_test<T: key>(
     location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
+    let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
     check_inventory_authorization(owner_cap, storage_unit, character.id());
     assert!(storage_unit.status.is_online(), ENotOnline);
 
     let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, owner_cap_id);
     inventory.burn_items_with_proof_test(
+        storage_unit_id,
+        storage_unit.key,
         character,
         server_registry,
         &storage_unit.location,
@@ -628,7 +659,7 @@ public fun game_item_to_chain_inventory_test<T: key>(
     ctx: &mut TxContext,
 ) {
     assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
-
+    let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
     check_inventory_authorization(owner_cap, storage_unit, character.id());
@@ -639,12 +670,7 @@ public fun game_item_to_chain_inventory_test<T: key>(
             &storage_unit.id,
             storage_unit.owner_cap_id,
         );
-        let inventory = inventory::create(
-            object::id(storage_unit),
-            storage_unit.key,
-            owner_cap_id,
-            owner_inv.max_capacity(),
-        );
+        let inventory = inventory::create(owner_inv.max_capacity());
 
         storage_unit.inventory_keys.push_back(owner_cap_id);
         df::add(&mut storage_unit.id, owner_cap_id, inventory);
@@ -655,6 +681,8 @@ public fun game_item_to_chain_inventory_test<T: key>(
         owner_cap_id,
     );
     inventory.mint_items(
+        storage_unit_id,
+        storage_unit.key,
         character,
         storage_unit.key.tenant(),
         item_id,
