@@ -54,12 +54,7 @@ public(package) fun anchor(assembly_id: ID, assembly_key: TenantItemId): Assembl
     let assembly_status = AssemblyStatus {
         status: Status::OFFLINE,
     };
-    event::emit(StatusChangedEvent {
-        assembly_id,
-        assembly_key,
-        status: assembly_status.status,
-        action: Action::ANCHORED,
-    });
+    emit_status_changed(assembly_status.status, Action::ANCHORED, assembly_id, assembly_key);
     assembly_status
 }
 
@@ -76,12 +71,7 @@ public(package) fun unanchor(
     );
 
     // This event is only for informing the indexers of the status change
-    event::emit(StatusChangedEvent {
-        assembly_id,
-        assembly_key,
-        status: Status::NULL,
-        action: Action::UNANCHORED,
-    });
+    emit_status_changed(Status::NULL, Action::UNANCHORED, assembly_id, assembly_key);
 
     let AssemblyStatus { .. } = assembly_status;
 }
@@ -96,12 +86,7 @@ public(package) fun online(
 
     // TODO: Check if it has enough reserved energy to online, else revert
     assembly_status.status = Status::ONLINE;
-    event::emit(StatusChangedEvent {
-        assembly_id,
-        assembly_key,
-        status: assembly_status.status,
-        action: Action::ONLINE,
-    });
+    emit_status_changed(assembly_status.status, Action::ONLINE, assembly_id, assembly_key);
 }
 
 /// Offline an assembly
@@ -113,11 +98,20 @@ public(package) fun offline(
     assert!(assembly_status.status == Status::ONLINE, EAssemblyInvalidStatus);
 
     assembly_status.status = Status::OFFLINE;
+    emit_status_changed(assembly_status.status, Action::OFFLINE, assembly_id, assembly_key);
+}
+
+fun emit_status_changed(
+    status: Status,
+    action: Action,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+) {
     event::emit(StatusChangedEvent {
         assembly_id,
         assembly_key,
-        status: assembly_status.status,
-        action: Action::OFFLINE,
+        status,
+        action,
     });
 }
 
