@@ -7,7 +7,7 @@ use sui::{clock, derived_object, test_scenario as ts};
 use world::{
     access::AdminCap,
     fuel::{Self, FuelConfig, Fuel},
-    in_game_id::create_key,
+    in_game_id::{create_key, TenantItemId},
     object_registry::ObjectRegistry,
     test_helpers::{
         Self,
@@ -38,7 +38,45 @@ const MS_PER_HOUR: u64 = 60 * MS_PER_MINUTE; // 3,600,000
 
 public struct NetworkNode has key {
     id: UID,
+    key: TenantItemId,
     fuel: Fuel,
+}
+
+// === Test Helper Functions ===
+fun fuel_deposit(
+    nwn: &mut NetworkNode,
+    type_id: u64,
+    volume: u64,
+    quantity: u64,
+    clock: &clock::Clock,
+) {
+    let nwn_id = object::id(nwn);
+    let nwn_key = nwn.key;
+    nwn.fuel.deposit(nwn_id, nwn_key, type_id, volume, quantity, clock);
+}
+
+fun fuel_withdraw(nwn: &mut NetworkNode, quantity: u64) {
+    let nwn_id = object::id(nwn);
+    let nwn_key = nwn.key;
+    nwn.fuel.withdraw(nwn_id, nwn_key, quantity);
+}
+
+fun fuel_start_burning(nwn: &mut NetworkNode, clock: &clock::Clock) {
+    let nwn_id = object::id(nwn);
+    let nwn_key = nwn.key;
+    nwn.fuel.start_burning(nwn_id, nwn_key, clock);
+}
+
+fun fuel_stop_burning(nwn: &mut NetworkNode, fuel_config: &FuelConfig, clock: &clock::Clock) {
+    let nwn_id = object::id(nwn);
+    let nwn_key = nwn.key;
+    nwn.fuel.stop_burning(nwn_id, nwn_key, fuel_config, clock);
+}
+
+fun fuel_update(nwn: &mut NetworkNode, fuel_config: &FuelConfig, clock: &clock::Clock) {
+    let nwn_id = object::id(nwn);
+    let nwn_key = nwn.key;
+    nwn.fuel.update(nwn_id, nwn_key, fuel_config, clock);
 }
 
 // Helper Functions
@@ -49,11 +87,13 @@ fun create_network_node(ts: &mut ts::Scenario, max_capacity: u64, burn_rate_in_s
         let nwn_key = create_key(44444, tenant());
         let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);
         let nwn_id = object::uid_to_inner(&nwn_uid);
+        let nwn_key = create_key(44444, tenant());
 
         let burn_rate_in_ms = burn_rate_in_seconds * MS_PER_SECOND;
         let nwn = NetworkNode {
             id: nwn_uid,
-            fuel: fuel::create(nwn_id, nwn_key, max_capacity, burn_rate_in_ms),
+            key: nwn_key,
+            fuel: fuel::create(max_capacity, burn_rate_in_ms),
         };
         transfer::share_object(nwn);
         ts::return_shared(registry);
@@ -178,7 +218,7 @@ fun deposit_fuel() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT);
         assert!(option::is_some(&nwn.fuel.type_id()));
         assert_eq!(*option::borrow(&nwn.fuel.type_id()), FUEL_TYPE_ID);
@@ -201,14 +241,14 @@ fun deposit_fuel_multiple_times() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT);
         ts::return_shared(nwn);
     };
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT + DEPOSIT_AMOUNT);
         ts::return_shared(nwn);
     };
@@ -227,13 +267,13 @@ fun withdraw_fuel() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
         ts::return_shared(nwn);
     };
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.withdraw(WITHDRAW_AMOUNT);
+        fuel_withdraw(&mut nwn, WITHDRAW_AMOUNT);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT - WITHDRAW_AMOUNT);
         ts::return_shared(nwn);
     };
@@ -252,21 +292,21 @@ fun deposit_and_withdraw_fuel() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT);
         ts::return_shared(nwn);
     };
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.withdraw(WITHDRAW_AMOUNT);
+        fuel_withdraw(&mut nwn, WITHDRAW_AMOUNT);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT - WITHDRAW_AMOUNT);
         ts::return_shared(nwn);
     };
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT - WITHDRAW_AMOUNT + DEPOSIT_AMOUNT);
         ts::return_shared(nwn);
     };
@@ -286,7 +326,7 @@ fun start_burning() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         assert_eq!(nwn.fuel.quantity(), 5);
         assert_eq!(nwn.fuel.is_burning(), false);
         ts::return_shared(nwn);
@@ -295,7 +335,7 @@ fun start_burning() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.is_burning(), true);
         ts::return_shared(nwn);
@@ -318,9 +358,9 @@ fun stop_burning() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         clock.set_for_testing(time_start);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.is_burning(), true);
         ts::return_shared(nwn);
     };
@@ -330,7 +370,7 @@ fun stop_burning() {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         clock.set_for_testing(time_stop);
-        nwn.fuel.stop_burning(&fuel_config, &clock);
+        fuel_stop_burning(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.is_burning(), false);
         assert_eq!(nwn.fuel.quantity(), 4);
         ts::return_shared(nwn);
@@ -354,9 +394,9 @@ fun update_fuel() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         clock.set_for_testing(time_start);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         ts::return_shared(nwn);
     };
@@ -366,7 +406,7 @@ fun update_fuel() {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         clock.set_for_testing(time_after_1_hour);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 3);
         assert_eq!(nwn.fuel.is_burning(), true);
         ts::return_shared(nwn);
@@ -389,9 +429,9 @@ fun update_fuel_no_change_when_not_burning() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         // Not burning, so update should do nothing
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 5);
         assert_eq!(nwn.fuel.is_burning(), false);
         ts::return_shared(nwn);
@@ -420,7 +460,7 @@ fun has_enough_fuel() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), false);
         ts::return_shared(nwn);
         ts::return_shared(fuel_config);
@@ -432,7 +472,7 @@ fun has_enough_fuel() {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         clock.set_for_testing(time_start);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), true);
         ts::return_shared(nwn);
@@ -445,7 +485,7 @@ fun has_enough_fuel() {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         clock.set_for_testing(time_after_3_units);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 1);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), true);
@@ -459,7 +499,7 @@ fun has_enough_fuel() {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         clock.set_for_testing(time_after_4_units);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), true);
@@ -489,7 +529,7 @@ fun has_enough_fuel() {
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), false);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         ts::return_shared(nwn);
         ts::return_shared(fuel_config);
     };
@@ -520,9 +560,9 @@ fun fuel_consumption_with_multiple_updates_then_stop() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         clock.set_for_testing(time_10_00);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_10_00);
@@ -542,7 +582,7 @@ fun fuel_consumption_with_multiple_updates_then_stop() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 0);
         assert_eq!(remaining_elapsed_ms, 30 * MS_PER_MINUTE);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_10_00);
@@ -562,7 +602,7 @@ fun fuel_consumption_with_multiple_updates_then_stop() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 1);
         assert_eq!(remaining_elapsed_ms, 0);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 3);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_11_00);
@@ -582,7 +622,7 @@ fun fuel_consumption_with_multiple_updates_then_stop() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 1);
         assert_eq!(remaining_elapsed_ms, 30 * MS_PER_MINUTE);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 2);
         assert_eq!(nwn.fuel.is_burning(), true);
 
@@ -593,7 +633,7 @@ fun fuel_consumption_with_multiple_updates_then_stop() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume_after, 2);
         assert_eq!(remaining_elapsed_ms, 0);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), true); // Last unit should start burning
         assert_eq!(nwn.fuel.burn_start_time(), time_14_00);
@@ -605,7 +645,7 @@ fun fuel_consumption_with_multiple_updates_then_stop() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume_final, 0);
         assert_eq!(remaining_elapsed_ms_final, 30 * MS_PER_MINUTE);
-        nwn.fuel.stop_burning(&fuel_config, &clock);
+        fuel_stop_burning(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.is_burning(), false);
         assert_eq!(nwn.fuel.burn_start_time(), 0);
         assert_eq!(nwn.fuel.previous_cycle_elapsed_time(), 30 * MS_PER_MINUTE);
@@ -702,7 +742,7 @@ fun withdraw_insufficient_fuel() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.withdraw(WITHDRAW_AMOUNT); // Should abort
+        fuel_withdraw(&mut nwn, WITHDRAW_AMOUNT); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -722,7 +762,7 @@ fun deposit_exceeds_capacity() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         // volume * quantity = 10 * 11 = 110 > 100 (capacity)
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 11, &clock); // Should abort
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 11, &clock); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -741,13 +781,13 @@ fun deposit_different_fuel_type() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
         ts::return_shared(nwn);
     };
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(2, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock); // Should abort
+        fuel_deposit(&mut nwn, 2, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -767,9 +807,9 @@ fun start_burning_when_already_burning() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
-        nwn.fuel.start_burning(&clock);
-        nwn.fuel.start_burning(&clock); // Should abort
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_start_burning(&mut nwn, &clock);
+        fuel_start_burning(&mut nwn, &clock); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -790,7 +830,7 @@ fun start_burning_with_no_fuel() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         // No fuel deposited, quantity is 0
-        nwn.fuel.start_burning(&clock); // Should abort
+        fuel_start_burning(&mut nwn, &clock); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -811,8 +851,8 @@ fun stop_burning_when_not_burning() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
-        nwn.fuel.stop_burning(&fuel_config, &clock); // Should abort
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_stop_burning(&mut nwn, &fuel_config, &clock); // Should abort
         ts::return_shared(nwn);
         ts::return_shared(fuel_config);
     };
@@ -832,7 +872,9 @@ fun deposit_with_zero_quantity() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 0, &clock); // Should abort
+        let nwn_id = object::id(&nwn);
+        let nwn_key = nwn.key;
+        nwn.fuel.deposit(nwn_id, nwn_key, FUEL_TYPE_ID, FUEL_VOLUME, 0, &clock); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -851,8 +893,8 @@ fun withdraw_with_zero_quantity() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
-        nwn.fuel.withdraw(0); // Should abort
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
+        fuel_withdraw(&mut nwn, 0); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -871,7 +913,7 @@ fun deposit_with_zero_volume() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, 0, DEPOSIT_AMOUNT, &clock); // Should abort
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, 0, DEPOSIT_AMOUNT, &clock); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -911,7 +953,9 @@ fun start_burning_with_empty_type_id() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         // No fuel deposited, type_id = 0, quantity = 0
-        nwn.fuel.start_burning(&clock); // Should abort with ENoFuelToBurn
+        let nwn_id = object::id(&nwn);
+        let nwn_key = nwn.key;
+        nwn.fuel.start_burning(nwn_id, nwn_key, &clock); // Should abort with ENoFuelToBurn
         ts::return_shared(nwn);
     };
 
@@ -939,9 +983,9 @@ fun last_unit_burning_scenario() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 2, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 2, &clock);
         clock.set_for_testing(time_10_00);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 1);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_10_00);
@@ -961,7 +1005,7 @@ fun last_unit_burning_scenario() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 1);
         assert_eq!(remaining_elapsed_ms, 5 * MS_PER_MINUTE);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_10_00 + MS_PER_HOUR);
@@ -981,7 +1025,7 @@ fun last_unit_burning_scenario() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 0);
         assert_eq!(remaining_elapsed_ms, 30 * MS_PER_MINUTE);
-        nwn.fuel.stop_burning(&fuel_config, &clock);
+        fuel_stop_burning(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), false);
         assert_eq!(nwn.fuel.previous_cycle_elapsed_time(), 30 * MS_PER_MINUTE);
@@ -997,7 +1041,7 @@ fun last_unit_burning_scenario() {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         clock.set_for_testing(time_15_00);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_15_00);
@@ -1018,7 +1062,7 @@ fun last_unit_burning_scenario() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 1);
         assert_eq!(remaining_elapsed_ms, 5 * MS_PER_MINUTE);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), false);
         assert_eq!(nwn.fuel.previous_cycle_elapsed_time(), 0);
@@ -1050,9 +1094,9 @@ fun update_before_stop() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         clock.set_for_testing(time_10_00);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_10_00);
@@ -1072,7 +1116,7 @@ fun update_before_stop() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 0);
         assert_eq!(remaining_elapsed_ms, 15 * MS_PER_MINUTE);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_10_00);
@@ -1092,7 +1136,7 @@ fun update_before_stop() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 0);
         assert_eq!(remaining_elapsed_ms, 30 * MS_PER_MINUTE);
-        nwn.fuel.stop_burning(&fuel_config, &clock);
+        fuel_stop_burning(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.is_burning(), false);
         assert_eq!(nwn.fuel.previous_cycle_elapsed_time(), 30 * MS_PER_MINUTE);
@@ -1122,9 +1166,9 @@ fun running_out_of_fuel() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 1, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 1, &clock);
         clock.set_for_testing(time_10_00);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), true); // Last unit still burning
@@ -1144,7 +1188,7 @@ fun running_out_of_fuel() {
         assert_eq!(units_to_consume, 1);
         assert_eq!(remaining_elapsed_ms, 0);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), false);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 0);
         assert_eq!(nwn.fuel.is_burning(), false);
         assert_eq!(nwn.fuel.burn_start_time(), 0);
@@ -1175,9 +1219,9 @@ fun cron_job_failure_missed_updates() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         clock.set_for_testing(time_10_00);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_10_00);
@@ -1197,7 +1241,7 @@ fun cron_job_failure_missed_updates() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 2);
         assert_eq!(remaining_elapsed_ms, 30 * MS_PER_MINUTE);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 2);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.burn_start_time(), time_12_30 - (30 * MS_PER_MINUTE)); // 12:00
@@ -1238,9 +1282,9 @@ fun fuel_efficiency_impact() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        nwn.fuel.deposit(FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
+        fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, 5, &clock);
         clock.set_for_testing(time_10_00);
-        nwn.fuel.start_burning(&clock);
+        fuel_start_burning(&mut nwn, &clock);
         assert_eq!(nwn.fuel.quantity(), 4);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), true);
@@ -1259,7 +1303,7 @@ fun fuel_efficiency_impact() {
             .units_to_consume(&fuel_config, clock.timestamp_ms());
         assert_eq!(units_to_consume, 1);
         assert_eq!(remaining_elapsed_ms, 0);
-        nwn.fuel.update(&fuel_config, &clock);
+        fuel_update(&mut nwn, &fuel_config, &clock);
         assert_eq!(nwn.fuel.quantity(), 3);
         assert_eq!(nwn.fuel.is_burning(), true);
         assert_eq!(nwn.fuel.has_enough_fuel(&fuel_config, &clock), true);
