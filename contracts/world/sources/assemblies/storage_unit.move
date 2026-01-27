@@ -436,7 +436,6 @@ public fun unanchor(
     storage_unit: StorageUnit,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-    character: &Character,
     _: &AdminCap,
 ) {
     let StorageUnit {
@@ -470,7 +469,6 @@ public fun unanchor(
         |inventory_key| df::remove<ID, Inventory>(&mut id, inventory_key).delete(
             storage_unit_id,
             key,
-            character,
         ),
     );
     metadata.do!(|metadata| metadata.delete());

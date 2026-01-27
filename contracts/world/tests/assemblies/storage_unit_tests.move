@@ -895,9 +895,7 @@ fun test_unachor_storage_unit() {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        storage_unit::unanchor(storage_unit, &mut nwn, &energy_config, &character, &admin_cap);
-        ts::return_shared(character);
+        storage_unit::unanchor(storage_unit, &mut nwn, &energy_config, &admin_cap);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
         ts::return_to_sender(&ts, admin_cap);

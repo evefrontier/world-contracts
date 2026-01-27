@@ -40,7 +40,7 @@ public struct Inventory has store {
 }
 
 // TODO: Use Sui's `Coin<T>` and `Balance<T>` for stackability
-
+// TODO: Move item as its own module
 // Item has a key as its minted on-chain and can be transferred from one inventory to another.
 // It has store ability as it needs to be wrapped in a parent. Item should always have a parent eg: Inventory, ship etc.
 public struct Item has key, store {
@@ -89,6 +89,14 @@ public struct ItemWithdrawnEvent has copy, drop {
     assembly_key: TenantItemId,
     character_id: ID,
     character_key: TenantItemId,
+    item_id: u64,
+    type_id: u64,
+    quantity: u32,
+}
+
+public struct ItemDestroyedEvent has copy, drop {
+    assembly_id: ID,
+    assembly_key: TenantItemId,
     item_id: u64,
     type_id: u64,
     quantity: u32,
@@ -250,12 +258,7 @@ public(package) fun withdraw_item(
     item
 }
 
-public(package) fun delete(
-    inventory: Inventory,
-    assembly_id: ID,
-    assembly_key: TenantItemId,
-    character: &Character,
-) {
+public(package) fun delete(inventory: Inventory, assembly_id: ID, assembly_key: TenantItemId) {
     let Inventory {
         mut items,
         ..,
@@ -264,7 +267,18 @@ public(package) fun delete(
     // Burn the items one by one
     while (!items.is_empty()) {
         let (_, item) = items.pop();
-        destroy_item(item, character, assembly_id, assembly_key);
+        let Item { id, item_id, type_id, quantity, location, .. } = item;
+
+        event::emit(ItemDestroyedEvent {
+            assembly_id: assembly_id,
+            assembly_key: assembly_key,
+            item_id,
+            type_id,
+            quantity,
+        });
+
+        location.remove();
+        id.delete();
     };
     items.destroy_empty();
 }
