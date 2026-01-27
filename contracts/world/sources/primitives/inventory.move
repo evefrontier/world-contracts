@@ -270,8 +270,8 @@ public(package) fun delete(inventory: Inventory, assembly_id: ID, assembly_key: 
         let Item { id, item_id, type_id, quantity, location, .. } = item;
 
         event::emit(ItemDestroyedEvent {
-            assembly_id: assembly_id,
-            assembly_key: assembly_key,
+            assembly_id,
+            assembly_key,
             item_id,
             type_id,
             quantity,

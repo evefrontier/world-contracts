@@ -73,7 +73,7 @@ public fun offline(
     owner_cap: &OwnerCap<Assembly>,
 ) {
     let assembly_id = object::id(assembly);
-    assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
+    assert!(access::is_authorized(owner_cap, assembly_id), EAssemblyNotAuthorized);
 
     // Verify network node matches the assembly's energy source
     assert!(assembly.energy_source_id == object::id(network_node), ENetworkNodeDoesNotExist);

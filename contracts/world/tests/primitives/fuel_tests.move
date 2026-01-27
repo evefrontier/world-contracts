@@ -87,7 +87,6 @@ fun create_network_node(ts: &mut ts::Scenario, max_capacity: u64, burn_rate_in_s
         let nwn_key = create_key(44444, tenant());
         let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);
         let nwn_id = object::uid_to_inner(&nwn_uid);
-        let nwn_key = create_key(44444, tenant());
 
         let burn_rate_in_ms = burn_rate_in_seconds * MS_PER_SECOND;
         let nwn = NetworkNode {
