@@ -5,7 +5,7 @@
 module world::killmail;
 
 use sui::event;
-use world::access::AdminCap;
+use world::{access::AdminCap, in_game_id::{Self, TenantItemId}};
 
 // === Errors ===
 #[error(code = 0)]
@@ -28,23 +28,23 @@ const EInvalidTimestamp: vector<u8> = b"Invalid timestamp";
 /// Can be queried directly using its Sui object ID
 public struct Killmail has key {
     id: UID,
-    killmail_id: u32,
-    killer_id: u64,
-    victim_id: u64,
+    killmail_id: TenantItemId,
+    killer_character_id: TenantItemId,
+    victim_character_id: TenantItemId,
     kill_timestamp: u64, // Unix timestamp in seconds
     loss_type: u8,  // 0=SHIP, 1=STRUCTURE
-    solar_system_id: u64,
+    solar_system_id: TenantItemId,
 }
 
 // === Events ===
 /// Emitted when a new killmail is created
 public struct KillmailCreatedEvent has copy, drop {
-    killmail_id: u32,
-    killer_id: u64,
-    victim_id: u64,
-    solar_system_id: u64,
+    killmail_id: TenantItemId,
+    killer_character_id: TenantItemId,
+    victim_character_id: TenantItemId,
+    solar_system_id: TenantItemId,
     loss_type: u8,
-    timestamp: u64, // Unix timestamp in seconds
+    kill_timestamp: u64, // Unix timestamp in seconds
 }
 
 
@@ -52,20 +52,20 @@ public struct KillmailCreatedEvent has copy, drop {
 /// Creates a new killmail as a shared object on-chain
 /// Only authorized admin can create killmails
 public fun create_killmail(
-    _admin_cap: &AdminCap,
-    killmail_id: u32,
-    killer_id: u64,
-    victim_id: u64,
+    _: &AdminCap,
+    killmail_id: TenantItemId,
+    killer_character_id: TenantItemId,
+    victim_character_id: TenantItemId,
     kill_timestamp: u64,
     loss_type: u8,
-    solar_system_id: u64,
+    solar_system_id: TenantItemId,
     ctx: &mut TxContext,
 ) {
     // Validate inputs
-    assert!(killmail_id != 0, EKillmailIdEmpty);
-    assert!(killer_id != 0, ECharacterIdEmpty);
-    assert!(victim_id != 0, ECharacterIdEmpty);
-    assert!(solar_system_id != 0, ESolarSystemIdEmpty);
+    assert!(in_game_id::item_id(&killmail_id) != 0, EKillmailIdEmpty);
+    assert!(in_game_id::item_id(&killer_character_id) != 0, ECharacterIdEmpty);
+    assert!(in_game_id::item_id(&victim_character_id) != 0, ECharacterIdEmpty);
+    assert!(in_game_id::item_id(&solar_system_id) != 0, ESolarSystemIdEmpty);
     assert!(kill_timestamp > 0, EInvalidTimestamp);
     assert!(loss_type <= 1, EInvalidLossType); // 0=SHIP, 1=STRUCTURE
 
@@ -73,8 +73,8 @@ public fun create_killmail(
     let killmail = Killmail {
         id: object::new(ctx),
         killmail_id,
-        killer_id,
-        victim_id,
+        killer_character_id,
+        victim_character_id,
         kill_timestamp,
         loss_type,
         solar_system_id,
@@ -86,10 +86,10 @@ public fun create_killmail(
     // Emit event for indexer
     event::emit(KillmailCreatedEvent {
         killmail_id,
-        killer_id,
-        victim_id,
+        killer_character_id,
+        victim_character_id,
         solar_system_id,
         loss_type,
-        timestamp: kill_timestamp,
+        kill_timestamp,
     });
 }
