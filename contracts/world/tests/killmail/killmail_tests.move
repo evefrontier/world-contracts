@@ -2,12 +2,7 @@
 module world::killmail_tests;
 
 use sui::test_scenario as ts;
-use world::{
-    access::AdminCap,
-    in_game_id::{Self},
-    killmail,
-    test_helpers::{Self, admin}
-};
+use world::{access::AdminCap, in_game_id, killmail, test_helpers::{Self, admin}};
 
 // Test constants
 const KILLMAIL_ID_1: u64 = 1001;
@@ -46,7 +41,7 @@ fun test_create_killmail() {
             TIMESTAMP_1,
             killmail::ship(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
-            ts.ctx()
+            ts.ctx(),
         );
 
         ts::return_to_address(admin(), admin_cap);
@@ -74,7 +69,7 @@ fun test_create_multiple_killmails() {
             TIMESTAMP_1,
             killmail::ship(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
-            ts.ctx()
+            ts.ctx(),
         );
 
         // Create second killmail
@@ -86,7 +81,7 @@ fun test_create_multiple_killmails() {
             TIMESTAMP_1,
             killmail::structure(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
-            ts.ctx()
+            ts.ctx(),
         );
 
         ts::return_to_address(admin(), admin_cap);
@@ -115,7 +110,7 @@ fun test_create_killmail_invalid_id() {
             TIMESTAMP_1,
             killmail::ship(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
-            ts.ctx()
+            ts.ctx(),
         );
 
         ts::return_to_address(admin(), admin_cap);
@@ -144,7 +139,7 @@ fun test_create_killmail_invalid_killer_id() {
             TIMESTAMP_1,
             killmail::ship(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
-            ts.ctx()
+            ts.ctx(),
         );
 
         ts::return_to_address(admin(), admin_cap);
@@ -152,4 +147,3 @@ fun test_create_killmail_invalid_killer_id() {
 
     ts::end(ts);
 }
-

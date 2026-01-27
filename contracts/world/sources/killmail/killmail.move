@@ -61,7 +61,6 @@ public struct KillmailCreatedEvent has copy, drop {
     kill_timestamp: u64, // Unix timestamp in seconds
 }
 
-
 // === Admin Functions ===
 /// Creates a new killmail as a shared object on-chain
 /// Only authorized admin can create killmails
