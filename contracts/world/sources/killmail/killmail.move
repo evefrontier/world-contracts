@@ -17,11 +17,25 @@ const ECharacterIdEmpty: vector<u8> = b"Character ID cannot be empty";
 #[error(code = 3)]
 const ESolarSystemIdEmpty: vector<u8> = b"Solar system ID cannot be empty";
 
-#[error(code = 4)]
-const EInvalidLossType: vector<u8> = b"Invalid loss type";
-
 #[error(code = 5)]
 const EInvalidTimestamp: vector<u8> = b"Invalid timestamp";
+
+// === Enums ===
+/// Represents the type of loss in a killmail
+public enum LossType has copy, drop, store {
+    SHIP,
+    STRUCTURE,
+}
+
+/// Returns the SHIP variant of LossType
+public fun ship(): LossType {
+    LossType::SHIP
+}
+
+/// Returns the STRUCTURE variant of LossType
+public fun structure(): LossType {
+    LossType::STRUCTURE
+}
 
 // === Structs ===
 /// Represents a killmail as a shared object on the Sui blockchain
@@ -32,7 +46,7 @@ public struct Killmail has key {
     killer_character_id: TenantItemId,
     victim_character_id: TenantItemId,
     kill_timestamp: u64, // Unix timestamp in seconds
-    loss_type: u8,  // 0=SHIP, 1=STRUCTURE
+    loss_type: LossType,
     solar_system_id: TenantItemId,
 }
 
@@ -43,7 +57,7 @@ public struct KillmailCreatedEvent has copy, drop {
     killer_character_id: TenantItemId,
     victim_character_id: TenantItemId,
     solar_system_id: TenantItemId,
-    loss_type: u8,
+    loss_type: LossType,
     kill_timestamp: u64, // Unix timestamp in seconds
 }
 
@@ -57,7 +71,7 @@ public fun create_killmail(
     killer_character_id: TenantItemId,
     victim_character_id: TenantItemId,
     kill_timestamp: u64,
-    loss_type: u8,
+    loss_type: LossType,
     solar_system_id: TenantItemId,
     ctx: &mut TxContext,
 ) {
@@ -67,7 +81,6 @@ public fun create_killmail(
     assert!(in_game_id::item_id(&victim_character_id) != 0, ECharacterIdEmpty);
     assert!(in_game_id::item_id(&solar_system_id) != 0, ESolarSystemIdEmpty);
     assert!(kill_timestamp > 0, EInvalidTimestamp);
-    assert!(loss_type <= 1, EInvalidLossType); // 0=SHIP, 1=STRUCTURE
 
     // Create the killmail as a shared object on-chain
     let killmail = Killmail {

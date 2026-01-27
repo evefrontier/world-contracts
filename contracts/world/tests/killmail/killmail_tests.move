@@ -22,9 +22,6 @@ const TENANT: vector<u8> = b"test";
 
 const TIMESTAMP_1: u64 = 1640995200; // 2022-01-01 00:00:00 UTC
 
-const LOSS_TYPE_SHIP: u8 = 0;
-const LOSS_TYPE_STRUCTURE: u8 = 1;
-
 // Helper to setup test environment
 fun setup(ts: &mut ts::Scenario) {
     test_helpers::setup_world(ts);
@@ -47,7 +44,7 @@ fun test_create_killmail() {
             in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
             TIMESTAMP_1,
-            LOSS_TYPE_SHIP,
+            killmail::ship(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
             ts.ctx()
         );
@@ -75,7 +72,7 @@ fun test_create_multiple_killmails() {
             in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
             TIMESTAMP_1,
-            LOSS_TYPE_SHIP,
+            killmail::ship(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
             ts.ctx()
         );
@@ -87,7 +84,7 @@ fun test_create_multiple_killmails() {
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
             TIMESTAMP_1,
-            LOSS_TYPE_STRUCTURE,
+            killmail::structure(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
             ts.ctx()
         );
@@ -116,7 +113,7 @@ fun test_create_killmail_invalid_id() {
             in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
             TIMESTAMP_1,
-            LOSS_TYPE_SHIP,
+            killmail::ship(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
             ts.ctx()
         );
@@ -145,7 +142,7 @@ fun test_create_killmail_invalid_killer_id() {
             in_game_id::create_key(0, std::string::utf8(TENANT)), // Invalid killer ID
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
             TIMESTAMP_1,
-            LOSS_TYPE_SHIP,
+            killmail::ship(),
             in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
             ts.ctx()
         );
@@ -156,31 +153,3 @@ fun test_create_killmail_invalid_killer_id() {
     ts::end(ts);
 }
 
-// Test error cases - invalid loss type
-#[test]
-#[expected_failure(abort_code = killmail::EInvalidLossType)]
-fun test_create_killmail_invalid_loss_type() {
-    let mut ts = ts::begin(@0x0);
-    setup(&mut ts);
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let admin_cap = ts::take_from_address<AdminCap>(&ts, admin());
-
-        // Try to create killmail with invalid loss type (2, only 0 or 1 allowed)
-        killmail::create_killmail(
-            &admin_cap,
-            in_game_id::create_key(KILLMAIL_ID_1, std::string::utf8(TENANT)),
-            in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
-            in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
-            TIMESTAMP_1,
-            2, // Invalid loss type
-            in_game_id::create_key(SOLAR_SYSTEM_ID_1, std::string::utf8(TENANT)),
-            ts.ctx()
-        );
-
-        ts::return_to_address(admin(), admin_cap);
-    };
-
-    ts::end(ts);
-}
