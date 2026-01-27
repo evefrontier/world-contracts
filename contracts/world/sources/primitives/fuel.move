@@ -62,46 +62,22 @@ public struct Fuel has store {
 }
 
 // === Events ===
-public struct FuelDepositedEvent has copy, drop {
-    assembly_id: ID,
-    assembly_key: TenantItemId,
-    type_id: u64,
-    unit_volume: u64,
-    quantity: u64,
-    total_quantity: u64,
+public enum Action has copy, drop, store {
+    DEPOSITED,
+    WITHDRAWN,
+    BURNING_STARTED,
+    BURNING_STOPPED,
+    BURNING_UPDATED,
 }
 
-public struct FuelWithdrawnEvent has copy, drop {
+public struct FuelEvent has copy, drop {
     assembly_id: ID,
     assembly_key: TenantItemId,
     type_id: u64,
-    quantity: u64,
-    remaining_quantity: u64,
-}
-
-public struct FuelBurningStartedEvent has copy, drop {
-    assembly_id: ID,
-    assembly_key: TenantItemId,
-    type_id: u64,
-    quantity: u64,
-    burn_start_time: u64,
-}
-
-public struct FuelBurningStoppedEvent has copy, drop {
-    assembly_id: ID,
-    assembly_key: TenantItemId,
-    type_id: u64,
-    quantity: u64,
-    previous_cycle_elapsed_time: u64,
-}
-
-public struct FuelUpdatedEvent has copy, drop {
-    assembly_id: ID,
-    assembly_key: TenantItemId,
-    type_id: u64,
-    units_consumed: u64,
-    remaining_quantity: u64,
+    old_quantity: u64,
+    new_quantity: u64,
     is_burning: bool,
+    action: Action,
 }
 
 public struct FuelEfficiencySetEvent has copy, drop {
@@ -249,17 +225,19 @@ public(package) fun deposit(
     };
 
     assert!(option::is_some(&fuel.unit_volume), EInvalidVolume);
+    let old_quantity = fuel.quantity;
     let new_quantity = fuel.quantity + quantity;
     let unit_vol = *option::borrow(&fuel.unit_volume);
     assert!(unit_vol * new_quantity <= fuel.max_capacity, EFuelCapacityExceeded);
     fuel.quantity = new_quantity;
-    event::emit(FuelDepositedEvent {
+    event::emit(FuelEvent {
         assembly_id,
         assembly_key,
         type_id,
-        unit_volume,
-        quantity,
-        total_quantity: new_quantity,
+        old_quantity,
+        new_quantity,
+        is_burning: fuel.is_burning,
+        action: Action::DEPOSITED,
     });
 }
 
@@ -273,13 +251,16 @@ public(package) fun withdraw(
     assert!(quantity > 0, EInvalidWithdrawQuantity);
     assert!(fuel.quantity >= quantity, EInsufficientFuel);
     assert!(option::is_some(&fuel.type_id), ETypeIdEmtpy);
+    let old_quantity = fuel.quantity;
     fuel.quantity = fuel.quantity - quantity;
-    event::emit(FuelWithdrawnEvent {
+    event::emit(FuelEvent {
         assembly_id,
         assembly_key,
         type_id: *option::borrow(&fuel.type_id),
-        quantity,
-        remaining_quantity: fuel.quantity,
+        old_quantity,
+        new_quantity: fuel.quantity,
+        is_burning: fuel.is_burning,
+        action: Action::WITHDRAWN,
     });
 }
 
@@ -295,8 +276,7 @@ public(package) fun start_burning(
     assert!(fuel.quantity > 0 || fuel.previous_cycle_elapsed_time > 0, ENoFuelToBurn);
     assert!(option::is_some(&fuel.type_id), ETypeIdEmtpy);
 
-    // todo : should we check if last_updated is the current block ?
-
+    let old_quantity = fuel.quantity;
     fuel.is_burning = true;
     fuel.burn_start_time = clock.timestamp_ms();
     if (fuel.quantity != 0) {
@@ -304,12 +284,15 @@ public(package) fun start_burning(
         fuel.quantity = fuel.quantity - 1; // Consume 1 unit to start the clock
     };
     let fuel_type_id = *option::borrow(&fuel.type_id);
-    event::emit(FuelBurningStartedEvent {
+
+    event::emit(FuelEvent {
         assembly_id,
         assembly_key,
         type_id: fuel_type_id,
-        quantity: fuel.quantity,
-        burn_start_time: fuel.burn_start_time,
+        old_quantity,
+        new_quantity: fuel.quantity,
+        is_burning: fuel.is_burning,
+        action: Action::BURNING_STARTED,
     });
 }
 
@@ -340,12 +323,15 @@ public(package) fun stop_burning(
     fuel.burn_start_time = 0;
     fuel.is_burning = false;
     let fuel_type_id = *option::borrow(&fuel.type_id);
-    event::emit(FuelBurningStoppedEvent {
+
+    event::emit(FuelEvent {
         assembly_id,
         assembly_key,
         type_id: fuel_type_id,
-        quantity: fuel.quantity,
-        previous_cycle_elapsed_time: fuel.previous_cycle_elapsed_time,
+        old_quantity: fuel.quantity,
+        new_quantity: fuel.quantity,
+        is_burning: fuel.is_burning,
+        action: Action::BURNING_STOPPED,
     });
 }
 
@@ -399,7 +385,7 @@ public(package) fun update(
 
 // === Private Functions ===
 /// Consumes fuel units based on elapsed time, capping at available quantity.
-/// Updates burn_start_time and emits FuelUpdatedEvent when units are consumed.
+/// Updates burn_start_time and emits FuelEvent when units are consumed.
 fun consume_fuel_units(
     fuel: &mut Fuel,
     assembly_id: ID,
@@ -409,18 +395,20 @@ fun consume_fuel_units(
     current_time_ms: u64,
 ) {
     if (units_to_consume > 0) {
+        let old_quantity = fuel.quantity;
         assert!(option::is_some(&fuel.type_id), ETypeIdEmtpy);
         let fuel_type_id = *option::borrow(&fuel.type_id);
         fuel.quantity = fuel.quantity - units_to_consume;
         fuel.previous_cycle_elapsed_time = 0;
         fuel.burn_start_time = current_time_ms - remaining_elapsed_ms;
-        event::emit(FuelUpdatedEvent {
+        event::emit(FuelEvent {
             assembly_id,
             assembly_key,
             type_id: fuel_type_id,
-            units_consumed: units_to_consume,
-            remaining_quantity: fuel.quantity,
+            old_quantity,
+            new_quantity: fuel.quantity,
             is_burning: fuel.is_burning,
+            action: Action::BURNING_UPDATED,
         });
     };
 }
