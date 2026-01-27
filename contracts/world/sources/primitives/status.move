@@ -84,7 +84,6 @@ public(package) fun online(
 ) {
     assert!(assembly_status.status == Status::OFFLINE, EAssemblyInvalidStatus);
 
-    // TODO: Check if it has enough reserved energy to online, else revert
     assembly_status.status = Status::ONLINE;
     emit_status_changed(assembly_status.status, Action::ONLINE, assembly_id, assembly_key);
 }

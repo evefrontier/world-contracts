@@ -529,7 +529,6 @@ fun create_with_zero_max_production() {
     ts::next_tx(&mut ts, admin());
     {
         let uid = object::new(ts.ctx());
-        let network_node_id = object::uid_to_inner(&uid);
         let nwn = NetworkNode {
             id: uid,
             energy: energy::create(0),
