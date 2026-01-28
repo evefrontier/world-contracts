@@ -66,7 +66,6 @@ async function offline(
                 currentHotPotato,
                 tx.object(networkNodeId),
                 tx.object(config.energyConfig),
-                tx.pure.bool(false), // temporary offline, keep energy source so assembly can go online again with same NWN
             ],
         });
         currentHotPotato = updatedHotPotato;

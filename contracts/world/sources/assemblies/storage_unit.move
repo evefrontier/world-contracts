@@ -30,7 +30,7 @@ use world::{
     inventory::{Self, Inventory, Item},
     location::{Self, Location},
     metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies, UpdateEnergySources},
+    network_node::{NetworkNode, OfflineAssemblies, UnanchorAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus, Status}
 };
@@ -441,33 +441,51 @@ public fun update_energy_source_connected_storage_unit(
 /// Must be called for each storage unit in the hot potato list
 /// Returns the updated hot potato with the processed storage unit removed
 /// After all storage units are processed, call destroy_offline_assemblies to consume the hot potato
-/// The hot potato itself serves as authorization since it can only be obtained from capped functions
-/// When remove_energy_source is true (e.g. hot potato from nwn.unanchor()), clears the storage unit's energy source.
-/// When false (e.g. from nwn.offline()), keeps the energy source so the storage unit can go online again with the same NWN.
+/// Used for nwn.offline() flow; keeps the energy source so the storage unit can go online again with the same NWN.
 public fun offline_connected_storage_unit(
     storage_unit: &mut StorageUnit,
     mut offline_assemblies: OfflineAssemblies,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-    remove_energy_source: bool,
 ): OfflineAssemblies {
     if (offline_assemblies.ids_length() > 0) {
         let storage_unit_id = object::id(storage_unit);
-
-        // Remove the storage unit ID from the hot potato using package function
         let found = offline_assemblies.remove_assembly_id(storage_unit_id);
         if (found) {
-            // Bring the storage unit offline if it's online and release energy
-            if (storage_unit.status.is_online()) {
-                storage_unit.status.offline(storage_unit_id, storage_unit.key);
-                release_energy(storage_unit, network_node, energy_config);
-            };
-            if (remove_energy_source) {
-                storage_unit.energy_source_id = option::none();
-            };
+            bring_offline_and_release_energy(
+                storage_unit,
+                storage_unit_id,
+                network_node,
+                energy_config,
+            );
         }
     };
     offline_assemblies
+}
+
+/// Brings a connected storage unit offline, releases energy, clears energy source, and removes it from the hot potato
+/// Must be called for each storage unit in the hot potato returned by nwn.unanchor()
+/// Returns the updated UnanchorAssemblies; after all are processed, call destroy_network_node with it
+public fun unanchor_connected_storage_unit(
+    storage_unit: &mut StorageUnit,
+    mut unanchor_assemblies: UnanchorAssemblies,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+): UnanchorAssemblies {
+    if (unanchor_assemblies.unanchor_assemblies_length() > 0) {
+        let storage_unit_id = object::id(storage_unit);
+        let found = unanchor_assemblies.remove_unanchor_assembly_id(storage_unit_id);
+        if (found) {
+            bring_offline_and_release_energy(
+                storage_unit,
+                storage_unit_id,
+                network_node,
+                energy_config,
+            );
+            storage_unit.energy_source_id = option::none();
+        }
+    };
+    unanchor_assemblies
 }
 
 // On unanchor the storage unit is scooped back into inventory in game
@@ -570,6 +588,18 @@ public fun game_item_to_chain_inventory<T: key>(
 }
 
 // === Private Functions ===
+fun bring_offline_and_release_energy(
+    storage_unit: &mut StorageUnit,
+    storage_unit_id: ID,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+) {
+    if (storage_unit.status.is_online()) {
+        storage_unit.status.offline(storage_unit_id, storage_unit.key);
+        release_energy(storage_unit, network_node, energy_config);
+    };
+}
+
 fun reserve_energy(
     storage_unit: &StorageUnit,
     network_node: &mut NetworkNode,

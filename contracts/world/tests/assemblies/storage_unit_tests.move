@@ -1779,7 +1779,6 @@ fun test_game_to_chain_fail_network_node_offline() {
                 offline_assemblies,
                 &mut nwn,
                 &energy_config,
-                false,
             );
         network_node::destroy_offline_assemblies(offline_assemblies);
 

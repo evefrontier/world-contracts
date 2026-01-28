@@ -14,9 +14,9 @@ import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
  * Flow:
  * 1. Query connected assemblies from the network node
  * 2. Determine which assemblies are storage units by querying their types
- * 3. Call unanchor which returns OfflineAssemblies hot potato
+ * 3. Call unanchor which returns UnanchorAssemblies hot potato
  * 4. Process each assembly:
- *    - Call offline_connected_storage_unit or offline_connected_assembly with remove_energy_source: true
+ *    - Call unanchor_connected_storage_unit or unanchor_connected_assembly
  *    - Brings assembly offline, releases energy, and clears its energy source (assembly can later be attached to another NWN)
  * 5. Call destroy_network_node to consume the hot potato and destroy the NWN
  */
@@ -36,18 +36,18 @@ async function unanchor(
 
     const tx = new Transaction();
 
-    // Call unanchor - returns OfflineAssemblies hot potato (NWN is still alive until destroy_network_node)
-    const [offlineAssemblies] = tx.moveCall({
+    // Call unanchor - returns UnanchorAssemblies hot potato (NWN is still alive until destroy_network_node)
+    const [unanchorAssemblies] = tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::unanchor`,
         arguments: [tx.object(networkNodeId), tx.object(adminCapId)],
     });
 
-    let currentHotPotato = offlineAssemblies;
+    let currentHotPotato = unanchorAssemblies;
     for (const { id: assemblyId, isStorageUnit } of assemblyTypes) {
         const module = isStorageUnit ? MODULES.STORAGE_UNIT : MODULES.ASSEMBLY;
         const functionName = isStorageUnit
-            ? "offline_connected_storage_unit"
-            : "offline_connected_assembly";
+            ? "unanchor_connected_storage_unit"
+            : "unanchor_connected_assembly";
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,
@@ -56,7 +56,6 @@ async function unanchor(
                 currentHotPotato,
                 tx.object(networkNodeId),
                 tx.object(config.energyConfig),
-                tx.pure.bool(true), // remove_energy_source: unanchor flow, clear so assembly can attach to another NWN later
             ],
         });
         currentHotPotato = updatedHotPotato;
