@@ -20,6 +20,7 @@
     "online-nwn": "tsx examples/network-node/online-nwn.ts",
     "update-fuel": "tsx examples/network-node/update-fuel.ts",
     "offline-nwn": "tsx examples/network-node/offline-nwn.ts",
+    "unanchor-nwn": "tsx examples/network-node/unanchor-nwn.ts",
     "get-fuel-quantity": "tsx examples/network-node/helper.ts",
     "create-assembly": "tsx examples/assembly/create-assembly.ts",
     "online": "tsx examples/assembly/online.ts",
