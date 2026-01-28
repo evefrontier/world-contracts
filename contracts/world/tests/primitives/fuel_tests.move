@@ -29,6 +29,7 @@ const FUEL_TYPE_ID: u64 = 1;
 const FUEL_VOLUME: u64 = 10;
 const DEPOSIT_AMOUNT: u64 = 50;
 const WITHDRAW_AMOUNT: u64 = 20;
+const CHARACTER_ITEM_ID: u64 = 1;
 
 // Time conversion constants
 const MS_PER_SECOND: u64 = 1000;
@@ -52,31 +53,36 @@ fun fuel_deposit(
 ) {
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
-    nwn.fuel.deposit(nwn_id, nwn_key, type_id, volume, quantity, clock);
+    let character_id = create_key(CHARACTER_ITEM_ID, tenant());
+    nwn.fuel.deposit(nwn_id, nwn_key, character_id, type_id, volume, quantity, clock);
 }
 
 fun fuel_withdraw(nwn: &mut NetworkNode, quantity: u64) {
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
-    nwn.fuel.withdraw(nwn_id, nwn_key, quantity);
+    let character_id = create_key(CHARACTER_ITEM_ID, tenant());
+    nwn.fuel.withdraw(nwn_id, nwn_key, character_id, quantity);
 }
 
 fun fuel_start_burning(nwn: &mut NetworkNode, clock: &clock::Clock) {
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
-    nwn.fuel.start_burning(nwn_id, nwn_key, clock);
+    let character_id = create_key(CHARACTER_ITEM_ID, tenant());
+    nwn.fuel.start_burning(nwn_id, nwn_key, character_id, clock);
 }
 
 fun fuel_stop_burning(nwn: &mut NetworkNode, fuel_config: &FuelConfig, clock: &clock::Clock) {
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
-    nwn.fuel.stop_burning(nwn_id, nwn_key, fuel_config, clock);
+    let character_id = create_key(CHARACTER_ITEM_ID, tenant());
+    nwn.fuel.stop_burning(nwn_id, nwn_key, character_id, fuel_config, clock);
 }
 
 fun fuel_update(nwn: &mut NetworkNode, fuel_config: &FuelConfig, clock: &clock::Clock) {
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
-    nwn.fuel.update(nwn_id, nwn_key, fuel_config, clock);
+    let character_id = create_key(CHARACTER_ITEM_ID, tenant());
+    nwn.fuel.update(nwn_id, nwn_key, character_id, fuel_config, clock);
 }
 
 // Helper Functions
@@ -873,7 +879,8 @@ fun deposit_with_zero_quantity() {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         let nwn_id = object::id(&nwn);
         let nwn_key = nwn.key;
-        nwn.fuel.deposit(nwn_id, nwn_key, FUEL_TYPE_ID, FUEL_VOLUME, 0, &clock); // Should abort
+        let character_id = create_key(CHARACTER_ITEM_ID, tenant());
+        nwn.fuel.deposit(nwn_id, nwn_key, character_id, FUEL_TYPE_ID, FUEL_VOLUME, 0, &clock); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -954,7 +961,8 @@ fun start_burning_with_empty_type_id() {
         // No fuel deposited, type_id = 0, quantity = 0
         let nwn_id = object::id(&nwn);
         let nwn_key = nwn.key;
-        nwn.fuel.start_burning(nwn_id, nwn_key, &clock); // Should abort with ENoFuelToBurn
+        let character_id = create_key(CHARACTER_ITEM_ID, tenant());
+        nwn.fuel.start_burning(nwn_id, nwn_key, character_id, &clock); // Should abort with ENoFuelToBurn
         ts::return_shared(nwn);
     };
 

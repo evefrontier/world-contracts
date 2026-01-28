@@ -187,7 +187,13 @@ fun create_storage_unit(
     (storage_unit_id, nwn_id)
 }
 
-fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nwn_id: ID) {
+fun online_storage_unit(
+    ts: &mut ts::Scenario,
+    user: address,
+    storage_id: ID,
+    nwn_id: ID,
+    character_item_id: u64,
+) {
     // Deposit fuel and bring network node online
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(ts, user);
@@ -198,6 +204,7 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nw
         let admin_acl = ts::take_shared<AdminACL>(ts);
         nwn.deposit_fuel_test(
             &admin_acl,
+            in_game_id::create_key(character_item_id, tenant()),
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
@@ -212,7 +219,7 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nw
     ts::next_tx(ts, user);
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        nwn.online(&owner_cap, &clock);
+        nwn.online(in_game_id::create_key(character_item_id, tenant()), &owner_cap, &clock);
         ts::return_shared(nwn);
     };
     ts::next_tx(ts, user);
@@ -414,7 +421,7 @@ fun test_create_items_on_chain() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, admin());
@@ -449,7 +456,7 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, admin());
@@ -521,7 +528,7 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
 
     // Mint lens for user A
     mint_lens<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
@@ -612,7 +619,7 @@ fun test_deposit_and_withdraw_via_extension() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     // Authorize extension
@@ -675,7 +682,7 @@ fun test_deposit_and_withdraw_by_owner() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, user_a());
@@ -766,7 +773,7 @@ fun test_swap_ammo_for_lens() {
         STORAGE_A_TYPE_ID,
     );
     let storage_owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id, (CHARACTER_B_ITEM_ID as u64));
 
     // Mint lens for user B
     mint_lens<StorageUnit>(&mut ts, storage_id, character_b_id, user_b());
@@ -876,7 +883,7 @@ fun test_unachor_storage_unit() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id, (CHARACTER_B_ITEM_ID as u64));
 
     mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_b());
     mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_b());
@@ -960,7 +967,7 @@ fun test_withdraw_via_extension_fail_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, user_a());
@@ -1003,7 +1010,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, user_a());
@@ -1072,7 +1079,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
 
     create_storage_unit(
@@ -1143,7 +1150,7 @@ fun test_deposit_by_owner_fail_wrong_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
 
     // user_a withdraws item
@@ -1240,7 +1247,7 @@ fun test_swap_fail_extension_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
     mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     let _character_owner_cap_id = character_owner_cap_id(&mut ts, user_b());
@@ -1300,7 +1307,7 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id, (CHARACTER_B_ITEM_ID as u64));
 
     // Mint lens for user B
     mint_lens<StorageUnit>(&mut ts, storage_id, character_b_id, user_b());
@@ -1394,6 +1401,7 @@ fun online_fail_by_unauthorized_owner() {
         let admin_acl = ts::take_shared<AdminACL>(&ts);
         nwn.deposit_fuel_test(
             &admin_acl,
+            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
@@ -1408,7 +1416,11 @@ fun online_fail_by_unauthorized_owner() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.online(&owner_cap, &clock);
+        nwn.online(
+            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
+            &owner_cap,
+            &clock,
+        );
         ts::return_shared(nwn);
     };
     ts::next_tx(&mut ts, user_a());
@@ -1463,7 +1475,7 @@ fun offline_fail_by_unauthorized_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
 
     // Create User B Storage unit
     create_storage_unit(
@@ -1516,7 +1528,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         STORAGE_A_ITEM_ID + 1,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_b_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_b_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
 
     // Mint ammo in storage unit B tenant test
     mint_ammo<StorageUnit>(&mut ts, storage_b_id, character_id, user_a());
@@ -1562,7 +1574,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
 
     // Try to deposit item from storage unit B into storage unit A
     // This should fail with ETenantMismatch
@@ -1624,7 +1636,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         STORAGE_A_ITEM_ID + 1,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_b_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_b_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
 
     // Mint ammo in storage unit B
     mint_ammo<StorageUnit>(&mut ts, storage_b_id, character_id, user_a());
@@ -1670,7 +1682,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id, (CHARACTER_A_ITEM_ID as u64));
 
     // Authorize extension for storage unit A
     ts::next_tx(&mut ts, user_a());
@@ -1727,6 +1739,7 @@ fun test_game_to_chain_fail_network_node_offline() {
         let admin_acl = ts::take_shared<AdminACL>(&ts);
         nwn.deposit_fuel_test(
             &admin_acl,
+            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
@@ -1741,7 +1754,11 @@ fun test_game_to_chain_fail_network_node_offline() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.online(&owner_cap, &clock);
+        nwn.online(
+            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
+            &owner_cap,
+            &clock,
+        );
         ts::return_shared(nwn);
     };
     ts::next_tx(&mut ts, user_a());
@@ -1769,7 +1786,12 @@ fun test_game_to_chain_fail_network_node_offline() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
-        let mut offline_assemblies = nwn.offline(&fuel_config, &owner_cap, &clock);
+        let mut offline_assemblies = nwn.offline(
+            &fuel_config,
+            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
+            &owner_cap,
+            &clock,
+        );
 
         // Process the storage unit to bring it offline
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);

@@ -191,6 +191,7 @@ fun test_online_offline() {
 
         nwn.deposit_fuel_test(
             &admin_acl,
+            in_game_id(1),
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
@@ -206,7 +207,7 @@ fun test_online_offline() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.online(&owner_cap, &clock);
+        nwn.online(in_game_id(1), &owner_cap, &clock);
 
         ts::return_shared(nwn);
     };

@@ -73,6 +73,7 @@ public enum Action has copy, drop, store {
 public struct FuelEvent has copy, drop {
     assembly_id: ID,
     assembly_key: TenantItemId,
+    character_id: TenantItemId,
     type_id: u64,
     old_quantity: u64,
     new_quantity: u64,
@@ -198,6 +199,7 @@ public(package) fun deposit(
     fuel: &mut Fuel,
     assembly_id: ID,
     assembly_key: TenantItemId,
+    character_id: TenantItemId,
     type_id: u64,
     unit_volume: u64,
     quantity: u64,
@@ -233,6 +235,7 @@ public(package) fun deposit(
     event::emit(FuelEvent {
         assembly_id,
         assembly_key,
+        character_id,
         type_id,
         old_quantity,
         new_quantity,
@@ -246,6 +249,7 @@ public(package) fun withdraw(
     fuel: &mut Fuel,
     assembly_id: ID,
     assembly_key: TenantItemId,
+    character_id: TenantItemId,
     quantity: u64,
 ) {
     assert!(quantity > 0, EInvalidWithdrawQuantity);
@@ -256,6 +260,7 @@ public(package) fun withdraw(
     event::emit(FuelEvent {
         assembly_id,
         assembly_key,
+        character_id,
         type_id: *option::borrow(&fuel.type_id),
         old_quantity,
         new_quantity: fuel.quantity,
@@ -270,6 +275,7 @@ public(package) fun start_burning(
     fuel: &mut Fuel,
     assembly_id: ID,
     assembly_key: TenantItemId,
+    character_id: TenantItemId,
     clock: &Clock,
 ) {
     assert!(!fuel.is_burning, EFuelAlreadyBurning);
@@ -288,6 +294,7 @@ public(package) fun start_burning(
     event::emit(FuelEvent {
         assembly_id,
         assembly_key,
+        character_id,
         type_id: fuel_type_id,
         old_quantity,
         new_quantity: fuel.quantity,
@@ -301,6 +308,7 @@ public(package) fun stop_burning(
     fuel: &mut Fuel,
     assembly_id: ID,
     assembly_key: TenantItemId,
+    character_id: TenantItemId,
     fuel_config: &FuelConfig,
     clock: &Clock,
 ) {
@@ -327,6 +335,7 @@ public(package) fun stop_burning(
     event::emit(FuelEvent {
         assembly_id,
         assembly_key,
+        character_id,
         type_id: fuel_type_id,
         old_quantity: fuel.quantity,
         new_quantity: fuel.quantity,
@@ -347,6 +356,7 @@ public(package) fun update(
     fuel: &mut Fuel,
     assembly_id: ID,
     assembly_key: TenantItemId,
+    character_id: TenantItemId,
     fuel_config: &FuelConfig,
     clock: &Clock,
 ) {
@@ -371,6 +381,7 @@ public(package) fun update(
             fuel,
             assembly_id,
             assembly_key,
+            character_id,
             units_to_consume,
             remaining_elapsed_ms,
             current_time_ms,
@@ -379,7 +390,7 @@ public(package) fun update(
         fuel.last_updated = current_time_ms;
     } else {
         // stop burning
-        stop_burning(fuel, assembly_id, assembly_key, fuel_config, clock);
+        stop_burning(fuel, assembly_id, assembly_key, character_id, fuel_config, clock);
     }
 }
 
@@ -390,6 +401,7 @@ fun consume_fuel_units(
     fuel: &mut Fuel,
     assembly_id: ID,
     assembly_key: TenantItemId,
+    character_id: TenantItemId,
     units_to_consume: u64,
     remaining_elapsed_ms: u64,
     current_time_ms: u64,
@@ -404,6 +416,7 @@ fun consume_fuel_units(
         event::emit(FuelEvent {
             assembly_id,
             assembly_key,
+            character_id,
             type_id: fuel_type_id,
             old_quantity,
             new_quantity: fuel.quantity,
