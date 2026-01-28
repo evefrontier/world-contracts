@@ -213,6 +213,10 @@ public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySour
     &mut nwn.energy_source
 }
 
+public fun need_update(nwn: &NetworkNode, fuel_config: &FuelConfig, clock: &Clock): bool {
+    nwn.fuel.need_update(fuel_config, clock)
+}
+
 // === Admin Functions ===
 public fun anchor(
     registry: &mut ObjectRegistry,
