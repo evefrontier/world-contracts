@@ -513,7 +513,7 @@ public fun unanchor(
         ),
     );
     metadata.do!(|metadata| metadata.delete());
-    let _ = option::destroy_some(energy_source_id);
+    let _ = option::destroy_with_default(energy_source_id, object::id(network_node));
     id.delete();
 }
 

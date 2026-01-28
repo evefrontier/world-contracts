@@ -274,6 +274,8 @@ public fun share_network_node(nwn: NetworkNode, _: &AdminCap) {
 /// by updating each assembly's energy source in the same transaction.
 /// For each assembly, call assembly::update_energy_source_connected_assembly or
 /// storage_unit::update_energy_source_connected_storage_unit, then destroy_update_energy_sources.
+/// Note: UpdateEnergySources hot potato enforces that all connected assemblies
+/// have their energy sources updated before the transaction completes.
 public fun connect_assemblies(
     nwn: &mut NetworkNode,
     _: &AdminCap,

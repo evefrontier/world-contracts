@@ -274,7 +274,7 @@ public fun unanchor(
     location.remove();
     status.unanchor(assembly_id, key);
     metadata.do!(|metadata| metadata.delete());
-    let _ = option::destroy_some(energy_source_id);
+    let _ = option::destroy_with_default(energy_source_id, object::id(network_node));
 
     // deleting doesnt mean the object id can be reclaimed.
     // however right now according to game design you cannot anchor after unanchor so its safe
