@@ -9,7 +9,7 @@ import {
     isNetworkNodeOnline,
     getAssemblyTypes,
 } from "./helper";
-import { deriveObjectId } from "../utils/derive-object-id";
+import { deriveObjectId, getTenantItemId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
 import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
@@ -61,6 +61,7 @@ async function updateFuel(
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.fuelConfig),
+            tx.pure(getTenantItemId(1)),
             tx.object(config.adminCap),
             tx.object(CLOCK_OBJECT_ID),
         ],

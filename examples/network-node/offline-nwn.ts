@@ -5,7 +5,7 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES, Network } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
 import { getConnectedAssemblies, getOwnerCap, getAssemblyTypes } from "./helper";
-import { deriveObjectId } from "../utils/derive-object-id";
+import { deriveObjectId, getTenantItemId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
 import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
@@ -45,6 +45,7 @@ async function offline(
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.fuelConfig),
+            tx.pure(getTenantItemId(1)),
             tx.object(ownerCapId),
             tx.object(CLOCK_OBJECT_ID),
         ],

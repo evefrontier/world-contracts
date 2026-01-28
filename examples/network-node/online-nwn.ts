@@ -3,7 +3,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
-import { deriveObjectId } from "../utils/derive-object-id";
+import { deriveObjectId, getTenantItemId } from "../utils/derive-object-id";
 import { getOwnerCap } from "./helper";
 
 async function online(
@@ -18,7 +18,12 @@ async function online(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::online`,
-        arguments: [tx.object(networkNodeId), tx.object(ownerCapId), tx.object(CLOCK_OBJECT_ID)],
+        arguments: [
+            tx.object(networkNodeId),
+            tx.pure(getTenantItemId(1)),
+            tx.object(ownerCapId),
+            tx.object(CLOCK_OBJECT_ID),
+        ],
     });
 
     const result = await client.signAndExecuteTransaction({

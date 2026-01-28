@@ -3,7 +3,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import { executeSponsoredTransaction } from "../utils/transaction";
-import { deriveObjectId } from "../utils/derive-object-id";
+import { deriveObjectId, getTenantItemId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { keypairFromPrivateKey } from "../utils/client";
@@ -35,6 +35,7 @@ async function depositFuel(
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.adminAcl),
+            tx.pure(getTenantItemId(1)),
             tx.object(ownerCapId),
             tx.pure.u64(typeId),
             tx.pure.u64(VOLUME),
