@@ -198,13 +198,14 @@ fun online_storage_unit(
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(ts, user);
     let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(ts);
+    let character = ts::take_shared<Character>(ts);
     ts::next_tx(ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
         let admin_acl = ts::take_shared<AdminACL>(ts);
         nwn.deposit_fuel_test(
             &admin_acl,
-            in_game_id::create_key(character_item_id, tenant()),
+            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
@@ -219,13 +220,14 @@ fun online_storage_unit(
     ts::next_tx(ts, user);
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        nwn.online(in_game_id::create_key(character_item_id, tenant()), &owner_cap, &clock);
+        nwn.online(&character, &owner_cap, &clock);
         ts::return_shared(nwn);
     };
     ts::next_tx(ts, user);
     {
         ts::return_to_sender(ts, owner_cap);
     };
+    ts::return_shared(character);
 
     // Now bring storage unit online
     ts::next_tx(ts, user);
@@ -1394,6 +1396,7 @@ fun online_fail_by_unauthorized_owner() {
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(&mut ts, user_a());
     let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+    let character = ts::take_shared<Character>(&ts);
 
     ts::next_tx(&mut ts, admin());
     {
@@ -1401,7 +1404,7 @@ fun online_fail_by_unauthorized_owner() {
         let admin_acl = ts::take_shared<AdminACL>(&ts);
         nwn.deposit_fuel_test(
             &admin_acl,
-            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
+            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
@@ -1417,7 +1420,7 @@ fun online_fail_by_unauthorized_owner() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         nwn.online(
-            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
+            &character,
             &owner_cap,
             &clock,
         );
@@ -1427,6 +1430,7 @@ fun online_fail_by_unauthorized_owner() {
     {
         ts::return_to_sender(&ts, owner_cap);
     };
+    ts::return_shared(character);
 
     // Create User B Storage unit (so user_b has their own OwnerCap<StorageUnit>)
     create_storage_unit(
@@ -1733,13 +1737,14 @@ fun test_game_to_chain_fail_network_node_offline() {
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(&mut ts, user_a());
     let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+    let character = ts::take_shared<Character>(&ts);
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let admin_acl = ts::take_shared<AdminACL>(&ts);
         nwn.deposit_fuel_test(
             &admin_acl,
-            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
+            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
@@ -1755,7 +1760,7 @@ fun test_game_to_chain_fail_network_node_offline() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         nwn.online(
-            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
+            &character,
             &owner_cap,
             &clock,
         );
@@ -1788,7 +1793,7 @@ fun test_game_to_chain_fail_network_node_offline() {
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let mut offline_assemblies = nwn.offline(
             &fuel_config,
-            in_game_id::create_key((CHARACTER_A_ITEM_ID as u64), tenant()),
+            &character,
             &owner_cap,
             &clock,
         );
@@ -1810,6 +1815,7 @@ fun test_game_to_chain_fail_network_node_offline() {
         ts::return_shared(fuel_config);
         ts::return_to_sender(&ts, owner_cap);
     };
+    ts::return_shared(character);
 
     // Verify network node is offline and not burning
     ts::next_tx(&mut ts, admin());
