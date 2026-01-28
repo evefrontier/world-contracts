@@ -42,10 +42,18 @@ const ENetworkNodeOffline: vector<u8> = b"Network Node is offline";
 const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
 #[error(code = 9)]
 const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
+#[error(code = 10)]
+const EUpdateEnergySourcesNotProcessed: vector<u8> =
+    b"Energy source must be updated for all connected assemblies";
 
 // === Structs ===
 /// Hot potato struct to enforce all connected assemblies are brought offline
 public struct OfflineAssemblies {
+    assembly_ids: vector<ID>,
+}
+
+/// Hot potato struct to enforce energy source is updated for each connected assembly
+public struct UpdateEnergySources {
     assembly_ids: vector<ID>,
 }
 
@@ -184,6 +192,10 @@ public fun ids_length(offline_assemblies: &OfflineAssemblies): u64 {
     offline_assemblies.assembly_ids.length()
 }
 
+public fun update_energy_sources_ids_length(update_energy_sources: &UpdateEnergySources): u64 {
+    update_energy_sources.assembly_ids.length()
+}
+
 /// Returns a mutable reference to the energy source
 /// Package function to allow assembly module to access energy source
 public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySource {
@@ -258,14 +270,27 @@ public fun share_network_node(nwn: NetworkNode, _: &AdminCap) {
     transfer::share_object(nwn);
 }
 
-public fun connect_assemblies(nwn: &mut NetworkNode, _: &AdminCap, assembly_ids: vector<ID>) {
+/// Connects assemblies to the network node and returns a hot potato that must be consumed
+/// by updating each assembly's energy source in the same transaction.
+/// For each assembly, call assembly::update_energy_source_connected_assembly or
+/// storage_unit::update_energy_source_connected_storage_unit, then destroy_update_energy_sources.
+public fun connect_assemblies(
+    nwn: &mut NetworkNode,
+    _: &AdminCap,
+    assembly_ids: vector<ID>,
+): UpdateEnergySources {
+    let mut connected_ids = vector[];
     let mut i = 0;
     let len = assembly_ids.length();
     while (i < len) {
         let assembly_id = *vector::borrow(&assembly_ids, i);
         connect_assembly(nwn, assembly_id);
+        vector::push_back(&mut connected_ids, assembly_id);
         i = i + 1;
     };
+    UpdateEnergySources {
+        assembly_ids: connected_ids,
+    }
 }
 
 /// Unanchors the network node and returns a hot potato that must be consumed
@@ -370,6 +395,15 @@ public fun destroy_offline_assemblies(offline_assemblies: OfflineAssemblies) {
     assembly_ids.destroy_empty();
 }
 
+/// Destroys the UpdateEnergySources hot potato; call after updating energy source for each connected assembly
+public fun destroy_update_energy_sources(update_energy_sources: UpdateEnergySources) {
+    assert!(update_energy_sources.assembly_ids.length() == 0, EUpdateEnergySourcesNotProcessed);
+    let UpdateEnergySources {
+        assembly_ids,
+    } = update_energy_sources;
+    assembly_ids.destroy_empty();
+}
+
 // === Package Functions ===
 /// Removes an assembly ID from the OfflineAssemblies list
 public(package) fun remove_assembly_id(
@@ -381,6 +415,23 @@ public(package) fun remove_assembly_id(
     while (i < len) {
         if (*vector::borrow(&offline_assemblies.assembly_ids, i) == assembly_id) {
             vector::remove(&mut offline_assemblies.assembly_ids, i);
+            return true
+        };
+        i = i + 1;
+    };
+    false
+}
+
+/// Removes an assembly ID from the UpdateEnergySources list
+public(package) fun remove_update_energy_sources_assembly_id(
+    update_energy_sources: &mut UpdateEnergySources,
+    assembly_id: ID,
+): bool {
+    let mut i = 0;
+    let len = update_energy_sources.assembly_ids.length();
+    while (i < len) {
+        if (*vector::borrow(&update_energy_sources.assembly_ids, i) == assembly_id) {
+            vector::remove(&mut update_energy_sources.assembly_ids, i);
             return true
         };
         i = i + 1;

@@ -10,7 +10,7 @@ use world::{
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies},
+    network_node::{NetworkNode, OfflineAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
 };
@@ -182,6 +182,27 @@ public fun update_energy_source(
 
     network_node.connect_assembly(assembly_id);
     assembly.energy_source_id = option::some(nwn_id);
+}
+
+/// Updates the assembly's energy source and removes it from the UpdateEnergySources hot potato.
+/// Must be called for each assembly in the hot potato returned by connect_assemblies.
+public fun update_energy_source_connected_assembly(
+    assembly: &mut Assembly,
+    mut update_energy_sources: UpdateEnergySources,
+    network_node: &NetworkNode,
+    _: &AdminCap,
+): UpdateEnergySources {
+    if (update_energy_sources.update_energy_sources_ids_length() > 0) {
+        let assembly_id = object::id(assembly);
+        let found = update_energy_sources.remove_update_energy_sources_assembly_id(
+            assembly_id,
+        );
+        if (found) {
+            assert!(!assembly.status.is_online(), EAssemblyOnline);
+            assembly.energy_source_id = option::some(object::id(network_node));
+        };
+    };
+    update_energy_sources
 }
 
 /// Brings a connected assembly offline and removes it from the hot potato

@@ -30,7 +30,7 @@ use world::{
     inventory::{Self, Inventory, Item},
     location::{Self, Location},
     metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies},
+    network_node::{NetworkNode, OfflineAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus, Status}
 };
@@ -413,6 +413,27 @@ public fun update_energy_source(
 
     network_node.connect_assembly(storage_unit_id);
     storage_unit.energy_source_id = option::some(nwn_id);
+}
+
+/// Updates the storage unit's energy source and removes it from the UpdateEnergySources hot potato.
+/// Must be called for each storage unit in the hot potato returned by connect_assemblies.
+public fun update_energy_source_connected_storage_unit(
+    storage_unit: &mut StorageUnit,
+    mut update_energy_sources: UpdateEnergySources,
+    network_node: &NetworkNode,
+    _: &AdminCap,
+): UpdateEnergySources {
+    if (update_energy_sources.update_energy_sources_ids_length() > 0) {
+        let storage_unit_id = object::id(storage_unit);
+        let found = update_energy_sources.remove_update_energy_sources_assembly_id(
+            storage_unit_id,
+        );
+        if (found) {
+            assert!(!storage_unit.status.is_online(), EStorageUnitInvalidState);
+            storage_unit.energy_source_id = option::some(object::id(network_node));
+        };
+    };
+    update_energy_sources
 }
 
 //  TODO : Can we generalise this function for all assembly
