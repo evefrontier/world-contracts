@@ -1771,7 +1771,7 @@ fun test_game_to_chain_fail_network_node_offline() {
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let mut offline_assemblies = nwn.offline(&fuel_config, &owner_cap, &clock);
 
-        // Process the storage unit to bring it offline
+        // Process the storage unit to bring it offline (temporary offline, do not remove energy source)
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         offline_assemblies =
@@ -1779,6 +1779,7 @@ fun test_game_to_chain_fail_network_node_offline() {
                 offline_assemblies,
                 &mut nwn,
                 &energy_config,
+                false,
             );
         network_node::destroy_offline_assemblies(offline_assemblies);
 

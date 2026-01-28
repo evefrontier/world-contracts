@@ -73,7 +73,7 @@ public struct StorageUnit has key {
     status: AssemblyStatus,
     location: Location,
     inventory_keys: vector<ID>,
-    energy_source_id: ID,
+    energy_source_id: Option<ID>,
     metadata: Option<Metadata>,
     extension: Option<TypeName>,
 }
@@ -106,7 +106,11 @@ public fun online(
 ) {
     let storage_unit_id = object::id(storage_unit);
     assert!(access::is_authorized(owner_cap, storage_unit_id), EAssemblyNotAuthorized);
-    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeMismatch);
+    assert!(option::is_some(&storage_unit.energy_source_id), ENetworkNodeMismatch);
+    assert!(
+        *option::borrow(&storage_unit.energy_source_id) == object::id(network_node),
+        ENetworkNodeMismatch,
+    );
     reserve_energy(storage_unit, network_node, energy_config);
 
     storage_unit.status.online(storage_unit_id, storage_unit.key);
@@ -122,7 +126,11 @@ public fun offline(
     assert!(access::is_authorized(owner_cap, storage_unit_id), EAssemblyNotAuthorized);
 
     // Verify network node matches the storage unit's energy source
-    assert!(storage_unit.energy_source_id == object::id(network_node), ENetworkNodeMismatch);
+    assert!(option::is_some(&storage_unit.energy_source_id), ENetworkNodeMismatch);
+    assert!(
+        *option::borrow(&storage_unit.energy_source_id) == object::id(network_node),
+        ENetworkNodeMismatch,
+    );
     release_energy(storage_unit, network_node, energy_config);
 
     storage_unit.status.offline(storage_unit_id, storage_unit.key);
@@ -312,6 +320,11 @@ public fun owner_cap_id(storage_unit: &StorageUnit): ID {
     storage_unit.owner_cap_id
 }
 
+/// Returns the storage unit's energy source (network node) ID if set
+public fun energy_source_id(storage_unit: &StorageUnit): &Option<ID> {
+    &storage_unit.energy_source_id
+}
+
 // === Admin Functions ===
 public fun anchor(
     registry: &mut ObjectRegistry,
@@ -350,7 +363,7 @@ public fun anchor(
         status: status::anchor(assembly_id, storage_unit_key),
         location: location::attach(location_hash),
         inventory_keys: vector[],
-        energy_source_id: network_node_id,
+        energy_source_id: option::some(network_node_id),
         metadata: std::option::some(
             metadata::create_metadata(
                 assembly_id,
@@ -399,7 +412,7 @@ public fun update_energy_source(
     assert!(!storage_unit.status.is_online(), EStorageUnitInvalidState);
 
     network_node.connect_assembly(storage_unit_id);
-    storage_unit.energy_source_id = nwn_id;
+    storage_unit.energy_source_id = option::some(nwn_id);
 }
 
 //  TODO : Can we generalise this function for all assembly
@@ -408,11 +421,14 @@ public fun update_energy_source(
 /// Returns the updated hot potato with the processed storage unit removed
 /// After all storage units are processed, call destroy_offline_assemblies to consume the hot potato
 /// The hot potato itself serves as authorization since it can only be obtained from capped functions
+/// When remove_energy_source is true (e.g. hot potato from nwn.unanchor()), clears the storage unit's energy source.
+/// When false (e.g. from nwn.offline()), keeps the energy source so the storage unit can go online again with the same NWN.
 public fun offline_connected_storage_unit(
     storage_unit: &mut StorageUnit,
     mut offline_assemblies: OfflineAssemblies,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
+    remove_energy_source: bool,
 ): OfflineAssemblies {
     if (offline_assemblies.ids_length() > 0) {
         let storage_unit_id = object::id(storage_unit);
@@ -424,6 +440,9 @@ public fun offline_connected_storage_unit(
             if (storage_unit.status.is_online()) {
                 storage_unit.status.offline(storage_unit_id, storage_unit.key);
                 release_energy(storage_unit, network_node, energy_config);
+            };
+            if (remove_energy_source) {
+                storage_unit.energy_source_id = option::none();
             };
         }
     };
@@ -450,7 +469,8 @@ public fun unanchor(
         ..,
     } = storage_unit;
 
-    assert!(energy_source_id == object::id(network_node), ENetworkNodeMismatch);
+    assert!(option::is_some(&energy_source_id), ENetworkNodeMismatch);
+    assert!(*option::borrow(&energy_source_id) == object::id(network_node), ENetworkNodeMismatch);
 
     // Release energy if storage unit is online
     if (status.is_online()) {
@@ -472,6 +492,7 @@ public fun unanchor(
         ),
     );
     metadata.do!(|metadata| metadata.delete());
+    let _ = option::destroy_some(energy_source_id);
     id.delete();
 }
 

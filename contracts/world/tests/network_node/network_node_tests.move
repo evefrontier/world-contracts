@@ -574,13 +574,14 @@ fun update_fuel_depletion_offline() {
         assert_eq!(nwn.status().status_to_u8(), STATUS_OFFLINE);
         assert_eq!(nwn.energy().current_energy_production(), 0);
 
-        // Process the offline assemblies - bring connected assembly offline
+        // Process the offline assemblies - bring connected assembly offline (temporary offline, do not remove energy source)
         let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let updated_offline_assemblies = assembly.offline_connected_assembly(
             offline_assemblies,
             &mut nwn,
             &energy_config,
+            false,
         );
         // Energy should be released
         assert_eq!(nwn.energy().total_reserved_energy(), 0);
@@ -629,13 +630,14 @@ fun update_energy_source_after_unanchor() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let offline_assemblies = nwn.unanchor(&admin_cap);
 
-        // Process the connected assembly - brings it offline and releases energy
+        // Process the connected assembly - brings it offline and releases energy; remove energy source (unanchor flow)
         let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let updated_offline_assemblies = assembly.offline_connected_assembly(
             offline_assemblies,
             &mut nwn,
             &energy_config,
+            true,
         );
 
         // Destroy the network node after all assemblies are processed
@@ -858,13 +860,14 @@ fun offline_hot_potato_not_consumed() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let offline_assemblies = nwn.offline(&fuel_config, &owner_cap, &clock);
 
-        // Process only one assembly (not both)
+        // Process only one assembly (not both) - temporary offline, do not remove energy source
         let mut assembly1 = ts::take_shared_by_id<Assembly>(&ts, assembly1_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let updated_offline_assemblies = assembly1.offline_connected_assembly(
             offline_assemblies,
             &mut nwn,
             &energy_config,
+            false,
         );
 
         // Try to destroy hot potato without processing all assemblies - should fail
@@ -910,13 +913,14 @@ fun assembly_online_fails_without_updating_energy_source() {
         let admin_cap = ts::take_from_sender<AdminCap>(&ts);
         let offline_assemblies = nwn.unanchor(&admin_cap);
 
-        // Process the connected assembly - brings it offline and releases energy
+        // Process the connected assembly - brings it offline and releases energy; remove energy source (unanchor flow)
         let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let updated_offline_assemblies = assembly.offline_connected_assembly(
             offline_assemblies,
             &mut nwn,
             &energy_config,
+            true,
         );
 
         // Destroy the network node after all assemblies are processed
