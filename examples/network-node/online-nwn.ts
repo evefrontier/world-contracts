@@ -2,8 +2,8 @@ import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
-import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
-import { deriveObjectId, getTenantItemId } from "../utils/derive-object-id";
+import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
+import { deriveObjectId } from "../utils/derive-object-id";
 import { getOwnerCap } from "./helper";
 
 async function online(
@@ -16,11 +16,12 @@ async function online(
 
     const tx = new Transaction();
 
+    const character = deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::online`,
         arguments: [
             tx.object(networkNodeId),
-            tx.pure(getTenantItemId(1)),
+            tx.object(character),
             tx.object(ownerCapId),
             tx.object(CLOCK_OBJECT_ID),
         ],

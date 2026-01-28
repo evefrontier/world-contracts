@@ -24,11 +24,3 @@ export function deriveObjectId(
     // and derives the object ID using the same formula as Move
     return deriveObjectID(registryId, TenantItemIdTypeTag, serializedKey);
 }
-
-export function getTenantItemId(itemId: number | bigint): Uint8Array {
-    let tenant = TENANT;
-    return TenantItemId.serialize({
-        id: BigInt(itemId),
-        tenant,
-    }).toBytes();
-}

@@ -3,8 +3,8 @@ import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import { executeSponsoredTransaction } from "../utils/transaction";
-import { deriveObjectId, getTenantItemId } from "../utils/derive-object-id";
-import { CLOCK_OBJECT_ID, NWN_ITEM_ID } from "../utils/constants";
+import { deriveObjectId } from "../utils/derive-object-id";
+import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { keypairFromPrivateKey } from "../utils/client";
 
@@ -30,12 +30,13 @@ async function depositFuel(
     tx.setSender(playerAddress);
     tx.setGasOwner(adminAddress);
 
+    const character = deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::deposit_fuel`,
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.adminAcl),
-            tx.pure(getTenantItemId(1)),
+            tx.object(character),
             tx.object(ownerCapId),
             tx.pure.u64(typeId),
             tx.pure.u64(VOLUME),
