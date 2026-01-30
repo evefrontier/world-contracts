@@ -122,6 +122,7 @@ public fun create_character(
 }
 
 // borrow owner cap from character
+// refer : https://docs.sui.io/guides/developer/objects/transfers/transfer-to-object for more details
 public fun borrow_owner_cap<T: key>(
     character: &mut Character,
     owner_cap_ticket: Receiving<OwnerCap<T>>,
