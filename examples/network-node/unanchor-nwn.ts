@@ -6,7 +6,7 @@ import { getConfig, MODULES } from "../utils/config";
 import { getConnectedAssemblies, getAssemblyTypes } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { NWN_ITEM_ID } from "../utils/constants";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { initializeContext, handleError, getEnvConfig, getAdminCapId } from "../utils/helper";
 
 /**
  * Unanchors (destroys) the network node and handles connected assemblies.
@@ -81,15 +81,10 @@ async function unanchor(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.playerExportedKey!);
+        const ctx = initializeContext(env.network, env.exportedKey!);
         const { client, keypair, config } = ctx;
 
-        const adminCapId = config.adminCap;
-        if (!adminCapId) {
-            throw new Error(
-                "Admin cap not configured. Set adminCap in config for your network to run unanchor."
-            );
-        }
+        const adminCapId = await getAdminCapId(client, config.packageId);
 
         const networkNodeObject = deriveObjectId(
             config.objectRegistry,
@@ -97,7 +92,7 @@ async function main() {
             config.packageId
         );
 
-        await unanchor(networkNodeObject, adminCapId, client, keypair, config);
+        await unanchor(networkNodeObject, adminCapId!, client, keypair, config);
     } catch (error) {
         handleError(error);
     }

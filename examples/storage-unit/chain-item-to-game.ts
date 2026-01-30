@@ -19,7 +19,7 @@ import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 async function chainItemToGame(
     storageUnit: string,
     characterId: string,
-    ownerCapObjectId: string,
+    ownerCapId: string,
     typeId: bigint,
     quantity: number,
     client: SuiClient,
@@ -29,6 +29,11 @@ async function chainItemToGame(
     console.log("\n==== Move Items from Chain to Game ====");
 
     const tx = new Transaction();
+    const [ownerCap] = tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), tx.object(ownerCapId)],
+    });
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.STORAGE_UNIT}::chain_item_to_game_inventory`,
@@ -36,13 +41,19 @@ async function chainItemToGame(
         arguments: [
             tx.object(storageUnit),
             tx.object(config.serverAddressRegistry),
-            tx.object(ownerCapObjectId),
             tx.object(characterId),
+            ownerCap,
             tx.pure.u64(typeId),
             tx.pure.u32(quantity),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PROOF))),
             tx.object(CLOCK_OBJECT_ID),
         ],
+    });
+
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), ownerCap],
     });
 
     const inspectResult = await client.devInspectTransactionBlock({

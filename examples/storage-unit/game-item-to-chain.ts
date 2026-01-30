@@ -16,7 +16,7 @@ import { getOwnerCap } from "./helper";
 async function gameItemToChain(
     storageUnit: string,
     characterId: string,
-    owner_cap_objectId: string,
+    ownerCapId: string,
     playerAddress: string,
     typeId: bigint,
     itemId: bigint,
@@ -34,20 +34,33 @@ async function gameItemToChain(
     tx.setSender(playerAddress);
     tx.setGasOwner(adminAddress);
 
+    const [ownerCap] = tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), tx.object(ownerCapId)],
+    });
+
     tx.moveCall({
         target: `${config.packageId}::${MODULES.STORAGE_UNIT}::game_item_to_chain_inventory`,
         typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
         arguments: [
             tx.object(storageUnit),
             tx.object(config.adminAcl),
-            tx.object(owner_cap_objectId),
             tx.object(characterId),
+            ownerCap,
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure.u64(volume),
             tx.pure.u32(quantity),
         ],
     });
+
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), ownerCap],
+    });
+
     const transactionKindBytes = await tx.build({ client, onlyTransactionKind: true });
     const gasCoins = await client.getCoins({
         owner: adminAddress,

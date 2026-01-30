@@ -39,6 +39,12 @@ async function offline(
     const tx = new Transaction();
 
     const character = deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
+    const [ownerCap] = tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
+        arguments: [tx.object(character), tx.object(ownerCapId)],
+    });
+
     // Call offline - returns OfflineAssemblies hot potato
     const [offlineAssemblies] = tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::offline`,
@@ -46,9 +52,15 @@ async function offline(
             tx.object(networkNodeId),
             tx.object(config.fuelConfig),
             tx.object(character),
-            tx.object(ownerCapId),
+            ownerCap,
             tx.object(CLOCK_OBJECT_ID),
         ],
+    });
+
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
+        arguments: [tx.object(character), ownerCap],
     });
 
     // Process each assembly from the hot potato

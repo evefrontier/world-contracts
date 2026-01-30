@@ -11,7 +11,7 @@ import {
 } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { initializeContext, handleError, getEnvConfig, getAdminCapId } from "../utils/helper";
 
 /**
  * Updates fuel for a network node and handles fuel depletion if it occurs.
@@ -32,6 +32,7 @@ import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
  */
 async function updateFuel(
     networkNodeId: string,
+    adminCap: string,
     client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -63,7 +64,7 @@ async function updateFuel(
             tx.object(networkNodeId),
             tx.object(config.fuelConfig),
             tx.object(character),
-            tx.object(config.adminCap),
+            tx.object(adminCap),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -116,6 +117,7 @@ async function main() {
         const env = getEnvConfig();
         const ctx = initializeContext(env.network, env.exportedKey);
         const { client, keypair, config } = ctx;
+        const adminCap = await getAdminCapId(client, config.packageId);
 
         let networkNodeObject = deriveObjectId(
             config.objectRegistry,
@@ -123,7 +125,7 @@ async function main() {
             config.packageId
         );
 
-        await updateFuel(networkNodeObject, client, keypair, config);
+        await updateFuel(networkNodeObject, adminCap!, client, keypair, config);
     } catch (error) {
         handleError(error);
     }

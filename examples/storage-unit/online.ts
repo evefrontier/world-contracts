@@ -1,11 +1,10 @@
 import "dotenv/config";
-import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { NWN_ITEM_ID, STORAGE_A_ITEM_ID } from "../utils/constants";
+import { GAME_CHARACTER_ID, NWN_ITEM_ID, STORAGE_A_ITEM_ID } from "../utils/constants";
 import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import { getOwnerCap } from "./helper";
 
@@ -18,7 +17,14 @@ export async function online(
     config: ReturnType<typeof getConfig>
 ) {
     console.log("\n==== Bringing Storage Unit Online ====");
+    const characterId = deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
     const tx = new Transaction();
+
+    const [ownerCap] = tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), tx.object(ownerCapId)],
+    });
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.STORAGE_UNIT}::online`,
@@ -26,8 +32,14 @@ export async function online(
             tx.object(assemblyId),
             tx.object(networkObjectId),
             tx.object(config.energyConfig),
-            tx.object(ownerCapId),
+            ownerCap,
         ],
+    });
+
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), ownerCap],
     });
 
     const result = await client.signAndExecuteTransaction({

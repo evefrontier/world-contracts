@@ -8,6 +8,7 @@ import {
     extractEvent,
     hexToBytes,
     getEnvConfig,
+    getAdminCapId,
 } from "../utils/helper";
 import {
     LOCATION_HASH,
@@ -26,6 +27,7 @@ async function createAssembly(
     ctx: ReturnType<typeof initializeContext>
 ) {
     const { client, keypair, config } = ctx;
+    const adminCap = await getAdminCapId(client, config.packageId);
     const tx = new Transaction();
 
     const [assembly] = tx.moveCall({
@@ -34,7 +36,7 @@ async function createAssembly(
             tx.object(config.objectRegistry),
             tx.object(networkNodeObjectId),
             tx.object(characterObjectId),
-            tx.object(config.adminCap),
+            tx.object(adminCap!),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -43,7 +45,7 @@ async function createAssembly(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.ASSEMBLY}::share_assembly`,
-        arguments: [assembly, tx.object(config.adminCap)],
+        arguments: [assembly, tx.object(adminCap!)],
     });
 
     const result = await client.signAndExecuteTransaction({

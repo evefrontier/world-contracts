@@ -1,9 +1,8 @@
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { createClient, keypairFromPrivateKey } from "./client";
-import { getConfig, Network } from "./config";
+import { getConfig, MODULES, Network } from "./config";
 import { TENANT } from "./constants";
-
 export interface EnvConfig {
     network: Network;
     exportedKey: string;
@@ -98,4 +97,16 @@ export function extractEvent<T = unknown>(
     const events = result.events || [];
     const event = events.find((event) => event.type.endsWith(eventTypeSuffix));
     return (event?.parsedJson as T) || null;
+}
+
+export async function getAdminCapId(client: SuiClient, packageId: string): Promise<string | null> {
+    const adminAddress = process.env.ADMIN_ADDRESS;
+    const type = `${packageId}::${MODULES.ACCESS}::AdminCap`;
+    const res = await client.getOwnedObjects({
+        owner: adminAddress!,
+        filter: { StructType: type },
+        limit: 1,
+    });
+    const first = res.data?.[0]?.data;
+    return first?.objectId ?? null;
 }

@@ -8,6 +8,7 @@ import {
     extractEvent,
     hexToBytes,
     getEnvConfig,
+    getAdminCapId,
 } from "../utils/helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { LOCATION_HASH, GAME_CHARACTER_ID, NWN_TYPE_ID, NWN_ITEM_ID } from "../utils/constants";
@@ -23,6 +24,7 @@ async function createNetworkNode(
     ctx: ReturnType<typeof initializeContext>
 ) {
     const { client, keypair, config } = ctx;
+    const adminCap = await getAdminCapId(client, config.packageId);
     const tx = new Transaction();
 
     const [nwn] = tx.moveCall({
@@ -30,7 +32,7 @@ async function createNetworkNode(
         arguments: [
             tx.object(config.objectRegistry),
             tx.object(characterObjectId),
-            tx.object(config.adminCap),
+            tx.object(adminCap!),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -42,7 +44,7 @@ async function createNetworkNode(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::share_network_node`,
-        arguments: [nwn, tx.object(config.adminCap)],
+        arguments: [nwn, tx.object(adminCap!)],
     });
 
     const result = await client.signAndExecuteTransaction({

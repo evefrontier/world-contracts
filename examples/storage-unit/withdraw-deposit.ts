@@ -19,7 +19,7 @@ import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
 async function withdraw(
     storageUnit: string,
     characterId: string,
-    ownerCapObjectId: string,
+    ownerCapId: string,
     typeId: bigint,
     client: SuiClient,
     playerKeypair: Ed25519Keypair,
@@ -27,14 +27,20 @@ async function withdraw(
 ) {
     const tx = new Transaction();
 
+    const [ownerCap] = tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), tx.object(ownerCapId)],
+    });
+
     const [item] = tx.moveCall({
         target: `${config.packageId}::${MODULES.STORAGE_UNIT}::withdraw_by_owner`,
         typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
         arguments: [
             tx.object(storageUnit),
             tx.object(config.serverAddressRegistry),
-            tx.object(ownerCapObjectId),
             tx.object(characterId),
+            ownerCap,
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PROOF))),
             tx.object(CLOCK_OBJECT_ID),
@@ -48,11 +54,17 @@ async function withdraw(
             tx.object(storageUnit),
             tx.object(item),
             tx.object(config.serverAddressRegistry),
-            tx.object(ownerCapObjectId),
             tx.object(characterId),
+            ownerCap,
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PROOF))),
             tx.object(CLOCK_OBJECT_ID),
         ],
+    });
+
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), ownerCap],
     });
 
     const inspectResult = await client.devInspectTransactionBlock({

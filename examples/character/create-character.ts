@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { initializeContext, handleError, getEnvConfig, getAdminCapId } from "../utils/helper";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { GAME_CHARACTER_ID } from "../utils/constants";
@@ -13,6 +13,7 @@ async function createCharacter(
     ctx: ReturnType<typeof initializeContext>
 ): Promise<string> {
     const { client, keypair, config } = ctx;
+    const adminCap = await getAdminCapId(client, config.packageId);
     console.log("\n==== Creating a character ====");
     console.log("Game Character ID:", GAME_CHARACTER_ID);
     console.log("Tribe ID:", TRIBE_ID);
@@ -30,7 +31,7 @@ async function createCharacter(
         target: `${config.packageId}::${MODULES.CHARACTER}::create_character`,
         arguments: [
             tx.object(config.objectRegistry),
-            tx.object(config.adminCap),
+            tx.object(adminCap!),
             tx.pure.u32(GAME_CHARACTER_ID),
             tx.pure.string(tenant),
             tx.pure.u32(TRIBE_ID),
@@ -41,7 +42,7 @@ async function createCharacter(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::share_character`,
-        arguments: [character, tx.object(config.adminCap)],
+        arguments: [character, tx.object(adminCap!)],
     });
 
     const result = await client.signAndExecuteTransaction({

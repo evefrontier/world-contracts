@@ -26,23 +26,41 @@ async function depositFuel(
 
     const { client, keypair: playerKeypair, config } = playerCtx;
 
+    const characterId = deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
+
     const tx = new Transaction();
     tx.setSender(playerAddress);
     tx.setGasOwner(adminAddress);
 
-    const character = deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
+    // 1. Borrow OwnerCap from character using Receiving ticket.
+    // The OwnerCap is stored in the character (transfer-to-object). We pass its object ID;
+    // the SDK resolves it as a Receiving<OwnerCap<NetworkNode>> argument when the param type is Receiving.
+    const [ownerCap] = tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
+        arguments: [tx.object(characterId), tx.object(ownerCapId)],
+    });
+
+    // 2. Use the borrowed OwnerCap to deposit fuel.
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::deposit_fuel`,
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.adminAcl),
-            tx.object(character),
-            tx.object(ownerCapId),
+            tx.object(characterId),
+            ownerCap,
             tx.pure.u64(typeId),
             tx.pure.u64(VOLUME),
             tx.pure.u64(quantity),
             tx.object(CLOCK_OBJECT_ID),
         ],
+    });
+
+    // 3. Return the OwnerCap to the character.
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
+        typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
+        arguments: [tx.object(characterId), ownerCap],
     });
 
     const result = await executeSponsoredTransaction(
