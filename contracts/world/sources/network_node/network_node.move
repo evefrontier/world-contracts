@@ -48,6 +48,8 @@ const EUpdateEnergySourcesNotProcessed: vector<u8> =
 #[error(code = 11)]
 const EUnanchorAssembliesNotProcessed: vector<u8> =
     b"All assemblies must be processed before destroying network node";
+#[error(code = 12)]
+const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Character";
 
 // === Structs ===
 /// Hot potato struct to enforce all connected assemblies are brought offline
@@ -100,6 +102,7 @@ public fun deposit_fuel(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
@@ -118,6 +121,7 @@ public fun withdraw_fuel(
     quantity: u64,
     ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
@@ -133,7 +137,9 @@ public fun online(
     character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
     nwn.fuel.start_burning(nwn_id, nwn.key, character.key(), clock);
@@ -149,7 +155,9 @@ public fun offline(
     character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     clock: &Clock,
+    ctx: &mut TxContext,
 ): OfflineAssemblies {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
     assert!(nwn.status.is_online(), ENetworkNodeOffline);
@@ -248,12 +256,8 @@ public fun anchor(
     let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);
     let nwn_id = object::uid_to_inner(&nwn_uid);
 
-    let owner_cap_id = access::create_and_transfer_owner_cap<NetworkNode>(
-        admin_cap,
-        nwn_id,
-        character.character_address(),
-        ctx,
-    );
+    let owner_cap = access::create_owner_cap_by_id<NetworkNode>(admin_cap, nwn_id, ctx);
+    let owner_cap_id = object::id(&owner_cap);
 
     let nwn = NetworkNode {
         id: nwn_uid,
@@ -275,6 +279,8 @@ public fun anchor(
         ),
         connected_assembly_ids: vector[],
     };
+
+    access::transfer_owner_cap(owner_cap, object::id_address(character));
 
     event::emit(NetworkNodeCreatedEvent {
         network_node_id: nwn_id,
@@ -529,7 +535,6 @@ public fun status(network_node: &NetworkNode): &AssemblyStatus {
 #[test_only]
 public fun deposit_fuel_test(
     nwn: &mut NetworkNode,
-    admin_acl: &AdminACL,
     character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     type_id: u64,
@@ -538,23 +543,22 @@ public fun deposit_fuel_test(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
-    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
     nwn.fuel.deposit(nwn_id, nwn.key, character.key(), type_id, volume, quantity, clock);
 }
 
 #[test_only]
 public fun withdraw_fuel_test(
     nwn: &mut NetworkNode,
-    admin_acl: &AdminACL,
     character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     quantity: u64,
     ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
-    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
     nwn.fuel.withdraw(nwn_id, nwn.key, character.key(), quantity);
 }

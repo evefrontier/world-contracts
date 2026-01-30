@@ -128,12 +128,8 @@ public fun anchor(
     let network_node_id = object::id(network_node);
 
     // Create owner cap first with just the ID
-    let owner_cap_id = access::create_and_transfer_owner_cap<Assembly>(
-        admin_cap,
-        assembly_id,
-        character.character_address(),
-        ctx,
-    );
+    let owner_cap = access::create_owner_cap_by_id<Assembly>(admin_cap, assembly_id, ctx);
+    let owner_cap_id = object::id(&owner_cap);
 
     let assembly = Assembly {
         id: assembly_uid,
@@ -153,6 +149,8 @@ public fun anchor(
             ),
         ),
     };
+
+    access::transfer_owner_cap(owner_cap, object::id_address(character));
 
     // Connect assembly to network node
     network_node.connect_assembly(assembly_id);

@@ -62,6 +62,8 @@ const ENetworkNodeMismatch: vector<u8> =
     b"Provided network node does not match the storage unit's configured energy source";
 #[error(code = 11)]
 const EStorageUnitInvalidState: vector<u8> = b"Storage Unit should be offline";
+#[error(code = 12)]
+const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Character";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -148,6 +150,7 @@ public fun chain_item_to_game_inventory<T: key>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let storage_unit_id = object::id(storage_unit);
     check_inventory_authorization(owner_cap, storage_unit, character.id());
     assert!(storage_unit.status.is_online(), ENotOnline);
@@ -232,6 +235,7 @@ public fun deposit_by_owner<T: key>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
@@ -275,6 +279,7 @@ public fun withdraw_by_owner<T: key>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Item {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
@@ -347,13 +352,9 @@ public fun anchor(
     let assembly_id = object::uid_to_inner(&assembly_uid);
     let network_node_id = object::id(network_node);
 
-    // Create owner cap
-    let owner_cap_id = access::create_and_transfer_owner_cap<StorageUnit>(
-        admin_cap,
-        assembly_id,
-        character.character_address(),
-        ctx,
-    );
+    // Create owner cap and transfer to Character object
+    let owner_cap = access::create_owner_cap_by_id<StorageUnit>(admin_cap, assembly_id, ctx);
+    let owner_cap_id = object::id(&owner_cap);
 
     let mut storage_unit = StorageUnit {
         id: assembly_uid,
@@ -375,6 +376,8 @@ public fun anchor(
         ),
         extension: option::none(),
     };
+
+    access::transfer_owner_cap(owner_cap, object::id_address(character));
 
     network_node.connect_assembly(assembly_id);
 
@@ -547,6 +550,7 @@ public fun game_item_to_chain_inventory<T: key>(
     quantity: u32,
     ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let storage_unit_id = object::id(storage_unit);
     let sponsor_opt = tx_context::sponsor(ctx);
     assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
@@ -701,6 +705,7 @@ public fun chain_item_to_game_inventory_test<T: key>(
     location_proof: vector<u8>,
     ctx: &mut TxContext,
 ) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
     check_inventory_authorization(owner_cap, storage_unit, character.id());
@@ -723,7 +728,6 @@ public fun chain_item_to_game_inventory_test<T: key>(
 #[test_only]
 public fun game_item_to_chain_inventory_test<T: key>(
     storage_unit: &mut StorageUnit,
-    admin_acl: &AdminACL,
     character: &Character,
     owner_cap: &OwnerCap<T>,
     item_id: u64,
@@ -732,7 +736,7 @@ public fun game_item_to_chain_inventory_test<T: key>(
     quantity: u32,
     ctx: &mut TxContext,
 ) {
-    assert!(admin_acl.is_authorized_sponsor(ctx.sender()), EUnauthorizedSponsor);
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);

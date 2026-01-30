@@ -14,7 +14,7 @@
 module world::access;
 
 use std::{ascii::String, type_name::{Self, TypeName}};
-use sui::{event, table::{Self, Table}};
+use sui::{event, table::{Self, Table}, transfer::Receiving};
 use world::world::GovernorCap;
 
 #[error(code = 0)]
@@ -89,7 +89,11 @@ fun init(ctx: &mut TxContext) {
 /// Security: Ownership is enforced by the Sui runtime. Only the current owner of the OwnerCap
 /// can call this function - if a non-owner attempts to move the object, the transaction will
 /// be rejected by the runtime before this function is even called.
-public fun transfer_owner_cap<T: key>(
+public fun transfer_owner_cap<T: key>(owner_cap: OwnerCap<T>, owner: address) {
+    transfer::transfer(owner_cap, owner);
+}
+
+public fun transfer_owner_cap_to_address<T: key>(
     owner_cap: OwnerCap<T>,
     new_owner: address,
     ctx: &mut TxContext,
@@ -130,6 +134,14 @@ public(package) fun create_and_transfer_owner_cap<T: key>(
     let owner_cap_id = object::id(&owner_cap);
     transfer<T>(owner_cap, @0x0, owner);
     owner_cap_id
+}
+
+/// Receives an OwnerCap that was sent to the given receiving UID.
+public(package) fun receive_owner_cap<T: key>(
+    receiving_id: &mut UID,
+    ticket: Receiving<OwnerCap<T>>,
+): OwnerCap<T> {
+    transfer::receive(receiving_id, ticket)
 }
 
 // === Admin Functions ===
