@@ -9,8 +9,7 @@ const GAS_BUDGET = 10_000_000;
 function getAccessSetupEnv() {
     const network = (process.env.SUI_NETWORK as Network) || "testnet";
     const governorKey = process.env.PRIVATE_KEY;
-    const adminAddress =
-        process.env.ADMIN_ADDRESS;
+    const adminAddress = process.env.ADMIN_ADDRESS;
     const sponsorAddress = process.env.SPONSOR_ADDRESS;
 
     return { network, governorKey, adminAddress, sponsorAddress };
