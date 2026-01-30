@@ -89,7 +89,7 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
     id
 }
 
-fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, owner: address, item_id: u64): ID {
+fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, owner: address, item_id: u64): (ID, ID) {
     let character_item_id = (item_id as u32) + CHARACTER_ITEM_ID_OFFSET;
     let character_id = create_character(ts, owner, character_item_id);
     ts::next_tx(ts, admin());
@@ -115,7 +115,17 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, owner: address, item_id: 
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(registry);
     ts::return_shared(nwn);
-    assembly_id
+    (assembly_id, character_id)
+}
+
+/// Borrows OwnerCap<Assembly> from character; caller must return it with character::return_owner_cap and then ts::return_shared(character).
+fun borrow_assembly_owner_cap(
+    character: &mut Character,
+    ts: &mut ts::Scenario,
+): OwnerCap<Assembly> {
+    let character_id = object::id(character);
+    let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id);
+    character.borrow_owner_cap<Assembly>(access_cap_ticket, ts.ctx())
 }
 
 #[test]
@@ -123,7 +133,7 @@ fun test_metadata_lifecycle() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     let nwn_id = create_network_node(&mut ts);
-    let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
+    let (assembly_id, character_id) = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
     let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
 
     // Create
@@ -139,31 +149,37 @@ fun test_metadata_lifecycle() {
     assert_eq!(metadata.description(), DESCRIPTION.to_string());
     assert_eq!(metadata.url(), URL.to_string());
 
-    // Update Name
+    // Update Name (OwnerCap<Assembly> is on Character; borrow from character)
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_name(assembly_key, &owner_cap, NEW_NAME.to_string());
         assert_eq!(metadata.name(), NEW_NAME.to_string());
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     // Update Description
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_description(assembly_key, &owner_cap, NEW_DESC.to_string());
         assert_eq!(metadata.description(), NEW_DESC.to_string());
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     // Update URL
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_url(assembly_key, &owner_cap, NEW_URL.to_string());
         assert_eq!(metadata.url(), NEW_URL.to_string());
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     // Delete : Ideally the calling function is admin capped
@@ -178,7 +194,7 @@ fun test_update_name_unauthorized() {
     test_helpers::setup_world(&mut ts);
 
     let nwn_id = create_network_node(&mut ts);
-    let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
+    let (assembly_id, _) = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
     let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
 
     let mut metadata = metadata::create_metadata(
@@ -189,15 +205,17 @@ fun test_update_name_unauthorized() {
         URL.to_string(),
     );
 
-    // Create a second assembly for user_b to get an OwnerCap for a different assembly
-    create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
+    // Create a second assembly for user_b (their OwnerCap<Assembly> is on their character)
+    let (_, user_b_character_id) = create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
 
-    // Try to update with wrong owner cap (user_b)
+    // Try to update with wrong owner cap (user_b's cap is for a different assembly)
     ts::next_tx(&mut ts, user_b());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
+        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_name(assembly_key, &owner_cap, NEW_NAME.to_string());
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     metadata.delete();
@@ -211,7 +229,7 @@ fun test_update_description_unauthorized() {
     test_helpers::setup_world(&mut ts);
 
     let nwn_id = create_network_node(&mut ts);
-    let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
+    let (assembly_id, _) = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
     let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
 
     let mut metadata = metadata::create_metadata(
@@ -222,15 +240,15 @@ fun test_update_description_unauthorized() {
         URL.to_string(),
     );
 
-    // Create a second assembly for user_b to get an OwnerCap for a different assembly
-    create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
+    let (_, user_b_character_id) = create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
 
-    // Try to update with wrong owner cap
     ts::next_tx(&mut ts, user_b());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
+        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_description(assembly_key, &owner_cap, NEW_DESC.to_string());
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     metadata.delete();
@@ -244,7 +262,7 @@ fun test_update_url_unauthorized() {
     test_helpers::setup_world(&mut ts);
 
     let nwn_id = create_network_node(&mut ts);
-    let assembly_id = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
+    let (assembly_id, _) = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
     let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
 
     let mut metadata = metadata::create_metadata(
@@ -255,15 +273,15 @@ fun test_update_url_unauthorized() {
         URL.to_string(),
     );
 
-    // Create a second assembly for user_b to get an OwnerCap for a different assembly
-    create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
+    let (_, user_b_character_id) = create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
 
-    // Try to update with wrong owner cap
     ts::next_tx(&mut ts, user_b());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
+        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_url(assembly_key, &owner_cap, NEW_URL.to_string());
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     metadata.delete();

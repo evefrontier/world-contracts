@@ -121,7 +121,7 @@ fun owner_cap_authorisation_fail_after_transfer() {
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
-        access::transfer_owner_cap<TestObject>(owner_cap, user_b(), ts.ctx());
+        access::transfer_owner_cap<TestObject>(owner_cap, user_b());
     };
 
     ts::next_tx(&mut ts, user_a());
@@ -163,8 +163,16 @@ fun character_owner_cap_transfer_fail() {
     // Transfer Character OwnerCap should fail
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Character>>(&ts);
-        access::transfer_owner_cap<Character>(owner_cap, user_b(), ts.ctx());
+        let mut character = ts::take_shared<Character>(&ts);
+        let character_id = object::id(&character);
+        let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
+            &character_id,
+        );
+        let owner_cap = character.borrow_owner_cap<Character>(
+            access_cap_ticket,
+            ts.ctx(),
+        );
+        access::transfer_owner_cap_to_address<Character>(owner_cap, user_b(), ts.ctx());
     };
     abort
 }

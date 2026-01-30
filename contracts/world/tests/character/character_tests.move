@@ -266,15 +266,23 @@ fun rename_character() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Character>>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
+        let character_id = object::id(&character);
+        let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
+            &character_id,
+        );
+        let owner_cap = character.borrow_owner_cap<Character>(
+            access_cap_ticket,
+            ts.ctx(),
+        );
+
         let character_key = character.key();
         let metadata = character.mutable_metadata();
         metadata.update_name(character_key, &owner_cap, utf8(b"new_name"));
         assert_eq!(metadata.name(), utf8(b"new_name"));
 
+        character.return_owner_cap(owner_cap);
         ts::return_shared(character);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts.end();
@@ -571,8 +579,16 @@ fun test_rename_character_without_owner_cap() {
 
     ts::next_tx(&mut ts, user_b());
     {
-        let owner_cap = ts::take_from_sender<OwnerCap<Character>>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
+        let character_id = object::id(&character);
+        let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
+            &character_id,
+        );
+        let owner_cap = character.borrow_owner_cap<Character>(
+            access_cap_ticket,
+            ts.ctx(),
+        );
+
         let character_key = character.key();
         let metadata = character.mutable_metadata();
         metadata.update_name(character_key, &owner_cap, utf8(b"new_name"));

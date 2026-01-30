@@ -4,7 +4,7 @@ module world::assembly_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{AdminCap, OwnerCap, AdminACL},
+    access::{AdminCap, OwnerCap},
     assembly::{Self, Assembly},
     character::{Self, Character},
     energy::{Self, EnergyConfig},
@@ -73,8 +73,7 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
 }
 
 // Helper to create network node
-fun create_network_node(ts: &mut ts::Scenario): ID {
-    let character_id = create_character(ts, user_a(), 1);
+fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
     ts::next_tx(ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
@@ -101,18 +100,12 @@ fun create_network_node(ts: &mut ts::Scenario): ID {
     id
 }
 
-// Helper to create assembly
-fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID): ID {
-    create_assembly_with_character(ts, nwn_id, (CHARACTER_ITEM_ID as u32))
-}
-
-// Helper to create assembly with specific character item_id
-fun create_assembly_with_character(ts: &mut ts::Scenario, nwn_id: ID, character_item_id: u32): ID {
-    let character_id = create_character(ts, user_a(), character_item_id);
+// Helper to create assembly. Returns (assembly_id, character_id).
+fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, character_id: ID): ID {
     ts::next_tx(ts, admin());
+    let character = ts::take_shared_by_id<Character>(ts, character_id);
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-    let character = ts::take_shared_by_id<Character>(ts, character_id);
     let admin_cap = ts::take_from_sender<AdminCap>(ts);
 
     let assembly = assembly::anchor(
@@ -125,14 +118,14 @@ fun create_assembly_with_character(ts: &mut ts::Scenario, nwn_id: ID, character_
         LOCATION_HASH,
         ts.ctx(),
     );
-    let id = object::id(&assembly);
+    let assembly_id = object::id(&assembly);
     assembly::share_assembly(assembly, &admin_cap);
 
     ts::return_shared(character);
     ts::return_to_sender(ts, admin_cap);
     ts::return_shared(registry);
     ts::return_shared(nwn);
-    id
+    assembly_id
 }
 
 #[test]
@@ -140,8 +133,9 @@ fun test_anchor_assembly() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let nwn_id = create_network_node(&mut ts);
-    let assembly_id = create_assembly(&mut ts, nwn_id);
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
 
     ts::next_tx(&mut ts, admin());
     {
@@ -176,22 +170,23 @@ fun test_online_offline() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let nwn_id = create_network_node(&mut ts);
-    let assembly_id = create_assembly(&mut ts, nwn_id);
+    let character_id = create_character(&mut ts, user_a(), (CHARACTER_ITEM_ID as u32));
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
     let clock = clock::create_for_testing(ts.ctx());
 
     // Deposit fuel to network node
     ts::next_tx(&mut ts, user_a());
-    let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
-    let character = ts::take_shared<Character>(&ts);
+    let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+    let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+    let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
+        ts.ctx(),
+    );
 
-    ts::next_tx(&mut ts, admin());
+    ts::next_tx(&mut ts, user_a());
     {
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let admin_acl = ts::take_shared<AdminACL>(&ts);
-
         nwn.deposit_fuel_test(
-            &admin_acl,
             &character,
             &owner_cap,
             FUEL_TYPE_ID,
@@ -200,60 +195,54 @@ fun test_online_offline() {
             &clock,
             ts.ctx(),
         );
-
-        ts::return_shared(admin_acl);
-        ts::return_shared(nwn);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.online(&character, &owner_cap, &clock);
-        ts::return_shared(nwn);
+        nwn.online(&character, &owner_cap, &clock, ts.ctx());
     };
-    ts::next_tx(&mut ts, user_a());
-    {
-        ts::return_to_sender(&ts, owner_cap);
-    };
-    ts::return_shared(character);
+    character.return_owner_cap(owner_cap);
 
     ts::next_tx(&mut ts, user_a());
-    {
-        let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+    let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+    let energy_config = ts::take_shared<EnergyConfig>(&ts);
 
+    // OwnerCap<Assembly> is on Character; borrow from character, use, return
+    ts::next_tx(&mut ts, user_a());
+    {
+        let owner_cap = character.borrow_owner_cap<Assembly>(
+            ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id),
+            ts.ctx(),
+        );
         assert_eq!(energy::total_reserved_energy(nwn.energy()), 0);
 
-        assembly::online(&mut assembly, &mut nwn, &energy_config, &owner_cap);
+        assembly.online(&mut nwn, &energy_config, &owner_cap);
         assert_eq!(status::status_to_u8(assembly::status(&assembly)), STATUS_ONLINE);
         assert_eq!(energy::total_reserved_energy(nwn.energy()), ASSEMBLY_ENERGY_REQUIRED);
 
-        ts::return_shared(assembly);
-        ts::return_shared(nwn);
-        ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+        let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id);
+        let owner_cap = character.borrow_owner_cap<Assembly>(
+            access_cap_ticket,
+            ts.ctx(),
+        );
         assert_eq!(energy::total_reserved_energy(nwn.energy()), ASSEMBLY_ENERGY_REQUIRED);
 
-        assembly::offline(&mut assembly, &mut nwn, &energy_config, &owner_cap);
+        assembly.offline(&mut nwn, &energy_config, &owner_cap);
         assert_eq!(status::status_to_u8(assembly::status(&assembly)), STATUS_OFFLINE);
         assert_eq!(energy::total_reserved_energy(nwn.energy()), 0);
 
-        ts::return_shared(assembly);
-        ts::return_shared(nwn);
-        ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
     };
 
+    ts::return_shared(assembly);
+    ts::return_shared(nwn);
+    ts::return_shared(energy_config);
+    ts::return_shared(character);
     clock.destroy_for_testing();
     ts::end(ts);
 }
@@ -262,10 +251,9 @@ fun test_online_offline() {
 fun test_unanchor() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
-
-    let nwn_id = create_network_node(&mut ts);
-
     let character_id = create_character(&mut ts, user_a(), 7);
+
+    let nwn_id = create_network_node(&mut ts, character_id);
 
     ts::next_tx(&mut ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(&ts);
@@ -309,9 +297,8 @@ fun test_anchor_duplicate_item_id() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let nwn_id = create_network_node(&mut ts);
-
     let character_id = create_character(&mut ts, user_a(), 4);
+    let nwn_id = create_network_node(&mut ts, character_id);
 
     ts::next_tx(&mut ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(&ts);
@@ -356,9 +343,8 @@ fun test_anchor_invalid_type_id() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let nwn_id = create_network_node(&mut ts);
-
     let character_id = create_character(&mut ts, user_a(), 5);
+    let nwn_id = create_network_node(&mut ts, character_id);
 
     ts::next_tx(&mut ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(&ts);
@@ -391,10 +377,8 @@ fun test_anchor_invalid_item_id() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let nwn_id = create_network_node(&mut ts);
-
     let character_id = create_character(&mut ts, user_a(), 6);
-
+    let nwn_id = create_network_node(&mut ts, character_id);
     ts::next_tx(&mut ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);

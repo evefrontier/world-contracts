@@ -3,7 +3,7 @@ module world::storage_unit_tests;
 use std::{bcs, string::{utf8, String}, unit_test::assert_eq};
 use sui::{clock, derived_object, test_scenario as ts};
 use world::{
-    access::{OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
+    access::{OwnerCap, AdminCap, ServerAddressRegistry},
     character::{Self, Character},
     energy::EnergyConfig,
     fuel::FuelConfig,
@@ -187,18 +187,25 @@ fun create_storage_unit(
     (storage_unit_id, nwn_id)
 }
 
-fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nwn_id: ID) {
+fun online_storage_unit(
+    ts: &mut ts::Scenario,
+    user: address,
+    character_id: ID,
+    storage_id: ID,
+    nwn_id: ID,
+) {
     // Deposit fuel and bring network node online
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(ts, user);
-    let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(ts);
-    let character = ts::take_shared<Character>(ts);
-    ts::next_tx(ts, admin());
+    let mut character = ts::take_shared_by_id<Character>(ts, character_id);
+    let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
+        ts.ctx(),
+    );
+    ts::next_tx(ts, user);
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        let admin_acl = ts::take_shared<AdminACL>(ts);
         nwn.deposit_fuel_test(
-            &admin_acl,
             &character,
             &owner_cap,
             FUEL_TYPE_ID,
@@ -207,21 +214,16 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nw
             &clock,
             ts.ctx(),
         );
-        ts::return_shared(admin_acl);
         ts::return_shared(nwn);
     };
 
     ts::next_tx(ts, user);
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        nwn.online(&character, &owner_cap, &clock);
+        nwn.online(&character, &owner_cap, &clock, ts.ctx());
         ts::return_shared(nwn);
     };
-    ts::next_tx(ts, user);
-    {
-        ts::return_to_sender(ts, owner_cap);
-    };
-    ts::return_shared(character);
+    character.return_owner_cap(owner_cap);
 
     // Now bring storage unit online
     ts::next_tx(ts, user);
@@ -229,32 +231,33 @@ fun online_storage_unit(ts: &mut ts::Scenario, user: address, storage_id: ID, nw
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(ts);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(ts);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
         storage_unit.online(&mut nwn, &energy_config, &owner_cap);
-
         let status = storage_unit.status();
         assert_eq!(status.status_to_u8(), STATUS_ONLINE);
+        character.return_owner_cap(owner_cap);
         ts::return_shared(storage_unit);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        ts::return_to_sender(ts, owner_cap);
     };
+
+    ts::return_shared(character);
     clock.destroy_for_testing();
 }
 
 fun mint_ammo<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, user: address) {
     ts::next_tx(ts, user);
-    let owner_cap = {
-        let owner_cap = ts::take_from_sender<OwnerCap<T>>(ts);
-        owner_cap
-    };
-    ts::next_tx(ts, admin());
-    let owner_cap = {
+    {
+        let mut character = ts::take_shared_by_id<Character>(ts, character_id);
+        let owner_cap = character.borrow_owner_cap<T>(
+            ts::most_recent_receiving_ticket<OwnerCap<T>>(&character_id),
+            ts.ctx(),
+        );
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
-        let character = ts::take_shared_by_id<Character>(ts, character_id);
-        let admin_acl = ts::take_shared<AdminACL>(ts);
         storage_unit.game_item_to_chain_inventory_test<T>(
-            &admin_acl,
             &character,
             &owner_cap,
             AMMO_ITEM_ID,
@@ -263,30 +266,22 @@ fun mint_ammo<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        ts::return_shared(admin_acl);
-        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap);
         ts::return_shared(character);
-        owner_cap
+        ts::return_shared(storage_unit);
     };
-    ts::next_tx(ts, user);
-    {
-        ts::return_to_sender(ts, owner_cap);
-    }
 }
 
 fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, user: address) {
     ts::next_tx(ts, user);
-    let owner_cap = {
-        let owner_cap = ts::take_from_sender<OwnerCap<T>>(ts);
-        owner_cap
-    };
-    ts::next_tx(ts, admin());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
-        let character = ts::take_shared_by_id<Character>(ts, character_id);
-        let admin_acl = ts::take_shared<AdminACL>(ts);
+        let mut character = ts::take_shared_by_id<Character>(ts, character_id);
+        let owner_cap = character.borrow_owner_cap<T>(
+            ts::most_recent_receiving_ticket<OwnerCap<T>>(&character_id),
+            ts.ctx(),
+        );
         storage_unit.game_item_to_chain_inventory_test<T>(
-            &admin_acl,
             &character,
             &owner_cap,
             LENS_ITEM_ID,
@@ -295,14 +290,10 @@ fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
             LENS_QUANTITY,
             ts.ctx(),
         );
-        ts::return_shared(admin_acl);
-        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap);
         ts::return_shared(character);
+        ts::return_shared(storage_unit);
     };
-    ts::next_tx(ts, user);
-    {
-        ts::return_to_sender(ts, owner_cap);
-    }
 }
 
 fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
@@ -339,25 +330,19 @@ fun create_character_with_tenant(
 }
 
 // Character Owner Caps for Ephemeral Inventory interaction
-fun character_owner_cap_id(ts: &mut ts::Scenario, user: address): ID {
-    ts::next_tx(ts, user);
-    let owner_cap_id = {
-        let owner_cap = ts::take_from_sender<OwnerCap<Character>>(ts);
-        let owner_cap_id = object::id(&owner_cap);
-        ts::return_to_sender(ts, owner_cap);
-        owner_cap_id
-    };
+fun character_owner_cap_id(ts: &mut ts::Scenario, character_id: ID): ID {
+    ts::next_tx(ts, admin());
+    let character = ts::take_shared_by_id<Character>(ts, character_id);
+    let owner_cap_id = character.owner_cap_id();
+    ts::return_shared(character);
     owner_cap_id
 }
 
 fun storage_owner_cap_id(ts: &mut ts::Scenario, storage_id: ID): ID {
     ts::next_tx(ts, admin());
-    let owner_cap_id = {
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
-        let owner_cap_id = storage_unit.owner_cap_id();
-        ts::return_shared(storage_unit);
-        owner_cap_id
-    };
+    let storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
+    let owner_cap_id = storage_unit.owner_cap_id();
+    ts::return_shared(storage_unit);
     owner_cap_id
 }
 
@@ -417,7 +402,7 @@ fun test_create_items_on_chain() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, admin());
@@ -452,7 +437,7 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, admin());
@@ -471,10 +456,12 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-
         let proof = test_helpers::construct_location_proof(
             test_helpers::get_verified_location_hash(),
         );
@@ -488,16 +475,15 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
             proof_bytes,
             ts.ctx(),
         );
-        ts::return_shared(character);
-
         let inv_ref = storage_unit.inventory(owner_cap_id);
         assert_eq!(inv_ref.used_capacity(), 0);
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.inventory_item_length(), 0);
 
+        character.return_owner_cap(owner_cap);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        ts::return_to_sender(&ts, owner_cap);
+        ts::return_shared(character);
     };
 
     ts::end(ts);
@@ -524,7 +510,7 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_a_id, storage_id, nwn_id);
 
     // Mint lens for user A
     mint_lens<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
@@ -539,7 +525,7 @@ fun test_mint_multiple_items_in_ephemeral_inventory() {
     };
 
     // Create a character owner cap as a biometric to mint items in ephemeral inventory
-    let character_owner_cap_id = character_owner_cap_id(&mut ts, user_b());
+    let character_owner_cap_id = character_owner_cap_id(&mut ts, character_b_id);
 
     // Mint lens for user B
     mint_lens<Character>(&mut ts, storage_id, character_b_id, user_b());
@@ -588,12 +574,17 @@ fun test_authorize_extension() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
 
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
 
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
     ts::end(ts);
 }
@@ -615,17 +606,22 @@ fun test_deposit_and_withdraw_via_extension() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     // Authorize extension
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     ts::next_tx(&mut ts, user_a());
@@ -678,23 +674,26 @@ fun test_deposit_and_withdraw_by_owner() {
         STORAGE_A_TYPE_ID,
     );
     let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+    let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+    let clock = clock::create_for_testing(ts.ctx());
+    let proof = test_helpers::construct_location_proof(
+        test_helpers::get_verified_location_hash(),
+    );
+    let proof_bytes = bcs::to_bytes(&proof);
+    let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+    let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+        ts.ctx(),
+    );
 
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
-        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
-        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let clock = clock::create_for_testing(ts.ctx());
-
-        let proof = test_helpers::construct_location_proof(
-            test_helpers::get_verified_location_hash(),
-        );
-        let proof_bytes = bcs::to_bytes(&proof);
-
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         item =
             storage_unit.withdraw_by_owner(
                 &server_registry,
@@ -705,27 +704,10 @@ fun test_deposit_and_withdraw_by_owner() {
                 &clock,
                 ts.ctx(),
             );
-
-        clock.destroy_for_testing();
-        ts::return_shared(storage_unit);
-        ts::return_shared(server_registry);
-        ts::return_shared(character);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let clock = clock::create_for_testing(ts.ctx());
-
-        let proof = test_helpers::construct_location_proof(
-            test_helpers::get_verified_location_hash(),
-        );
-        let proof_bytes = bcs::to_bytes(&proof);
-
         storage_unit.deposit_by_owner(
             item,
             &server_registry,
@@ -735,15 +717,14 @@ fun test_deposit_and_withdraw_by_owner() {
             &clock,
             ts.ctx(),
         );
-        ts::return_shared(character);
-
         assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_TYPE_ID), AMMO_QUANTITY);
-
-        clock.destroy_for_testing();
-        ts::return_shared(storage_unit);
-        ts::return_shared(server_registry);
-        ts::return_to_sender(&ts, owner_cap);
     };
+    clock.destroy_for_testing();
+    character.return_owner_cap(owner_cap);
+    ts::return_shared(storage_unit);
+    ts::return_shared(server_registry);
+    ts::return_shared(character);
+
     ts::end(ts);
 }
 
@@ -769,13 +750,13 @@ fun test_swap_ammo_for_lens() {
         STORAGE_A_TYPE_ID,
     );
     let storage_owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
-    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_b(), character_b_id, storage_id, nwn_id);
 
     // Mint lens for user B
     mint_lens<StorageUnit>(&mut ts, storage_id, character_b_id, user_b());
 
     // Create a character for user A to mint items into epehemeral inventory
-    let character_owner_cap_id = character_owner_cap_id(&mut ts, user_a());
+    let character_owner_cap_id = character_owner_cap_id(&mut ts, character_a_id);
 
     // Mint Ammo for user A
     // minting ammo automatically creates a epehemeral inventory for user A
@@ -785,10 +766,15 @@ fun test_swap_ammo_for_lens() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap_b = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let owner_cap_b = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
+            ts.ctx(),
+        );
         storage_unit.authorize_extension<SwapAuth>(&owner_cap_b);
+        character.return_owner_cap(owner_cap_b);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap_b);
+        ts::return_shared(character);
     };
 
     // Before swap
@@ -818,8 +804,11 @@ fun test_swap_ammo_for_lens() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap_a = ts::take_from_sender<OwnerCap<Character>>(&ts);
-        let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let owner_cap_a = character_a.borrow_owner_cap<Character>(
+            ts::most_recent_receiving_ticket<OwnerCap<Character>>(&character_a_id),
+            ts.ctx(),
+        );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -837,12 +826,12 @@ fun test_swap_ammo_for_lens() {
             &clock,
             ts.ctx(),
         );
-        ts::return_shared(character_a);
 
         clock.destroy_for_testing();
+        character_a.return_owner_cap(owner_cap_a);
+        ts::return_shared(character_a);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        ts::return_to_sender(&ts, owner_cap_a);
     };
 
     // Verify swap
@@ -879,7 +868,7 @@ fun test_unachor_storage_unit() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_b(), character_id, storage_id, nwn_id);
 
     mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_b());
     mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_b());
@@ -936,12 +925,16 @@ fun test_authorize_extension_fail_wrong_owner() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
-
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
 
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
     ts::end(ts);
 }
@@ -963,7 +956,7 @@ fun test_withdraw_via_extension_fail_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     ts::next_tx(&mut ts, user_a());
@@ -1006,14 +999,20 @@ fun test_deposit_via_extension_fail_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+    let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
 
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
-        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1022,7 +1021,6 @@ fun test_deposit_via_extension_fail_not_authorized() {
         );
         let proof_bytes = bcs::to_bytes(&proof);
 
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         item =
             storage_unit.withdraw_by_owner(
                 &server_registry,
@@ -1035,25 +1033,21 @@ fun test_deposit_via_extension_fail_not_authorized() {
             );
 
         clock.destroy_for_testing();
-        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap);
         ts::return_shared(server_registry);
-        ts::return_shared(character);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         storage_unit.deposit_item<SwapAuth>(
             &character,
             item,
             SwapAuth {},
             ts.ctx(),
         );
-        ts::return_shared(storage_unit);
-        ts::return_shared(character);
     };
+    ts::return_shared(character);
+    ts::return_shared(storage_unit);
     ts::end(ts);
 }
 
@@ -1075,7 +1069,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_a_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
 
     create_storage_unit(
@@ -1089,7 +1083,11 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
+            ts.ctx(),
+        );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1098,10 +1096,10 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         );
         let proof_bytes = bcs::to_bytes(&proof);
 
-        let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        // let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
         let item = storage_unit.withdraw_by_owner(
             &server_registry,
-            &character_a,
+            &character_b,
             &owner_cap,
             AMMO_TYPE_ID,
             proof_bytes,
@@ -1112,18 +1110,19 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         storage_unit.deposit_by_owner(
             item,
             &server_registry,
-            &character_a,
+            &character_b,
             &owner_cap,
             proof_bytes,
             &clock,
             ts.ctx(),
         );
-        ts::return_shared(character_a);
+        // ts::return_shared(character_a);
 
         clock.destroy_for_testing();
+        character_b.return_owner_cap(owner_cap);
+        ts::return_shared(character_b);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        ts::return_to_sender(&ts, owner_cap);
     };
     ts::end(ts);
 }
@@ -1146,24 +1145,27 @@ fun test_deposit_by_owner_fail_wrong_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_a_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+    let clock = clock::create_for_testing(ts.ctx());
+    let proof = test_helpers::construct_location_proof(
+        test_helpers::get_verified_location_hash(),
+    );
+    let proof_bytes = bcs::to_bytes(&proof);
 
     // user_a withdraws item
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
-        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let clock = clock::create_for_testing(ts.ctx());
-
-        let proof = test_helpers::construct_location_proof(
-            test_helpers::get_verified_location_hash(),
+        let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let owner_cap = character_a.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_a_id),
+            ts.ctx(),
         );
-        let proof_bytes = bcs::to_bytes(&proof);
-
-        let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
         item =
             storage_unit.withdraw_by_owner(
                 &server_registry,
@@ -1175,11 +1177,9 @@ fun test_deposit_by_owner_fail_wrong_owner() {
                 ts.ctx(),
             );
 
-        clock.destroy_for_testing();
         ts::return_shared(storage_unit);
-        ts::return_shared(server_registry);
+        character_a.return_owner_cap(owner_cap);
         ts::return_shared(character_a);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     create_storage_unit(
@@ -1194,33 +1194,29 @@ fun test_deposit_by_owner_fail_wrong_owner() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
-        let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
-        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let clock = clock::create_for_testing(ts.ctx());
-
-        let proof = test_helpers::construct_location_proof(
-            test_helpers::get_verified_location_hash(),
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
+            ts.ctx(),
         );
-        let proof_bytes = bcs::to_bytes(&proof);
 
         // This should fail with EAssemblyNotAuthorized
         storage_unit.deposit_by_owner(
             item,
             &server_registry,
-            &character_a,
+            &character_b,
             &owner_cap,
             proof_bytes,
             &clock,
             ts.ctx(),
         );
-        ts::return_shared(character_a);
 
-        clock.destroy_for_testing();
+        character_b.return_owner_cap(owner_cap);
         ts::return_shared(storage_unit);
-        ts::return_shared(server_registry);
-        ts::return_to_sender(&ts, owner_cap);
+        ts::return_shared(character_b);
     };
+    clock.destroy_for_testing();
+    ts::return_shared(server_registry);
     ts::end(ts);
 }
 
@@ -1243,10 +1239,10 @@ fun test_swap_fail_extension_not_authorized() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
     mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
-    let _character_owner_cap_id = character_owner_cap_id(&mut ts, user_b());
+    let _character_owner_cap_id = character_owner_cap_id(&mut ts, character_b_id);
     mint_ammo<Character>(&mut ts, storage_id, character_b_id, user_b());
 
     //Skipped authorisation
@@ -1255,7 +1251,11 @@ fun test_swap_fail_extension_not_authorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let owner_cap_b = ts::take_from_sender<OwnerCap<Character>>(&ts);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let owner_cap_b = character_b.borrow_owner_cap<Character>(
+            ts::most_recent_receiving_ticket<OwnerCap<Character>>(&character_b_id),
+            ts.ctx(),
+        );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1264,7 +1264,6 @@ fun test_swap_fail_extension_not_authorized() {
         );
         let proof_bytes = bcs::to_bytes(&proof);
 
-        let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
         swap_ammo_for_lens_extension(
             &mut storage_unit,
             &owner_cap_b,
@@ -1278,8 +1277,8 @@ fun test_swap_fail_extension_not_authorized() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        character_b.return_owner_cap(owner_cap_b);
         ts::return_shared(character_b);
-        ts::return_to_sender(&ts, owner_cap_b);
     };
     ts::end(ts);
 }
@@ -1303,7 +1302,7 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_b(), storage_id, nwn_id);
+    online_storage_unit(&mut ts, user_b(), character_b_id, storage_id, nwn_id);
 
     // Mint lens for user B
     mint_lens<StorageUnit>(&mut ts, storage_id, character_b_id, user_b());
@@ -1319,14 +1318,17 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, user_a_storage_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
+            ts.ctx(),
+        );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
 
         let proof = test_helpers::construct_location_proof(
             test_helpers::get_verified_location_hash(),
         );
         let proof_bytes = bcs::to_bytes(&proof);
-        let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
         storage_unit.chain_item_to_game_inventory_test(
             &server_registry,
             &character_b,
@@ -1336,11 +1338,11 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
             proof_bytes,
             ts.ctx(),
         );
-        ts::return_shared(character_b);
 
+        character_b.return_owner_cap(owner_cap);
+        ts::return_shared(character_b);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        ts::return_to_sender(&ts, owner_cap);
     };
     ts::end(ts);
 }
@@ -1389,15 +1391,16 @@ fun online_fail_by_unauthorized_owner() {
     // Bring NWN online using user_a (the owner)
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(&mut ts, user_a());
-    let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
-    let character = ts::take_shared<Character>(&ts);
+    let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+    let mut character = ts::take_shared_by_id<Character>(&ts, character_a_id);
+    let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_a_id),
+        ts.ctx(),
+    );
 
-    ts::next_tx(&mut ts, admin());
+    ts::next_tx(&mut ts, user_a());
     {
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let admin_acl = ts::take_shared<AdminACL>(&ts);
         nwn.deposit_fuel_test(
-            &admin_acl,
             &character,
             &owner_cap,
             FUEL_TYPE_ID,
@@ -1406,25 +1409,20 @@ fun online_fail_by_unauthorized_owner() {
             &clock,
             ts.ctx(),
         );
-        ts::return_shared(admin_acl);
-        ts::return_shared(nwn);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         nwn.online(
             &character,
             &owner_cap,
             &clock,
+            ts.ctx(),
         );
-        ts::return_shared(nwn);
     };
-    ts::next_tx(&mut ts, user_a());
-    {
-        ts::return_to_sender(&ts, owner_cap);
-    };
+    character.return_owner_cap(owner_cap);
     ts::return_shared(character);
+    ts::return_shared(nwn);
 
     // Create User B Storage unit (so user_b has their own OwnerCap<StorageUnit>)
     create_storage_unit(
@@ -1439,15 +1437,21 @@ fun online_fail_by_unauthorized_owner() {
     // This should fail with EAssemblyNotAuthorized
     ts::next_tx(&mut ts, user_b());
     {
-        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
+            ts.ctx(),
+        );
         storage_unit::online(&mut storage_unit, &mut nwn, &energy_config, &owner_cap);
-        ts::return_shared(storage_unit);
+
         ts::return_shared(nwn);
+        ts::return_shared(storage_unit);
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, owner_cap);
+        character_b.return_owner_cap(owner_cap);
+        ts::return_shared(character_b);
     };
 
     clock.destroy_for_testing();
@@ -1473,7 +1477,7 @@ fun offline_fail_by_unauthorized_owner() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_a_id, storage_a_id, nwn_id);
 
     // Create User B Storage unit
     create_storage_unit(
@@ -1490,12 +1494,17 @@ fun offline_fail_by_unauthorized_owner() {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
+            ts.ctx(),
+        );
         storage_unit.offline(&mut nwn, &energy_config, &owner_cap);
         ts::return_shared(storage_unit);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, owner_cap);
+        character_b.return_owner_cap(owner_cap);
+        ts::return_shared(character_b);
     };
     ts::end(ts);
 }
@@ -1526,26 +1535,27 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         STORAGE_A_ITEM_ID + 1,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_b_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id_diff_tenant, storage_b_id, nwn_id);
 
     // Mint ammo in storage unit B tenant test
-    mint_ammo<StorageUnit>(&mut ts, storage_b_id, character_id, user_a());
+    mint_ammo<StorageUnit>(&mut ts, storage_b_id, character_id_diff_tenant, user_a());
 
     // Withdraw item from storage unit B and deposit in different tenant
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
-
         let proof = test_helpers::construct_location_proof(
             test_helpers::get_verified_location_hash(),
         );
         let proof_bytes = bcs::to_bytes(&proof);
-
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id_diff_tenant);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id_diff_tenant),
+            ts.ctx(),
+        );
         item =
             storage_unit.withdraw_by_owner(
                 &server_registry,
@@ -1560,8 +1570,8 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        character.return_owner_cap(owner_cap);
         ts::return_shared(character);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     // Create storage unit A with default tenant "TEST"
@@ -1572,15 +1582,18 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_a_id, nwn_id);
 
     // Try to deposit item from storage unit B into storage unit A
     // This should fail with ETenantMismatch
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
@@ -1598,12 +1611,12 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
             &clock,
             ts.ctx(),
         );
-        ts::return_shared(character);
 
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
     ts::end(ts);
 }
@@ -1634,26 +1647,27 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         STORAGE_A_ITEM_ID + 1,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_b_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id_diff_tenant, storage_b_id, nwn_id);
 
     // Mint ammo in storage unit B
-    mint_ammo<StorageUnit>(&mut ts, storage_b_id, character_id, user_a());
+    mint_ammo<StorageUnit>(&mut ts, storage_b_id, character_id_diff_tenant, user_a());
 
     // Withdraw item from storage unit B
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id_diff_tenant);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id_diff_tenant),
+            ts.ctx(),
+        );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
-
         let proof = test_helpers::construct_location_proof(
             test_helpers::get_verified_location_hash(),
         );
         let proof_bytes = bcs::to_bytes(&proof);
-
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         item =
             storage_unit.withdraw_by_owner(
                 &server_registry,
@@ -1668,8 +1682,8 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        character.return_owner_cap(owner_cap);
         ts::return_shared(character);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     // Create storage unit A with default tenant
@@ -1680,16 +1694,21 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         STORAGE_A_ITEM_ID,
         STORAGE_A_TYPE_ID,
     );
-    online_storage_unit(&mut ts, user_a(), storage_a_id, nwn_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_a_id, nwn_id);
 
     // Authorize extension for storage unit A
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
         ts::return_shared(storage_unit);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     // Try to deposit item from storage unit B into storage unit A via extension
@@ -1715,7 +1734,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
 /// Expected: Transaction aborts with ENotOnline error when trying to mint items
 #[test]
 #[expected_failure(abort_code = storage_unit::ENotOnline)]
-fun test_game_to_chain_fail_network_node_offline() {
+fun test_fail_network_node_offline() {
     let mut ts = ts::begin(governor());
     setup_nwn(&mut ts);
     let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
@@ -1730,14 +1749,16 @@ fun test_game_to_chain_fail_network_node_offline() {
 
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(&mut ts, user_a());
-    let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
-    let character = ts::take_shared<Character>(&ts);
-    ts::next_tx(&mut ts, admin());
+    let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+    let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+    let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
+        ts.ctx(),
+    );
+
+    ts::next_tx(&mut ts, user_a());
     {
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let admin_acl = ts::take_shared<AdminACL>(&ts);
         nwn.deposit_fuel_test(
-            &admin_acl,
             &character,
             &owner_cap,
             FUEL_TYPE_ID,
@@ -1746,36 +1767,37 @@ fun test_game_to_chain_fail_network_node_offline() {
             &clock,
             ts.ctx(),
         );
-        ts::return_shared(admin_acl);
-        ts::return_shared(nwn);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         nwn.online(
             &character,
             &owner_cap,
             &clock,
+            ts.ctx(),
         );
-        ts::return_shared(nwn);
     };
-    ts::next_tx(&mut ts, user_a());
-    {
-        ts::return_to_sender(&ts, owner_cap);
-    };
+    ts::return_shared(nwn);
+    character.return_owner_cap(owner_cap);
+    ts::return_shared(character);
 
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
         storage_unit.online(&mut nwn, &energy_config, &owner_cap);
         ts::return_shared(storage_unit);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
 
     // Take network node offline (stops burning, not online)
@@ -1783,13 +1805,18 @@ fun test_game_to_chain_fail_network_node_offline() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = ts::take_from_sender<OwnerCap<NetworkNode>>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+            ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
+            ts.ctx(),
+        );
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let mut offline_assemblies = nwn.offline(
             &fuel_config,
             &character,
             &owner_cap,
             &clock,
+            ts.ctx(),
         );
 
         // Process the storage unit to bring it offline (temporary offline, do not remove energy source)
@@ -1807,9 +1834,9 @@ fun test_game_to_chain_fail_network_node_offline() {
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, owner_cap);
+        character.return_owner_cap(owner_cap);
+        ts::return_shared(character);
     };
-    ts::return_shared(character);
 
     // Verify network node is offline and not burning
     ts::next_tx(&mut ts, admin());
@@ -1823,19 +1850,16 @@ fun test_game_to_chain_fail_network_node_offline() {
     // Try to call game_item_to_chain_inventory_test when network node is offline and not burning
     // This should fail because the storage unit is offline (brought offline when network node went offline)
     ts::next_tx(&mut ts, user_a());
-    let owner_cap = {
-        let owner_cap = ts::take_from_sender<OwnerCap<StorageUnit>>(&ts);
-        owner_cap
-    };
-    ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
 
         // This should fail because storage unit is offline (network node is offline and not burning)
         storage_unit.game_item_to_chain_inventory_test<StorageUnit>(
-            &admin_acl,
             &character,
             &owner_cap,
             AMMO_ITEM_ID,
@@ -1844,10 +1868,9 @@ fun test_game_to_chain_fail_network_node_offline() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        ts::return_shared(admin_acl);
+        character.return_owner_cap(owner_cap);
         ts::return_shared(storage_unit);
         ts::return_shared(character);
-        ts::return_to_sender(&ts, owner_cap);
     };
 
     clock.destroy_for_testing();
