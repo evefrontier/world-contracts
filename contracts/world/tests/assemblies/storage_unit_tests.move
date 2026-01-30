@@ -1096,7 +1096,6 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         );
         let proof_bytes = bcs::to_bytes(&proof);
 
-        // let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
         let item = storage_unit.withdraw_by_owner(
             &server_registry,
             &character_b,
@@ -1116,7 +1115,6 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
             &clock,
             ts.ctx(),
         );
-        // ts::return_shared(character_a);
 
         clock.destroy_for_testing();
         character_b.return_owner_cap(owner_cap);

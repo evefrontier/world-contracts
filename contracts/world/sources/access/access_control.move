@@ -136,7 +136,12 @@ public(package) fun create_and_transfer_owner_cap<T: key>(
     owner_cap_id
 }
 
-/// Receives an OwnerCap that was sent to the given receiving UID.
+/// Receives an `OwnerCap<T>` from a `Receiving<OwnerCap<T>>` ticket.
+///
+/// - **Borrow**: the `Character` receives (materializes) the `OwnerCap<T>` from a
+///   `Receiving<OwnerCap<T>>` ticket for the duration of a transaction.
+/// - **Return**: the `OwnerCap<T>` is put back under the `Character`’s control at
+///   the end of the flow.
 public(package) fun receive_owner_cap<T: key>(
     receiving_id: &mut UID,
     ticket: Receiving<OwnerCap<T>>,

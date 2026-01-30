@@ -49,7 +49,7 @@ async function generateTestSignature(
     const keypair = keypairFromPrivateKey(privateKey);
 
     // Current unix time in ms + 50 days
-    const deadline = BigInt(Date.now()) + BigInt(5 * 24 * 60 * 60 * 1000);
+    const deadline = BigInt(Date.now()) + BigInt(50 * 24 * 60 * 60 * 1000);
 
     // Create the LocationProofMessage
     const message = {
