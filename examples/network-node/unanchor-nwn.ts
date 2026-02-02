@@ -79,7 +79,6 @@ async function unanchor(
         options: { showObjectChanges: true, showEffects: true },
     });
 
-    console.log(result);
     console.log("Transaction digest:", result.digest);
     return result;
 }
@@ -87,11 +86,12 @@ async function unanchor(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.adminExportedKey!);
+        const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
 
         const adminCapId = await getAdminCapId(client, config.packageId);
+        if (!adminCapId) throw new Error("AdminCap not found");
 
         const networkNodeObject = deriveObjectId(
             config.objectRegistry,
@@ -99,10 +99,10 @@ async function main() {
             config.packageId
         );
 
-        await unanchor(networkNodeObject, adminCapId!, client, keypair, config);
+        await unanchor(networkNodeObject, adminCapId, client, keypair, config);
     } catch (error) {
         handleError(error);
     }
 }
 
-main().catch(console.error);
+main();

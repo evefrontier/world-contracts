@@ -77,21 +77,19 @@ export function handleError(error: unknown): never {
     process.exit(1);
 }
 
+export function requireEnv(name: string): string {
+    const value = process.env[name];
+    if (!value) throw new Error(`${name} is required`);
+    return value;
+}
+
 export function getEnvConfig(): EnvConfig {
     const network = (process.env.SUI_NETWORK as Network) || "localnet";
     const rpcUrl = process.env.SUI_RPC_URL || DEFAULT_RPC_URLS[network];
-    const packageId = process.env.WORLD_PACKAGE_ID || "";
-    const adminExportedKey = process.env.PRIVATE_KEY;
+    const packageId = requireEnv("WORLD_PACKAGE_ID");
+    const adminExportedKey = requireEnv("ADMIN_PRIVATE_KEY");
 
-    if (!adminExportedKey) {
-        throw new Error(
-            "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
-        );
-    }
     process.env.SUI_RPC_URL = rpcUrl;
-    if (!packageId) {
-        throw new Error("PACKAGE_ID environment variable is required");
-    }
 
     return {
         network,
@@ -121,10 +119,10 @@ export function extractEvent<T = unknown>(
 }
 
 export async function getAdminCapId(client: SuiClient, packageId: string): Promise<string | null> {
-    const adminAddress = process.env.ADMIN_ADDRESS;
+    const adminAddress = requireEnv("ADMIN_ADDRESS");
     const type = `${packageId}::${MODULES.ACCESS}::AdminCap`;
     const res = await client.getOwnedObjects({
-        owner: adminAddress!,
+        owner: adminAddress,
         filter: { StructType: type },
         limit: 1,
     });
@@ -132,13 +130,15 @@ export async function getAdminCapId(client: SuiClient, packageId: string): Promi
     return first?.objectId ?? null;
 }
 
-export async function hydrateWorldConfig(
-    ctx: InitializedContext,
-    opts?: { governorAddress?: string }
-): Promise<HydratedWorldConfig> {
+export async function hydrateWorldConfig(ctx: InitializedContext): Promise<HydratedWorldConfig> {
+    const governorPrivateKey = process.env.GOVERNOR_PRIVATE_KEY;
+    const derivedGovernorAddress = governorPrivateKey
+        ? keypairFromPrivateKey(governorPrivateKey).getPublicKey().toSuiAddress()
+        : undefined;
+
     const governorAddress =
-        opts?.governorAddress ||
         process.env.GOVERNOR_ADDRESS ||
+        derivedGovernorAddress ||
         process.env.ADMIN_ADDRESS ||
         ctx.address;
 
@@ -169,7 +169,7 @@ export function readPublishOutputFile(filePath: string): { objectChanges: Publis
     try {
         parsed = JSON.parse(raw) as { objectChanges?: unknown };
     } catch {
-        throw new Error(`Invalid JSON in${filePath}`);
+        throw new Error(`Invalid JSON in ${filePath}`);
     }
 
     if (!Array.isArray(parsed.objectChanges)) {

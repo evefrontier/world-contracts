@@ -6,7 +6,14 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { HydratedWorldConfig, getConfig, MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { NWN_ITEM_ID, ASSEMBLY_ITEM_ID, GAME_CHARACTER_ID } from "../utils/constants";
-import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import {
+    getEnvConfig,
+    handleError,
+    hydrateWorldConfig,
+    initializeContext,
+    requireEnv,
+} from "../utils/helper";
+import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
 
 export async function online(
     networkObjectId: string,
@@ -65,31 +72,13 @@ export async function getOwnerCap(
     senderAddress?: string
 ): Promise<string | null> {
     try {
-        const tx = new Transaction();
-
-        tx.moveCall({
+        const bytes = await devInspectMoveCallFirstReturnValueBytes(client, {
             target: `${config.packageId}::${MODULES.ASSEMBLY}::owner_cap_id`,
-            arguments: [tx.object(assemblyId)],
+            senderAddress,
+            arguments: (tx) => [tx.object(assemblyId)],
         });
-
-        const result = await client.devInspectTransactionBlock({
-            sender: senderAddress || process.env.ADMIN_ADDRESS || "0x",
-            transactionBlock: tx,
-        });
-
-        if (result.effects?.status?.status !== "success") {
-            console.warn("Error checking ownercap id:", result.effects?.status?.error);
-            return null;
-        }
-        const returnValues = result.results?.[0]?.returnValues;
-
-        if (returnValues && returnValues.length > 0) {
-            const [valueBytes] = returnValues[0];
-            const ownerCapId = bcs.Address.parse(Uint8Array.from(valueBytes));
-            return ownerCapId;
-        }
-
-        return null;
+        if (!bytes) return null;
+        return bcs.Address.parse(bytes);
     } catch (error) {
         console.warn("Failed to get ownerCap:", error instanceof Error ? error.message : error);
         return null;
@@ -99,26 +88,24 @@ export async function getOwnerCap(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const playerAddress = process.env.PLAYER_A_ADDRESS;
-
-        const ctx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const ctx = initializeContext(env.network, playerKey);
         const config = await hydrateWorldConfig(ctx);
         const { client, keypair } = ctx;
 
-        let networkNodeObject = deriveObjectId(
+        const networkNodeObject = deriveObjectId(
             config.objectRegistry,
             NWN_ITEM_ID,
             config.packageId
         );
 
-        let assemblyObject = deriveObjectId(
+        const assemblyObject = deriveObjectId(
             config.objectRegistry,
             ASSEMBLY_ITEM_ID,
             config.packageId
         );
 
-        let assemblyOwnerCap = await getOwnerCap(assemblyObject, client, config, playerAddress);
+        const assemblyOwnerCap = await getOwnerCap(assemblyObject, client, config, ctx.address);
         if (!assemblyOwnerCap) {
             throw new Error(`OwnerCap not found for ${assemblyObject}`);
         }
@@ -129,4 +116,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

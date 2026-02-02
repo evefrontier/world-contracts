@@ -5,7 +5,13 @@ import { toHex, fromHex } from "../utils/helper";
 import { keypairFromPrivateKey } from "../utils/client";
 import { LOCATION_HASH, GAME_CHARACTER_ID, STORAGE_A_ITEM_ID } from "../utils/constants";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import {
+    hydrateWorldConfig,
+    initializeContext,
+    handleError,
+    getEnvConfig,
+    requireEnv,
+} from "../utils/helper";
 
 /**
  * This script generates test signatures for location proof verification in Move tests.
@@ -40,13 +46,7 @@ async function generateTestSignature(
 ) {
     console.log("=== Generating Test Signature for Move Tests ===\n");
 
-    const privateKey = process.env.PRIVATE_KEY;
-
-    if (!privateKey) {
-        throw new Error("PRIVATE_KEY environment variable is required");
-    }
-
-    const keypair = keypairFromPrivateKey(privateKey);
+    const keypair = keypairFromPrivateKey(requireEnv("ADMIN_PRIVATE_KEY"));
 
     // Current unix time in ms + 50 days
     const deadline = BigInt(Date.now()) + BigInt(50 * 24 * 60 * 60 * 1000);
@@ -110,19 +110,16 @@ async function main() {
         await hydrateWorldConfig(ctx);
         const { keypair, config } = ctx;
         const adminAddress = keypair.getPublicKey().toSuiAddress();
-        const playerAddress = process.env.PLAYER_A_ADDRESS;
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerAddress = keypairFromPrivateKey(playerKey).getPublicKey().toSuiAddress();
 
-        if (!playerAddress) {
-            throw new Error(`Player address empty`);
-        }
-
-        let characterId = deriveObjectId(
+        const characterId = deriveObjectId(
             config.objectRegistry,
             GAME_CHARACTER_ID,
             config.packageId
         );
 
-        let targetStructureId = deriveObjectId(
+        const targetStructureId = deriveObjectId(
             config.objectRegistry,
             STORAGE_A_ITEM_ID,
             config.packageId
@@ -134,4 +131,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

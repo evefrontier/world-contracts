@@ -4,6 +4,7 @@ import { bcs } from "@mysten/sui/bcs";
 import { getConfig, MODULES } from "../utils/config";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
 import { signPersonalMessage, toHex } from "./signMessage";
+import { requireEnv } from "../utils/helper";
 
 const FUNCTION_NAME = "verify_signature";
 
@@ -18,12 +19,7 @@ async function main() {
     console.log("Sui Personal Message Signing with Struct");
 
     const network = (process.env.SUI_NETWORK as any) || "localnet";
-    const exportedKey = process.env.PRIVATE_KEY;
-    if (!exportedKey) {
-        throw new Error(
-            "PRIVATE_KEY environment variable is required. Create a .env file with PRIVATE_KEY=suiprivkey1..."
-        );
-    }
+    const exportedKey = requireEnv("ADMIN_PRIVATE_KEY");
 
     const client = createClient(network);
     const keypair = keypairFromPrivateKey(exportedKey);
@@ -98,4 +94,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

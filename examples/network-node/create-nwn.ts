@@ -26,6 +26,7 @@ async function createNetworkNode(
 ) {
     const { client, keypair, config } = ctx;
     const adminCap = await getAdminCapId(client, config.packageId);
+    if (!adminCap) throw new Error("AdminCap not found");
     const tx = new Transaction();
 
     const [nwn] = tx.moveCall({
@@ -33,7 +34,7 @@ async function createNetworkNode(
         arguments: [
             tx.object(config.objectRegistry),
             tx.object(characterObjectId),
-            tx.object(adminCap!),
+            tx.object(adminCap),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -45,7 +46,7 @@ async function createNetworkNode(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::share_network_node`,
-        arguments: [nwn, tx.object(adminCap!)],
+        arguments: [nwn, tx.object(adminCap)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -53,8 +54,6 @@ async function createNetworkNode(
         signer: keypair,
         options: { showEvents: true },
     });
-
-    console.log(result);
 
     const networkNodeEvent = extractEvent<{ network_node_id: string; owner_cap_id: string }>(
         result,
@@ -75,7 +74,7 @@ async function main() {
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
 
-        let characterObject = deriveObjectId(
+        const characterObject = deriveObjectId(
             ctx.config.objectRegistry,
             GAME_CHARACTER_ID,
             ctx.config.packageId
@@ -87,4 +86,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

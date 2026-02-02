@@ -6,7 +6,9 @@ import {
     handleError,
     getEnvConfig,
     getAdminCapId,
+    requireEnv,
 } from "../utils/helper";
+import { keypairFromPrivateKey } from "../utils/client";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { GAME_CHARACTER_ID } from "../utils/constants";
@@ -21,6 +23,7 @@ async function createCharacter(
 ): Promise<string> {
     const { client, keypair, config } = ctx;
     const adminCap = await getAdminCapId(client, config.packageId);
+    if (!adminCap) throw new Error("AdminCap not found )");
     console.log("\n==== Creating a character ====");
     console.log("Game Character ID:", gameCharacterId);
     console.log("Tribe ID:", TRIBE_ID);
@@ -38,7 +41,7 @@ async function createCharacter(
         target: `${config.packageId}::${MODULES.CHARACTER}::create_character`,
         arguments: [
             tx.object(config.objectRegistry),
-            tx.object(adminCap!),
+            tx.object(adminCap),
             tx.pure.u32(gameCharacterId),
             tx.pure.string(tenant),
             tx.pure.u32(TRIBE_ID),
@@ -49,7 +52,7 @@ async function createCharacter(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::share_character`,
-        arguments: [character, tx.object(adminCap!)],
+        arguments: [character, tx.object(adminCap)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -58,7 +61,7 @@ async function createCharacter(
         options: { showObjectChanges: true },
     });
 
-    console.log(result);
+    console.log("Transaction digest:", result.digest);
     return precomputedCharacterId;
 }
 
@@ -68,11 +71,12 @@ async function main() {
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
 
-        const playerAddress = process.env.PLAYER_A_ADDRESS;
-        await createCharacter(env.tenant, playerAddress!, GAME_CHARACTER_ID, ctx);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerAddress = keypairFromPrivateKey(playerKey).getPublicKey().toSuiAddress();
+        await createCharacter(env.tenant, playerAddress, GAME_CHARACTER_ID, ctx);
     } catch (error) {
         handleError(error);
     }
 }
 
-main().catch(console.error);
+main();

@@ -125,17 +125,18 @@ async function main() {
         await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
         const adminCap = await getAdminCapId(client, config.packageId);
+        if (!adminCap) throw new Error("AdminCap not found");
 
-        let networkNodeObject = deriveObjectId(
+        const networkNodeObject = deriveObjectId(
             config.objectRegistry,
             NWN_ITEM_ID,
             config.packageId
         );
 
-        await updateFuel(networkNodeObject, adminCap!, client, keypair, config);
+        await updateFuel(networkNodeObject, adminCap, client, keypair, config);
     } catch (error) {
         handleError(error);
     }
 }
 
-main().catch(console.error);
+main();

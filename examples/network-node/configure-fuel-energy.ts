@@ -11,12 +11,6 @@ import {
     getAdminCapId,
 } from "../utils/helper";
 
-const FUEL_TYPE_IDS = parseBigIntArray(process.env.FUEL_TYPE_IDS);
-const FUEL_EFFICIENCIES = parseBigIntArray(process.env.FUEL_EFFICIENCIES);
-
-const ASSEMBLY_TYPE_IDS = parseBigIntArray(process.env.ASSEMBLY_TYPE_IDS);
-const ENERGY_REQUIRED_VALUES = parseBigIntArray(process.env.ENERGY_REQUIRED_VALUES);
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Parse arrays from environment variables
@@ -103,11 +97,17 @@ async function main() {
     console.log("============= Configure Fuel and Energy example ==============\n");
 
     try {
+        const FUEL_TYPE_IDS = parseBigIntArray(process.env.FUEL_TYPE_IDS);
+        const FUEL_EFFICIENCIES = parseBigIntArray(process.env.FUEL_EFFICIENCIES);
+        const ASSEMBLY_TYPE_IDS = parseBigIntArray(process.env.ASSEMBLY_TYPE_IDS);
+        const ENERGY_REQUIRED_VALUES = parseBigIntArray(process.env.ENERGY_REQUIRED_VALUES);
+
         const env = getEnvConfig();
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
         const adminCap = await getAdminCapId(client, config.packageId);
+        if (!adminCap) throw new Error("AdminCap not found");
 
         // Configure fuel efficiencies
         if (FUEL_TYPE_IDS.length > 0 && FUEL_EFFICIENCIES.length > 0) {
@@ -121,7 +121,7 @@ async function main() {
                 await setFuelEfficiency(
                     FUEL_TYPE_IDS[i],
                     FUEL_EFFICIENCIES[i],
-                    adminCap!,
+                    adminCap,
                     client,
                     keypair,
                     config
@@ -144,7 +144,7 @@ async function main() {
                 await setEnergyConfig(
                     ASSEMBLY_TYPE_IDS[i],
                     ENERGY_REQUIRED_VALUES[i],
-                    adminCap!,
+                    adminCap,
                     client,
                     keypair,
                     config
@@ -159,4 +159,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

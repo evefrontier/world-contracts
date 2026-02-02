@@ -1,7 +1,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { SuiClient } from "@mysten/sui/client";
-import { Transaction } from "@mysten/sui/transactions";
 import { getConfig, MODULES } from "../utils/config";
+import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
 
 export async function getOwnerCap(
     gateId: string,
@@ -10,30 +10,18 @@ export async function getOwnerCap(
     senderAddress?: string
 ): Promise<string | null> {
     try {
-        const tx = new Transaction();
-
-        tx.moveCall({
+        const bytes = await devInspectMoveCallFirstReturnValueBytes(client, {
             target: `${config.packageId}::${MODULES.GATE}::owner_cap_id`,
-            arguments: [tx.object(gateId)],
+            senderAddress,
+            arguments: (tx) => [tx.object(gateId)],
         });
 
-        const result = await client.devInspectTransactionBlock({
-            sender: senderAddress || process.env.ADMIN_ADDRESS || "0x",
-            transactionBlock: tx,
-        });
-
-        if (result.effects?.status?.status !== "success") {
-            console.warn("Error checking ownercap id:", result.effects?.status?.error);
+        if (!bytes) {
+            console.warn("Error checking ownercap id");
             return null;
         }
 
-        const returnValues = result.results?.[0]?.returnValues;
-        if (returnValues && returnValues.length > 0) {
-            const [valueBytes] = returnValues[0];
-            return bcs.Address.parse(Uint8Array.from(valueBytes));
-        }
-
-        return null;
+        return bcs.Address.parse(bytes);
     } catch (error) {
         console.warn("Failed to get ownerCap:", error instanceof Error ? error.message : error);
         return null;

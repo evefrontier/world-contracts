@@ -15,12 +15,8 @@ import {
     handleError,
     hydrateWorldConfig,
     initializeContext,
+    requireEnv,
 } from "../utils/helper";
-
-function requireNonEmpty(value: string, name: string): string {
-    if (!value) throw new Error(`${name} is required`);
-    return value;
-}
 
 async function getOwnedJumpPermitId(
     client: SuiClient,
@@ -54,7 +50,9 @@ async function jumpWithPermit(
     );
 
     const jumpPermitId = await getOwnedJumpPermitId(client, address, config.packageId);
-    requireNonEmpty(jumpPermitId || "", "You should own a JumpPermit object");
+    if (!jumpPermitId) {
+        throw new Error("You should own a JumpPermit object");
+    }
 
     const tx = new Transaction();
     tx.moveCall({
@@ -94,8 +92,8 @@ async function main() {
     console.log("============= Jump With JumpPermit ==============\n");
     try {
         const env = getEnvConfig();
-        let playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const ctx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const ctx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(ctx);
         await jumpWithPermit(ctx, BigInt(GAME_CHARACTER_ID), GATE_ITEM_ID_1, GATE_ITEM_ID_2);
     } catch (error) {
@@ -103,4 +101,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

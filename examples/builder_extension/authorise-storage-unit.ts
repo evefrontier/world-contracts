@@ -3,10 +3,16 @@ import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { GAME_CHARACTER_ID, STORAGE_A_ITEM_ID } from "../utils/constants";
-import { getEnvConfig, handleError, hydrateWorldConfig, initializeContext } from "../utils/helper";
+import {
+    getEnvConfig,
+    handleError,
+    hydrateWorldConfig,
+    initializeContext,
+    requireEnv,
+} from "../utils/helper";
 import { getOwnerCap as getStorageUnitOwnerCap } from "../storage-unit/helper";
 
-const builderPackageId = process.env.BUILDER_PACKAGE_ID;
+const builderPackageId = requireEnv("BUILDER_PACKAGE_ID");
 const characterItemId = GAME_CHARACTER_ID;
 const storageUnitItemId = STORAGE_A_ITEM_ID;
 
@@ -30,6 +36,9 @@ async function authoriseStorageUnit(
         config,
         address
     );
+    if (!storageUnitOwnerCapId) {
+        throw new Error(`OwnerCap not found for storage unit ${storageUnitId}`);
+    }
 
     const authType = `${builderPackageId}::gate::XAuth`;
 
@@ -38,19 +47,19 @@ async function authoriseStorageUnit(
     const [storageUnitOwnerCap] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
-        arguments: [tx.object(characterId), tx.object(storageUnitOwnerCapId!)],
+        arguments: [tx.object(characterId), tx.object(storageUnitOwnerCapId)],
     });
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.GATE}::authorize_extension`,
         typeArguments: [authType],
-        arguments: [tx.object(storageUnitId!), storageUnitOwnerCap!],
+        arguments: [tx.object(storageUnitId), storageUnitOwnerCap],
     });
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
-        typeArguments: [`${config.packageId}::${MODULES.GATE}::Gate`],
-        arguments: [tx.object(characterId), storageUnitOwnerCap!],
+        typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
+        arguments: [tx.object(characterId), storageUnitOwnerCap],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -68,8 +77,8 @@ async function authoriseStorageUnit(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const ctx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const ctx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(ctx);
         await authoriseStorageUnit(ctx, storageUnitItemId, BigInt(characterItemId));
     } catch (error) {
@@ -77,4 +86,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

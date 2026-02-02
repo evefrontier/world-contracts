@@ -51,7 +51,7 @@ async function main() {
         const { client } = ctx;
 
         const adminCapId = await getAdminCapId(client, config.packageId);
-        if (!adminCapId) throw new Error("AdminCap not found (check ADMIN_ADDRESS / access setup)");
+        if (!adminCapId) throw new Error("AdminCap not found");
 
         const gateConfigId = config.gateConfig;
         if (!gateConfigId) throw new Error("GateConfig object not found");
@@ -65,4 +65,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

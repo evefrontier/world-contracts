@@ -29,7 +29,7 @@ async function createGate(
 ) {
     const { client, keypair, config } = ctx;
     const adminCap = await getAdminCapId(client, config.packageId);
-    if (!adminCap) throw new Error("AdminCap not found (check ADMIN_ADDRESS / access setup)");
+    if (!adminCap) throw new Error("AdminCap not found");
 
     const characterObjectId = deriveObjectId(config.objectRegistry, characterId, config.packageId);
     const networkNodeObjectId = deriveObjectId(config.objectRegistry, nwnId, config.packageId);
@@ -59,8 +59,6 @@ async function createGate(
         options: { showEvents: true, showEffects: true, showObjectChanges: true },
     });
 
-    console.log(result);
-
     const gateEvent = extractEvent<{ assembly_id: string; owner_cap_id: string }>(
         result,
         "::gate::GateCreatedEvent"
@@ -86,4 +84,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

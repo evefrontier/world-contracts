@@ -14,7 +14,13 @@ import {
 } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import {
+    getEnvConfig,
+    handleError,
+    hydrateWorldConfig,
+    initializeContext,
+    requireEnv,
+} from "../utils/helper";
 
 async function withdraw(
     storageUnit: string,
@@ -67,19 +73,12 @@ async function withdraw(
         arguments: [tx.object(characterId), ownerCap],
     });
 
-    const inspectResult = await client.devInspectTransactionBlock({
-        transactionBlock: tx,
-        sender: playerKeypair.getPublicKey().toSuiAddress(),
-    });
-
-    console.log(inspectResult);
-
     const result = await client.signAndExecuteTransaction({
         transaction: tx,
         signer: playerKeypair,
         options: { showEvents: true },
     });
-    console.log(result);
+    console.log("Transaction digest:", result.digest);
 
     const withdrawEvent = result.events?.find((event) =>
         event.type.endsWith("::inventory::ItemWithdrawnEvent")
@@ -95,8 +94,8 @@ async function withdraw(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const playerCtx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerCtx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(playerCtx);
         const { client, keypair, config } = playerCtx;
         const playerAddress = playerCtx.address;
@@ -132,4 +131,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

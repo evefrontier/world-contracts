@@ -7,6 +7,7 @@ import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { keypairFromPrivateKey } from "../utils/client";
+import { requireEnv } from "../utils/helper";
 
 const FUEL_TYPE_ID = 78437n;
 const FUEL_QUANTITY = 2n;
@@ -80,24 +81,23 @@ async function depositFuel(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const playerAddress = process.env.PLAYER_A_ADDRESS;
-        const playerCtx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerCtx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(playerCtx);
         const adminKeypair = keypairFromPrivateKey(env.adminExportedKey);
         const adminAddress = adminKeypair.getPublicKey().toSuiAddress();
         const config = playerCtx.config;
 
-        let networkNodeObject = deriveObjectId(
+        const networkNodeObject = deriveObjectId(
             config.objectRegistry,
             NWN_ITEM_ID,
             config.packageId
         );
-        let networkNodeOwnerCap = await getOwnerCap(
+        const networkNodeOwnerCap = await getOwnerCap(
             networkNodeObject,
             playerCtx.client,
             config,
-            playerAddress
+            playerCtx.address
         );
         if (!networkNodeOwnerCap) {
             throw new Error(`OwnerCap not found for network node ${networkNodeObject}`);
@@ -108,7 +108,7 @@ async function main() {
             networkNodeOwnerCap,
             FUEL_TYPE_ID,
             FUEL_QUANTITY,
-            playerAddress!,
+            playerCtx.address,
             adminAddress,
             playerCtx,
             adminKeypair
@@ -118,4 +118,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

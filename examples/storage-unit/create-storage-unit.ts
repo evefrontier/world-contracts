@@ -35,7 +35,7 @@ async function createStorageUnit(
             tx.object(config.objectRegistry),
             tx.object(networkNodeObjectId),
             tx.object(characterObjectId),
-            tx.object(adminCap!),
+            tx.object(adminCap),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure.u64(MAX_CAPACITY),
@@ -54,7 +54,7 @@ async function createStorageUnit(
         options: { showEvents: true },
     });
 
-    console.log(result);
+    console.log("Transaction digest:", result.digest);
 
     const storageUnitEvent = result.events?.find((event) =>
         event.type.endsWith("::storage_unit::StorageUnitCreatedEvent")
@@ -79,13 +79,14 @@ async function main() {
         await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
         const adminCap = await getAdminCapId(client, config.packageId);
+        if (!adminCap) throw new Error("AdminCap not found");
 
-        let characterObject = deriveObjectId(
+        const characterObject = deriveObjectId(
             config.objectRegistry,
             GAME_CHARACTER_ID,
             config.packageId
         );
-        let networkNodeObject = deriveObjectId(
+        const networkNodeObject = deriveObjectId(
             config.objectRegistry,
             NWN_ITEM_ID,
             config.packageId
@@ -96,7 +97,7 @@ async function main() {
             networkNodeObject,
             STORAGE_A_TYPE_ID,
             STORAGE_A_ITEM_ID,
-            adminCap!,
+            adminCap,
             client,
             keypair,
             config
@@ -106,4 +107,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

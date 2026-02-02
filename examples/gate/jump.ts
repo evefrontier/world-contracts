@@ -9,6 +9,7 @@ import {
     handleError,
     hydrateWorldConfig,
     initializeContext,
+    requireEnv,
 } from "../utils/helper";
 
 async function jump(
@@ -39,8 +40,6 @@ async function jump(
         options: { showEvents: true, showEffects: true, showObjectChanges: true },
     });
 
-    console.log(result);
-
     const jumpEvent = extractEvent<{
         source_gate_id: string;
         destination_gate_id: string;
@@ -57,8 +56,8 @@ async function jump(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const ctx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const ctx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(ctx);
         await jump(ctx, GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2);
     } catch (error) {
@@ -66,4 +65,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

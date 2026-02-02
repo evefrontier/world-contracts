@@ -14,7 +14,13 @@ import {
 } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import {
+    getEnvConfig,
+    handleError,
+    hydrateWorldConfig,
+    initializeContext,
+    requireEnv,
+} from "../utils/helper";
 
 async function chainItemToGame(
     storageUnit: string,
@@ -56,19 +62,12 @@ async function chainItemToGame(
         arguments: [tx.object(characterId), ownerCap],
     });
 
-    const inspectResult = await client.devInspectTransactionBlock({
-        transactionBlock: tx,
-        sender: playerKeypair.getPublicKey().toSuiAddress(),
-    });
-
-    console.log(inspectResult);
-
     const result = await client.signAndExecuteTransaction({
         transaction: tx,
         signer: playerKeypair,
         options: { showEvents: true },
     });
-    console.log(result);
+    console.log("Transaction digest:", result.digest);
 
     const burnedEvent = result.events?.find((event) =>
         event.type.endsWith("::inventory::ItemBurnedEvent")
@@ -80,25 +79,29 @@ async function chainItemToGame(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const playerAddress = process.env.PLAYER_A_ADDRESS;
-        const playerCtx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerCtx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(playerCtx);
         const { client, keypair, config } = playerCtx;
 
-        let characterObject = deriveObjectId(
+        const characterObject = deriveObjectId(
             config.objectRegistry,
             GAME_CHARACTER_ID,
             config.packageId
         );
 
-        let storageUnit = deriveObjectId(
+        const storageUnit = deriveObjectId(
             config.objectRegistry,
             STORAGE_A_ITEM_ID,
             config.packageId
         );
 
-        let storageUnitOwnerCap = await getOwnerCap(storageUnit, client, config, playerAddress);
+        const storageUnitOwnerCap = await getOwnerCap(
+            storageUnit,
+            client,
+            config,
+            playerCtx.address
+        );
         if (!storageUnitOwnerCap) {
             throw new Error(`OwnerCap not found for ${storageUnit}`);
         }
@@ -117,4 +120,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

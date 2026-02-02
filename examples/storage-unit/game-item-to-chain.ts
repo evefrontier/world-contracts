@@ -10,6 +10,7 @@ import {
     handleError,
     getEnvConfig,
     shareHydratedConfig,
+    requireEnv,
 } from "../utils/helper";
 import {
     GAME_CHARACTER_ID,
@@ -101,37 +102,36 @@ async function gameItemToChain(
         options: { showEvents: true },
     });
 
-    console.log(result);
-
+    console.log("Transaction digest:", result.digest);
     console.log("Item Id:", itemId);
 }
 
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
-        const playerCtx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerCtx = initializeContext(env.network, playerKey);
         shareHydratedConfig(ctx, playerCtx);
         const { client, keypair, config } = ctx;
 
         const playerAddress = playerCtx.address;
         const adminAddress = keypair.getPublicKey().toSuiAddress();
 
-        let characterObject = deriveObjectId(
+        const characterObject = deriveObjectId(
             config.objectRegistry,
             GAME_CHARACTER_ID,
             config.packageId
         );
 
-        let storageUnit = deriveObjectId(
+        const storageUnit = deriveObjectId(
             config.objectRegistry,
             STORAGE_A_ITEM_ID,
             config.packageId
         );
 
-        let storageUnitOwnerCap = await getOwnerCap(storageUnit, client, config, playerAddress);
+        const storageUnitOwnerCap = await getOwnerCap(storageUnit, client, config, playerAddress);
         if (!storageUnitOwnerCap) {
             throw new Error(`OwnerCap not found for ${storageUnit}`);
         }
@@ -156,4 +156,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

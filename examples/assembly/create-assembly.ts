@@ -30,6 +30,7 @@ async function createAssembly(
     const { client, keypair } = ctx;
     const config = ctx.config as HydratedWorldConfig;
     const adminCap = await getAdminCapId(client, config.packageId);
+    if (!adminCap) throw new Error("AdminCap not found");
     const tx = new Transaction();
 
     const [assembly] = tx.moveCall({
@@ -38,7 +39,7 @@ async function createAssembly(
             tx.object(config.objectRegistry),
             tx.object(networkNodeObjectId),
             tx.object(characterObjectId),
-            tx.object(adminCap!),
+            tx.object(adminCap),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -47,7 +48,7 @@ async function createAssembly(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.ASSEMBLY}::share_assembly`,
-        arguments: [assembly, tx.object(adminCap!)],
+        arguments: [assembly, tx.object(adminCap)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -55,8 +56,6 @@ async function createAssembly(
         signer: keypair,
         options: { showEvents: true },
     });
-
-    console.log(result);
 
     const assemblyEvent = extractEvent<{ assembly_id: string; owner_cap_id: string }>(
         result,
@@ -78,12 +77,12 @@ async function main() {
         const config = await hydrateWorldConfig(ctx);
         ctx.config = config;
 
-        let characterObject = deriveObjectId(
+        const characterObject = deriveObjectId(
             config.objectRegistry,
             GAME_CHARACTER_ID,
             config.packageId
         );
-        let networkNodeObject = deriveObjectId(
+        const networkNodeObject = deriveObjectId(
             config.objectRegistry,
             NWN_ITEM_ID,
             config.packageId
@@ -101,4 +100,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

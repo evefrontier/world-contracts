@@ -16,6 +16,7 @@ import {
     hexToBytes,
     hydrateWorldConfig,
     initializeContext,
+    requireEnv,
 } from "../utils/helper";
 import { getOwnerCap } from "./helper";
 
@@ -94,8 +95,8 @@ async function linkGates(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const ctx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const ctx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(ctx);
         await linkGates(ctx, GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2);
     } catch (error) {
@@ -103,4 +104,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();

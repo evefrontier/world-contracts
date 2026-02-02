@@ -1,25 +1,14 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { bcs } from "@mysten/sui/bcs";
 import { MODULES } from "../utils/config";
 import {
-    extractEvent,
-    getAdminCapId,
     getEnvConfig,
     handleError,
-    hexToBytes,
     hydrateWorldConfig,
     initializeContext,
-    shareHydratedConfig,
+    requireEnv,
 } from "../utils/helper";
-import {
-    GAME_CHARACTER_ID,
-    GATE_ITEM_ID_1,
-    GATE_ITEM_ID_2,
-    GATE_TYPE_ID,
-    LOCATION_HASH,
-    NWN_ITEM_ID,
-} from "../utils/constants";
+import { GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2, NWN_ITEM_ID } from "../utils/constants";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { getOwnerCap } from "./helper";
 
@@ -78,8 +67,8 @@ async function main() {
     try {
         const env = getEnvConfig();
 
-        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const playerCtx = initializeContext(env.network, playerKey!);
+        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerCtx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(playerCtx);
 
         await onlineGate(playerCtx, GAME_CHARACTER_ID, NWN_ITEM_ID, GATE_ITEM_ID_1);
@@ -89,4 +78,4 @@ async function main() {
     }
 }
 
-main().catch(console.error);
+main();
