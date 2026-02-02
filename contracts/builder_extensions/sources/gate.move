@@ -1,3 +1,16 @@
+/// Example builder extension for `world::gate` using the typed-witness extension pattern.
+///
+/// This module demonstrates how builders/players can enforce custom jump rules by issuing a
+/// `world::gate::JumpPermit` from extension logic:
+/// - Gate owners configure a gate to use this extension by authorizing the witness type `XAuth`
+///   on the gate (via `world::gate::authorize_extension<XAuth>`).
+/// - Once configured, travelers must use `world::gate::jump_with_permit`; default `jump` is not allowed.
+/// - This extension issues permits through `issue_jump_permit`, which:
+///   - checks a simple rule (character must belong to the configured starter `tribe`)
+///   - sets an expiry window (currently 5 days from `Clock`)
+///   - calls `world::gate::issue_jump_permit<XAuth>` to mint a single-use permit to the character.
+///
+/// `GateRules` is a shared object holding configurable parameters,
 #[allow(unused_use)]
 module builder_extensions::gate;
 
@@ -12,6 +25,8 @@ use world::{
 #[error(code = 0)]
 const ENotStarterTribe: vector<u8> = b"Character is not a starter tribe";
 
+// This can be any type that is authorized to call the `issue_jump_permit` function.
+// eg: AlgorithimicWarfareAuth, TribalAuth, GoonCorpAuth, etc.
 public struct XAuth has drop {}
 
 // Can add more rules
