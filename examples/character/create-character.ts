@@ -68,7 +68,7 @@ async function main() {
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
 
-        const playerAddress = process.env.PLAYER_ADDRESS;
+        const playerAddress = process.env.PLAYER_A_ADDRESS;
         await createCharacter(env.tenant, playerAddress!, GAME_CHARACTER_ID, ctx);
     } catch (error) {
         handleError(error);

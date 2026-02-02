@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { createClient, keypairFromPrivateKey } from "./client";
@@ -26,6 +28,14 @@ export interface InitializedContext {
     config: WorldConfig;
     address: string;
 }
+
+type PublishObjectChange = {
+    type?: string;
+    packageId?: string;
+    objectType?: string;
+    objectId?: string;
+    owner?: { AddressOwner?: string } | unknown;
+};
 
 export function hexToBytes(hexString: string): Uint8Array {
     const hex = hexString.startsWith("0x") ? hexString.slice(2) : hexString;
@@ -147,4 +157,61 @@ export async function hydrateWorldConfig(
  */
 export function shareHydratedConfig(from: InitializedContext, to: InitializedContext) {
     to.config = from.config;
+}
+
+export function resolvePublishOutputPath(relativePath: string): string {
+    return path.resolve(process.cwd(), relativePath);
+}
+
+export function readPublishOutputFile(filePath: string): { objectChanges: PublishObjectChange[] } {
+    const raw = fs.readFileSync(filePath, "utf8");
+    let parsed: { objectChanges?: unknown };
+    try {
+        parsed = JSON.parse(raw) as { objectChanges?: unknown };
+    } catch {
+        throw new Error(`Invalid JSON in${filePath}`);
+    }
+
+    if (!Array.isArray(parsed.objectChanges)) {
+        throw new Error(`Invalid publish output file (missing objectChanges[]): ${filePath}`);
+    }
+
+    return { objectChanges: parsed.objectChanges as PublishObjectChange[] };
+}
+
+export function getPublishedPackageId(changes: PublishObjectChange[]): string {
+    const published = changes.find((c) => c?.type === "published");
+    if (typeof published?.packageId !== "string") {
+        throw new Error("Publish output missing published packageId");
+    }
+    return published.packageId;
+}
+
+// TODO: use grpc query the object id instead of the publish output file
+export function findCreatedObjectId(
+    changes: PublishObjectChange[],
+    objectType: string,
+    opts?: { addressOwner?: string }
+): string | undefined {
+    for (const c of changes) {
+        if (c?.type !== "created") continue;
+        if (c?.objectType !== objectType) continue;
+        if (typeof c?.objectId !== "string") continue;
+
+        if (opts?.addressOwner) {
+            const owner = c.owner as any;
+            if (owner?.AddressOwner !== opts.addressOwner) continue;
+        }
+
+        return c.objectId;
+    }
+}
+
+export function requireId(label: string, id: string | undefined): string {
+    if (!id) throw new Error(`${label} not found`);
+    return id;
+}
+
+export function typeName(packageId: string, moduleName: string, structName: string): string {
+    return `${packageId}::${moduleName}::${structName}`;
 }

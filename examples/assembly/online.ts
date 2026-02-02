@@ -100,7 +100,7 @@ async function main() {
     try {
         const env = getEnvConfig();
         const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
-        const playerAddress = process.env.PLAYER_ADDRESS;
+        const playerAddress = process.env.PLAYER_A_ADDRESS;
 
         const ctx = initializeContext(env.network, playerKey!);
         const config = await hydrateWorldConfig(ctx);

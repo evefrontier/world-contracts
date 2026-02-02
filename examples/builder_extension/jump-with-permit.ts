@@ -37,18 +37,21 @@ async function getOwnedJumpPermitId(
     return first?.objectId ?? null;
 }
 
-async function jumpWithPermit(ctx: ReturnType<typeof initializeContext>) {
+async function jumpWithPermit(
+    ctx: ReturnType<typeof initializeContext>,
+    characterItemId: bigint,
+    sourceGateItemId: bigint,
+    destinationGateItemId: bigint
+) {
     const { client, keypair, config, address } = ctx;
 
-    const characterId =
-        process.env.CHARACTER_ID ||
-        deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
-    const sourceGateId =
-        process.env.SOURCE_GATE_ID ||
-        deriveObjectId(config.objectRegistry, GATE_ITEM_ID_1, config.packageId);
-    const destinationGateId =
-        process.env.DESTINATION_GATE_ID ||
-        deriveObjectId(config.objectRegistry, GATE_ITEM_ID_2, config.packageId);
+    const characterId = deriveObjectId(config.objectRegistry, characterItemId, config.packageId);
+    const sourceGateId = deriveObjectId(config.objectRegistry, sourceGateItemId, config.packageId);
+    const destinationGateId = deriveObjectId(
+        config.objectRegistry,
+        destinationGateItemId,
+        config.packageId
+    );
 
     const jumpPermitId = await getOwnedJumpPermitId(client, address, config.packageId);
     requireNonEmpty(jumpPermitId || "", "You should own a JumpPermit object");
@@ -91,9 +94,10 @@ async function main() {
     console.log("============= Jump With JumpPermit ==============\n");
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.playerExportedKey!);
+        let playerKey = process.env.PLAYER_A_PRIVATE_KEY;
+        const ctx = initializeContext(env.network, playerKey!);
         await hydrateWorldConfig(ctx);
-        await jumpWithPermit(ctx);
+        await jumpWithPermit(ctx, BigInt(GAME_CHARACTER_ID), GATE_ITEM_ID_1, GATE_ITEM_ID_2);
     } catch (error) {
         handleError(error);
     }

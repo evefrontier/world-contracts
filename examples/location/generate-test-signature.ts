@@ -106,11 +106,11 @@ async function generateTestSignature(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey);
+        const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
         const { keypair, config } = ctx;
         const adminAddress = keypair.getPublicKey().toSuiAddress();
-        const playerAddress = env.playerAddress;
+        const playerAddress = process.env.PLAYER_A_ADDRESS;
 
         if (!playerAddress) {
             throw new Error(`Player address empty`);
