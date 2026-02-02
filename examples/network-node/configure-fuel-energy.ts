@@ -3,7 +3,13 @@ import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
-import { initializeContext, handleError, getEnvConfig, getAdminCapId } from "../utils/helper";
+import {
+    hydrateWorldConfig,
+    initializeContext,
+    handleError,
+    getEnvConfig,
+    getAdminCapId,
+} from "../utils/helper";
 
 const FUEL_TYPE_IDS = parseBigIntArray(process.env.FUEL_TYPE_IDS);
 const FUEL_EFFICIENCIES = parseBigIntArray(process.env.FUEL_EFFICIENCIES);
@@ -98,7 +104,8 @@ async function main() {
 
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey);
+        const ctx = initializeContext(env.network, env.adminExportedKey);
+        await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
         const adminCap = await getAdminCapId(client, config.packageId);
 

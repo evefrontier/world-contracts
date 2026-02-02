@@ -27,6 +27,7 @@ prd.md
 contracts/world/sources/primitives/template.move
 contracts/world/.replay/
 contracts/verify/
+contracts/**/Published.toml
 
 # Error decoder build artifacts
 tools/error-decoder/*.js

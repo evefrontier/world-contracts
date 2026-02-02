@@ -14,7 +14,7 @@ import {
 } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 async function withdraw(
     storageUnit: string,
@@ -95,7 +95,9 @@ async function withdraw(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerCtx = initializeContext(env.network, env.playerExportedKey!);
+        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerCtx = initializeContext(env.network, playerKey!);
+        await hydrateWorldConfig(playerCtx);
         const { client, keypair, config } = playerCtx;
         const playerAddress = playerCtx.address;
 

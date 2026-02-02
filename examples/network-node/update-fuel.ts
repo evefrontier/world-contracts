@@ -11,7 +11,13 @@ import {
 } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
-import { initializeContext, handleError, getEnvConfig, getAdminCapId } from "../utils/helper";
+import {
+    hydrateWorldConfig,
+    initializeContext,
+    handleError,
+    getEnvConfig,
+    getAdminCapId,
+} from "../utils/helper";
 
 /**
  * Updates fuel for a network node and handles fuel depletion if it occurs.
@@ -115,7 +121,8 @@ async function updateFuel(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey);
+        const ctx = initializeContext(env.network, env.adminExportedKey);
+        await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
         const adminCap = await getAdminCapId(client, config.packageId);
 

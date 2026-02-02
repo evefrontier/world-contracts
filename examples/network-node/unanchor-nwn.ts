@@ -6,7 +6,13 @@ import { getConfig, MODULES } from "../utils/config";
 import { getConnectedAssemblies, getAssemblyTypes } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { NWN_ITEM_ID } from "../utils/constants";
-import { initializeContext, handleError, getEnvConfig, getAdminCapId } from "../utils/helper";
+import {
+    hydrateWorldConfig,
+    initializeContext,
+    handleError,
+    getEnvConfig,
+    getAdminCapId,
+} from "../utils/helper";
 
 /**
  * Unanchors (destroys) the network node and handles connected assemblies.
@@ -81,7 +87,8 @@ async function unanchor(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey!);
+        const ctx = initializeContext(env.network, env.adminExportedKey!);
+        await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
 
         const adminCapId = await getAdminCapId(client, config.packageId);

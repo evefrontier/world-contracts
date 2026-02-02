@@ -5,7 +5,7 @@ import { toHex, fromHex } from "../utils/helper";
 import { keypairFromPrivateKey } from "../utils/client";
 import { LOCATION_HASH, GAME_CHARACTER_ID, STORAGE_A_ITEM_ID } from "../utils/constants";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 /**
  * This script generates test signatures for location proof verification in Move tests.
@@ -107,6 +107,7 @@ async function main() {
     try {
         const env = getEnvConfig();
         const ctx = initializeContext(env.network, env.exportedKey);
+        await hydrateWorldConfig(ctx);
         const { keypair, config } = ctx;
         const adminAddress = keypair.getPublicKey().toSuiAddress();
         const playerAddress = env.playerAddress;

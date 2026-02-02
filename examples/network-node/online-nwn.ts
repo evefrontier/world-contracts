@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { getOwnerCap } from "./helper";
@@ -57,7 +57,9 @@ async function online(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.playerExportedKey!);
+        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const ctx = initializeContext(env.network, playerKey!);
+        await hydrateWorldConfig(ctx);
         const playerAddress = ctx.address;
 
         let networkNodeObject = deriveObjectId(

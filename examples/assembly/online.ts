@@ -3,10 +3,10 @@ import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { getConfig, MODULES } from "../utils/config";
+import { HydratedWorldConfig, getConfig, MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { NWN_ITEM_ID, ASSEMBLY_ITEM_ID, GAME_CHARACTER_ID } from "../utils/constants";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 export async function online(
     networkObjectId: string,
@@ -14,7 +14,7 @@ export async function online(
     ownerCapId: string,
     client: SuiClient,
     keypair: Ed25519Keypair,
-    config: ReturnType<typeof getConfig>
+    config: HydratedWorldConfig
 ) {
     console.log("\n==== Bringing Assembly Online ====");
 
@@ -61,7 +61,7 @@ export async function online(
 export async function getOwnerCap(
     assemblyId: string,
     client: SuiClient,
-    config: ReturnType<typeof getConfig>,
+    config: HydratedWorldConfig,
     senderAddress?: string
 ): Promise<string | null> {
     try {
@@ -99,8 +99,12 @@ export async function getOwnerCap(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.playerExportedKey!);
-        const { client, keypair, config } = ctx;
+        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerAddress = process.env.PLAYER_ADDRESS;
+
+        const ctx = initializeContext(env.network, playerKey!);
+        const config = await hydrateWorldConfig(ctx);
+        const { client, keypair } = ctx;
 
         let networkNodeObject = deriveObjectId(
             config.objectRegistry,
@@ -114,7 +118,7 @@ async function main() {
             config.packageId
         );
 
-        let assemblyOwnerCap = await getOwnerCap(assemblyObject, client, config, env.playerAddress);
+        let assemblyOwnerCap = await getOwnerCap(assemblyObject, client, config, playerAddress);
         if (!assemblyOwnerCap) {
             throw new Error(`OwnerCap not found for ${assemblyObject}`);
         }

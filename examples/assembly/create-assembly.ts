@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
-import { MODULES } from "../utils/config";
+import { HydratedWorldConfig, MODULES } from "../utils/config";
 import {
     initializeContext,
     handleError,
@@ -9,6 +9,7 @@ import {
     hexToBytes,
     getEnvConfig,
     getAdminCapId,
+    hydrateWorldConfig,
 } from "../utils/helper";
 import {
     LOCATION_HASH,
@@ -26,7 +27,8 @@ async function createAssembly(
     itemId: bigint,
     ctx: ReturnType<typeof initializeContext>
 ) {
-    const { client, keypair, config } = ctx;
+    const { client, keypair } = ctx;
+    const config = ctx.config as HydratedWorldConfig;
     const adminCap = await getAdminCapId(client, config.packageId);
     const tx = new Transaction();
 
@@ -72,8 +74,9 @@ async function createAssembly(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey);
-        const config = ctx.config;
+        const ctx = initializeContext(env.network, env.adminExportedKey);
+        const config = await hydrateWorldConfig(ctx);
+        ctx.config = config;
 
         let characterObject = deriveObjectId(
             config.objectRegistry,

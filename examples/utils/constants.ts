@@ -5,7 +5,8 @@ export const CLOCK_OBJECT_ID = "0x6";
 export const TENANT = "dev";
 
 // Change this value, if you want to create a new character
-export const GAME_CHARACTER_ID = 811877;
+export const GAME_CHARACTER_ID = 811870;
+export const GAME_CHARACTER_B_ID = 811879;
 
 // Location
 export const LOCATION_HASH = "0x16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049";
@@ -15,7 +16,7 @@ export const PROOF =
 // Network Node Defaults
 export const NWN_TYPE_ID = 555n;
 // Change this value, to create a new network node
-export const NWN_ITEM_ID = 555000003n;
+export const NWN_ITEM_ID = 5550000011n;
 
 // Assembly Defaults
 export const ASSEMBLY_TYPE_ID = 87119n;
@@ -25,6 +26,12 @@ export const ASSEMBLY_ITEM_ID = 9999000005n;
 // Storage Unit Defaults
 export const STORAGE_A_TYPE_ID = 88082n;
 export const STORAGE_A_ITEM_ID = 888800006n;
+
+// Gate Defaults
+export const GATE_TYPE_ID = 90184n;
+export const MAX_DISTANCE = 1_000_000_000n;
+export const GATE_ITEM_ID_1 = 90185n;
+export const GATE_ITEM_ID_2 = 90186n;
 
 // Item Default
 export const ITEM_A_TYPE_ID = 446n;

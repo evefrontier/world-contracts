@@ -4,7 +4,13 @@ import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import {
+    hydrateWorldConfig,
+    initializeContext,
+    handleError,
+    getEnvConfig,
+    shareHydratedConfig,
+} from "../utils/helper";
 import {
     GAME_CHARACTER_ID,
     STORAGE_A_ITEM_ID,
@@ -103,8 +109,11 @@ async function gameItemToChain(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey);
-        const playerCtx = initializeContext(env.network, env.playerExportedKey!);
+        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const ctx = initializeContext(env.network, env.adminExportedKey);
+        await hydrateWorldConfig(ctx);
+        const playerCtx = initializeContext(env.network, playerKey!);
+        shareHydratedConfig(ctx, playerCtx);
         const { client, keypair, config } = ctx;
 
         const playerAddress = playerCtx.address;

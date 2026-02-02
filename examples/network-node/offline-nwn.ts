@@ -6,7 +6,7 @@ import { getConfig, MODULES } from "../utils/config";
 import { getConnectedAssemblies, getOwnerCap, getAssemblyTypes } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 /**
  * Takes the network node offline and handles connected assemblies.
@@ -108,7 +108,10 @@ async function offline(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.playerExportedKey!);
+        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerAddress = process.env.PLAYER_ADDRESS;
+        const ctx = initializeContext(env.network, playerKey!);
+        await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
 
         let networkNodeObject = deriveObjectId(
@@ -120,7 +123,7 @@ async function main() {
             networkNodeObject,
             client,
             config,
-            env.playerAddress
+            playerAddress
         );
         if (!networkNodeOwnerCap) {
             throw new Error(`OwnerCap not found for network node ${networkNodeObject}`);

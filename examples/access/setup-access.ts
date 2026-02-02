@@ -1,8 +1,7 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { createClient, keypairFromPrivateKey } from "../utils/client";
-import { getConfig, MODULES, Network } from "../utils/config";
-import { handleError } from "../utils/helper";
+import { MODULES, Network } from "../utils/config";
+import { handleError, hydrateWorldConfig, initializeContext } from "../utils/helper";
 
 const GAS_BUDGET = 10_000_000;
 
@@ -17,9 +16,9 @@ function getAccessSetupEnv() {
 
 async function setupAccess() {
     const { network, governorKey, adminAddress, sponsorAddress } = getAccessSetupEnv();
-    const config = getConfig(network);
-    const client = createClient(network);
-    const keypair = keypairFromPrivateKey(governorKey!);
+    const ctx = initializeContext(network, governorKey!);
+    const { client, keypair } = ctx;
+    const config = await hydrateWorldConfig(ctx, { governorAddress: ctx.address });
 
     const packageId = config.packageId;
     const governorCap = config.governorCap;

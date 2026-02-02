@@ -5,7 +5,7 @@ import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { hexToBytes, getAdminCapId } from "../utils/helper";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import {
     LOCATION_HASH,
     GAME_CHARACTER_ID,
@@ -75,7 +75,8 @@ async function createStorageUnit(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey);
+        const ctx = initializeContext(env.network, env.adminExportedKey);
+        await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
         const adminCap = await getAdminCapId(client, config.packageId);
 

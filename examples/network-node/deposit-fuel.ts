@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import { executeSponsoredTransaction } from "../utils/transaction";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
@@ -80,9 +80,11 @@ async function depositFuel(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerCtx = initializeContext(env.network, env.playerExportedKey!);
-        const adminKeypair = keypairFromPrivateKey(env.exportedKey);
-        const playerAddress = playerCtx.address;
+        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerAddress = process.env.PLAYER_ADDRESS;
+        const playerCtx = initializeContext(env.network, playerKey!);
+        await hydrateWorldConfig(playerCtx);
+        const adminKeypair = keypairFromPrivateKey(env.adminExportedKey);
         const adminAddress = adminKeypair.getPublicKey().toSuiAddress();
         const config = playerCtx.config;
 
@@ -106,7 +108,7 @@ async function main() {
             networkNodeOwnerCap,
             FUEL_TYPE_ID,
             FUEL_QUANTITY,
-            playerAddress,
+            playerAddress!,
             adminAddress,
             playerCtx,
             adminKeypair

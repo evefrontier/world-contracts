@@ -1,21 +1,29 @@
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { createClient, keypairFromPrivateKey } from "./client";
-import { getConfig, MODULES, Network } from "./config";
+import {
+    HydratedWorldConfig,
+    WorldConfig,
+    getConfig,
+    MODULES,
+    Network,
+    WorldObjectIds,
+    DEFAULT_RPC_URLS,
+} from "./config";
 import { TENANT } from "./constants";
+import { resolveWorldObjectIds } from "./world-object-ids";
 export interface EnvConfig {
     network: Network;
-    exportedKey: string;
-    playerExportedKey?: string;
-    playerAddress?: string;
-    adminAddress?: string;
+    rpcUrl: string;
+    packageId: string;
+    adminExportedKey: string;
     tenant: string;
 }
 
 export interface InitializedContext {
     client: SuiClient;
     keypair: Ed25519Keypair;
-    config: ReturnType<typeof getConfig>;
+    config: WorldConfig;
     address: string;
 }
 
@@ -61,22 +69,25 @@ export function handleError(error: unknown): never {
 
 export function getEnvConfig(): EnvConfig {
     const network = (process.env.SUI_NETWORK as Network) || "localnet";
-    const exportedKey = process.env.PRIVATE_KEY;
-    const playerExportedKey =
-        process.env.PLAYER_A_PRIVATE_KEY || process.env.PRIVATE_KEY || exportedKey;
-    const playerAddress = process.env.PLAYER_A_ADDRESS || "";
+    const rpcUrl = process.env.SUI_RPC_URL || DEFAULT_RPC_URLS[network];
+    const packageId = process.env.WORLD_PACKAGE_ID || "";
+    const adminExportedKey = process.env.PRIVATE_KEY;
 
-    if (!exportedKey || !playerExportedKey) {
+    if (!adminExportedKey) {
         throw new Error(
             "PRIVATE_KEY environment variable is required eg: PRIVATE_KEY=suiprivkey1..."
         );
     }
+    process.env.SUI_RPC_URL = rpcUrl;
+    if (!packageId) {
+        throw new Error("PACKAGE_ID environment variable is required");
+    }
 
     return {
         network,
-        exportedKey,
-        playerExportedKey,
-        playerAddress,
+        rpcUrl,
+        packageId,
+        adminExportedKey,
         tenant: TENANT,
     };
 }
@@ -84,7 +95,7 @@ export function getEnvConfig(): EnvConfig {
 export function initializeContext(network: Network, privateKey: string): InitializedContext {
     const client = createClient(network);
     const keypair = keypairFromPrivateKey(privateKey);
-    const config = getConfig(network);
+    const config = getConfig(network) as WorldConfig;
     const address = keypair.getPublicKey().toSuiAddress();
 
     return { client, keypair, config, address };
@@ -109,4 +120,31 @@ export async function getAdminCapId(client: SuiClient, packageId: string): Promi
     });
     const first = res.data?.[0]?.data;
     return first?.objectId ?? null;
+}
+
+export async function hydrateWorldConfig(
+    ctx: InitializedContext,
+    opts?: { governorAddress?: string }
+): Promise<HydratedWorldConfig> {
+    const governorAddress =
+        opts?.governorAddress ||
+        process.env.GOVERNOR_ADDRESS ||
+        process.env.ADMIN_ADDRESS ||
+        ctx.address;
+
+    const ids: WorldObjectIds = await resolveWorldObjectIds(
+        ctx.client,
+        ctx.config.packageId,
+        governorAddress
+    );
+    ctx.config = { ...ctx.config, ...ids };
+    return ctx.config as HydratedWorldConfig;
+}
+
+/**
+ * When a admin/player contexts target the same network + package, hydrate once,
+ * then reuse the same hydrated config object.
+ */
+export function shareHydratedConfig(from: InitializedContext, to: InitializedContext) {
+    to.config = from.config;
 }

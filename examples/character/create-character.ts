@@ -1,6 +1,12 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { initializeContext, handleError, getEnvConfig, getAdminCapId } from "../utils/helper";
+import {
+    hydrateWorldConfig,
+    initializeContext,
+    handleError,
+    getEnvConfig,
+    getAdminCapId,
+} from "../utils/helper";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { GAME_CHARACTER_ID } from "../utils/constants";
@@ -10,18 +16,19 @@ const TRIBE_ID = 100;
 async function createCharacter(
     tenant: string,
     characterAddress: string,
+    gameCharacterId: number,
     ctx: ReturnType<typeof initializeContext>
 ): Promise<string> {
     const { client, keypair, config } = ctx;
     const adminCap = await getAdminCapId(client, config.packageId);
     console.log("\n==== Creating a character ====");
-    console.log("Game Character ID:", GAME_CHARACTER_ID);
+    console.log("Game Character ID:", gameCharacterId);
     console.log("Tribe ID:", TRIBE_ID);
 
     // Pre-compute the character ID before creation
     const precomputedCharacterId = deriveObjectId(
         config.objectRegistry,
-        GAME_CHARACTER_ID,
+        gameCharacterId,
         config.packageId
     );
     console.log("Pre-computed Character ID:", precomputedCharacterId);
@@ -32,7 +39,7 @@ async function createCharacter(
         arguments: [
             tx.object(config.objectRegistry),
             tx.object(adminCap!),
-            tx.pure.u32(GAME_CHARACTER_ID),
+            tx.pure.u32(gameCharacterId),
             tx.pure.string(tenant),
             tx.pure.u32(TRIBE_ID),
             tx.pure.address(characterAddress),
@@ -58,8 +65,11 @@ async function createCharacter(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey);
-        await createCharacter(env.tenant, env.playerAddress || "", ctx);
+        const ctx = initializeContext(env.network, env.adminExportedKey);
+        await hydrateWorldConfig(ctx);
+
+        const playerAddress = process.env.PLAYER_ADDRESS;
+        await createCharacter(env.tenant, playerAddress!, GAME_CHARACTER_ID, ctx);
     } catch (error) {
         handleError(error);
     }

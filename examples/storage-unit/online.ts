@@ -5,7 +5,7 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { GAME_CHARACTER_ID, NWN_ITEM_ID, STORAGE_A_ITEM_ID } from "../utils/constants";
-import { initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import { getOwnerCap } from "./helper";
 
 export async function online(
@@ -56,7 +56,9 @@ export async function online(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerCtx = initializeContext(env.network, env.playerExportedKey!);
+        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerCtx = initializeContext(env.network, playerKey!);
+        await hydrateWorldConfig(playerCtx);
         const { client, keypair, config } = playerCtx;
 
         let networkNodeObject = deriveObjectId(

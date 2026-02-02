@@ -9,6 +9,7 @@ import {
     hexToBytes,
     getEnvConfig,
     getAdminCapId,
+    hydrateWorldConfig,
 } from "../utils/helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { LOCATION_HASH, GAME_CHARACTER_ID, NWN_TYPE_ID, NWN_ITEM_ID } from "../utils/constants";
@@ -71,7 +72,8 @@ async function createNetworkNode(
 async function main() {
     try {
         const env = getEnvConfig();
-        const ctx = initializeContext(env.network, env.exportedKey);
+        const ctx = initializeContext(env.network, env.adminExportedKey);
+        await hydrateWorldConfig(ctx);
 
         let characterObject = deriveObjectId(
             ctx.config.objectRegistry,
