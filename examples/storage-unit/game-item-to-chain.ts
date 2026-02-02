@@ -109,7 +109,7 @@ async function gameItemToChain(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
         const playerCtx = initializeContext(env.network, playerKey!);

@@ -181,7 +181,7 @@ async function main() {
         await hydrateWorldConfig(adminCtx);
         await createGates(adminCtx, NWN_ITEM_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2, GAME_CHARACTER_ID);
 
-        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
         const playerAddress = process.env.PLAYER_ADDRESS;
         const playerCtx = initializeContext(env.network, playerKey!);
         shareHydratedConfig(adminCtx, playerCtx);

@@ -56,7 +56,7 @@ export async function online(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
         const playerCtx = initializeContext(env.network, playerKey!);
         await hydrateWorldConfig(playerCtx);
         const { client, keypair, config } = playerCtx;

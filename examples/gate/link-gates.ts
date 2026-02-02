@@ -94,7 +94,7 @@ async function linkGates(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
         const ctx = initializeContext(env.network, playerKey!);
         await hydrateWorldConfig(ctx);
         await linkGates(ctx, GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2);

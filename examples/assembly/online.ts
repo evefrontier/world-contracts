@@ -99,7 +99,7 @@ export async function getOwnerCap(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
         const playerAddress = process.env.PLAYER_ADDRESS;
 
         const ctx = initializeContext(env.network, playerKey!);

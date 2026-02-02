@@ -80,7 +80,7 @@ async function chainItemToGame(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
         const playerAddress = process.env.PLAYER_ADDRESS;
         const playerCtx = initializeContext(env.network, playerKey!);
         await hydrateWorldConfig(playerCtx);

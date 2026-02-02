@@ -57,7 +57,7 @@ async function online(
 async function main() {
     try {
         const env = getEnvConfig();
-        const playerKey = process.env.PLAYER_PRIVATE_KEY;
+        const playerKey = process.env.PLAYER_A_PRIVATE_KEY;
         const ctx = initializeContext(env.network, playerKey!);
         await hydrateWorldConfig(ctx);
         const playerAddress = ctx.address;
