@@ -463,7 +463,7 @@ public(package) fun remove_assembly_id(
 }
 
 /// Removes an assembly ID from the UpdateEnergySources list
-public(package) fun remove_update_energy_sources_assembly_id(
+public(package) fun remove_energy_sources_assembly_id(
     update_energy_sources: &mut UpdateEnergySources,
     assembly_id: ID,
 ): bool {

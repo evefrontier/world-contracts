@@ -192,7 +192,7 @@ public fun update_energy_source_connected_assembly(
 ): UpdateEnergySources {
     if (update_energy_sources.update_energy_sources_ids_length() > 0) {
         let assembly_id = object::id(assembly);
-        let found = update_energy_sources.remove_update_energy_sources_assembly_id(
+        let found = update_energy_sources.remove_energy_sources_assembly_id(
             assembly_id,
         );
         if (found) {

@@ -66,6 +66,10 @@ public fun tenant(character: &Character): String {
     in_game_id::tenant(&character.key)
 }
 
+public fun tribe(character: &Character): u32 {
+    character.tribe_id
+}
+
 // === Admin Functions ===
 public fun create_character(
     registry: &mut ObjectRegistry,

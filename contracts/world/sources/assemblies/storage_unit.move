@@ -428,7 +428,7 @@ public fun update_energy_source_connected_storage_unit(
 ): UpdateEnergySources {
     if (update_energy_sources.update_energy_sources_ids_length() > 0) {
         let storage_unit_id = object::id(storage_unit);
-        let found = update_energy_sources.remove_update_energy_sources_assembly_id(
+        let found = update_energy_sources.remove_energy_sources_assembly_id(
             storage_unit_id,
         );
         if (found) {
