@@ -3,8 +3,6 @@ import { Transaction } from "@mysten/sui/transactions";
 import { MODULES, Network } from "../utils/config";
 import { handleError, hydrateWorldConfig, initializeContext, requireEnv } from "../utils/helper";
 
-const GAS_BUDGET = process.env.GAS_BUDGET ? parseInt(process.env.GAS_BUDGET) : 10_000_000;
-
 function getAccessSetupEnv() {
     const network = (process.env.SUI_NETWORK as Network) || "testnet";
     const governorKey = requireEnv("GOVERNOR_PRIVATE_KEY");
@@ -33,7 +31,6 @@ async function setupAccess() {
 
     console.log("1. create_admin_cap...");
     const tx1 = new Transaction();
-    tx1.setGasBudget(GAS_BUDGET);
     tx1.moveCall({
         target: `${target}::create_admin_cap`,
         arguments: [tx1.object(governorCap), tx1.pure.address(adminAddress)],
@@ -50,7 +47,6 @@ async function setupAccess() {
 
     console.log("2. register_server_address...");
     const tx2 = new Transaction();
-    tx2.setGasBudget(GAS_BUDGET);
     tx2.moveCall({
         target: `${target}::register_server_address`,
         arguments: [
@@ -71,7 +67,6 @@ async function setupAccess() {
 
     console.log("3. add_sponsor_to_acl...");
     const tx3 = new Transaction();
-    tx3.setGasBudget(GAS_BUDGET);
     tx3.moveCall({
         target: `${target}::add_sponsor_to_acl`,
         arguments: [
