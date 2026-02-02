@@ -31,6 +31,8 @@ export function getConfig(network: Network = "localnet"): WorldConfig {
     return {
         url,
         packageId,
+        // Optional manual overrides:
+        // If you don't have publish output JSON, you can hardcode these IDs here.
         governorCap: "",
         serverAddressRegistry: "",
         objectRegistry: "",

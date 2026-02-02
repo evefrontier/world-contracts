@@ -9,6 +9,11 @@ import {
 // Hardcoded publish output paths (relative to where you run the scripts from).
 const BUILDER_PUBLISH_OUTPUT_PATH = "./deployments/testnet/builder_package.json";
 
+// Optional manual overrides:
+// If you don't have publish output JSON, you can hardcode these IDs here"";
+const BUILDER_ADMIN_CAP_ID = "";
+const BUILDER_GATE_RULES_ID = "";
+
 export type BuilderGateExtensionIds = {
     builderPackageId: string;
     adminCapId: string;
@@ -25,14 +30,18 @@ export function requireBuilderPackageId(): string {
 
 export function resolveBuilderGateExtensionIds(opts: {
     adminAddressOwner: string;
-    publishOutputPath?: string;
-    builderPackageId?: string;
 }): BuilderGateExtensionIds {
-    const publishPath = resolvePublishOutputPath(
-        opts.publishOutputPath ?? BUILDER_PUBLISH_OUTPUT_PATH
-    );
-    const { objectChanges } = readPublishOutputFile(publishPath);
-    const builderPackageId = opts.builderPackageId ?? requireBuilderPackageId();
+    const builderPackageId = requireBuilderPackageId();
+
+    if (BUILDER_ADMIN_CAP_ID && BUILDER_GATE_RULES_ID) {
+        return {
+            builderPackageId,
+            adminCapId: BUILDER_ADMIN_CAP_ID,
+            gateRulesId: BUILDER_GATE_RULES_ID,
+        };
+    }
+
+    const { objectChanges } = readPublishOutputFile(BUILDER_PUBLISH_OUTPUT_PATH);
 
     const adminCapId = requireId(
         `Builder AdminCap (owner ${opts.adminAddressOwner})`,

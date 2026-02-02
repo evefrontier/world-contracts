@@ -142,12 +142,38 @@ export async function hydrateWorldConfig(ctx: InitializedContext): Promise<Hydra
         process.env.ADMIN_ADDRESS ||
         ctx.address;
 
-    const ids: WorldObjectIds = await resolveWorldObjectIds(
-        ctx.client,
-        ctx.config.packageId,
-        governorAddress
-    );
-    ctx.config = { ...ctx.config, ...ids };
+    const hasManualIds =
+        !!ctx.config.governorCap &&
+        !!ctx.config.serverAddressRegistry &&
+        !!ctx.config.objectRegistry &&
+        !!ctx.config.adminAcl &&
+        !!ctx.config.energyConfig &&
+        !!ctx.config.fuelConfig &&
+        !!ctx.config.gateConfig;
+
+    if (!hasManualIds) {
+        try {
+            const ids: WorldObjectIds = await resolveWorldObjectIds(
+                ctx.client,
+                ctx.config.packageId,
+                governorAddress
+            );
+            ctx.config = {
+                ...ctx.config,
+                ...Object.fromEntries(
+                    Object.entries(ids).filter(([, v]) => typeof v === "string" && v.length > 0)
+                ),
+            } as WorldConfig;
+        } catch (e) {
+            throw new Error(
+                [
+                    "Failed to hydrate world object IDs from publish output.",
+                    `Original error: ${e instanceof Error ? e.message : String(e)}`,
+                ].join("\n")
+            );
+        }
+    }
+
     return ctx.config as HydratedWorldConfig;
 }
 
