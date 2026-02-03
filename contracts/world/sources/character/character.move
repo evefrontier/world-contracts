@@ -70,6 +70,10 @@ public fun tribe(character: &Character): u32 {
     character.tribe_id
 }
 
+public fun owner_cap_id(character: &Character): ID {
+    character.owner_cap_id
+}
+
 // === Admin Functions ===
 public fun create_character(
     registry: &mut ObjectRegistry,
@@ -176,11 +180,6 @@ public fun delete_character(character: Character, _: &AdminCap) {
 }
 
 // === Test Functions ===
-#[test_only]
-public fun owner_cap_id(character: &Character): ID {
-    character.owner_cap_id
-}
-
 #[test_only]
 public fun game_character_id(character: &Character): u32 {
     in_game_id::item_id(&character.key) as u32

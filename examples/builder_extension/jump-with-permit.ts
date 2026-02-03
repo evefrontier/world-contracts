@@ -4,7 +4,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import {
-    GAME_CHARACTER_ID,
+    GAME_CHARACTER_B_ID,
     GATE_ITEM_ID_1,
     GATE_ITEM_ID_2,
     CLOCK_OBJECT_ID,
@@ -92,10 +92,10 @@ async function main() {
     console.log("============= Jump With JumpPermit ==============\n");
     try {
         const env = getEnvConfig();
-        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerKey = requireEnv("PLAYER_B_PRIVATE_KEY");
         const ctx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(ctx);
-        await jumpWithPermit(ctx, BigInt(GAME_CHARACTER_ID), GATE_ITEM_ID_1, GATE_ITEM_ID_2);
+        await jumpWithPermit(ctx, BigInt(GAME_CHARACTER_B_ID), GATE_ITEM_ID_1, GATE_ITEM_ID_2);
     } catch (error) {
         handleError(error);
     }

@@ -11,6 +11,7 @@ import {
     requireEnv,
 } from "../utils/helper";
 import { getOwnerCap as getGateOwnerCap } from "../gate/helper";
+import { MODULE as extensionModule } from "./modules";
 
 const builderPackageId = requireEnv("BUILDER_PACKAGE_ID");
 const characterItemId = GAME_CHARACTER_ID;
@@ -32,7 +33,7 @@ async function authoriseGate(
         throw new Error(`OwnerCap not found for gate ${gateId}`);
     }
 
-    const authType = `${builderPackageId}::gate::XAuth`;
+    const authType = `${builderPackageId}::${extensionModule.CONFIG}::XAuth`;
 
     const tx = new Transaction();
 

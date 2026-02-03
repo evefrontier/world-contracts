@@ -1,10 +1,5 @@
-import {
-    findCreatedObjectId,
-    readPublishOutputFile,
-    requireId,
-    resolvePublishOutputPath,
-    typeName,
-} from "./helper";
+import { findCreatedObjectId, readPublishOutputFile, requireId, typeName } from "./helper";
+import { MODULE as extensionModule } from "../builder_extension/modules";
 
 // Hardcoded publish output paths (relative to where you run the scripts from).
 const BUILDER_PUBLISH_OUTPUT_PATH = "./deployments/testnet/builder_package.json";
@@ -12,12 +7,12 @@ const BUILDER_PUBLISH_OUTPUT_PATH = "./deployments/testnet/builder_package.json"
 // Optional manual overrides:
 // If you don't have publish output JSON, you can hardcode these IDs here"";
 const BUILDER_ADMIN_CAP_ID = "";
-const BUILDER_GATE_RULES_ID = "";
+const BUILDER_EXTENSION_CONFIG_ID = "";
 
 export type BuilderGateExtensionIds = {
     builderPackageId: string;
     adminCapId: string;
-    gateRulesId: string;
+    extensionConfigId: string;
 };
 
 export function requireBuilderPackageId(): string {
@@ -33,11 +28,11 @@ export function resolveBuilderGateExtensionIds(opts: {
 }): BuilderGateExtensionIds {
     const builderPackageId = requireBuilderPackageId();
 
-    if (BUILDER_ADMIN_CAP_ID && BUILDER_GATE_RULES_ID) {
+    if (BUILDER_ADMIN_CAP_ID && BUILDER_EXTENSION_CONFIG_ID) {
         return {
             builderPackageId,
             adminCapId: BUILDER_ADMIN_CAP_ID,
-            gateRulesId: BUILDER_GATE_RULES_ID,
+            extensionConfigId: BUILDER_EXTENSION_CONFIG_ID,
         };
     }
 
@@ -45,15 +40,22 @@ export function resolveBuilderGateExtensionIds(opts: {
 
     const adminCapId = requireId(
         `Builder AdminCap (owner ${opts.adminAddressOwner})`,
-        findCreatedObjectId(objectChanges, typeName(builderPackageId, "gate", "AdminCap"), {
-            addressOwner: opts.adminAddressOwner,
-        })
+        findCreatedObjectId(
+            objectChanges,
+            typeName(builderPackageId, extensionModule.CONFIG, "AdminCap"),
+            {
+                addressOwner: opts.adminAddressOwner,
+            }
+        )
     );
 
-    const gateRulesId = requireId(
-        "Builder GateRules",
-        findCreatedObjectId(objectChanges, typeName(builderPackageId, "gate", "GateRules"))
+    const extensionConfigId = requireId(
+        "Builder ExtensionConfig",
+        findCreatedObjectId(
+            objectChanges,
+            typeName(builderPackageId, extensionModule.CONFIG, "ExtensionConfig")
+        )
     );
 
-    return { builderPackageId, adminCapId, gateRulesId };
+    return { builderPackageId, adminCapId, extensionConfigId };
 }

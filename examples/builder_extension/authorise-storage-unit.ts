@@ -11,6 +11,7 @@ import {
     requireEnv,
 } from "../utils/helper";
 import { getOwnerCap as getStorageUnitOwnerCap } from "../storage-unit/helper";
+import { MODULE as extensionModule } from "./modules";
 
 const builderPackageId = requireEnv("BUILDER_PACKAGE_ID");
 const characterItemId = GAME_CHARACTER_ID;
@@ -40,7 +41,7 @@ async function authoriseStorageUnit(
         throw new Error(`OwnerCap not found for storage unit ${storageUnitId}`);
     }
 
-    const authType = `${builderPackageId}::gate::XAuth`;
+    const authType = `${builderPackageId}::${extensionModule.CONFIG}::XAuth`;
 
     const tx = new Transaction();
 
@@ -51,7 +52,7 @@ async function authoriseStorageUnit(
     });
 
     tx.moveCall({
-        target: `${config.packageId}::${MODULES.GATE}::authorize_extension`,
+        target: `${config.packageId}::${MODULES.STORAGE_UNIT}::authorize_extension`,
         typeArguments: [authType],
         arguments: [tx.object(storageUnitId), storageUnitOwnerCap],
     });

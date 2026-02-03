@@ -3,13 +3,14 @@ import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import {
-    GAME_CHARACTER_ID,
+    GAME_CHARACTER_B_ID,
     GATE_ITEM_ID_1,
     GATE_ITEM_ID_2,
     CLOCK_OBJECT_ID,
 } from "../utils/constants";
 import { getEnvConfig, handleError, hydrateWorldConfig, initializeContext } from "../utils/helper";
 import { resolveBuilderGateExtensionIds } from "../utils/builder-extension";
+import { MODULE as extensionModule } from "./modules";
 
 async function issueJumpPermit(
     ctx: ReturnType<typeof initializeContext>,
@@ -19,7 +20,7 @@ async function issueJumpPermit(
 ) {
     const { client, keypair, config, address } = ctx;
 
-    const { builderPackageId, adminCapId, gateRulesId } = resolveBuilderGateExtensionIds({
+    const { builderPackageId, adminCapId, extensionConfigId } = resolveBuilderGateExtensionIds({
         adminAddressOwner: address,
     });
 
@@ -33,9 +34,9 @@ async function issueJumpPermit(
 
     const tx = new Transaction();
     tx.moveCall({
-        target: `${builderPackageId}::gate::issue_jump_permit`,
+        target: `${builderPackageId}::${extensionModule.TRIBE_PERMIT}::issue_jump_permit`,
         arguments: [
-            tx.object(gateRulesId),
+            tx.object(extensionConfigId),
             tx.object(sourceGateId!),
             tx.object(destinationGateId!),
             tx.object(characterId!),
@@ -61,7 +62,7 @@ async function main() {
         const env = getEnvConfig();
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
-        await issueJumpPermit(ctx, GATE_ITEM_ID_1, GATE_ITEM_ID_2, BigInt(GAME_CHARACTER_ID));
+        await issueJumpPermit(ctx, GATE_ITEM_ID_1, GATE_ITEM_ID_2, BigInt(GAME_CHARACTER_B_ID));
     } catch (error) {
         handleError(error);
     }

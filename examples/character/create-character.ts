@@ -11,7 +11,7 @@ import {
 import { keypairFromPrivateKey } from "../utils/client";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { GAME_CHARACTER_ID } from "../utils/constants";
+import { GAME_CHARACTER_B_ID, GAME_CHARACTER_ID } from "../utils/constants";
 
 const TRIBE_ID = 100;
 
@@ -71,9 +71,13 @@ async function main() {
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
 
-        const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
-        const playerAddress = keypairFromPrivateKey(playerKey).getPublicKey().toSuiAddress();
-        await createCharacter(env.tenant, playerAddress, GAME_CHARACTER_ID, ctx);
+        const playerKey = requireEnv("PLAYER_B_PRIVATE_KEY");
+        const playerKeyA = requireEnv("PLAYER_A_PRIVATE_KEY");
+        const playerAddressB = keypairFromPrivateKey(playerKey).getPublicKey().toSuiAddress();
+        const playerAddressA = keypairFromPrivateKey(playerKeyA).getPublicKey().toSuiAddress();
+
+        await createCharacter(env.tenant, playerAddressA, GAME_CHARACTER_ID, ctx);
+        await createCharacter(env.tenant, playerAddressB, GAME_CHARACTER_B_ID, ctx);
     } catch (error) {
         handleError(error);
     }

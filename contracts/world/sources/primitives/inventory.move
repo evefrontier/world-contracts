@@ -119,6 +119,14 @@ public fun max_capacity(inventory: &Inventory): u64 {
     inventory.max_capacity
 }
 
+public fun type_id(item: &Item): u64 {
+    item.type_id
+}
+
+public fun quantity(item: &Item): u32 {
+    item.quantity
+}
+
 // === Package Functions ===
 
 public(package) fun create(max_capacity: u64): Inventory {
