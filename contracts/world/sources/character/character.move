@@ -136,7 +136,7 @@ public fun borrow_owner_cap<T: key>(
 
 // return owner cap to character
 public fun return_owner_cap<T: key>(character: &Character, owner_cap: OwnerCap<T>) {
-    access::transfer_owner_cap(owner_cap, character.id.to_inner().to_address());
+    access::transfer_owner_cap(owner_cap, object::id_address(character));
 }
 
 public fun share_character(character: Character, _: &AdminCap) {
