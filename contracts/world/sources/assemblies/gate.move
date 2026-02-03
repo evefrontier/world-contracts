@@ -50,7 +50,7 @@ const EGatesAlreadyLinked: vector<u8> = b"Gates are already linked";
 #[error(code = 8)]
 const EGatesNotLinked: vector<u8> = b"Gates are not linked";
 #[error(code = 9)]
-const EInvalidDistance: vector<u8> = b"Invalid distance in location proof";
+const EOutOfRange: vector<u8> = b"Invalid distance in location proof";
 #[error(code = 10)]
 const EJumpPermitExpired: vector<u8> = b"Jump permit has expired";
 #[error(code = 11)]
@@ -557,7 +557,7 @@ public fun set_max_distance(
     max_distance: u64,
 ) {
     assert!(type_id != 0, EGateTypeIdEmpty);
-    assert!(max_distance > 0, EInvalidDistance);
+    assert!(max_distance > 0, EOutOfRange);
 
     if (gate_config.max_distance_by_type.contains(type_id)) {
         gate_config.max_distance_by_type.remove(type_id);

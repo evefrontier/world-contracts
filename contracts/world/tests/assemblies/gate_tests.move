@@ -245,7 +245,7 @@ fun authorize_gate_extension(ts: &mut ts::Scenario, character_id: ID, gate_id: I
 
 fun distance_proof_bytes(distance: u64, player: address, target_hash: vector<u8>): vector<u8> {
     // Distance is checked BEFORE signature verification in `location::verify_distance`,
-    // so a dummy signature is fine to deterministically hit `EInvalidDistance`.
+    // so a dummy signature is fine to deterministically hit `EOutOfRange`.
     let proof = world::location::create_location_proof(
         server_admin(),
         player,
@@ -711,7 +711,7 @@ fun link_fails_when_gates_already_linked() {
 }
 
 #[test]
-#[expected_failure(abort_code = location::EInvalidDistance)]
+#[expected_failure(abort_code = location::EOutOfRange)]
 fun link_fails_when_distance_exceeds_max() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
