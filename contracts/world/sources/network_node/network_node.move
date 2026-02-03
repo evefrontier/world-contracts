@@ -46,8 +46,8 @@ const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
 const EUpdateEnergySourcesNotProcessed: vector<u8> =
     b"Energy source must be updated for all connected assemblies";
 #[error(code = 11)]
-const EUnanchorAssembliesNotProcessed: vector<u8> =
-    b"All assemblies must be processed before destroying network node";
+const EOrphanedAssembliesNotOfflined: vector<u8> =
+    b"Orphaned assemblies must be offlined before destroying network node";
 #[error(code = 12)]
 const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Character";
 
@@ -57,7 +57,7 @@ public struct OfflineAssemblies {
     assembly_ids: vector<ID>,
 }
 
-public struct UnanchorAssemblies {
+public struct HandleOrphanedAssemblies {
     assembly_ids: vector<ID>,
 }
 
@@ -215,8 +215,8 @@ public fun ids_length(offline_assemblies: &OfflineAssemblies): u64 {
     offline_assemblies.assembly_ids.length()
 }
 
-public fun unanchor_assemblies_length(unanchor_assemblies: &UnanchorAssemblies): u64 {
-    unanchor_assemblies.assembly_ids.length()
+public fun orphaned_assemblies_length(orphaned_assemblies: &HandleOrphanedAssemblies): u64 {
+    orphaned_assemblies.assembly_ids.length()
 }
 
 public fun update_energy_sources_ids_length(update_energy_sources: &UpdateEnergySources): u64 {
@@ -324,18 +324,18 @@ public fun connect_assemblies(
     }
 }
 
-/// Unanchors the network node and returns UnanchorAssemblies hot potato that must be consumed
+/// Unanchors the network node and returns HandleOrphanedAssemblies hot potato that must be consumed
 /// by processing each connected assembly in the same transaction.
 /// For each assembly call unanchor_connected_assembly or unanchor_connected_storage_unit
 /// (brings offline, releases energy, clears energy source).
 /// After all assemblies are processed, call destroy_network_node with the hot potato to destroy the network node.
-public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): UnanchorAssemblies {
+public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): HandleOrphanedAssemblies {
     let nwn_id = object::id(nwn);
     if (nwn.energy_source.current_energy_production() > 0) {
         nwn.energy_source.stop_energy_production(nwn_id);
     };
 
-    UnanchorAssemblies {
+    HandleOrphanedAssemblies {
         assembly_ids: copy_connected_assembly_ids(nwn),
     }
 }
@@ -344,11 +344,11 @@ public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): UnanchorAssemblies {
 /// Must be called after processing all assemblies from the hot potato returned by unanchor
 public fun destroy_network_node(
     mut nwn: NetworkNode,
-    unanchor_assemblies: UnanchorAssemblies,
+    orphaned_assemblies: HandleOrphanedAssemblies,
     _: &AdminCap,
 ) {
     let nwn_id = object::id(&nwn);
-    unanchor_assemblies.destroy_unanchor_assemblies();
+    orphaned_assemblies.destroy_orphaned_assemblies();
     // Clean up connected assembliesd
     let assembly_ids = copy_connected_assembly_ids(&nwn);
     if (assembly_ids.length() > 0) {
@@ -436,22 +436,22 @@ public fun destroy_update_energy_sources(update_energy_sources: UpdateEnergySour
     assembly_ids.destroy_empty();
 }
 
-/// Destroys the UnanchorAssemblies hot potato; call after processing each assembly with unanchor_connected_assembly
-public fun destroy_unanchor_assemblies(unanchor_assemblies: UnanchorAssemblies) {
-    assert!(unanchor_assemblies.assembly_ids.length() == 0, EUnanchorAssembliesNotProcessed);
-    let UnanchorAssemblies {
+/// Destroys the HandleOrphanedAssemblies hot potato; call after processing each assembly with unanchor_connected_assembly
+public fun destroy_orphaned_assemblies(orphaned_assemblies: HandleOrphanedAssemblies) {
+    assert!(orphaned_assemblies.assembly_ids.length() == 0, EOrphanedAssembliesNotOfflined);
+    let HandleOrphanedAssemblies {
         assembly_ids,
-    } = unanchor_assemblies;
+    } = orphaned_assemblies;
     assembly_ids.destroy_empty();
 }
 
 // === Package Functions ===
-/// Removes an assembly ID from the UnanchorAssemblies list
-public(package) fun remove_unanchor_assembly_id(
-    unanchor_assemblies: &mut UnanchorAssemblies,
+/// Removes an assembly ID from the HandleOrphanedAssemblies list
+public(package) fun remove_orphaned_assembly_id(
+    orphaned_assemblies: &mut HandleOrphanedAssemblies,
     assembly_id: ID,
 ): bool {
-    remove_id_from_assembly_ids(&mut unanchor_assemblies.assembly_ids, assembly_id)
+    remove_id_from_assembly_ids(&mut orphaned_assemblies.assembly_ids, assembly_id)
 }
 
 /// Removes an assembly ID from the OfflineAssemblies list

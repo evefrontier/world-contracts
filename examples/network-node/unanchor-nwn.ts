@@ -14,7 +14,7 @@ import { initializeContext, handleError, getEnvConfig, getAdminCapId } from "../
  * Flow:
  * 1. Query connected assemblies from the network node
  * 2. Determine which assemblies are storage units by querying their types
- * 3. Call unanchor which returns UnanchorAssemblies hot potato
+ * 3. Call unanchor which returns HandleOrphanedAssemblies hot potato
  * 4. Process each assembly:
  *    - Call unanchor_connected_storage_unit or unanchor_connected_assembly
  *    - Brings assembly offline, releases energy, and clears its energy source (assembly can later be attached to another NWN)
@@ -36,7 +36,7 @@ async function unanchor(
 
     const tx = new Transaction();
 
-    // Call unanchor - returns UnanchorAssemblies hot potato (NWN is still alive until destroy_network_node)
+    // Call unanchor - returns HandleOrphanedAssemblies hot potato (NWN is still alive until destroy_network_node)
     const [unanchorAssemblies] = tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::unanchor`,
         arguments: [tx.object(networkNodeId), tx.object(adminCapId)],
@@ -46,8 +46,8 @@ async function unanchor(
     for (const { id: assemblyId, isStorageUnit } of assemblyTypes) {
         const module = isStorageUnit ? MODULES.STORAGE_UNIT : MODULES.ASSEMBLY;
         const functionName = isStorageUnit
-            ? "unanchor_connected_storage_unit"
-            : "unanchor_connected_assembly";
+            ? "offline_orphaned_storage_unit"
+            : "offline_orphaned_assembly";
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,
