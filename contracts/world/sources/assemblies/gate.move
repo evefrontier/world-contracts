@@ -82,7 +82,6 @@ public struct JumpPermit has key, store {
     // Hash that binds this permit to a (source, destination) gate pair.
     // Computed in a direction-agnostic way so the same permit works for A->B and B->A.
     route_hash: vector<u8>,
-    valid: bool,
     expires_at_timestamp_ms: u64,
 }
 
@@ -249,7 +248,6 @@ public fun issue_jump_permit<Auth: drop>(
         id: object::new(ctx),
         route_hash,
         character_id: object::id(character),
-        valid: true,
         expires_at_timestamp_ms,
     };
     transfer::transfer(jump_permit, character.character_address());
@@ -304,7 +302,6 @@ public fun jump_with_permit(
     assert!(option::is_some(&source_gate.extension), EExtensionNotAuthorized);
 
     // Validate jump permit then invalidate it
-    assert!(jump_permit.valid, EInvalidJumpPermit);
     assert!(jump_permit.expires_at_timestamp_ms > clock.timestamp_ms(), EJumpPermitExpired);
     assert!(jump_permit.character_id == object::id(character), EInvalidJumpPermit);
     assert!(
