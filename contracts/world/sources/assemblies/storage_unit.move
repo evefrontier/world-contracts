@@ -54,15 +54,11 @@ const ENotOnline: vector<u8> = b"Storage Unit is not online";
 #[error(code = 7)]
 const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants";
 #[error(code = 8)]
-const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
-#[error(code = 9)]
-const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
-#[error(code = 10)]
 const ENetworkNodeMismatch: vector<u8> =
     b"Provided network node does not match the storage unit's configured energy source";
-#[error(code = 11)]
+#[error(code = 9)]
 const EStorageUnitInvalidState: vector<u8> = b"Storage Unit should be offline";
-#[error(code = 12)]
+#[error(code = 10)]
 const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Character";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
@@ -551,12 +547,8 @@ public fun game_item_to_chain_inventory<T: key>(
     ctx: &mut TxContext,
 ) {
     assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
+    admin_acl.verify_sponsor(ctx);
     let storage_unit_id = object::id(storage_unit);
-    let sponsor_opt = tx_context::sponsor(ctx);
-    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
-    let sponsor = *option::borrow(&sponsor_opt);
-    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
-
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
     check_inventory_authorization(owner_cap, storage_unit, character.id());

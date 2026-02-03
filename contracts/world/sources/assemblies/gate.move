@@ -17,7 +17,7 @@ module world::gate;
 use std::{bcs, type_name::{Self, TypeName}};
 use sui::{clock::Clock, derived_object, event, hash, table::{Self, Table}};
 use world::{
-    access::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
+    access::{Self, OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
     character::{Self, Character},
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
@@ -224,13 +224,14 @@ public fun issue_jump_permit<Auth: drop>(
     expires_at_timestamp_ms: u64,
     ctx: &mut TxContext,
 ) {
+    assert!(option::is_some(&destination_gate.extension), EExtensionNotAuthorized);
     assert!(option::is_some(&source_gate.extension), EExtensionNotAuthorized);
+
     let extension_type = option::borrow(&source_gate.extension);
     assert!(extension_type == &type_name::with_defining_ids<Auth>(), EExtensionNotAuthorized);
     // Require destination gate to be configured with the same extension witness type as well,
     // so the resulting permit is valid for jumping both directions between the two gates.
     // TODO: Should we make this optional ?
-    assert!(option::is_some(&destination_gate.extension), EExtensionNotAuthorized);
     let destination_extension_type = option::borrow(&destination_gate.extension);
     assert!(
         destination_extension_type == &type_name::with_defining_ids<Auth>(),
@@ -255,28 +256,17 @@ public fun issue_jump_permit<Auth: drop>(
 
 /// Default jump from one gate to another (no permit required).
 /// Only allowed when no extension logic is configured.
-public fun jump(source_gate: &Gate, destination_gate: &Gate, character: &Character) {
-    let source_gate_id = object::id(source_gate);
-    let destination_gate_id = object::id(destination_gate);
-
-    // Verify both gates are online
-    assert!(source_gate.status.is_online(), ENotOnline);
-    assert!(destination_gate.status.is_online(), ENotOnline);
-
-    // Verify gates are linked
-    assert!(option::contains(&source_gate.linked_gate_id, &destination_gate_id), EGatesNotLinked);
-
+public fun jump(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    admin_acl: &AdminACL,
+    ctx: &mut TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
     // Default jump is only allowed when no extension is configured
     assert!(option::is_none(&source_gate.extension), EExtensionNotAuthorized);
-
-    event::emit(JumpEvent {
-        source_gate_id,
-        source_gate_key: source_gate.key,
-        destination_gate_id,
-        destination_gate_key: destination_gate.key,
-        character_id: object::id(character),
-        character_key: character::key(character),
-    });
+    jump_internal(source_gate, destination_gate, character);
 }
 
 /// Jump from one gate to another using a jump permit.
@@ -286,43 +276,13 @@ public fun jump_with_permit(
     destination_gate: &Gate,
     character: &Character,
     jump_permit: JumpPermit,
+    admin_acl: &AdminACL,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
-    let source_gate_id = object::id(source_gate);
-    let destination_gate_id = object::id(destination_gate);
-
-    // Verify both gates are online
-    assert!(source_gate.status.is_online(), ENotOnline);
-    assert!(destination_gate.status.is_online(), ENotOnline);
-
-    // Verify gates are linked
-    assert!(option::contains(&source_gate.linked_gate_id, &destination_gate_id), EGatesNotLinked);
-
-    // Extension must be configured and Auth must match
-    assert!(option::is_some(&source_gate.extension), EExtensionNotAuthorized);
-
-    // Validate jump permit then invalidate it
-    assert!(jump_permit.expires_at_timestamp_ms > clock.timestamp_ms(), EJumpPermitExpired);
-    assert!(jump_permit.character_id == object::id(character), EInvalidJumpPermit);
-    assert!(
-        jump_permit.route_hash == compute_route_hash(source_gate_id, destination_gate_id)
-        || jump_permit.route_hash == compute_route_hash(destination_gate_id, source_gate_id),
-        EInvalidJumpPermit,
-    );
-
-    // TODO: We can allow the permit to be used multiple times and make the invalidation action chosen by the builder extension logic later.
-    // Invalidate the permit by deleting the object
-    let JumpPermit { id, .. } = jump_permit;
-    id.delete();
-
-    event::emit(JumpEvent {
-        source_gate_id,
-        source_gate_key: source_gate.key,
-        destination_gate_id,
-        destination_gate_key: destination_gate.key,
-        character_id: object::id(character),
-        character_key: character::key(character),
-    });
+    admin_acl.verify_sponsor(ctx);
+    validate_jump_permit(source_gate, destination_gate, character, jump_permit, clock);
+    jump_internal(source_gate, destination_gate, character);
 }
 
 /// Updates the gate's energy source and removes it from the UpdateEnergySources hot potato.
@@ -634,6 +594,52 @@ fun compute_route_hash(gate_a_id: ID, gate_b_id: ID): vector<u8> {
     hash::blake2b256(&concatenated)
 }
 
+fun jump_internal(source_gate: &Gate, destination_gate: &Gate, character: &Character) {
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+
+    // Verify both gates are online
+    assert!(source_gate.status.is_online(), ENotOnline);
+    assert!(destination_gate.status.is_online(), ENotOnline);
+
+    // Verify gates are linked
+    assert!(option::contains(&source_gate.linked_gate_id, &destination_gate_id), EGatesNotLinked);
+
+    event::emit(JumpEvent {
+        source_gate_id,
+        source_gate_key: source_gate.key,
+        destination_gate_id,
+        destination_gate_key: destination_gate.key,
+        character_id: object::id(character),
+        character_key: character::key(character),
+    });
+}
+
+fun validate_jump_permit(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    jump_permit: JumpPermit,
+    clock: &Clock,
+) {
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+
+    // Validate jump permit then invalidate it
+    assert!(jump_permit.expires_at_timestamp_ms > clock.timestamp_ms(), EJumpPermitExpired);
+    assert!(jump_permit.character_id == object::id(character), EInvalidJumpPermit);
+    assert!(
+        jump_permit.route_hash == compute_route_hash(source_gate_id, destination_gate_id)
+        || jump_permit.route_hash == compute_route_hash(destination_gate_id, source_gate_id),
+        EInvalidJumpPermit,
+    );
+
+    // TODO: We can allow the permit to be used multiple times and make the invalidation action chosen by the builder extension logic later.
+    // Invalidate the permit by deleting the object
+    let JumpPermit { id, .. } = jump_permit;
+    id.delete();
+}
+
 // === Package Functions (Init) ===
 fun init(ctx: &mut TxContext) {
     transfer::share_object(GateConfig {
@@ -646,4 +652,22 @@ fun init(ctx: &mut TxContext) {
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);
+}
+
+#[test_only]
+public fun test_jump(source_gate: &Gate, destination_gate: &Gate, character: &Character) {
+    assert!(option::is_none(&source_gate.extension), EExtensionNotAuthorized);
+    jump_internal(source_gate, destination_gate, character);
+}
+
+#[test_only]
+public fun test_jump_with_permit(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    jump_permit: JumpPermit,
+    clock: &Clock,
+) {
+    validate_jump_permit(source_gate, destination_gate, character, jump_permit, clock);
+    jump_internal(source_gate, destination_gate, character);
 }

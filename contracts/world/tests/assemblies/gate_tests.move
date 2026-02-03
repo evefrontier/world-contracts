@@ -279,9 +279,9 @@ fun default_jump_no_extension() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         // Should also work from the other side
-        gate_b.jump(&gate_a, &character);
+        gate_b.test_jump(&gate_a, &character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
         ts::return_shared(character);
@@ -290,7 +290,7 @@ fun default_jump_no_extension() {
 }
 
 #[test]
-fun jump_with_permit_succeeds() {
+fun test_jump_with_permit_succeeds() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
@@ -320,7 +320,7 @@ fun jump_with_permit_succeeds() {
     ts::next_tx(&mut ts, user_a());
     {
         let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
     };
 
     ts::next_tx(&mut ts, user_a());
@@ -333,7 +333,7 @@ fun jump_with_permit_succeeds() {
     ts::next_tx(&mut ts, user_a());
     {
         let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::jump_with_permit(&gate_b, &gate_a, &character, permit, &clock);
+        gate::test_jump_with_permit(&gate_b, &gate_a, &character, permit, &clock);
     };
     ts::return_shared(character);
     ts::return_shared(gate_a);
@@ -363,7 +363,7 @@ fun default_jump_fails_when_extension_configured() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -435,7 +435,7 @@ fun issue_jump_permit_fails_wrong_auth() {
 
 #[test]
 #[expected_failure]
-fun jump_with_permit_consumes_permit() {
+fun test_jump_with_permit_consumes_permit() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
@@ -470,7 +470,7 @@ fun jump_with_permit_consumes_permit() {
         let permit = ts::take_from_sender<JumpPermit>(&ts);
 
         // First jump succeeds
-        gate::jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
 
         // Permit is deleted, taking another should fail.
         let unexpected = ts::take_from_sender<JumpPermit>(&ts);
@@ -486,7 +486,7 @@ fun jump_with_permit_consumes_permit() {
 
 #[test]
 #[expected_failure(abort_code = gate::EJumpPermitExpired)]
-fun jump_with_permit_fails_expired_permit() {
+fun test_jump_with_permit_fails_expired_permit() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
@@ -514,7 +514,7 @@ fun jump_with_permit_fails_expired_permit() {
     ts::next_tx(&mut ts, user_a());
     {
         let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
     };
     ts::return_shared(character);
     ts::return_shared(gate_a);
@@ -595,7 +595,7 @@ fun jump_fails_when_gate_is_offline() {
             &clock,
             ts.ctx(),
         );
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
 
         character.return_owner_cap(owner_cap_a);
         character.return_owner_cap(owner_cap_b);
@@ -648,7 +648,7 @@ fun jump_fails_after_gate_offlined() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -822,7 +822,7 @@ fun jump_fails_when_ticket_issued_for_user_a_used_by_user_b() {
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
         let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::jump_with_permit(&gate_a, &gate_b, &character_b, permit, &clock);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character_b, permit, &clock);
         ts::return_shared(character_b);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -851,7 +851,7 @@ fun cannot_jump_after_unanchor() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -898,7 +898,7 @@ fun cannot_jump_after_unanchor() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);

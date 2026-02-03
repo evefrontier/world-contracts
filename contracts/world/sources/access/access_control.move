@@ -19,6 +19,10 @@ use world::world::GovernorCap;
 
 #[error(code = 0)]
 const ECharacterTransfer: vector<u8> = b"Character cannot be transferred";
+#[error(code = 1)]
+const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
+#[error(code = 2)]
+const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
 
 public struct AdminACL has key {
     id: UID,
@@ -119,8 +123,11 @@ public fun is_authorized<T: key>(owner_cap: &OwnerCap<T>, object_id: ID): bool {
     owner_cap.authorized_object_id == object_id
 }
 
-public fun is_authorized_sponsor(admin_acl: &AdminACL, sponsor: address): bool {
-    admin_acl.authorized_sponsors.contains(sponsor)
+public fun verify_sponsor(admin_acl: &AdminACL, ctx: &TxContext) {
+    let sponsor_opt = tx_context::sponsor(ctx);
+    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
+    let sponsor = *option::borrow(&sponsor_opt);
+    assert!(admin_acl.authorized_sponsors.contains(sponsor), EUnauthorizedSponsor);
 }
 
 // === Package Functions ===
