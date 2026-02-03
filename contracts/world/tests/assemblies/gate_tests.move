@@ -692,6 +692,41 @@ fun unlink_fails_when_gates_not_linked() {
 }
 
 #[test]
+fun unlink_gates_by_admin_succeeds() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 611);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+
+        gate::unlink_gates_by_admin(&mut gate_a, &mut gate_b, &admin_cap);
+
+        assert!(!gate::are_gates_linked(&gate_a, &gate_b), 0);
+        let linked_a = gate_a.linked_gate_id();
+        let linked_b = gate_b.linked_gate_id();
+        assert!(option::is_none(&linked_a), 0);
+        assert!(option::is_none(&linked_b), 0);
+
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
 #[expected_failure(abort_code = gate::EGatesAlreadyLinked)]
 fun link_fails_when_gates_already_linked() {
     let mut ts = ts::begin(governor());

@@ -203,17 +203,7 @@ public fun unlink_gates(
         access::is_authorized(destination_gate_owner_cap, destination_gate_id),
         EGateNotAuthorized,
     );
-
-    // Verify gates are linked
-    assert!(
-        option::contains(&source_gate.linked_gate_id, &destination_gate_id) &&
-            option::contains(&destination_gate.linked_gate_id, &source_gate_id),
-        EGatesNotLinked,
-    );
-
-    // Unlink the gates
-    source_gate.linked_gate_id = option::none();
-    destination_gate.linked_gate_id = option::none();
+    unlink(source_gate, destination_gate);
 }
 
 public fun issue_jump_permit<Auth: drop>(
@@ -522,6 +512,14 @@ public fun set_max_distance(
     gate_config.max_distance_by_type.add(type_id, max_distance);
 }
 
+public fun unlink_gates_by_admin(
+    source_gate: &mut Gate,
+    destination_gate: &mut Gate,
+    _: &AdminCap,
+) {
+    unlink(source_gate, destination_gate);
+}
+
 // === Package Functions ===
 public(package) fun max_distance(gate_config: &GateConfig, type_id: u64): u64 {
     assert!(type_id != 0, EGateTypeIdEmpty);
@@ -638,6 +636,22 @@ fun validate_jump_permit(
     // Invalidate the permit by deleting the object
     let JumpPermit { id, .. } = jump_permit;
     id.delete();
+}
+
+fun unlink(source_gate: &mut Gate, destination_gate: &mut Gate) {
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+
+    // Verify gates are linked
+    assert!(
+        option::contains(&source_gate.linked_gate_id, &destination_gate_id) &&
+            option::contains(&destination_gate.linked_gate_id, &source_gate_id),
+        EGatesNotLinked,
+    );
+
+    // Unlink the gates
+    source_gate.linked_gate_id = option::none();
+    destination_gate.linked_gate_id = option::none();
 }
 
 // === Package Functions (Init) ===
