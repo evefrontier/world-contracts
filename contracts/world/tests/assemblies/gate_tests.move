@@ -40,11 +40,18 @@ public fun claim_ticket(
     gate_a: &Gate,
     gate_b: &Gate,
     character: &Character,
-    validity_period: u64,
+    expires_at_timestamp_ms: u64,
     ctx: &mut TxContext,
 ) {
     // todo: add some requirements to claim a ticket
-    gate::issue_jump_permit<GateAuth>(gate_a, gate_b, character, GateAuth {}, validity_period, ctx);
+    gate::issue_jump_permit<GateAuth>(
+        gate_a,
+        gate_b,
+        character,
+        GateAuth {},
+        expires_at_timestamp_ms,
+        ctx,
+    );
 }
 
 fun setup(ts: &mut ts::Scenario) {
@@ -305,8 +312,8 @@ fun jump_with_permit_succeeds() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let validity_period = clock.timestamp_ms() + 10_000;
-        claim_ticket(&gate_a, &gate_b, &character, validity_period, ts.ctx());
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_a, &gate_b, &character, expires_at_timestamp_ms, ts.ctx());
     };
 
     // Jump A -> B (consume one ticket)
@@ -318,8 +325,8 @@ fun jump_with_permit_succeeds() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let validity_period = clock.timestamp_ms() + 10_000;
-        claim_ticket(&gate_b, &gate_a, &character, validity_period, ts.ctx());
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_b, &gate_a, &character, expires_at_timestamp_ms, ts.ctx());
     };
 
     // Jump B -> A (consume the second ticket)
@@ -449,12 +456,12 @@ fun jump_with_permit_consumes_permit() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let validity_period = clock.timestamp_ms() + 10_000;
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
         claim_ticket(
             &gate_a,
             &gate_b,
             &character,
-            validity_period,
+            expires_at_timestamp_ms,
             ts.ctx(),
         );
     };
@@ -792,8 +799,8 @@ fun jump_fails_when_ticket_issued_for_user_a_used_by_user_b() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
-        let validity_period = clock.timestamp_ms() + 10_000;
-        claim_ticket(&gate_a, &gate_b, &character_a, validity_period, ts.ctx());
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_a, &gate_b, &character_a, expires_at_timestamp_ms, ts.ctx());
         ts::return_shared(character_a);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);

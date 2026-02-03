@@ -56,13 +56,13 @@ public fun issue_jump_permit(
     assert!(character.tribe() == gate_rules.tribe, ENotStarterTribe);
 
     // 5 days in milliseconds.
-    let validity_period = clock.timestamp_ms() + 5 * 24 * 60 * 60 * 1000;
+    let expires_at_timestamp_ms = clock.timestamp_ms() + 5 * 24 * 60 * 60 * 1000;
     gate::issue_jump_permit<XAuth>(
         source_gate,
         destination_gate,
         character,
         XAuth {},
-        validity_period,
+        expires_at_timestamp_ms,
         ctx,
     );
 }
