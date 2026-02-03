@@ -538,6 +538,33 @@ public fun unanchor(
     id.delete();
 }
 
+public fun unanchor_orphan(storage_unit: StorageUnit, _: &AdminCap) {
+    let StorageUnit {
+        mut id,
+        key,
+        status,
+        location,
+        inventory_keys,
+        metadata,
+        energy_source_id,
+        ..,
+    } = storage_unit;
+
+    location.remove();
+    let storage_unit_id = object::uid_to_inner(&id);
+    inventory_keys.destroy!(
+        |inventory_key| df::remove<ID, Inventory>(&mut id, inventory_key).delete(
+            storage_unit_id,
+            key,
+        ),
+    );
+    status.unanchor(storage_unit_id, key);
+    metadata.do!(|metadata| metadata.delete());
+    option::destroy_none(energy_source_id);
+
+    id.delete();
+}
+
 /// Bridges items from game to chain inventory
 public fun game_item_to_chain_inventory<T: key>(
     storage_unit: &mut StorageUnit,

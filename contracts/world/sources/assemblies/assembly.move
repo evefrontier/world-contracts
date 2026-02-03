@@ -29,6 +29,8 @@ const ENetworkNodeDoesNotExist: vector<u8> =
     b"Provided network node does not match the assembly's configured energy source";
 #[error(code = 5)]
 const EAssemblyOnline: vector<u8> = b"Assembly should be offline";
+#[error(code = 6)]
+const EAssemblyHasEnergySource: vector<u8> = b"Assembly has an energy source";
 
 // === Structs ===
 // TODO: find an elegant way to decouple the common fields across all structs
@@ -285,6 +287,30 @@ public fun unanchor(
     id.delete();
     // In future we can do
     // derived_object::reclaim(&mut registry, id);
+}
+
+public fun unanchor_orphan(assembly: Assembly, _: &AdminCap) {
+    let Assembly {
+        id,
+        key,
+        status,
+        location,
+        metadata,
+        energy_source_id,
+        ..,
+    } = assembly;
+
+    // Orphaned assemblies should already be disconnected and offline.
+    assert!(option::is_none(&energy_source_id), EAssemblyHasEnergySource);
+    assert!(!status.is_online(), EAssemblyOnline);
+
+    location.remove();
+    let assembly_id = object::uid_to_inner(&id);
+    status.unanchor(assembly_id, key);
+    metadata.do!(|metadata| metadata.delete());
+    option::destroy_none(energy_source_id);
+
+    id.delete();
 }
 
 // === Private Functions ===

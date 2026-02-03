@@ -896,6 +896,45 @@ fun test_unachor_storage_unit() {
     ts::end(ts);
 }
 
+#[test]
+fun test_unanchor_orphaned_storage_unit() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+
+    // Character A creates a storage unit and brings it online.
+    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_a_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_a_id, storage_id, nwn_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let orphaned_assemblies = nwn.unanchor(&admin_cap);
+
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let updated_orphaned_assemblies = storage_unit.offline_orphaned_storage_unit(
+            orphaned_assemblies,
+            &mut nwn,
+            &energy_config,
+        );
+        nwn.destroy_network_node(updated_orphaned_assemblies, &admin_cap);
+        storage_unit.unanchor_orphan(&admin_cap);
+
+        ts::return_shared(energy_config);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    ts::end(ts);
+}
+
 /// Test that authorizing extension without proper owner capability fails
 /// Scenario: User B attempts to authorize extension for User A's storage unit using wrong OwnerCap
 /// Expected: Transaction aborts with EAssemblyNotAuthorized error

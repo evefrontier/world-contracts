@@ -403,3 +403,25 @@ fun test_anchor_invalid_item_id() {
     ts::return_shared(nwn);
     ts::end(ts);
 }
+
+#[test]
+#[expected_failure(abort_code = assembly::EAssemblyHasEnergySource)]
+fun test_unanchor_orphan_fails_when_energy_source_set() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 8);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
+
+    // Attempting to orphan-unanchor while still connected should fail.
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        assembly.unanchor_orphan(&admin_cap);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    ts::end(ts);
+}
