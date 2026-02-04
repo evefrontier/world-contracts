@@ -55,6 +55,12 @@ const EOutOfRange: vector<u8> = b"Invalid distance in location proof";
 const EJumpPermitExpired: vector<u8> = b"Jump permit has expired";
 #[error(code = 11)]
 const EInvalidJumpPermit: vector<u8> = b"Invalid jump permit";
+#[error(code = 12)]
+const EGateHasEnergySource: vector<u8> = b"Gate has an energy source";
+#[error(code = 13)]
+const EGateOnline: vector<u8> = b"Gate should be offline";
+#[error(code = 14)]
+const EGatesLinked: vector<u8> = b"Gates are linked";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -478,7 +484,7 @@ public fun unanchor(
     assert!(option::contains(&energy_source_id, &nwn_id), ENetworkNodeMismatch);
 
     // Verify gate is not linked before unanchoring
-    assert!(option::is_none(&linked_gate_id), EGatesNotLinked);
+    assert!(option::is_none(&linked_gate_id), EGatesLinked);
 
     // Release energy if gate is online
     if (status.is_online()) {
@@ -494,6 +500,30 @@ public fun unanchor(
     location.remove();
     metadata.do!(|metadata| metadata.delete());
     let _ = option::destroy_with_default(energy_source_id, nwn_id);
+    id.delete();
+}
+
+public fun unanchor_orphan(gate: Gate, _: &AdminCap) {
+    let Gate {
+        id,
+        key,
+        status,
+        location,
+        metadata,
+        energy_source_id,
+        linked_gate_id,
+        ..,
+    } = gate;
+
+    assert!(option::is_none(&energy_source_id), EGateHasEnergySource);
+    assert!(!status.is_online(), EGateOnline);
+    // Verify gate is not linked before unanchoring
+    assert!(option::is_none(&linked_gate_id), EGatesNotLinked);
+
+    let gate_id = object::uid_to_inner(&id);
+    status.unanchor(gate_id, key);
+    location.remove();
+    metadata.do!(|metadata| metadata.delete());
     id.delete();
 }
 
