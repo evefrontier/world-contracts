@@ -10,7 +10,7 @@ use world::{
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies, UnanchorAssemblies, UpdateEnergySources},
+    network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
 };
@@ -29,6 +29,8 @@ const ENetworkNodeDoesNotExist: vector<u8> =
     b"Provided network node does not match the assembly's configured energy source";
 #[error(code = 5)]
 const EAssemblyOnline: vector<u8> = b"Assembly should be offline";
+#[error(code = 6)]
+const EAssemblyHasEnergySource: vector<u8> = b"Assembly has an energy source";
 
 // === Structs ===
 // TODO: find an elegant way to decouple the common fields across all structs
@@ -225,22 +227,22 @@ public fun offline_connected_assembly(
 
 /// Brings a connected assembly offline, releases energy, clears energy source, and removes it from the hot potato
 /// Must be called for each assembly in the hot potato returned by nwn.unanchor()
-/// Returns the updated UnanchorAssemblies; after all are processed, call destroy_network_node with it
-public fun unanchor_connected_assembly(
+/// Returns the updated HandleOrphanedAssemblies; after all are processed, call destroy_network_node with it
+public fun offline_orphaned_assembly(
     assembly: &mut Assembly,
-    mut unanchor_assemblies: UnanchorAssemblies,
+    mut orphaned_assemblies: HandleOrphanedAssemblies,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-): UnanchorAssemblies {
-    if (unanchor_assemblies.unanchor_assemblies_length() > 0) {
+): HandleOrphanedAssemblies {
+    if (orphaned_assemblies.orphaned_assemblies_length() > 0) {
         let assembly_id = object::id(assembly);
-        let found = unanchor_assemblies.remove_unanchor_assembly_id(assembly_id);
+        let found = orphaned_assemblies.remove_orphaned_assembly_id(assembly_id);
         if (found) {
             bring_offline_and_release_energy(assembly, assembly_id, network_node, energy_config);
             assembly.energy_source_id = option::none();
         }
     };
-    unanchor_assemblies
+    orphaned_assemblies
 }
 
 public fun unanchor(
@@ -285,6 +287,30 @@ public fun unanchor(
     id.delete();
     // In future we can do
     // derived_object::reclaim(&mut registry, id);
+}
+
+public fun unanchor_orphan(assembly: Assembly, _: &AdminCap) {
+    let Assembly {
+        id,
+        key,
+        status,
+        location,
+        metadata,
+        energy_source_id,
+        ..,
+    } = assembly;
+
+    // Orphaned assemblies should already be disconnected and offline.
+    assert!(option::is_none(&energy_source_id), EAssemblyHasEnergySource);
+    assert!(!status.is_online(), EAssemblyOnline);
+
+    location.remove();
+    let assembly_id = object::uid_to_inner(&id);
+    status.unanchor(assembly_id, key);
+    metadata.do!(|metadata| metadata.delete());
+    option::destroy_none(energy_source_id);
+
+    id.delete();
 }
 
 // === Private Functions ===

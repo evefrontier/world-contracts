@@ -39,17 +39,11 @@ const EAssembliesConnected: vector<u8> = b"Assemblies needs to be disconnected b
 #[error(code = 7)]
 const ENetworkNodeOffline: vector<u8> = b"Network Node is offline";
 #[error(code = 8)]
-const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
-#[error(code = 9)]
-const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
-#[error(code = 10)]
 const EUpdateEnergySourcesNotProcessed: vector<u8> =
     b"Energy source must be updated for all connected assemblies";
-#[error(code = 11)]
-const EUnanchorAssembliesNotProcessed: vector<u8> =
-    b"All assemblies must be processed before destroying network node";
-#[error(code = 12)]
-const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Character";
+#[error(code = 9)]
+const EOrphanedAssembliesNotOfflined: vector<u8> =
+    b"Orphaned assemblies must be offlined before destroying network node";
 
 // === Structs ===
 /// Hot potato struct to enforce all connected assemblies are brought offline
@@ -57,7 +51,7 @@ public struct OfflineAssemblies {
     assembly_ids: vector<ID>,
 }
 
-public struct UnanchorAssemblies {
+public struct HandleOrphanedAssemblies {
     assembly_ids: vector<ID>,
 }
 
@@ -94,7 +88,6 @@ public struct NetworkNodeCreatedEvent has copy, drop {
 public fun deposit_fuel(
     nwn: &mut NetworkNode,
     admin_acl: &AdminACL,
-    character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     type_id: u64,
     volume: u64,
@@ -102,47 +95,31 @@ public fun deposit_fuel(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
-    let sponsor_opt = tx_context::sponsor(ctx);
-    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
-    let sponsor = *option::borrow(&sponsor_opt);
-    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
-    nwn.fuel.deposit(nwn_id, nwn_key, character.key(), type_id, volume, quantity, clock);
+    admin_acl.verify_sponsor(ctx);
+    nwn.fuel.deposit(nwn_id, nwn_key, type_id, volume, quantity, clock);
 }
 
 public fun withdraw_fuel(
     nwn: &mut NetworkNode,
     admin_acl: &AdminACL,
-    character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     quantity: u64,
     ctx: &mut TxContext,
 ) {
-    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
-    let sponsor_opt = tx_context::sponsor(ctx);
-    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
-    let sponsor = *option::borrow(&sponsor_opt);
-    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
-    nwn.fuel.withdraw(nwn_id, nwn_key, character.key(), quantity);
+    admin_acl.verify_sponsor(ctx);
+    nwn.fuel.withdraw(nwn_id, nwn_key, quantity);
 }
 
-public fun online(
-    nwn: &mut NetworkNode,
-    character: &Character,
-    owner_cap: &OwnerCap<NetworkNode>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
+public fun online(nwn: &mut NetworkNode, owner_cap: &OwnerCap<NetworkNode>, clock: &Clock) {
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
-    nwn.fuel.start_burning(nwn_id, nwn.key, character.key(), clock);
+    nwn.fuel.start_burning(nwn_id, nwn.key, clock);
     nwn.energy_source.start_energy_production(nwn_id);
     nwn.status.online(nwn_id, nwn.key);
 }
@@ -152,21 +129,18 @@ public fun online(
 public fun offline(
     nwn: &mut NetworkNode,
     fuel_config: &FuelConfig,
-    character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     clock: &Clock,
-    ctx: &mut TxContext,
 ): OfflineAssemblies {
-    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
     assert!(nwn.status.is_online(), ENetworkNodeOffline);
 
     // Update fuel first to consume any pending fuel
-    nwn.fuel.update(nwn_id, nwn.key, character.key(), fuel_config, clock);
+    nwn.fuel.update(nwn_id, nwn.key, fuel_config, clock);
 
     if (nwn.fuel.is_burning()) {
-        nwn.fuel.stop_burning(nwn_id, nwn.key, character.key(), fuel_config, clock);
+        nwn.fuel.stop_burning(nwn_id, nwn.key, fuel_config, clock);
     };
 
     if (nwn.energy_source.current_energy_production() > 0) {
@@ -215,8 +189,8 @@ public fun ids_length(offline_assemblies: &OfflineAssemblies): u64 {
     offline_assemblies.assembly_ids.length()
 }
 
-public fun unanchor_assemblies_length(unanchor_assemblies: &UnanchorAssemblies): u64 {
-    unanchor_assemblies.assembly_ids.length()
+public fun orphaned_assemblies_length(orphaned_assemblies: &HandleOrphanedAssemblies): u64 {
+    orphaned_assemblies.assembly_ids.length()
 }
 
 public fun update_energy_sources_ids_length(update_energy_sources: &UpdateEnergySources): u64 {
@@ -324,18 +298,18 @@ public fun connect_assemblies(
     }
 }
 
-/// Unanchors the network node and returns UnanchorAssemblies hot potato that must be consumed
+/// Unanchors the network node and returns HandleOrphanedAssemblies hot potato that must be consumed
 /// by processing each connected assembly in the same transaction.
 /// For each assembly call unanchor_connected_assembly or unanchor_connected_storage_unit
 /// (brings offline, releases energy, clears energy source).
 /// After all assemblies are processed, call destroy_network_node with the hot potato to destroy the network node.
-public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): UnanchorAssemblies {
+public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): HandleOrphanedAssemblies {
     let nwn_id = object::id(nwn);
     if (nwn.energy_source.current_energy_production() > 0) {
         nwn.energy_source.stop_energy_production(nwn_id);
     };
 
-    UnanchorAssemblies {
+    HandleOrphanedAssemblies {
         assembly_ids: copy_connected_assembly_ids(nwn),
     }
 }
@@ -344,11 +318,11 @@ public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): UnanchorAssemblies {
 /// Must be called after processing all assemblies from the hot potato returned by unanchor
 public fun destroy_network_node(
     mut nwn: NetworkNode,
-    unanchor_assemblies: UnanchorAssemblies,
+    orphaned_assemblies: HandleOrphanedAssemblies,
     _: &AdminCap,
 ) {
     let nwn_id = object::id(&nwn);
-    unanchor_assemblies.destroy_unanchor_assemblies();
+    orphaned_assemblies.destroy_orphaned_assemblies();
     // Clean up connected assembliesd
     let assembly_ids = copy_connected_assembly_ids(&nwn);
     if (assembly_ids.length() > 0) {
@@ -368,7 +342,7 @@ public fun destroy_network_node(
     } = nwn;
 
     // Delete fuel and energy
-    fuel::delete(fuel);
+    fuel::delete(fuel, nwn_id, key);
     energy::delete(energy_source);
     connected_assembly_ids.destroy_empty();
 
@@ -386,7 +360,6 @@ public fun destroy_network_node(
 public fun update_fuel(
     nwn: &mut NetworkNode,
     fuel_config: &FuelConfig,
-    character: &Character,
     _: &AdminCap,
     clock: &Clock,
 ): OfflineAssemblies {
@@ -394,7 +367,7 @@ public fun update_fuel(
 
     if (nwn.status.is_online()) {
         // Update fuel first
-        nwn.fuel.update(nwn_id, nwn.key, character.key(), fuel_config, clock);
+        nwn.fuel.update(nwn_id, nwn.key, fuel_config, clock);
 
         if (!nwn.fuel.is_burning()) {
             // Fuel depleted - bring network node offline
@@ -436,22 +409,22 @@ public fun destroy_update_energy_sources(update_energy_sources: UpdateEnergySour
     assembly_ids.destroy_empty();
 }
 
-/// Destroys the UnanchorAssemblies hot potato; call after processing each assembly with unanchor_connected_assembly
-public fun destroy_unanchor_assemblies(unanchor_assemblies: UnanchorAssemblies) {
-    assert!(unanchor_assemblies.assembly_ids.length() == 0, EUnanchorAssembliesNotProcessed);
-    let UnanchorAssemblies {
+/// Destroys the HandleOrphanedAssemblies hot potato; call after processing each assembly with unanchor_connected_assembly
+public fun destroy_orphaned_assemblies(orphaned_assemblies: HandleOrphanedAssemblies) {
+    assert!(orphaned_assemblies.assembly_ids.length() == 0, EOrphanedAssembliesNotOfflined);
+    let HandleOrphanedAssemblies {
         assembly_ids,
-    } = unanchor_assemblies;
+    } = orphaned_assemblies;
     assembly_ids.destroy_empty();
 }
 
 // === Package Functions ===
-/// Removes an assembly ID from the UnanchorAssemblies list
-public(package) fun remove_unanchor_assembly_id(
-    unanchor_assemblies: &mut UnanchorAssemblies,
+/// Removes an assembly ID from the HandleOrphanedAssemblies list
+public(package) fun remove_orphaned_assembly_id(
+    orphaned_assemblies: &mut HandleOrphanedAssemblies,
     assembly_id: ID,
 ): bool {
-    remove_id_from_assembly_ids(&mut unanchor_assemblies.assembly_ids, assembly_id)
+    remove_id_from_assembly_ids(&mut orphaned_assemblies.assembly_ids, assembly_id)
 }
 
 /// Removes an assembly ID from the OfflineAssemblies list
@@ -535,30 +508,24 @@ public fun status(network_node: &NetworkNode): &AssemblyStatus {
 #[test_only]
 public fun deposit_fuel_test(
     nwn: &mut NetworkNode,
-    character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     type_id: u64,
     volume: u64,
     quantity: u64,
     clock: &Clock,
-    ctx: &mut TxContext,
 ) {
-    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
-    nwn.fuel.deposit(nwn_id, nwn.key, character.key(), type_id, volume, quantity, clock);
+    nwn.fuel.deposit(nwn_id, nwn.key, type_id, volume, quantity, clock);
 }
 
 #[test_only]
 public fun withdraw_fuel_test(
     nwn: &mut NetworkNode,
-    character: &Character,
     owner_cap: &OwnerCap<NetworkNode>,
     quantity: u64,
-    ctx: &mut TxContext,
 ) {
-    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
-    nwn.fuel.withdraw(nwn_id, nwn.key, character.key(), quantity);
+    nwn.fuel.withdraw(nwn_id, nwn.key, quantity);
 }

@@ -30,7 +30,7 @@ use world::{
     inventory::{Self, Inventory, Item},
     location::{Self, Location},
     metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies, UnanchorAssemblies, UpdateEnergySources},
+    network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus, Status}
 };
@@ -54,15 +54,11 @@ const ENotOnline: vector<u8> = b"Storage Unit is not online";
 #[error(code = 7)]
 const ETenantMismatch: vector<u8> = b"Item cannot be transferred across tenants";
 #[error(code = 8)]
-const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
-#[error(code = 9)]
-const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
-#[error(code = 10)]
 const ENetworkNodeMismatch: vector<u8> =
     b"Provided network node does not match the storage unit's configured energy source";
-#[error(code = 11)]
+#[error(code = 9)]
 const EStorageUnitInvalidState: vector<u8> = b"Storage Unit should be offline";
-#[error(code = 12)]
+#[error(code = 10)]
 const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Character";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
@@ -468,16 +464,16 @@ public fun offline_connected_storage_unit(
 
 /// Brings a connected storage unit offline, releases energy, clears energy source, and removes it from the hot potato
 /// Must be called for each storage unit in the hot potato returned by nwn.unanchor()
-/// Returns the updated UnanchorAssemblies; after all are processed, call destroy_network_node with it
-public fun unanchor_connected_storage_unit(
+/// Returns the updated HandleOrphanedAssemblies; after all are processed, call destroy_network_node with it
+public fun offline_orphaned_storage_unit(
     storage_unit: &mut StorageUnit,
-    mut unanchor_assemblies: UnanchorAssemblies,
+    mut orphaned_assemblies: HandleOrphanedAssemblies,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-): UnanchorAssemblies {
-    if (unanchor_assemblies.unanchor_assemblies_length() > 0) {
+): HandleOrphanedAssemblies {
+    if (orphaned_assemblies.orphaned_assemblies_length() > 0) {
         let storage_unit_id = object::id(storage_unit);
-        let found = unanchor_assemblies.remove_unanchor_assembly_id(storage_unit_id);
+        let found = orphaned_assemblies.remove_orphaned_assembly_id(storage_unit_id);
         if (found) {
             bring_offline_and_release_energy(
                 storage_unit,
@@ -488,7 +484,7 @@ public fun unanchor_connected_storage_unit(
             storage_unit.energy_source_id = option::none();
         }
     };
-    unanchor_assemblies
+    orphaned_assemblies
 }
 
 // On unanchor the storage unit is scooped back into inventory in game
@@ -538,6 +534,33 @@ public fun unanchor(
     id.delete();
 }
 
+public fun unanchor_orphan(storage_unit: StorageUnit, _: &AdminCap) {
+    let StorageUnit {
+        mut id,
+        key,
+        status,
+        location,
+        inventory_keys,
+        metadata,
+        energy_source_id,
+        ..,
+    } = storage_unit;
+
+    location.remove();
+    let storage_unit_id = object::uid_to_inner(&id);
+    inventory_keys.destroy!(
+        |inventory_key| df::remove<ID, Inventory>(&mut id, inventory_key).delete(
+            storage_unit_id,
+            key,
+        ),
+    );
+    status.unanchor(storage_unit_id, key);
+    metadata.do!(|metadata| metadata.delete());
+    option::destroy_none(energy_source_id);
+
+    id.delete();
+}
+
 /// Bridges items from game to chain inventory
 public fun game_item_to_chain_inventory<T: key>(
     storage_unit: &mut StorageUnit,
@@ -551,12 +574,8 @@ public fun game_item_to_chain_inventory<T: key>(
     ctx: &mut TxContext,
 ) {
     assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
+    admin_acl.verify_sponsor(ctx);
     let storage_unit_id = object::id(storage_unit);
-    let sponsor_opt = tx_context::sponsor(ctx);
-    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
-    let sponsor = *option::borrow(&sponsor_opt);
-    assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
-
     let owner_cap_id = object::id(owner_cap);
     assert!(storage_unit.status.is_online(), ENotOnline);
     check_inventory_authorization(owner_cap, storage_unit, character.id());

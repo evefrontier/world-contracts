@@ -25,7 +25,7 @@ const ESignatureVerificationFailed: vector<u8> = b"Signature verification failed
 #[error(code = 6)]
 const EDeadlineExpired: vector<u8> = b"Deadline has expired";
 #[error(code = 7)]
-const EInvalidDistance: vector<u8> = b"Invalid Distance";
+const EOutOfRange: vector<u8> = b"Invalid Distance";
 
 // === Structs ===
 
@@ -163,7 +163,7 @@ public fun verify_distance(
     validate_proof_message(&message, location, server_registry, ctx.sender());
 
     let message_bytes = bcs::to_bytes(&message);
-    assert!(message.distance <= max_distance, EInvalidDistance);
+    assert!(message.distance <= max_distance, EOutOfRange);
     assert!(
         sig_verify::verify_signature(
             message_bytes,

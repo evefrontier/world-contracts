@@ -17,13 +17,13 @@ module world::gate;
 use std::{bcs, type_name::{Self, TypeName}};
 use sui::{clock::Clock, derived_object, event, hash, table::{Self, Table}};
 use world::{
-    access::{Self, OwnerCap, AdminCap, ServerAddressRegistry},
+    access::{Self, OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
     character::{Self, Character},
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies, UnanchorAssemblies, UpdateEnergySources},
+    network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
 };
@@ -50,11 +50,17 @@ const EGatesAlreadyLinked: vector<u8> = b"Gates are already linked";
 #[error(code = 8)]
 const EGatesNotLinked: vector<u8> = b"Gates are not linked";
 #[error(code = 9)]
-const EInvalidDistance: vector<u8> = b"Invalid distance in location proof";
+const EOutOfRange: vector<u8> = b"Invalid distance in location proof";
 #[error(code = 10)]
 const EJumpPermitExpired: vector<u8> = b"Jump permit has expired";
 #[error(code = 11)]
 const EInvalidJumpPermit: vector<u8> = b"Invalid jump permit";
+#[error(code = 12)]
+const EGateHasEnergySource: vector<u8> = b"Gate has an energy source";
+#[error(code = 13)]
+const EGateOnline: vector<u8> = b"Gate should be offline";
+#[error(code = 14)]
+const EGatesLinked: vector<u8> = b"Gates are linked";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -82,8 +88,7 @@ public struct JumpPermit has key, store {
     // Hash that binds this permit to a (source, destination) gate pair.
     // Computed in a direction-agnostic way so the same permit works for A->B and B->A.
     route_hash: vector<u8>,
-    valid: bool,
-    validity_period: u64,
+    expires_at_timestamp_ms: u64,
 }
 
 // === Events ===
@@ -204,17 +209,7 @@ public fun unlink_gates(
         access::is_authorized(destination_gate_owner_cap, destination_gate_id),
         EGateNotAuthorized,
     );
-
-    // Verify gates are linked
-    assert!(
-        option::contains(&source_gate.linked_gate_id, &destination_gate_id) &&
-            option::contains(&destination_gate.linked_gate_id, &source_gate_id),
-        EGatesNotLinked,
-    );
-
-    // Unlink the gates
-    source_gate.linked_gate_id = option::none();
-    destination_gate.linked_gate_id = option::none();
+    unlink(source_gate, destination_gate);
 }
 
 public fun issue_jump_permit<Auth: drop>(
@@ -222,16 +217,17 @@ public fun issue_jump_permit<Auth: drop>(
     destination_gate: &Gate,
     character: &Character,
     _: Auth,
-    validity_period: u64,
+    expires_at_timestamp_ms: u64,
     ctx: &mut TxContext,
 ) {
+    assert!(option::is_some(&destination_gate.extension), EExtensionNotAuthorized);
     assert!(option::is_some(&source_gate.extension), EExtensionNotAuthorized);
+
     let extension_type = option::borrow(&source_gate.extension);
     assert!(extension_type == &type_name::with_defining_ids<Auth>(), EExtensionNotAuthorized);
     // Require destination gate to be configured with the same extension witness type as well,
     // so the resulting permit is valid for jumping both directions between the two gates.
     // TODO: Should we make this optional ?
-    assert!(option::is_some(&destination_gate.extension), EExtensionNotAuthorized);
     let destination_extension_type = option::borrow(&destination_gate.extension);
     assert!(
         destination_extension_type == &type_name::with_defining_ids<Auth>(),
@@ -249,36 +245,24 @@ public fun issue_jump_permit<Auth: drop>(
         id: object::new(ctx),
         route_hash,
         character_id: object::id(character),
-        valid: true,
-        validity_period,
+        expires_at_timestamp_ms,
     };
     transfer::transfer(jump_permit, character.character_address());
 }
 
 /// Default jump from one gate to another (no permit required).
 /// Only allowed when no extension logic is configured.
-public fun jump(source_gate: &Gate, destination_gate: &Gate, character: &Character) {
-    let source_gate_id = object::id(source_gate);
-    let destination_gate_id = object::id(destination_gate);
-
-    // Verify both gates are online
-    assert!(source_gate.status.is_online(), ENotOnline);
-    assert!(destination_gate.status.is_online(), ENotOnline);
-
-    // Verify gates are linked
-    assert!(option::contains(&source_gate.linked_gate_id, &destination_gate_id), EGatesNotLinked);
-
+public fun jump(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    admin_acl: &AdminACL,
+    ctx: &mut TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
     // Default jump is only allowed when no extension is configured
     assert!(option::is_none(&source_gate.extension), EExtensionNotAuthorized);
-
-    event::emit(JumpEvent {
-        source_gate_id,
-        source_gate_key: source_gate.key,
-        destination_gate_id,
-        destination_gate_key: destination_gate.key,
-        character_id: object::id(character),
-        character_key: character::key(character),
-    });
+    jump_internal(source_gate, destination_gate, character);
 }
 
 /// Jump from one gate to another using a jump permit.
@@ -288,44 +272,13 @@ public fun jump_with_permit(
     destination_gate: &Gate,
     character: &Character,
     jump_permit: JumpPermit,
+    admin_acl: &AdminACL,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
-    let source_gate_id = object::id(source_gate);
-    let destination_gate_id = object::id(destination_gate);
-
-    // Verify both gates are online
-    assert!(source_gate.status.is_online(), ENotOnline);
-    assert!(destination_gate.status.is_online(), ENotOnline);
-
-    // Verify gates are linked
-    assert!(option::contains(&source_gate.linked_gate_id, &destination_gate_id), EGatesNotLinked);
-
-    // Extension must be configured and Auth must match
-    assert!(option::is_some(&source_gate.extension), EExtensionNotAuthorized);
-
-    // Validate jump permit then invalidate it
-    assert!(jump_permit.valid, EInvalidJumpPermit);
-    assert!(jump_permit.validity_period > clock.timestamp_ms(), EJumpPermitExpired);
-    assert!(jump_permit.character_id == object::id(character), EInvalidJumpPermit);
-    assert!(
-        jump_permit.route_hash == compute_route_hash(source_gate_id, destination_gate_id)
-        || jump_permit.route_hash == compute_route_hash(destination_gate_id, source_gate_id),
-        EInvalidJumpPermit,
-    );
-
-    // TODO: We can allow the permit to be used multiple times and make the invalidation action chosen by the builder extension logic later.
-    // Invalidate the permit by deleting the object
-    let JumpPermit { id, .. } = jump_permit;
-    id.delete();
-
-    event::emit(JumpEvent {
-        source_gate_id,
-        source_gate_key: source_gate.key,
-        destination_gate_id,
-        destination_gate_key: destination_gate.key,
-        character_id: object::id(character),
-        character_key: character::key(character),
-    });
+    admin_acl.verify_sponsor(ctx);
+    validate_jump_permit(source_gate, destination_gate, character, jump_permit, clock);
+    jump_internal(source_gate, destination_gate, character);
 }
 
 /// Updates the gate's energy source and removes it from the UpdateEnergySources hot potato.
@@ -369,16 +322,16 @@ public fun offline_connected_gate(
 
 /// Brings a connected gate offline, releases energy, clears energy source, and removes it from the hot potato
 /// Must be called for each gate in the hot potato returned by nwn.unanchor()
-/// Returns the updated UnanchorAssemblies; after all are processed, call destroy_network_node with it
-public fun unanchor_connected_assembly(
+/// Returns the updated HandleOrphanedAssemblies; after all are processed, call destroy_network_node with it
+public fun offline_orphaned_gate(
     gate: &mut Gate,
-    mut unanchor_assemblies: UnanchorAssemblies,
+    mut orphaned_assemblies: HandleOrphanedAssemblies,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-): UnanchorAssemblies {
-    if (unanchor_assemblies.unanchor_assemblies_length() > 0) {
+): HandleOrphanedAssemblies {
+    if (orphaned_assemblies.orphaned_assemblies_length() > 0) {
         let gate_id = object::id(gate);
-        let found = unanchor_assemblies.remove_unanchor_assembly_id(gate_id);
+        let found = orphaned_assemblies.remove_orphaned_assembly_id(gate_id);
         if (found) {
             // Bring gate offline and release energy if needed
             if (gate.status.is_online()) {
@@ -389,7 +342,7 @@ public fun unanchor_connected_assembly(
             gate.energy_source_id = option::none();
         }
     };
-    unanchor_assemblies
+    orphaned_assemblies
 }
 
 // === View Functions ===
@@ -531,7 +484,7 @@ public fun unanchor(
     assert!(option::contains(&energy_source_id, &nwn_id), ENetworkNodeMismatch);
 
     // Verify gate is not linked before unanchoring
-    assert!(option::is_none(&linked_gate_id), EGatesNotLinked);
+    assert!(option::is_none(&linked_gate_id), EGatesLinked);
 
     // Release energy if gate is online
     if (status.is_online()) {
@@ -550,6 +503,30 @@ public fun unanchor(
     id.delete();
 }
 
+public fun unanchor_orphan(gate: Gate, _: &AdminCap) {
+    let Gate {
+        id,
+        key,
+        status,
+        location,
+        metadata,
+        energy_source_id,
+        linked_gate_id,
+        ..,
+    } = gate;
+
+    assert!(option::is_none(&energy_source_id), EGateHasEnergySource);
+    assert!(!status.is_online(), EGateOnline);
+    // Verify gate is not linked before unanchoring
+    assert!(option::is_none(&linked_gate_id), EGatesNotLinked);
+
+    let gate_id = object::uid_to_inner(&id);
+    status.unanchor(gate_id, key);
+    location.remove();
+    metadata.do!(|metadata| metadata.delete());
+    id.delete();
+}
+
 public fun set_max_distance(
     gate_config: &mut GateConfig,
     _: &AdminCap,
@@ -557,12 +534,20 @@ public fun set_max_distance(
     max_distance: u64,
 ) {
     assert!(type_id != 0, EGateTypeIdEmpty);
-    assert!(max_distance > 0, EInvalidDistance);
+    assert!(max_distance > 0, EOutOfRange);
 
     if (gate_config.max_distance_by_type.contains(type_id)) {
         gate_config.max_distance_by_type.remove(type_id);
     };
     gate_config.max_distance_by_type.add(type_id, max_distance);
+}
+
+public fun unlink_gates_by_admin(
+    source_gate: &mut Gate,
+    destination_gate: &mut Gate,
+    _: &AdminCap,
+) {
+    unlink(source_gate, destination_gate);
 }
 
 // === Package Functions ===
@@ -637,6 +622,68 @@ fun compute_route_hash(gate_a_id: ID, gate_b_id: ID): vector<u8> {
     hash::blake2b256(&concatenated)
 }
 
+fun jump_internal(source_gate: &Gate, destination_gate: &Gate, character: &Character) {
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+
+    // Verify both gates are online
+    assert!(source_gate.status.is_online(), ENotOnline);
+    assert!(destination_gate.status.is_online(), ENotOnline);
+
+    // Verify gates are linked
+    assert!(option::contains(&source_gate.linked_gate_id, &destination_gate_id), EGatesNotLinked);
+
+    event::emit(JumpEvent {
+        source_gate_id,
+        source_gate_key: source_gate.key,
+        destination_gate_id,
+        destination_gate_key: destination_gate.key,
+        character_id: object::id(character),
+        character_key: character::key(character),
+    });
+}
+
+fun validate_jump_permit(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    jump_permit: JumpPermit,
+    clock: &Clock,
+) {
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+
+    // Validate jump permit then invalidate it
+    assert!(jump_permit.expires_at_timestamp_ms > clock.timestamp_ms(), EJumpPermitExpired);
+    assert!(jump_permit.character_id == object::id(character), EInvalidJumpPermit);
+    assert!(
+        jump_permit.route_hash == compute_route_hash(source_gate_id, destination_gate_id)
+        || jump_permit.route_hash == compute_route_hash(destination_gate_id, source_gate_id),
+        EInvalidJumpPermit,
+    );
+
+    // TODO: We can allow the permit to be used multiple times and make the invalidation action chosen by the builder extension logic later.
+    // Invalidate the permit by deleting the object
+    let JumpPermit { id, .. } = jump_permit;
+    id.delete();
+}
+
+fun unlink(source_gate: &mut Gate, destination_gate: &mut Gate) {
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+
+    // Verify gates are linked
+    assert!(
+        option::contains(&source_gate.linked_gate_id, &destination_gate_id) &&
+            option::contains(&destination_gate.linked_gate_id, &source_gate_id),
+        EGatesNotLinked,
+    );
+
+    // Unlink the gates
+    source_gate.linked_gate_id = option::none();
+    destination_gate.linked_gate_id = option::none();
+}
+
 // === Package Functions (Init) ===
 fun init(ctx: &mut TxContext) {
     transfer::share_object(GateConfig {
@@ -649,4 +696,22 @@ fun init(ctx: &mut TxContext) {
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);
+}
+
+#[test_only]
+public fun test_jump(source_gate: &Gate, destination_gate: &Gate, character: &Character) {
+    assert!(option::is_none(&source_gate.extension), EExtensionNotAuthorized);
+    jump_internal(source_gate, destination_gate, character);
+}
+
+#[test_only]
+public fun test_jump_with_permit(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    jump_permit: JumpPermit,
+    clock: &Clock,
+) {
+    validate_jump_permit(source_gate, destination_gate, character, jump_permit, clock);
+    jump_internal(source_gate, destination_gate, character);
 }

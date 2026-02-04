@@ -40,11 +40,18 @@ public fun claim_ticket(
     gate_a: &Gate,
     gate_b: &Gate,
     character: &Character,
-    validity_period: u64,
+    expires_at_timestamp_ms: u64,
     ctx: &mut TxContext,
 ) {
     // todo: add some requirements to claim a ticket
-    gate::issue_jump_permit<GateAuth>(gate_a, gate_b, character, GateAuth {}, validity_period, ctx);
+    gate::issue_jump_permit<GateAuth>(
+        gate_a,
+        gate_b,
+        character,
+        GateAuth {},
+        expires_at_timestamp_ms,
+        ctx,
+    );
 }
 
 fun setup(ts: &mut ts::Scenario) {
@@ -148,15 +155,13 @@ fun bring_network_node_online(ts: &mut ts::Scenario, character_id: ID, nwn_id: I
         let nwn_ticket = ts::receiving_ticket_by_id<OwnerCap<NetworkNode>>(nwn_owner_cap_id);
         let owner_cap = character.borrow_owner_cap<NetworkNode>(nwn_ticket, ts.ctx());
         nwn.deposit_fuel_test(
-            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
             10,
             &clock,
-            ts.ctx(),
         );
-        nwn.online(&character, &owner_cap, &clock, ts.ctx());
+        nwn.online(&owner_cap, &clock);
         character.return_owner_cap(owner_cap);
         ts::return_shared(nwn);
         ts::return_shared(character);
@@ -238,7 +243,7 @@ fun authorize_gate_extension(ts: &mut ts::Scenario, character_id: ID, gate_id: I
 
 fun distance_proof_bytes(distance: u64, player: address, target_hash: vector<u8>): vector<u8> {
     // Distance is checked BEFORE signature verification in `location::verify_distance`,
-    // so a dummy signature is fine to deterministically hit `EInvalidDistance`.
+    // so a dummy signature is fine to deterministically hit `EOutOfRange`.
     let proof = world::location::create_location_proof(
         server_admin(),
         player,
@@ -272,9 +277,9 @@ fun default_jump_no_extension() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         // Should also work from the other side
-        gate_b.jump(&gate_a, &character);
+        gate_b.test_jump(&gate_a, &character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
         ts::return_shared(character);
@@ -283,7 +288,7 @@ fun default_jump_no_extension() {
 }
 
 #[test]
-fun jump_with_permit_succeeds() {
+fun test_jump_with_permit_succeeds() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
@@ -305,33 +310,81 @@ fun jump_with_permit_succeeds() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let validity_period = clock.timestamp_ms() + 10_000;
-        claim_ticket(&gate_a, &gate_b, &character, validity_period, ts.ctx());
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_a, &gate_b, &character, expires_at_timestamp_ms, ts.ctx());
     };
 
     // Jump A -> B (consume one ticket)
     ts::next_tx(&mut ts, user_a());
     {
         let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        let validity_period = clock.timestamp_ms() + 10_000;
-        claim_ticket(&gate_b, &gate_a, &character, validity_period, ts.ctx());
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_b, &gate_a, &character, expires_at_timestamp_ms, ts.ctx());
     };
 
     // Jump B -> A (consume the second ticket)
     ts::next_tx(&mut ts, user_a());
     {
         let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::jump_with_permit(&gate_b, &gate_a, &character, permit, &clock);
+        gate::test_jump_with_permit(&gate_b, &gate_a, &character, permit, &clock);
     };
     ts::return_shared(character);
     ts::return_shared(gate_a);
     ts::return_shared(gate_b);
     clock.destroy_for_testing();
+    ts::end(ts);
+}
+
+#[test]
+fun unanchor_orphan_gate() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 101);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let orphaned_assemblies = nwn.unanchor(&admin_cap);
+        let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let updated_orphaned_assemblies = gate_a.offline_orphaned_gate(
+            orphaned_assemblies,
+            &mut nwn,
+            &energy_config,
+        );
+        let updated_orphaned_assemblies = gate_b.offline_orphaned_gate(
+            updated_orphaned_assemblies,
+            &mut nwn,
+            &energy_config,
+        );
+        nwn.destroy_network_node(updated_orphaned_assemblies, &admin_cap);
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(energy_config);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        gate_a.unanchor_orphan(&admin_cap);
+        gate_b.unanchor_orphan(&admin_cap);
+        ts::return_to_sender(&ts, admin_cap);
+    };
     ts::end(ts);
 }
 
@@ -356,7 +409,7 @@ fun default_jump_fails_when_extension_configured() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -428,7 +481,7 @@ fun issue_jump_permit_fails_wrong_auth() {
 
 #[test]
 #[expected_failure]
-fun jump_with_permit_consumes_permit() {
+fun test_jump_with_permit_consumes_permit() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
@@ -449,12 +502,12 @@ fun jump_with_permit_consumes_permit() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let validity_period = clock.timestamp_ms() + 10_000;
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
         claim_ticket(
             &gate_a,
             &gate_b,
             &character,
-            validity_period,
+            expires_at_timestamp_ms,
             ts.ctx(),
         );
     };
@@ -463,7 +516,7 @@ fun jump_with_permit_consumes_permit() {
         let permit = ts::take_from_sender<JumpPermit>(&ts);
 
         // First jump succeeds
-        gate::jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
 
         // Permit is deleted, taking another should fail.
         let unexpected = ts::take_from_sender<JumpPermit>(&ts);
@@ -479,7 +532,7 @@ fun jump_with_permit_consumes_permit() {
 
 #[test]
 #[expected_failure(abort_code = gate::EJumpPermitExpired)]
-fun jump_with_permit_fails_expired_permit() {
+fun test_jump_with_permit_fails_expired_permit() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
@@ -507,7 +560,7 @@ fun jump_with_permit_fails_expired_permit() {
     ts::next_tx(&mut ts, user_a());
     {
         let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
     };
     ts::return_shared(character);
     ts::return_shared(gate_a);
@@ -588,7 +641,7 @@ fun jump_fails_when_gate_is_offline() {
             &clock,
             ts.ctx(),
         );
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
 
         character.return_owner_cap(owner_cap_a);
         character.return_owner_cap(owner_cap_b);
@@ -641,7 +694,7 @@ fun jump_fails_after_gate_offlined() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -685,6 +738,41 @@ fun unlink_fails_when_gates_not_linked() {
 }
 
 #[test]
+fun unlink_gates_by_admin_succeeds() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 611);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+
+        gate::unlink_gates_by_admin(&mut gate_a, &mut gate_b, &admin_cap);
+
+        assert!(!gate::are_gates_linked(&gate_a, &gate_b), 0);
+        let linked_a = gate_a.linked_gate_id();
+        let linked_b = gate_b.linked_gate_id();
+        assert!(option::is_none(&linked_a), 0);
+        assert!(option::is_none(&linked_b), 0);
+
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
 #[expected_failure(abort_code = gate::EGatesAlreadyLinked)]
 fun link_fails_when_gates_already_linked() {
     let mut ts = ts::begin(governor());
@@ -704,7 +792,7 @@ fun link_fails_when_gates_already_linked() {
 }
 
 #[test]
-#[expected_failure(abort_code = location::EInvalidDistance)]
+#[expected_failure(abort_code = location::EOutOfRange)]
 fun link_fails_when_distance_exceeds_max() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
@@ -792,8 +880,8 @@ fun jump_fails_when_ticket_issued_for_user_a_used_by_user_b() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
-        let validity_period = clock.timestamp_ms() + 10_000;
-        claim_ticket(&gate_a, &gate_b, &character_a, validity_period, ts.ctx());
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_a, &gate_b, &character_a, expires_at_timestamp_ms, ts.ctx());
         ts::return_shared(character_a);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -815,7 +903,7 @@ fun jump_fails_when_ticket_issued_for_user_a_used_by_user_b() {
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
         let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::jump_with_permit(&gate_a, &gate_b, &character_b, permit, &clock);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character_b, permit, &clock);
         ts::return_shared(character_b);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -844,7 +932,7 @@ fun cannot_jump_after_unanchor() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -891,10 +979,58 @@ fun cannot_jump_after_unanchor() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        gate_a.jump(&gate_b, &character);
+        gate_a.test_jump(&gate_b, &character);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
+    };
+    ts::end(ts);
+}
+
+// unanchor fails when gate has energy source
+#[test]
+#[expected_failure(abort_code = gate::EGateHasEnergySource)]
+fun unanchor_orphan_gate_fails_when_energy_source_set() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 101);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+
+    // unlink the gates
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap_a = character.borrow_owner_cap<Gate>(
+            ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_a.owner_cap_id()),
+            ts.ctx(),
+        );
+        let owner_cap_b = character.borrow_owner_cap<Gate>(
+            ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_b.owner_cap_id()),
+            ts.ctx(),
+        );
+        gate_a.unlink_gates(&mut gate_b, &owner_cap_a, &owner_cap_b);
+        character.return_owner_cap(owner_cap_a);
+        character.return_owner_cap(owner_cap_b);
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(character);
+    };
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        gate_a.unanchor_orphan(&admin_cap);
+        gate_b.unanchor_orphan(&admin_cap);
+        ts::return_to_sender(&ts, admin_cap);
     };
     ts::end(ts);
 }
