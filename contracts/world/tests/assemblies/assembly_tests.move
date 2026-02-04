@@ -187,19 +187,17 @@ fun test_online_offline() {
     ts::next_tx(&mut ts, user_a());
     {
         nwn.deposit_fuel_test(
-            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
             10,
             &clock,
-            ts.ctx(),
         );
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        nwn.online(&character, &owner_cap, &clock, ts.ctx());
+        nwn.online(&owner_cap, &clock);
     };
     character.return_owner_cap(owner_cap);
 

@@ -206,13 +206,11 @@ fun online_storage_unit(
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
         nwn.deposit_fuel_test(
-            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
             10,
             &clock,
-            ts.ctx(),
         );
         ts::return_shared(nwn);
     };
@@ -220,7 +218,7 @@ fun online_storage_unit(
     ts::next_tx(ts, user);
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-        nwn.online(&character, &owner_cap, &clock, ts.ctx());
+        nwn.online(&owner_cap, &clock);
         ts::return_shared(nwn);
     };
     character.return_owner_cap(owner_cap);
@@ -1438,23 +1436,19 @@ fun online_fail_by_unauthorized_owner() {
     ts::next_tx(&mut ts, user_a());
     {
         nwn.deposit_fuel_test(
-            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
             10,
             &clock,
-            ts.ctx(),
         );
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         nwn.online(
-            &character,
             &owner_cap,
             &clock,
-            ts.ctx(),
         );
     };
     character.return_owner_cap(owner_cap);
@@ -1796,23 +1790,19 @@ fun test_fail_network_node_offline() {
     ts::next_tx(&mut ts, user_a());
     {
         nwn.deposit_fuel_test(
-            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
             10,
             &clock,
-            ts.ctx(),
         );
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         nwn.online(
-            &character,
             &owner_cap,
             &clock,
-            ts.ctx(),
         );
     };
     ts::return_shared(nwn);
@@ -1850,10 +1840,8 @@ fun test_fail_network_node_offline() {
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let mut offline_assemblies = nwn.offline(
             &fuel_config,
-            &character,
             &owner_cap,
             &clock,
-            ts.ctx(),
         );
 
         // Process the storage unit to bring it offline (temporary offline, do not remove energy source)
