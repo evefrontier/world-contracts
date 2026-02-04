@@ -155,15 +155,13 @@ fun bring_network_node_online(ts: &mut ts::Scenario, character_id: ID, nwn_id: I
         let nwn_ticket = ts::receiving_ticket_by_id<OwnerCap<NetworkNode>>(nwn_owner_cap_id);
         let owner_cap = character.borrow_owner_cap<NetworkNode>(nwn_ticket, ts.ctx());
         nwn.deposit_fuel_test(
-            &character,
             &owner_cap,
             FUEL_TYPE_ID,
             FUEL_VOLUME,
             10,
             &clock,
-            ts.ctx(),
         );
-        nwn.online(&character, &owner_cap, &clock, ts.ctx());
+        nwn.online(&owner_cap, &clock);
         character.return_owner_cap(owner_cap);
         ts::return_shared(nwn);
         ts::return_shared(character);

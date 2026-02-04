@@ -23,7 +23,7 @@ use world::{
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
     metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies, UnanchorAssemblies, UpdateEnergySources},
+    network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
 };
@@ -316,16 +316,16 @@ public fun offline_connected_gate(
 
 /// Brings a connected gate offline, releases energy, clears energy source, and removes it from the hot potato
 /// Must be called for each gate in the hot potato returned by nwn.unanchor()
-/// Returns the updated UnanchorAssemblies; after all are processed, call destroy_network_node with it
-public fun unanchor_connected_assembly(
+/// Returns the updated HandleOrphanedAssemblies; after all are processed, call destroy_network_node with it
+public fun offline_orphaned_gate(
     gate: &mut Gate,
-    mut unanchor_assemblies: UnanchorAssemblies,
+    mut orphaned_assemblies: HandleOrphanedAssemblies,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-): UnanchorAssemblies {
-    if (unanchor_assemblies.unanchor_assemblies_length() > 0) {
+): HandleOrphanedAssemblies {
+    if (orphaned_assemblies.orphaned_assemblies_length() > 0) {
         let gate_id = object::id(gate);
-        let found = unanchor_assemblies.remove_unanchor_assembly_id(gate_id);
+        let found = orphaned_assemblies.remove_orphaned_assembly_id(gate_id);
         if (found) {
             // Bring gate offline and release energy if needed
             if (gate.status.is_online()) {
@@ -336,7 +336,7 @@ public fun unanchor_connected_assembly(
             gate.energy_source_id = option::none();
         }
     };
-    unanchor_assemblies
+    orphaned_assemblies
 }
 
 // === View Functions ===
