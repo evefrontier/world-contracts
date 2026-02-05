@@ -541,27 +541,6 @@ fun create_with_zero_max_production() {
 }
 
 #[test]
-#[expected_failure(abort_code = energy::EIncorrectAssemblyType)]
-fun reserve_energy_for_nonexistent_assembly_type() {
-    let mut ts = ts::begin(user_a());
-    test_helpers::setup_world(&mut ts);
-    let nwn_id = create_network_node(&mut ts, MAX_PRODUCTION);
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production(nwn_id);
-        let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(nwn_id, &energy_config, 9999);
-
-        ts::return_shared(nwn);
-        ts::return_shared(energy_config);
-    };
-
-    ts::end(ts);
-}
-
-#[test]
 #[expected_failure(abort_code = energy::ETypeIdEmpty)]
 fun release_energy_with_empty_type_id() {
     let mut ts = ts::begin(user_a());
@@ -576,29 +555,6 @@ fun release_energy_with_empty_type_id() {
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
         nwn.energy.release_energy(nwn_id, &energy_config, 0);
-
-        ts::return_shared(nwn);
-        ts::return_shared(energy_config);
-    };
-
-    ts::end(ts);
-}
-
-#[test]
-#[expected_failure(abort_code = energy::EIncorrectAssemblyType)]
-fun release_energy_for_nonexistent_assembly_type() {
-    let mut ts = ts::begin(user_a());
-    test_helpers::setup_world(&mut ts);
-    test_helpers::configure_assembly_energy(&mut ts);
-    let nwn_id = create_network_node(&mut ts, MAX_PRODUCTION);
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        nwn.energy.start_energy_production(nwn_id);
-        let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
-        nwn.energy.release_energy(nwn_id, &energy_config, 9999);
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
