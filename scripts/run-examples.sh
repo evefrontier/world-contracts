@@ -9,6 +9,7 @@ set -euo pipefail
 DELAY_SECONDS="${DELAY_SECONDS:-${1:-2}}"
 
 commands=(
+  "setup-access"
   "configure-fuel-energy"
   "create-character"
   "create-nwn"
@@ -16,7 +17,9 @@ commands=(
   "online-nwn"
   "create-storage-unit"
   "ssu-online"
-  "deposit-to-ephemeral-inventory"
+  "game-item-to-chain"
+  "withdraw-deposit"
+  "chain-item-to-game"
   "configure-gate-distance"
   "create-gates"
   "online-gates"
@@ -25,6 +28,15 @@ commands=(
   "configure-builder-extension-rules"
   "authorise-gate"
   "authorise-storage-unit"
+  "deposit-to-ephemeral-inventory"
+  "issue-tribe-jump-permit"
+  "jump-with-permit"
+  "collect-corpse-bounty"
+  "create-assembly"
+  "online"
+  "update-fuel"
+  "offline-nwn"
+  "unanchor-nwn"
 )
 
 echo "Running ${#commands[@]} pnpm commands with ${DELAY_SECONDS}s delay..."

@@ -8,7 +8,7 @@ import {
     GAME_CHARACTER_ID,
     GATE_ITEM_ID_1,
     GATE_ITEM_ID_2,
-    PROOF,
+    PLAYER_A_PROOF,
 } from "../utils/constants";
 import {
     getEnvConfig,
@@ -64,7 +64,7 @@ async function linkGates(
             tx.object(config.serverAddressRegistry),
             gateAOwnerCap,
             gateBOwnerCap,
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_A_PROOF))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });

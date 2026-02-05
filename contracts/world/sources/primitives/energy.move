@@ -63,7 +63,7 @@ public fun assembly_energy(energy_config: &EnergyConfig, type_id: u64): u64 {
     if (energy_config.assembly_energy.contains(type_id)) {
         *energy_config.assembly_energy.borrow(type_id)
     } else {
-        abort EIncorrectAssemblyType
+        0
     }
 }
 

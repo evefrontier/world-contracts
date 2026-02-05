@@ -11,14 +11,19 @@ import {
     initializeContext,
     requireEnv,
 } from "../utils/helper";
+import { keypairFromPrivateKey } from "../utils/client";
+import { executeSponsoredTransaction } from "../utils/transaction";
 
 async function jump(
     ctx: ReturnType<typeof initializeContext>,
     character: number,
     sourceGateItemId: bigint,
-    destinationGateItemId: bigint
+    destinationGateItemId: bigint,
+    playerAddress: string,
+    adminAddress: string,
+    adminKeypair: ReturnType<typeof keypairFromPrivateKey>
 ) {
-    const { client, keypair, config } = ctx;
+    const { client, keypair: playerKeypair, config } = ctx;
 
     const characterId = deriveObjectId(config.objectRegistry, character, config.packageId);
     const sourceGateId = deriveObjectId(config.objectRegistry, sourceGateItemId, config.packageId);
@@ -29,16 +34,27 @@ async function jump(
     );
 
     const tx = new Transaction();
+    tx.setSender(playerAddress);
+    tx.setGasOwner(adminAddress);
+
     tx.moveCall({
         target: `${config.packageId}::${MODULES.GATE}::jump`,
-        arguments: [tx.object(sourceGateId), tx.object(destinationGateId), tx.object(characterId)],
+        arguments: [
+            tx.object(sourceGateId),
+            tx.object(destinationGateId),
+            tx.object(characterId),
+            tx.object(config.adminAcl),
+        ],
     });
 
-    const result = await client.signAndExecuteTransaction({
-        transaction: tx,
-        signer: keypair,
-        options: { showEvents: true, showEffects: true, showObjectChanges: true },
-    });
+    const result = await executeSponsoredTransaction(
+        tx,
+        client,
+        playerKeypair,
+        adminKeypair,
+        playerAddress,
+        adminAddress
+    );
 
     const jumpEvent = extractEvent<{
         source_gate_id: string;
@@ -57,9 +73,21 @@ async function main() {
     try {
         const env = getEnvConfig();
         const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
-        const ctx = initializeContext(env.network, playerKey);
-        await hydrateWorldConfig(ctx);
-        await jump(ctx, GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2);
+        const playerCtx = initializeContext(env.network, playerKey);
+        await hydrateWorldConfig(playerCtx);
+        const adminKeypair = keypairFromPrivateKey(env.adminExportedKey);
+        const adminAddress = adminKeypair.getPublicKey().toSuiAddress();
+        const playerAddress = playerCtx.address;
+
+        await jump(
+            playerCtx,
+            GAME_CHARACTER_ID,
+            GATE_ITEM_ID_1,
+            GATE_ITEM_ID_2,
+            playerAddress,
+            adminAddress,
+            adminKeypair
+        );
     } catch (error) {
         handleError(error);
     }

@@ -6,7 +6,7 @@ import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
 
 export interface AssemblyTypeInfo {
     id: string;
-    isStorageUnit: boolean;
+    kind: "assembly" | "storage_unit" | "gate";
 }
 
 export async function getFuelQuantity(
@@ -131,17 +131,22 @@ export async function getAssemblyTypes(
                     options: { showType: true },
                 });
                 const type = object.data?.type;
-                return {
-                    id: assemblyId,
-                    isStorageUnit: type?.includes("StorageUnit") ?? false,
-                };
+
+                // connected_assembly_ids can include multiple "assembly-like" structs,
+                // including `Gate` and `StorageUnit`, which require different Move entrypoints.
+                if (type?.includes(`::${MODULES.GATE}::Gate`)) {
+                    return { id: assemblyId, kind: "gate" };
+                }
+
+                if (type?.includes("StorageUnit")) {
+                    return { id: assemblyId, kind: "storage_unit" };
+                }
+
+                return { id: assemblyId, kind: "assembly" };
             } catch (error) {
                 console.warn(`Failed to get type for assembly ${assemblyId}:`, error);
                 // Default to assembly module if we can't determine the type
-                return {
-                    id: assemblyId,
-                    isStorageUnit: false,
-                };
+                return { id: assemblyId, kind: "assembly" };
             }
         })
     );

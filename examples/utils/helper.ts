@@ -37,6 +37,18 @@ type PublishObjectChange = {
     owner?: { AddressOwner?: string } | unknown;
 };
 
+// Parse arrays from environment variables
+export function parseBigIntArray(
+    envVar: string | undefined,
+    defaultValue: bigint[] = []
+): bigint[] {
+    if (!envVar) return defaultValue;
+    return envVar
+        .split(",")
+        .map((val) => BigInt(val.trim()))
+        .filter((val) => val > 0n);
+}
+
 export function hexToBytes(hexString: string): Uint8Array {
     const hex = hexString.startsWith("0x") ? hexString.slice(2) : hexString;
     const normalizedHex = hex.length % 2 === 0 ? hex : "0" + hex;
@@ -136,11 +148,7 @@ export async function hydrateWorldConfig(ctx: InitializedContext): Promise<Hydra
         ? keypairFromPrivateKey(governorPrivateKey).getPublicKey().toSuiAddress()
         : undefined;
 
-    const governorAddress =
-        process.env.GOVERNOR_ADDRESS ||
-        derivedGovernorAddress ||
-        process.env.ADMIN_ADDRESS ||
-        ctx.address;
+    const governorAddress = derivedGovernorAddress || process.env.ADMIN_ADDRESS || ctx.address;
 
     const hasManualIds =
         !!ctx.config.governorCap &&

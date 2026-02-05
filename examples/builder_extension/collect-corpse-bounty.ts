@@ -8,7 +8,7 @@ import {
     GATE_ITEM_ID_2,
     CLOCK_OBJECT_ID,
     ITEM_A_TYPE_ID,
-    PROOF,
+    PLAYER_B_PROOF,
     STORAGE_A_ITEM_ID,
     GAME_CHARACTER_B_ID,
 } from "../utils/constants";
@@ -76,7 +76,7 @@ async function collectCorpseBounty(
             tx.object(characterId!),
             ownerCap,
             tx.pure.u64(ITEM_A_TYPE_ID),
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_B_PROOF))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });

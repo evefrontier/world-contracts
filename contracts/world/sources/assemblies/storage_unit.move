@@ -134,6 +134,7 @@ public fun offline(
     storage_unit.status.offline(storage_unit_id, storage_unit.key);
 }
 
+// TODO: add additional check for proximity proof
 /// Bridges items from chain to game inventory
 public fun chain_item_to_game_inventory<T: key>(
     storage_unit: &mut StorageUnit,
@@ -221,6 +222,7 @@ public fun withdraw_item<Auth: drop>(
     )
 }
 
+// TODO: add additional check for proximity proof
 public fun deposit_by_owner<T: key>(
     storage_unit: &mut StorageUnit,
     item: Item,
@@ -265,6 +267,7 @@ public fun deposit_by_owner<T: key>(
     );
 }
 
+// TODO: add additional check for proximity proof
 public fun withdraw_by_owner<T: key>(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,

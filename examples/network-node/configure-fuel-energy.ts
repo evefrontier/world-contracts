@@ -9,18 +9,10 @@ import {
     handleError,
     getEnvConfig,
     getAdminCapId,
+    parseBigIntArray,
 } from "../utils/helper";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Parse arrays from environment variables
-function parseBigIntArray(envVar: string | undefined, defaultValue: bigint[] = []): bigint[] {
-    if (!envVar) return defaultValue;
-    return envVar
-        .split(",")
-        .map((val) => BigInt(val.trim()))
-        .filter((val) => val > 0n);
-}
 
 async function setFuelEfficiency(
     fuelTypeId: bigint,

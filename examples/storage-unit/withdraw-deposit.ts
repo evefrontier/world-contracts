@@ -10,7 +10,7 @@ import {
     GAME_CHARACTER_ID,
     STORAGE_A_ITEM_ID,
     ITEM_A_TYPE_ID,
-    PROOF,
+    PLAYER_A_PROOF,
 } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
@@ -48,7 +48,7 @@ async function withdraw(
             tx.object(characterId),
             ownerCap,
             tx.pure.u64(typeId),
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_A_PROOF))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -62,7 +62,7 @@ async function withdraw(
             tx.object(config.serverAddressRegistry),
             tx.object(characterId),
             ownerCap,
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_A_PROOF))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });

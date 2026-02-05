@@ -190,6 +190,7 @@ public(package) fun mint_items(
     }
 }
 
+// TODO: remove proximity proof check as it will be handled in the parent module
 public(package) fun burn_items_with_proof(
     inventory: &mut Inventory,
     assembly_id: ID,

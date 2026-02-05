@@ -1,14 +1,16 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
-import { GATE_TYPE_ID, MAX_DISTANCE } from "../utils/constants";
 import {
     getAdminCapId,
     getEnvConfig,
     handleError,
     hydrateWorldConfig,
     initializeContext,
+    parseBigIntArray,
 } from "../utils/helper";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function setGateMaxDistanceByType(
     gateConfigId: string,
@@ -56,10 +58,30 @@ async function main() {
         const gateConfigId = config.gateConfig;
         if (!gateConfigId) throw new Error("GateConfig object not found");
 
-        const typeId = GATE_TYPE_ID;
-        const maxDistance = MAX_DISTANCE;
+        const GATE_TYPE_IDS = parseBigIntArray(process.env.GATE_TYPE_IDS);
+        const MAX_DISTANCES = parseBigIntArray(process.env.MAX_DISTANCES);
 
-        await setGateMaxDistanceByType(gateConfigId, adminCapId, typeId, maxDistance, ctx);
+        // Configure fuel efficiencies
+        if (GATE_TYPE_IDS.length > 0 && MAX_DISTANCES.length > 0) {
+            if (GATE_TYPE_IDS.length !== MAX_DISTANCES.length) {
+                throw new Error(
+                    `GATE_TYPE_IDS and MAX_DISTANCES arrays must have the same length. Got ${GATE_TYPE_IDS.length} and ${MAX_DISTANCES.length}`
+                );
+            }
+
+            for (let i = 0; i < GATE_TYPE_IDS.length; i++) {
+                await setGateMaxDistanceByType(
+                    gateConfigId,
+                    adminCapId,
+                    GATE_TYPE_IDS[i],
+                    MAX_DISTANCES[i],
+                    ctx
+                );
+                await sleep(1000);
+            }
+        } else {
+            console.log("\nNo gate configurations provided. Skipping gate distance setup.");
+        }
     } catch (error) {
         handleError(error);
     }

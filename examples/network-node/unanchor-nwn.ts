@@ -22,7 +22,7 @@ import {
  * 2. Determine which assemblies are storage units by querying their types
  * 3. Call unanchor which returns HandleOrphanedAssemblies hot potato
  * 4. Process each assembly:
- *    - Call unanchor_connected_storage_unit or unanchor_connected_assembly
+ *    - Call unanchor_connected_storage_unit or offline_orphaned_assembly
  *    - Brings assembly offline, releases energy, and clears its energy source (assembly can later be attached to another NWN)
  * 5. Call destroy_network_node to consume the hot potato and destroy the NWN
  */
@@ -49,11 +49,13 @@ async function unanchor(
     });
 
     let currentHotPotato = unanchorAssemblies;
-    for (const { id: assemblyId, isStorageUnit } of assemblyTypes) {
-        const module = isStorageUnit ? MODULES.STORAGE_UNIT : MODULES.ASSEMBLY;
-        const functionName = isStorageUnit
-            ? "offline_orphaned_storage_unit"
-            : "offline_orphaned_assembly";
+    for (const { id: assemblyId, kind } of assemblyTypes) {
+        const { module, functionName } =
+            kind === "storage_unit"
+                ? { module: MODULES.STORAGE_UNIT, functionName: "offline_orphaned_storage_unit" }
+                : kind === "gate"
+                  ? { module: MODULES.GATE, functionName: "offline_orphaned_gate" }
+                  : { module: MODULES.ASSEMBLY, functionName: "offline_orphaned_assembly" };
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,

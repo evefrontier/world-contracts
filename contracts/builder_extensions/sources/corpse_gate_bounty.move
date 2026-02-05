@@ -74,13 +74,13 @@ public fun collect_corpse_bounty<T: key>(
     );
 
     // 5 days in milliseconds.
-    let validity_period = clock.timestamp_ms() + 5 * 24 * 60 * 60 * 1000;
+    let expires_at_timestamp_ms = clock.timestamp_ms() + 5 * 24 * 60 * 60 * 1000;
     gate::issue_jump_permit<XAuth>(
         source_gate,
         destination_gate,
         character,
         config::x_auth(),
-        validity_period,
+        expires_at_timestamp_ms,
         ctx,
     );
 }

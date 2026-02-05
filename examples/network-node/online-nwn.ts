@@ -34,12 +34,7 @@ async function online(
     // 2. Use the borrowed OwnerCap to bring the network node online
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::online`,
-        arguments: [
-            tx.object(networkNodeId),
-            tx.object(characterId),
-            ownerCap,
-            tx.object(CLOCK_OBJECT_ID),
-        ],
+        arguments: [tx.object(networkNodeId), ownerCap, tx.object(CLOCK_OBJECT_ID)],
     });
 
     // 3. Return the OwnerCap to the character

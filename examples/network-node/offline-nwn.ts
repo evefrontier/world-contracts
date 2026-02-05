@@ -57,7 +57,6 @@ async function offline(
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.fuelConfig),
-            tx.object(character),
             ownerCap,
             tx.object(CLOCK_OBJECT_ID),
         ],
@@ -72,12 +71,13 @@ async function offline(
     // Process each assembly from the hot potato
     // The hot potato contains the assembly IDs connected to the network node
     let currentHotPotato = offlineAssemblies;
-    for (const { id: assemblyId, isStorageUnit } of assemblyTypes) {
-        // Call the appropriate function based on assembly type
-        const module = isStorageUnit ? MODULES.STORAGE_UNIT : MODULES.ASSEMBLY;
-        const functionName = isStorageUnit
-            ? "offline_connected_storage_unit"
-            : "offline_connected_assembly";
+    for (const { id: assemblyId, kind } of assemblyTypes) {
+        const { module, functionName } =
+            kind === "storage_unit"
+                ? { module: MODULES.STORAGE_UNIT, functionName: "offline_connected_storage_unit" }
+                : kind === "gate"
+                  ? { module: MODULES.GATE, functionName: "offline_connected_gate" }
+                  : { module: MODULES.ASSEMBLY, functionName: "offline_connected_assembly" };
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,

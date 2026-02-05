@@ -59,7 +59,6 @@ async function updateFuel(
     // Determine which assemblies are storage units by querying their types
     const assemblyTypes = await getAssemblyTypes(assemblyIds, client);
 
-    const character = deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
     const tx = new Transaction();
 
     // Step 1: Call update_fuel which returns OfflineAssemblies
@@ -69,7 +68,6 @@ async function updateFuel(
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.fuelConfig),
-            tx.object(character),
             tx.object(adminCap),
             tx.object(CLOCK_OBJECT_ID),
         ],
@@ -78,12 +76,13 @@ async function updateFuel(
     // Step 2: Process each assembly from the hot potato
     // The hot potato contains the assembly IDs connected to the network node
     let currentHotPotato = offlineAssemblies;
-    for (const { id: assemblyId, isStorageUnit } of assemblyTypes) {
-        // Call the appropriate function based on assembly type
-        const module = isStorageUnit ? MODULES.STORAGE_UNIT : MODULES.ASSEMBLY;
-        const functionName = isStorageUnit
-            ? "offline_connected_storage_unit"
-            : "offline_connected_assembly";
+    for (const { id: assemblyId, kind } of assemblyTypes) {
+        const { module, functionName } =
+            kind === "storage_unit"
+                ? { module: MODULES.STORAGE_UNIT, functionName: "offline_connected_storage_unit" }
+                : kind === "gate"
+                  ? { module: MODULES.GATE, functionName: "offline_connected_gate" }
+                  : { module: MODULES.ASSEMBLY, functionName: "offline_connected_assembly" };
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,
@@ -92,7 +91,6 @@ async function updateFuel(
                 currentHotPotato,
                 tx.object(networkNodeId),
                 tx.object(config.energyConfig),
-                tx.pure.bool(false), // temporary offline, keep energy source so assembly can go online again with same NWN
             ],
         });
         currentHotPotato = updatedHotPotato;

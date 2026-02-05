@@ -48,7 +48,6 @@ async function depositFuel(
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.adminAcl),
-            tx.object(characterId),
             ownerCap,
             tx.pure.u64(typeId),
             tx.pure.u64(VOLUME),
