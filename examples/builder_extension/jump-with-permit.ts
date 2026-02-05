@@ -69,7 +69,7 @@ async function jumpWithPermit(
             tx.object(sourceGateId),
             tx.object(destinationGateId),
             tx.object(characterId),
-            tx.object(jumpPermitId!),
+            tx.object(jumpPermitId),
             tx.object(config.adminAcl),
             tx.object(CLOCK_OBJECT_ID),
         ],

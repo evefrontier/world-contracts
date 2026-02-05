@@ -37,9 +37,9 @@ async function issueJumpPermit(
         target: `${builderPackageId}::${extensionModule.TRIBE_PERMIT}::issue_jump_permit`,
         arguments: [
             tx.object(extensionConfigId),
-            tx.object(sourceGateId!),
-            tx.object(destinationGateId!),
-            tx.object(characterId!),
+            tx.object(sourceGateId),
+            tx.object(destinationGateId),
+            tx.object(characterId),
             tx.object(adminCapId),
             tx.object(CLOCK_OBJECT_ID),
         ],
