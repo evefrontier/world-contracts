@@ -12,7 +12,7 @@
 ///
 /// `GateRules` is a shared object holding configurable parameters,
 #[allow(unused_use)]
-module builder_extensions::gate;
+module extension_examples::gate;
 
 use sui::clock::Clock;
 use world::{

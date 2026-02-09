@@ -12,9 +12,9 @@
 ///
 /// `GateRules` is a shared object holding configurable parameters,
 #[allow(unused_use)]
-module builder_extensions::tribe_permit;
+module extension_examples::tribe_permit;
 
-use builder_extensions::config::{Self, AdminCap, XAuth, ExtensionConfig};
+use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
 use sui::clock::Clock;
 use world::{character::Character, gate::{Self, Gate}};
 

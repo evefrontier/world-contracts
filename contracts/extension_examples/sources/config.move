@@ -3,7 +3,7 @@
 /// This module publishes a single shared `ExtensionConfig` object at package publish time
 /// Other builder-extension modules can attach their own typed rule/config
 /// structs under that shared object using Sui dynamic fields.
-module builder_extensions::config;
+module extension_examples::config;
 
 use sui::dynamic_field as df;
 

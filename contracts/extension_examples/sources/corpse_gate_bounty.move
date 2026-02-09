@@ -5,9 +5,9 @@
 /// - validate it against a bounty rule (stored under `ExtensionConfig`)
 /// - deposit it into an owner `StorageUnit`
 /// - issue a `world::gate::JumpPermit` so the player can use the gate
-module builder_extensions::corpse_gate_bounty;
+module extension_examples::corpse_gate_bounty;
 
-use builder_extensions::config::{Self, AdminCap, XAuth, ExtensionConfig};
+use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
 use sui::clock::Clock;
 use world::{
     access::{OwnerCap, ServerAddressRegistry},
