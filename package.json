@@ -9,7 +9,7 @@
     "deploy:dry-run": "chmod +x ./scripts/deploy.sh && ./scripts/deploy.sh --dry-run",
     "deploy-world": "mkdir -p deployments/testnet && cd contracts/world && sui client publish --json 2>&1 | tsx ../../scripts/extract-json.ts > ../../deployments/testnet/world_package.json",
     "deploy-builder-ext": "mkdir -p deployments/testnet && cd contracts/extension_examples && sui client publish --json 2>&1 | tsx ../../scripts/extract-json.ts > ../../deployments/testnet/builder_package.json",
-    "clean": "rm -f contracts/world/Published.toml contracts/extension_ts-scripts/Published.toml deployments/testnet/*.json",
+    "clean": "rm -f contracts/world/Published.toml contracts/extension_examples/Published.toml deployments/testnet/*.json",
     "fmt": "prettier --plugin=@mysten/prettier-plugin-move --write \"**/**/*.move\"",
     "fmt:check": "prettier --plugin=@mysten/prettier-plugin-move --check \"**/**/*.move\" \"ts-scripts/**/*.ts\" \"tools/**/*.ts\"",
     "fmt:ts": "prettier --write \"ts-scripts/**/*.ts\" \"tools/**/*.ts\"",
