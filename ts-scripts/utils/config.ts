@@ -8,6 +8,17 @@ export type WorldObjectIds = {
     gateConfig: string;
 };
 
+/** Extracted object IDs written by extract-object-ids script (run once per deploy). */
+export type ExtractedObjectIds = {
+    network: string;
+    world: WorldObjectIds & { packageId: string };
+    builder?: {
+        packageId: string;
+        extensionConfigId: string;
+        adminCapId?: string;
+    };
+};
+
 export type WorldConfig = {
     url: string;
     packageId: string;

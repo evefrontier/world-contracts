@@ -9,11 +9,11 @@ import {
     getConfig,
     MODULES,
     Network,
-    WorldObjectIds,
     DEFAULT_RPC_URLS,
+    ExtractedObjectIds,
 } from "./config";
 import { TENANT } from "./constants";
-import { resolveWorldObjectIds } from "./world-object-ids";
+import { getExtractedObjectIdsPath } from "./world-object-ids";
 export interface EnvConfig {
     network: Network;
     rpcUrl: string;
@@ -98,7 +98,10 @@ export function requireEnv(name: string): string {
 export function getEnvConfig(): EnvConfig {
     const network = (process.env.SUI_NETWORK as Network) || "localnet";
     const rpcUrl = process.env.SUI_RPC_URL || DEFAULT_RPC_URLS[network];
-    const packageId = requireEnv("WORLD_PACKAGE_ID");
+    const packageId = getDefaultWorldPackageId(network);
+    if (!packageId) {
+        throw new Error("WORLD_PACKAGE_ID is required");
+    }
     const adminExportedKey = requireEnv("ADMIN_PRIVATE_KEY");
 
     process.env.SUI_RPC_URL = rpcUrl;
@@ -116,6 +119,8 @@ export function initializeContext(network: Network, privateKey: string): Initial
     const client = createClient(network);
     const keypair = keypairFromPrivateKey(privateKey);
     const config = getConfig(network) as WorldConfig;
+    const fromExtracted = getDefaultWorldPackageId(network);
+    if (fromExtracted) config.packageId = fromExtracted;
     const address = keypair.getPublicKey().toSuiAddress();
 
     return { client, keypair, config, address };
@@ -143,13 +148,6 @@ export async function getAdminCapId(client: SuiClient, packageId: string): Promi
 }
 
 export async function hydrateWorldConfig(ctx: InitializedContext): Promise<HydratedWorldConfig> {
-    const governorPrivateKey = process.env.GOVERNOR_PRIVATE_KEY;
-    const derivedGovernorAddress = governorPrivateKey
-        ? keypairFromPrivateKey(governorPrivateKey).getPublicKey().toSuiAddress()
-        : undefined;
-
-    const governorAddress = derivedGovernorAddress || process.env.ADMIN_ADDRESS || ctx.address;
-
     const hasManualIds =
         !!ctx.config.governorCap &&
         !!ctx.config.serverAddressRegistry &&
@@ -160,26 +158,16 @@ export async function hydrateWorldConfig(ctx: InitializedContext): Promise<Hydra
         !!ctx.config.gateConfig;
 
     if (!hasManualIds) {
-        try {
-            const ids: WorldObjectIds = await resolveWorldObjectIds(
-                ctx.client,
-                ctx.config.packageId,
-                governorAddress
-            );
-            ctx.config = {
-                ...ctx.config,
-                ...Object.fromEntries(
-                    Object.entries(ids).filter(([, v]) => typeof v === "string" && v.length > 0)
-                ),
-            } as WorldConfig;
-        } catch (e) {
+        const network = (process.env.SUI_NETWORK as Network) || "localnet";
+        const extracted = loadExtractedObjectIds(network);
+        if (!extracted?.world || extracted.world.packageId !== ctx.config.packageId) {
+            const filePath = getExtractedObjectIdsPath(network);
             throw new Error(
-                [
-                    "Failed to hydrate world object IDs from publish output.",
-                    `Original error: ${e instanceof Error ? e.message : String(e)}`,
-                ].join("\n")
+                `Missing or mismatched ${filePath}. Run \`npm run extract-object-ids\` after deploy.`
             );
         }
+        const { packageId: _p, ...ids } = extracted.world;
+        ctx.config = { ...ctx.config, ...ids } as WorldConfig;
     }
 
     return ctx.config as HydratedWorldConfig;
@@ -195,6 +183,27 @@ export function shareHydratedConfig(from: InitializedContext, to: InitializedCon
 
 export function resolvePublishOutputPath(relativePath: string): string {
     return path.resolve(process.cwd(), relativePath);
+}
+
+export function loadExtractedObjectIds(network: string): ExtractedObjectIds | null {
+    const filePath = getExtractedObjectIdsPath(network);
+    if (!fs.existsSync(filePath)) return null;
+    try {
+        const raw = fs.readFileSync(filePath, "utf8");
+        return JSON.parse(raw) as ExtractedObjectIds;
+    } catch {
+        return null; // invalid JSON or read error
+    }
+}
+
+export function getDefaultWorldPackageId(network: string): string {
+    return process.env.WORLD_PACKAGE_ID || loadExtractedObjectIds(network)?.world?.packageId || "";
+}
+
+export function getDefaultBuilderPackageId(network: string): string {
+    return (
+        process.env.BUILDER_PACKAGE_ID || loadExtractedObjectIds(network)?.builder?.packageId || ""
+    );
 }
 
 export function readPublishOutputFile(filePath: string): { objectChanges: PublishObjectChange[] } {

@@ -24,7 +24,6 @@ async function main() {
     const raw = filePath ? fs.readFileSync(filePath, "utf8") : await readStdin();
     const jsonText = extractJson(raw);
 
-    // Validate + normalize output
     const parsed = JSON.parse(jsonText) as unknown;
     process.stdout.write(JSON.stringify(parsed, null, 2) + "\n");
 }
@@ -34,4 +33,3 @@ main().catch((err) => {
     process.stderr.write(`extract-json: ${msg}\n`);
     process.exit(1);
 });
-

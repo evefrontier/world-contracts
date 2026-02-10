@@ -10,10 +10,11 @@ import {
     initializeContext,
     requireEnv,
 } from "../utils/helper";
+import { requireBuilderPackageId } from "../utils/builder-extension";
 import { getOwnerCap as getGateOwnerCap } from "../gate/helper";
 import { MODULE as extensionModule } from "./modules";
 
-const builderPackageId = requireEnv("BUILDER_PACKAGE_ID");
+const builderPackageId = requireBuilderPackageId();
 const characterItemId = GAME_CHARACTER_ID;
 const gateAItemId = GATE_ITEM_ID_1;
 const gateBItemId = GATE_ITEM_ID_2;

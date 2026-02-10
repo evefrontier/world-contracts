@@ -10,10 +10,11 @@ import {
     initializeContext,
     requireEnv,
 } from "../utils/helper";
+import { requireBuilderPackageId } from "../utils/builder-extension";
 import { getOwnerCap as getStorageUnitOwnerCap } from "../storage-unit/helper";
 import { MODULE as extensionModule } from "./modules";
 
-const builderPackageId = requireEnv("BUILDER_PACKAGE_ID");
+const builderPackageId = requireBuilderPackageId();
 const characterItemId = GAME_CHARACTER_ID;
 const storageUnitItemId = STORAGE_A_ITEM_ID;
 

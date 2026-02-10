@@ -1,3 +1,4 @@
+import path from "node:path";
 import { SuiClient } from "@mysten/sui/client";
 import { MODULES, WorldObjectIds } from "./config";
 import {
@@ -11,8 +12,13 @@ import {
 
 // Hardcoded publish output paths (relative to where you run the scripts from).
 const WORLD_PUBLISH_OUTPUT_PATH = "./deployments/testnet/world_package.json";
+export const EXTRACTED_OBJECT_IDS_FILENAME = "extracted-object-ids.json";
 
 const cache = new Map<string, Promise<WorldObjectIds>>();
+
+export function getExtractedObjectIdsPath(network: string): string {
+    return path.resolve(process.cwd(), "deployments", network, EXTRACTED_OBJECT_IDS_FILENAME);
+}
 
 export async function resolveWorldObjectIds(
     _client: SuiClient,
