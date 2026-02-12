@@ -103,13 +103,13 @@ fun init(ctx: &mut TxContext) {
 /// Security: Ownership is enforced by the Sui runtime. Only the current owner of the OwnerCap
 /// can call this function - if a non-owner attempts to move the object, the transaction will
 /// be rejected by the runtime before this function is even called.
-public fun transfer_owner_cap<T: key>(owner: address, owner_cap: OwnerCap<T>) {
+public fun transfer_owner_cap<T: key>(owner_cap: OwnerCap<T>, owner: address) {
     transfer::transfer(owner_cap, owner);
 }
 
 public fun transfer_owner_cap_to_address<T: key>(
-    new_owner: address,
     owner_cap: OwnerCap<T>,
+    new_owner: address,
     ctx: &mut TxContext,
 ) {
     let type_name: TypeName = type_name::with_defining_ids<T>();
@@ -120,24 +120,24 @@ public fun transfer_owner_cap_to_address<T: key>(
 
 /// Returns a borrowed owner cap to the object it was borrowed from. Consumes the receipt.
 public fun return_owner_cap_to_object<T: key>(
-    owner_id: address,
     owner_cap: OwnerCap<T>,
     receipt: ReturnOwnerCapReceipt,
+    owner_id: address,
 ) {
-    validate_return_receipt(receipt, owner_id, object::id(&owner_cap));
-    transfer_owner_cap(owner_id, owner_cap);
+    validate_return_receipt(receipt, object::id(&owner_cap), owner_id);
+    transfer_owner_cap(owner_cap, owner_id);
 }
 
 /// Transfers a borrowed owner cap to an address, consuming the return receipt.
 public fun transfer_owner_cap_with_receipt<T: key>(
-    new_owner: address,
     owner_cap: OwnerCap<T>,
     receipt: ReturnOwnerCapReceipt,
+    new_owner: address,
     ctx: &mut TxContext,
 ) {
     let ReturnOwnerCapReceipt { owner_id: _, owner_cap_id: receipt_owner_cap_id } = receipt;
     assert!(receipt_owner_cap_id == object::id(&owner_cap), EOwnerCapIdMismatch);
-    transfer_owner_cap_to_address(new_owner, owner_cap, ctx);
+    transfer_owner_cap_to_address(owner_cap, new_owner, ctx);
 }
 
 // === View Functions ===
@@ -164,12 +164,12 @@ public fun verify_sponsor(admin_acl: &AdminACL, ctx: &TxContext) {
 
 // === Package Functions ===
 public(package) fun create_and_transfer_owner_cap<T: key>(
-    admin_cap: &AdminCap,
     object_id: ID,
+    admin_cap: &AdminCap,
     owner: address,
     ctx: &mut TxContext,
 ): ID {
-    let owner_cap = create_owner_cap_by_id<T>(admin_cap, object_id, ctx);
+    let owner_cap = create_owner_cap_by_id<T>(object_id, admin_cap, ctx);
     let owner_cap_id = object::id(&owner_cap);
     transfer<T>(owner_cap, @0x0, owner);
     owner_cap_id
@@ -190,8 +190,8 @@ public(package) fun receive_owner_cap<T: key>(
 
 /// Creates a return receipt. Consumed by return_owner_cap_to_object or transfer_owner_cap_with_receipt.
 public(package) fun create_return_receipt(
-    owner_id: address,
     owner_cap_id: ID,
+    owner_id: address,
 ): ReturnOwnerCapReceipt {
     ReturnOwnerCapReceipt { owner_id, owner_cap_id }
 }
@@ -232,8 +232,8 @@ public fun create_owner_cap<T: key>(_: &AdminCap, obj: &T, ctx: &mut TxContext):
 }
 
 public fun create_owner_cap_by_id<T: key>(
-    _: &AdminCap,
     object_id: ID,
+    _: &AdminCap,
     ctx: &mut TxContext,
 ): OwnerCap<T> {
     let owner_cap = OwnerCap<T> {
@@ -280,7 +280,7 @@ fun transfer<T: key>(owner_cap: OwnerCap<T>, previous_owner: address, new_owner:
     transfer::transfer(owner_cap, new_owner);
 }
 
-fun validate_return_receipt(receipt: ReturnOwnerCapReceipt, owner_id: address, owner_cap_id: ID) {
+fun validate_return_receipt(receipt: ReturnOwnerCapReceipt, owner_cap_id: ID, owner_id: address) {
     let ReturnOwnerCapReceipt {
         owner_id: receipt_owner_id,
         owner_cap_id: receipt_owner_cap_id,

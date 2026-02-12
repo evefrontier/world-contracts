@@ -121,8 +121,8 @@ public fun setup_owner_cap<T: key>(ts: &mut ts::Scenario, owner: address, object
     {
         let admin_cap = ts::take_from_sender<AdminCap>(ts);
         access::create_and_transfer_owner_cap<T>(
-            &admin_cap,
             object::id(object),
+            &admin_cap,
             owner,
             ts.ctx(),
         );

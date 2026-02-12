@@ -142,7 +142,7 @@ fun owner_cap_authorisation_fail_after_transfer() {
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
-        access::transfer_owner_cap<TestObject>(user_b(), owner_cap);
+        access::transfer_owner_cap<TestObject>(owner_cap, user_b());
     };
 
     ts::next_tx(&mut ts, user_a());
@@ -193,7 +193,12 @@ fun character_owner_cap_transfer_fail() {
             access_cap_ticket,
             ts.ctx(),
         );
-        access::transfer_owner_cap_with_receipt<Character>(user_b(), owner_cap, receipt, ts.ctx());
+        access::transfer_owner_cap_with_receipt<Character>(
+            owner_cap,
+            receipt,
+            user_b(),
+            ts.ctx(),
+        );
     };
     abort
 }
@@ -216,11 +221,11 @@ fun transfer_owner_cap_with_receipt_mismatched_cap_id_fails() {
 
         access::destroy_receipt_for_testing(real_receipt);
         let wrong_cap_id = object::id_from_address(@0x1);
-        let fake_receipt = access::create_return_receipt(character_addr, wrong_cap_id);
+        let fake_receipt = access::create_return_receipt(wrong_cap_id, character_addr);
         access::transfer_owner_cap_with_receipt<Character>(
-            user_b(),
             owner_cap,
             fake_receipt,
+            user_b(),
             ts.ctx(),
         );
     };
@@ -244,8 +249,8 @@ fun return_owner_cap_to_object_mismatched_owner_id_fails() {
         ts::return_shared(character);
 
         access::destroy_receipt_for_testing(real_receipt);
-        let fake_receipt = access::create_return_receipt(@0x1, object::id(&owner_cap));
-        access::return_owner_cap_to_object(character_addr, owner_cap, fake_receipt);
+        let fake_receipt = access::create_return_receipt(object::id(&owner_cap), @0x1);
+        access::return_owner_cap_to_object(owner_cap, fake_receipt, character_addr);
     };
     abort
 }
@@ -268,10 +273,10 @@ fun return_owner_cap_to_object_mismatched_cap_id_fails() {
 
         access::destroy_receipt_for_testing(real_receipt);
         let fake_receipt = access::create_return_receipt(
-            character_addr,
             object::id_from_address(@0x1),
+            character_addr,
         );
-        access::return_owner_cap_to_object(character_addr, owner_cap, fake_receipt);
+        access::return_owner_cap_to_object(owner_cap, fake_receipt, character_addr);
     };
     abort
 }
