@@ -10,7 +10,10 @@ import {
 } from "./helper";
 import { MODULE as extensionModule } from "../builder_extension/modules";
 
-const BUILDER_PUBLISH_OUTPUT_PATH = "./deployments/testnet/builder_package.json";
+function getBuilderPublishOutputPath(): string {
+    const network = process.env.SUI_NETWORK ?? "localnet";
+    return `./deployments/${network}/builder_package.json`;
+}
 
 export type BuilderGateExtensionIds = {
     builderPackageId: string;
@@ -48,11 +51,14 @@ export function resolveBuilderGateExtensionIds(opts: {
         };
     }
 
-    const resolvedPath = resolvePublishOutputPath(BUILDER_PUBLISH_OUTPUT_PATH);
+    const builderPath = getBuilderPublishOutputPath();
+    const resolvedPath = resolvePublishOutputPath(builderPath);
     if (!fs.existsSync(resolvedPath)) {
-        throw new Error("Builder IDs not found. Run npm run extract-object-ids after deploy.");
+        throw new Error(
+            "Builder IDs not found. Run pnpm deploy-builder-ext then extract-object-ids."
+        );
     }
-    const { objectChanges } = readPublishOutputFile(BUILDER_PUBLISH_OUTPUT_PATH);
+    const { objectChanges } = readPublishOutputFile(resolvedPath);
 
     const extensionConfigId =
         extracted?.builder?.extensionConfigId ??
