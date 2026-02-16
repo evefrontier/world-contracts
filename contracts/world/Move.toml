@@ -34,3 +34,5 @@ world = "0x0"
 # and `--dev` modes.
 # alice = "0xB0B"
 
+[environments]
+local = "0x0"

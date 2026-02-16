@@ -9,8 +9,6 @@ set -euo pipefail
 DELAY_SECONDS="${DELAY_SECONDS:-${1:-2}}"
 
 commands=(
-  "setup-access"
-  "configure-fuel-energy"
   "create-character"
   "create-nwn"
   "deposit-fuel"
@@ -20,7 +18,6 @@ commands=(
   "game-item-to-chain"
   "withdraw-deposit"
   "chain-item-to-game"
-  "configure-gate-distance"
   "create-gates"
   "online-gates"
   "link-gates"
