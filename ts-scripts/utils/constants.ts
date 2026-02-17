@@ -22,9 +22,7 @@ function getTestResourcesPath(): string {
     const override = process.env.TEST_RESOURCES_PATH;
     if (override) return path.resolve(override);
     const dir =
-        typeof __dirname !== "undefined"
-            ? __dirname
-            : path.dirname(fileURLToPath(import.meta.url));
+        typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
     return path.resolve(dir, "../..", "test-resources.json");
 }
 
