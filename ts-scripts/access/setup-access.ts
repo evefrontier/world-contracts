@@ -1,11 +1,8 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES, Network } from "../utils/config";
+import { delay } from "../utils/delay";
 import { handleError, hydrateWorldConfig, initializeContext, requireEnv } from "../utils/helper";
-
-function sleep(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function getAccessSetupEnv() {
     const network = (process.env.SUI_NETWORK as Network) || "testnet";
@@ -49,7 +46,7 @@ async function setupAccess() {
     if (r1.effects?.status?.status === "failure") {
         throw new Error(`create_admin_cap failed: ${JSON.stringify(r1.effects.status)}`);
     }
-    await sleep(5000);
+    await delay(5000);
 
     console.log("2. register_server_address...");
     const tx2 = new Transaction();
@@ -70,7 +67,7 @@ async function setupAccess() {
     if (r2.effects?.status?.status === "failure") {
         throw new Error(`register_server_address failed: ${JSON.stringify(r2.effects.status)}`);
     }
-    await sleep(5000);
+    await delay(5000);
 
     console.log("3. add_sponsor_to_acl...");
     const tx3 = new Transaction();
@@ -91,7 +88,7 @@ async function setupAccess() {
     if (r3.effects?.status?.status === "failure") {
         throw new Error(`add_sponsor_to_acl failed: ${JSON.stringify(r3.effects.status)}`);
     }
-    await sleep(5000);
+    await delay(5000);
 
     console.log("\n==== Access setup complete ====");
 }

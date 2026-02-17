@@ -9,6 +9,7 @@ import {
     requireEnv,
 } from "../utils/helper";
 import { GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2, NWN_ITEM_ID } from "../utils/constants";
+import { delay, getDelayMs } from "../utils/delay";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { getOwnerCap } from "./helper";
 
@@ -72,6 +73,7 @@ async function main() {
         await hydrateWorldConfig(playerCtx);
 
         await onlineGate(playerCtx, GAME_CHARACTER_ID, NWN_ITEM_ID, GATE_ITEM_ID_1);
+        await delay(getDelayMs());
         await onlineGate(playerCtx, GAME_CHARACTER_ID, NWN_ITEM_ID, GATE_ITEM_ID_2);
     } catch (error) {
         handleError(error);

@@ -9,8 +9,7 @@ import {
     initializeContext,
     parseBigIntArray,
 } from "../utils/helper";
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import { delay } from "../utils/delay";
 
 async function setGateMaxDistanceByType(
     gateConfigId: string,
@@ -77,7 +76,7 @@ async function main() {
                     MAX_DISTANCES[i],
                     ctx
                 );
-                await sleep(1000);
+                await delay(1000);
             }
         } else {
             console.log("\nNo gate configurations provided. Skipping gate distance setup.");

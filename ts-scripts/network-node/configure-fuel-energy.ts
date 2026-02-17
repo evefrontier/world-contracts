@@ -11,8 +11,7 @@ import {
     getAdminCapId,
     parseBigIntArray,
 } from "../utils/helper";
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import { delay } from "../utils/delay";
 
 async function setFuelEfficiency(
     fuelTypeId: bigint,
@@ -118,7 +117,7 @@ async function main() {
                     keypair,
                     config
                 );
-                await sleep(1000);
+                await delay(1000);
             }
         } else {
             console.log("\nNo fuel configurations provided. Skipping fuel efficiency setup.");
@@ -141,7 +140,7 @@ async function main() {
                     keypair,
                     config
                 );
-                await sleep(1000);
+                await delay(1000);
             }
         } else {
             console.log("\nNo energy configurations provided. Skipping energy setup.");

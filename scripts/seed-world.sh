@@ -9,7 +9,7 @@ mkdir -p "deployments/$ENV"
 start_logging "$ENV" "create test resources"
 export SUI_NETWORK="$ENV"
 
-DELAY_SECONDS="${DELAY_SECONDS:-${2:-3}}"
+DELAY_SECONDS="${DELAY_SECONDS:-${2:-5}}"
 
 commands=(
   "create-character"

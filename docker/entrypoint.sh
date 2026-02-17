@@ -73,16 +73,16 @@ import_key() {
     echo "$output" | grep -oE '0x[a-fA-F0-9]{64}' | head -n 1
 }
 
-if [ -z "${DEPLOYER_PRIVATE_KEY:-}" ]; then
-    echo "Error: DEPLOYER_PRIVATE_KEY is not set in .env"
+if [ -z "${GOVERNOR_PRIVATE_KEY:-}" ]; then
+    echo "Error: GOVERNOR_PRIVATE_KEY is not set in .env"
     exit 1
 fi
 
-DEPLOYER_ADDRESS=$(import_key "DEPLOYER_PRIVATE_KEY (deployer)" "$DEPLOYER_PRIVATE_KEY")
+DEPLOYER_ADDRESS=$(import_key "GOVERNOR_PRIVATE_KEY (deployer)" "$GOVERNOR_PRIVATE_KEY")
 
 
 if [ -z "$DEPLOYER_ADDRESS" ]; then
-    echo "Error: Could not determine deployer address from DEPLOYER_PRIVATE_KEY"
+    echo "Error: Could not determine deployer address from GOVERNOR_PRIVATE_KEY"
     exit 1
 fi
 

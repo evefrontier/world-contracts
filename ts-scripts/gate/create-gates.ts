@@ -19,6 +19,7 @@ import {
     LOCATION_HASH,
     NWN_ITEM_ID,
 } from "../utils/constants";
+import { delay, getDelayMs } from "../utils/delay";
 import { deriveObjectId } from "../utils/derive-object-id";
 
 async function createGate(
@@ -78,6 +79,7 @@ async function main() {
         const adminCtx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(adminCtx);
         await createGate(adminCtx, NWN_ITEM_ID, GATE_ITEM_ID_1, GAME_CHARACTER_ID);
+        await delay(getDelayMs());
         await createGate(adminCtx, NWN_ITEM_ID, GATE_ITEM_ID_2, GAME_CHARACTER_ID);
     } catch (error) {
         handleError(error);

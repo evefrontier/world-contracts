@@ -208,18 +208,24 @@ export function getDefaultBuilderPackageId(network: string): string {
 
 export function readPublishOutputFile(filePath: string): { objectChanges: PublishObjectChange[] } {
     const raw = fs.readFileSync(filePath, "utf8");
-    let parsed: { objectChanges?: unknown };
+    let parsed: { objectChanges?: unknown; effects?: { objectChanges?: unknown } };
     try {
-        parsed = JSON.parse(raw) as { objectChanges?: unknown };
+        parsed = JSON.parse(raw) as typeof parsed;
     } catch {
         throw new Error(`Invalid JSON in ${filePath}`);
     }
 
-    if (!Array.isArray(parsed.objectChanges)) {
+    const objectChanges = Array.isArray(parsed.objectChanges)
+        ? parsed.objectChanges
+        : Array.isArray(parsed.effects?.objectChanges)
+          ? parsed.effects.objectChanges
+          : undefined;
+
+    if (!objectChanges) {
         throw new Error(`Invalid publish output file (missing objectChanges[]): ${filePath}`);
     }
 
-    return { objectChanges: parsed.objectChanges as PublishObjectChange[] };
+    return { objectChanges: objectChanges as PublishObjectChange[] };
 }
 
 export function getPublishedPackageId(changes: PublishObjectChange[]): string {
