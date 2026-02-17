@@ -356,7 +356,109 @@ public fun burn_partial_items() {
     ts::end(ts);
 }
 
-/// Should it change the location ?
+/// Tests that depositing an item with the same type_id as an existing item merges quantities.
+#[test]
+public fun deposit_item_merges_quantity_when_same_type_id() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let character_a_id = create_character_for_user_a(&mut ts);
+    let character_b_id = create_character_for_user_b(&mut ts);
+    let storage_unit_id = create_storage_unit(&mut ts, character_a_id);
+
+    online(&mut ts);
+
+    // Mint 5 ammo into character_a's inventory
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
+        let assembly_id = object::id(&storage_unit);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_a_id);
+        inventory.mint_items(
+            assembly_id,
+            assembly_key,
+            &character_a,
+            tenant(),
+            AMMO_ITEM_ID,
+            AMMO_TYPE_ID,
+            AMMO_VOLUME,
+            5u32,
+            LOCATION_A_HASH,
+            ts.ctx(),
+        );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character_a);
+    };
+
+    // Add character_b's inventory and mint 3 ammo (same type_id and volume)
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
+        let inventory = inventory::create(MAX_CAPACITY);
+        df::add(&mut storage_unit.id, character_b_id, inventory);
+        ts::return_shared(storage_unit);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
+        let assembly_id = object::id(&storage_unit);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_b_id);
+        inventory.mint_items(
+            assembly_id,
+            assembly_key,
+            &character_b,
+            tenant(),
+            AMMO_ITEM_ID + 1,
+            AMMO_TYPE_ID,
+            AMMO_VOLUME,
+            3u32,
+            LOCATION_A_HASH,
+            ts.ctx(),
+        );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character_b);
+    };
+
+    // Withdraw from character_b and deposit into character_a (merge path)
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
+        let assembly_id = object::id(&storage_unit);
+        let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
+        let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let inv_b = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_b_id);
+        let item = inv_b.withdraw_item(assembly_id, assembly_key, &character_b, AMMO_TYPE_ID);
+        let inv_a = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, character_a_id);
+        inv_a.deposit_item(assembly_id, assembly_key, &character_a, item);
+        ts::return_shared(character_a);
+        ts::return_shared(character_b);
+        ts::return_shared(storage_unit);
+    };
+
+    // Assert: character_a has merged quantity (5+3=8), correct capacity, single item; character_b empty
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_unit_id);
+        let inv_a = df::borrow<ID, Inventory>(&storage_unit.id, character_a_id);
+        let inv_b = df::borrow<ID, Inventory>(&storage_unit.id, character_b_id);
+        let expected_quantity = 8u32;
+        let expected_used_capacity = (expected_quantity as u64) * AMMO_VOLUME;
+        assert_eq!(inv_a.used_capacity(), expected_used_capacity);
+        assert_eq!(inv_a.remaining_capacity(), MAX_CAPACITY - expected_used_capacity);
+        assert_eq!(inv_a.item_quantity(AMMO_TYPE_ID), expected_quantity);
+        assert_eq!(inv_a.inventory_item_length(), 1);
+        assert_eq!(inv_b.used_capacity(), 0);
+        assert_eq!(inv_b.inventory_item_length(), 0);
+        ts::return_shared(storage_unit);
+    };
+    ts::end(ts);
+}
+
 /// Tests depositing items from one inventory to another
 /// Scenario: Withdraw item from storage unit and deposit into ephemeral storage unit
 /// Expected: Item is successfully transferred, capacity updated in both inventories
