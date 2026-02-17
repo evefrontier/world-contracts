@@ -10,7 +10,7 @@ import {
     GAME_CHARACTER_ID,
     STORAGE_A_ITEM_ID,
     ITEM_A_TYPE_ID,
-    PLAYER_A_PROOF,
+    LOCATION_HASH,
 } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
@@ -21,12 +21,15 @@ import {
     initializeContext,
     requireEnv,
 } from "../utils/helper";
+import { keypairFromPrivateKey } from "../utils/client";
+import { generateLocationProof } from "../utils/proof";
 
 async function withdraw(
     storageUnit: string,
     characterId: string,
     ownerCapId: string,
     typeId: bigint,
+    proofHex: string,
     client: SuiClient,
     playerKeypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -48,7 +51,7 @@ async function withdraw(
             tx.object(characterId),
             ownerCap,
             tx.pure.u64(typeId),
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_A_PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -62,7 +65,7 @@ async function withdraw(
             tx.object(config.serverAddressRegistry),
             tx.object(characterId),
             ownerCap,
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_A_PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -117,11 +120,21 @@ async function main() {
             throw new Error(`OwnerCap not found for ${storageUnit}`);
         }
 
+        const adminKeypair = keypairFromPrivateKey(requireEnv("ADMIN_PRIVATE_KEY"));
+        const proofHex = await generateLocationProof(
+            adminKeypair,
+            playerAddress,
+            characterObject,
+            storageUnit,
+            LOCATION_HASH
+        );
+
         await withdraw(
             storageUnit,
             characterObject,
             storageUnitOwnerCap,
             ITEM_A_TYPE_ID,
+            proofHex,
             client,
             keypair,
             config

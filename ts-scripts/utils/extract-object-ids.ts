@@ -23,13 +23,13 @@ import { getExtractedObjectIdsPath } from "./world-object-ids";
 const DEFAULT_NETWORK = "localnet";
 
 function getGovernorAddress(): string {
-    const governorPrivateKey = process.env.GOVERNOR_PRIVATE_KEY || process.env.ADMIN_PRIVATE_KEY;
+    const governorPrivateKey = process.env.DEPLOYER_PRIVATE_KEY || process.env.ADMIN_PRIVATE_KEY;
     if (governorPrivateKey) {
         return keypairFromPrivateKey(governorPrivateKey).getPublicKey().toSuiAddress();
     }
     const adminAddress = process.env.ADMIN_ADDRESS;
     if (adminAddress) return adminAddress;
-    throw new Error("Set GOVERNOR_PRIVATE_KEY or ADMIN_ADDRESS to extract GovernorCap owner");
+    throw new Error("Set DEPLOYER_PRIVATE_KEY or ADMIN_ADDRESS to extract GovernorCap owner");
 }
 
 function extractWorldIds(

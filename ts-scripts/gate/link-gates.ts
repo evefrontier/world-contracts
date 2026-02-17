@@ -8,7 +8,7 @@ import {
     GAME_CHARACTER_ID,
     GATE_ITEM_ID_1,
     GATE_ITEM_ID_2,
-    PLAYER_A_PROOF,
+    LOCATION_HASH,
 } from "../utils/constants";
 import {
     getEnvConfig,
@@ -19,12 +19,15 @@ import {
     requireEnv,
 } from "../utils/helper";
 import { getOwnerCap } from "./helper";
+import { keypairFromPrivateKey } from "../utils/client";
+import { generateLocationProof } from "../utils/proof";
 
 async function linkGates(
     ctx: ReturnType<typeof initializeContext>,
     character: number,
     gateAItemId: bigint,
-    gateBItemId: bigint
+    gateBItemId: bigint,
+    proofHex: string
 ) {
     const { client, keypair, config, address } = ctx;
 
@@ -64,7 +67,7 @@ async function linkGates(
             tx.object(config.serverAddressRegistry),
             gateAOwnerCap,
             gateBOwnerCap,
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_A_PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -98,7 +101,28 @@ async function main() {
         const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
         const ctx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(ctx);
-        await linkGates(ctx, GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2);
+
+        const characterId = deriveObjectId(
+            ctx.config.objectRegistry,
+            GAME_CHARACTER_ID,
+            ctx.config.packageId
+        );
+        const gateAId = deriveObjectId(
+            ctx.config.objectRegistry,
+            GATE_ITEM_ID_1,
+            ctx.config.packageId
+        );
+
+        const adminKeypair = keypairFromPrivateKey(requireEnv("ADMIN_PRIVATE_KEY"));
+        const proofHex = await generateLocationProof(
+            adminKeypair,
+            ctx.address,
+            characterId,
+            gateAId,
+            LOCATION_HASH
+        );
+
+        await linkGates(ctx, GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2, proofHex);
     } catch (error) {
         handleError(error);
     }

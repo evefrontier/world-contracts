@@ -10,7 +10,7 @@ function sleep(ms: number) {
 function getAccessSetupEnv() {
     const network = (process.env.SUI_NETWORK as Network) || "testnet";
     // In localnet, we use the same private key for governor and admin
-    const governorKey = process.env.GOVERNOR_PRIVATE_KEY || requireEnv("ADMIN_PRIVATE_KEY");
+    const governorKey = process.env.DEPLOYER_PRIVATE_KEY || requireEnv("ADMIN_PRIVATE_KEY");
     const adminAddress = requireEnv("ADMIN_ADDRESS");
     const sponsorAddress = requireEnv("SPONSOR_ADDRESS");
 

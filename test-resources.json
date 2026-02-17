@@ -1,0 +1,28 @@
+{
+  "locationHash": "0x16217de8ec7330ec3eac32831df5c9cd9b21a255756a5fd5762dd7f49f6cc049",
+  "character": {
+    "gameCharacterId": 811880,
+    "gameCharacterBId": 900000001
+  },
+  "networkNode": {
+    "typeId": 555,
+    "itemId": 5550000012
+  },
+  "assembly": {
+    "typeId": 87119,
+    "itemId": 9999000005
+  },
+  "storageUnit": {
+    "typeId": 88082,
+    "itemId": 888800006
+  },
+  "gate": {
+    "typeId": 88086,
+    "itemId1": 90185,
+    "itemId2": 90186
+  },
+  "item": {
+    "typeId": 446,
+    "itemId": 444000001
+  }
+}

@@ -8,9 +8,9 @@ import {
     GATE_ITEM_ID_2,
     CLOCK_OBJECT_ID,
     ITEM_A_TYPE_ID,
-    PLAYER_B_PROOF,
     STORAGE_A_ITEM_ID,
     GAME_CHARACTER_B_ID,
+    LOCATION_HASH,
 } from "../utils/constants";
 import {
     getEnvConfig,
@@ -23,13 +23,16 @@ import {
 import { resolveBuilderGateExtensionIds } from "../utils/builder-extension";
 import { MODULE as extensionModule } from "./modules";
 import { getCharacterOwnerCap } from "../character/helper";
+import { keypairFromPrivateKey } from "../utils/client";
+import { generateLocationProof } from "../utils/proof";
 
 async function collectCorpseBounty(
     ctx: ReturnType<typeof initializeContext>,
     sourceGateItemId: bigint,
     destinationGateItemId: bigint,
     storageUnitItemId: bigint,
-    characterItemId: bigint
+    characterItemId: bigint,
+    proofHex: string
 ) {
     const { client, keypair, config, address } = ctx;
 
@@ -76,7 +79,7 @@ async function collectCorpseBounty(
             tx.object(characterId!),
             ownerCap,
             tx.pure.u64(ITEM_A_TYPE_ID),
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_B_PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -105,12 +108,34 @@ async function main() {
         const playerKey = requireEnv("PLAYER_B_PRIVATE_KEY");
         const ctx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(ctx);
+
+        const characterId = deriveObjectId(
+            ctx.config.objectRegistry,
+            BigInt(GAME_CHARACTER_B_ID),
+            ctx.config.packageId
+        );
+        const storageUnitId = deriveObjectId(
+            ctx.config.objectRegistry,
+            STORAGE_A_ITEM_ID,
+            ctx.config.packageId
+        );
+
+        const adminKeypair = keypairFromPrivateKey(requireEnv("ADMIN_PRIVATE_KEY"));
+        const proofHex = await generateLocationProof(
+            adminKeypair,
+            ctx.address,
+            characterId,
+            storageUnitId,
+            LOCATION_HASH
+        );
+
         await collectCorpseBounty(
             ctx,
             GATE_ITEM_ID_1,
             GATE_ITEM_ID_2,
             STORAGE_A_ITEM_ID,
-            BigInt(GAME_CHARACTER_B_ID)
+            BigInt(GAME_CHARACTER_B_ID),
+            proofHex
         );
     } catch (error) {
         handleError(error);

@@ -6,8 +6,7 @@ source "$(dirname "$0")/lib.sh"
 
 setup
 ENV=$(get_env "${1:-}")
-pnpm clean
-rm -rf contracts/extension_examples/Pub.*.toml
+rm -rf contracts/extension_examples/Published.toml contracts/extension_examples/Pub.*.toml
 mkdir -p "deployments/$ENV"
 start_logging "$ENV" "deploy-builder-ext"
 

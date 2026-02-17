@@ -10,7 +10,7 @@ import {
     GAME_CHARACTER_ID,
     STORAGE_A_ITEM_ID,
     ITEM_A_TYPE_ID,
-    PLAYER_A_PROOF,
+    LOCATION_HASH,
 } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
@@ -21,6 +21,8 @@ import {
     initializeContext,
     requireEnv,
 } from "../utils/helper";
+import { keypairFromPrivateKey } from "../utils/client";
+import { generateLocationProof } from "../utils/proof";
 
 async function chainItemToGame(
     storageUnit: string,
@@ -28,6 +30,7 @@ async function chainItemToGame(
     ownerCapId: string,
     typeId: bigint,
     quantity: number,
+    proofHex: string,
     client: SuiClient,
     playerKeypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -51,7 +54,7 @@ async function chainItemToGame(
             ownerCap,
             tx.pure.u64(typeId),
             tx.pure.u32(quantity),
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(PLAYER_A_PROOF))),
+            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -105,12 +108,23 @@ async function main() {
         if (!storageUnitOwnerCap) {
             throw new Error(`OwnerCap not found for ${storageUnit}`);
         }
+
+        const adminKeypair = keypairFromPrivateKey(requireEnv("ADMIN_PRIVATE_KEY"));
+        const proofHex = await generateLocationProof(
+            adminKeypair,
+            playerCtx.address,
+            characterObject,
+            storageUnit,
+            LOCATION_HASH
+        );
+
         await chainItemToGame(
             storageUnit,
             characterObject,
             storageUnitOwnerCap,
             ITEM_A_TYPE_ID,
             10,
+            proofHex,
             client,
             keypair,
             config
