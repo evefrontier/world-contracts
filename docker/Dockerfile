@@ -1,5 +1,5 @@
 
-FROM mysten/sui-tools:testnet AS dependency-stage
+FROM mysten/sui-tools:testnet-v1.64.0 AS dependency-stage
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -44,12 +44,12 @@ RUN find contracts -maxdepth 1 -mindepth 1 -type d | \
     xargs -P 4 -I {} sui move test --path {}
 
 FROM dependency-stage AS release-stage
-# Copy built artifacts from build stage
+ENV CI=true
+
+# Copy pre-built contracts from build stage
 COPY --from=build-stage /app/contracts ./contracts
-COPY --from=build-stage /app/scripts ./scripts
 
-# Make deploy script executable
-RUN chmod +x ./scripts/deploy.sh
+# Make scripts executable
+RUN chmod +x ./scripts/*.sh ./docker/entrypoint.sh
 
-# Default command
-CMD ["bash", "-c", "echo 'Sui World Contracts Deployer' && echo 'Run: ./scripts/deploy.sh --env=<testnet|devnet|localnet>' && bash"]
+ENTRYPOINT ["./docker/entrypoint.sh"]

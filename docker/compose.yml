@@ -1,0 +1,10 @@
+services:
+  deploy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: release-stage
+    image: world-contracts:latest
+    volumes:
+      - ../.env:/app/.env:ro
+      - ../deployments:/app/deployments

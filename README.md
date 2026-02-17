@@ -41,19 +41,18 @@ If you are looking for the current contracts used in game they can be found here
 
 ### Build Image
 ```bash
-docker build --no-cache -t world-contracts:latest -f docker/Dockerfile .
+docker build -t world-contracts:latest --target release-stage -f docker/Dockerfile .
 ```
 
-### Deploy to Testnet
+### Deploy & Configure
 ```bash
-docker run -it --rm \
+docker run --rm \
   -v "$(pwd)/.env:/app/.env:ro" \
   -v "$(pwd)/deployments:/app/deployments" \
-  world-contracts:latest \
-  pnpm deploy-world
+  world-contracts:latest
 ```
 
-On failure, the raw publish output is printed to help debug.
+On failure, check `deployments/<env>/deploy.log` for details.
 
 ## Local Development
 
