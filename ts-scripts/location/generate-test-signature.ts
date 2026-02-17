@@ -19,8 +19,8 @@ import { generateLocationProof } from "../utils/proof";
  * - contracts/world/tests/test_helpers.move::construct_location_proof()
  *
  * To regenerate the signature:
- * 1. Set PRIVATE_KEY env var (must correspond to SERVER_ADMIN_ADDRESS)
- * 2. Run: npm run generate-test-signature
+ * 1. Set ADMIN_PRIVATE_KEY env var (must correspond to the server admin key used in tests)
+ * 2. Run: pnpm run generate-test-sig
  * 3. Copy the "Full signature (hex)" output
  * 4. Update the signature in test_helpers.move::construct_location_proof()
  */

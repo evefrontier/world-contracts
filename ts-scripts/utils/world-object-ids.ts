@@ -18,17 +18,20 @@ export function getExtractedObjectIdsPath(network: string): string {
     return path.resolve(process.cwd(), "deployments", network, EXTRACTED_OBJECT_IDS_FILENAME);
 }
 
-function getWorldPublishOutputPath(): string {
-    const network = process.env.SUI_NETWORK ?? "localnet";
+function getWorldPublishOutputPath(network: string): string {
+    const pathOverride = process.env.WORLD_PUBLISH_OUTPUT;
+    if (pathOverride) return pathOverride;
     return `./deployments/${network}/world_package.json`;
 }
 
 export async function resolveWorldObjectIds(
     _client: SuiClient,
     worldPackageId: string,
-    governorAddress: string
+    governorAddress: string,
+    network?: string
 ): Promise<WorldObjectIds> {
-    const worldPublishOutputPath = resolvePublishOutputPath(getWorldPublishOutputPath());
+    const net = network ?? process.env.SUI_NETWORK ?? "localnet";
+    const worldPublishOutputPath = resolvePublishOutputPath(getWorldPublishOutputPath(net));
     const { objectChanges: worldObjectChanges } = readPublishOutputFile(worldPublishOutputPath);
     const publishedWorldPackageId = getPublishedPackageId(worldObjectChanges);
 

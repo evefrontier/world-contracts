@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Sui System Objects
 export const CLOCK_OBJECT_ID = "0x6";
@@ -17,8 +18,23 @@ type TestResources = {
     item: { typeId: number; itemId: number };
 };
 
+function getTestResourcesPath(): string {
+    const override = process.env.TEST_RESOURCES_PATH;
+    if (override) return path.resolve(override);
+    const dir =
+        typeof __dirname !== "undefined"
+            ? __dirname
+            : path.dirname(fileURLToPath(import.meta.url));
+    return path.resolve(dir, "../..", "test-resources.json");
+}
+
 function loadTestResources(): TestResources {
-    const filePath = path.resolve(process.cwd(), "test-resources.json");
+    const filePath = getTestResourcesPath();
+    if (!fs.existsSync(filePath)) {
+        throw new Error(
+            `test-resources.json not found at ${filePath}. Run pnpm create-test-resources or set TEST_RESOURCES_PATH.`
+        );
+    }
     const raw = fs.readFileSync(filePath, "utf8");
     return JSON.parse(raw) as TestResources;
 }

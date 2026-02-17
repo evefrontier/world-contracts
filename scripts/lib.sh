@@ -43,9 +43,9 @@ publish() {
     sui client switch --env "$env"
 
     if [[ "$env" == "localnet" ]]; then
-        (cd "contracts/$pkg" && sui client test-publish --build-env testnet --json 2>&1) > "$tmp" || true
+        (cd "contracts/$pkg" && sui client test-publish --build-env testnet --json) > "$tmp" 2>&1 || true
     else
-        (cd "contracts/$pkg" && sui client publish --json 2>&1) > "$tmp" || true
+        (cd "contracts/$pkg" && sui client publish --json) > "$tmp" 2>&1 || true
     fi
 
     pnpm exec tsx ts-scripts/utils/extract-json.ts "$tmp" > "$out_file" || true
