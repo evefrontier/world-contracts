@@ -26,8 +26,9 @@ start_logging() {
     local name=$2
     LOG="deployments/$env/deploy.log"
     {
+        echo ""
         echo "=== $(date -Iseconds 2>/dev/null || date) $name $env ==="
-    } > "$LOG"
+    } >> "$LOG"
     exec 1> >(tee -a "$LOG") 2>&1
 }
 
