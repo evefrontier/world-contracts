@@ -271,7 +271,7 @@ fun rename_character() {
         let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
             &character_id,
         );
-        let owner_cap = character.borrow_owner_cap<Character>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<Character>(
             access_cap_ticket,
             ts.ctx(),
         );
@@ -281,7 +281,7 @@ fun rename_character() {
         metadata.update_name(character_key, &owner_cap, utf8(b"new_name"));
         assert_eq!(metadata.name(), utf8(b"new_name"));
 
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -584,7 +584,7 @@ fun test_rename_character_without_owner_cap() {
         let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
             &character_id,
         );
-        let owner_cap = character.borrow_owner_cap<Character>(
+        let (owner_cap, _receipt) = character.borrow_owner_cap<Character>(
             access_cap_ticket,
             ts.ctx(),
         );
@@ -638,4 +638,60 @@ fun update_tribe_without_admin_cap() {
         // This should fail - user_a doesn't have AdminCap
         abort
     }
+}
+
+/// Tests that returning an owner cap to a different character than it was borrowed from fails.
+/// Scenario: Borrow from character A, then try to return to character B using the same receipt.
+/// Expected: Transaction aborts with EOwnerIdMismatch.
+#[test]
+#[expected_failure(abort_code = access::EOwnerIdMismatch)]
+fun return_owner_cap_to_different_character_fails() {
+    let mut ts = ts::begin(governor());
+    setup_world(&mut ts);
+    setup_character(&mut ts, 1, 100, b"char_a");
+
+    let character_a_id: ID;
+    let character_b_id: ID;
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let character_from_setup = ts::take_shared<Character>(&ts);
+        character_a_id = character::id(&character_from_setup);
+        ts::return_shared(character_from_setup);
+
+        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
+        let character_b = character::create_character(
+            &mut registry,
+            &admin_cap,
+            2u32,
+            tenant(),
+            100,
+            user_a(),
+            utf8(b"char_b"),
+            ts::ctx(&mut ts),
+        );
+        character_b_id = character::id(&character_b);
+        character::share_character(character_b, &admin_cap);
+        ts::return_shared(registry);
+        ts::return_to_sender(&ts, admin_cap);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
+            &character_a_id,
+        );
+        let (owner_cap, receipt) = character_a.borrow_owner_cap<Character>(
+            access_cap_ticket,
+            ts.ctx(),
+        );
+        ts::return_shared(character_a);
+
+        let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        character::return_owner_cap(&character_b, owner_cap, receipt);
+        ts::return_shared(character_b);
+    };
+    ts.end();
 }

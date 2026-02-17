@@ -198,7 +198,7 @@ fun online_storage_unit(
     let clock = clock::create_for_testing(ts.ctx());
     ts::next_tx(ts, user);
     let mut character = ts::take_shared_by_id<Character>(ts, character_id);
-    let owner_cap = character.borrow_owner_cap<NetworkNode>(
+    let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
         ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
         ts.ctx(),
     );
@@ -221,7 +221,7 @@ fun online_storage_unit(
         nwn.online(&owner_cap, &clock);
         ts::return_shared(nwn);
     };
-    character.return_owner_cap(owner_cap);
+    character.return_owner_cap(owner_cap, receipt);
 
     // Now bring storage unit online
     ts::next_tx(ts, user);
@@ -229,14 +229,14 @@ fun online_storage_unit(
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(ts);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
         storage_unit.online(&mut nwn, &energy_config, &owner_cap);
         let status = storage_unit.status();
         assert_eq!(status.status_to_u8(), STATUS_ONLINE);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(storage_unit);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
@@ -250,7 +250,7 @@ fun mint_ammo<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
     ts::next_tx(ts, user);
     {
         let mut character = ts::take_shared_by_id<Character>(ts, character_id);
-        let owner_cap = character.borrow_owner_cap<T>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<T>(
             ts::most_recent_receiving_ticket<OwnerCap<T>>(&character_id),
             ts.ctx(),
         );
@@ -264,7 +264,7 @@ fun mint_ammo<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
         ts::return_shared(storage_unit);
     };
@@ -275,7 +275,7 @@ fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
         let mut character = ts::take_shared_by_id<Character>(ts, character_id);
-        let owner_cap = character.borrow_owner_cap<T>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<T>(
             ts::most_recent_receiving_ticket<OwnerCap<T>>(&character_id),
             ts.ctx(),
         );
@@ -288,7 +288,7 @@ fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
             LENS_QUANTITY,
             ts.ctx(),
         );
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
         ts::return_shared(storage_unit);
     };
@@ -455,7 +455,7 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
@@ -478,7 +478,7 @@ fun test_game_item_to_chain_and_chain_item_to_game_inventory() {
         assert_eq!(inv_ref.remaining_capacity(), MAX_CAPACITY);
         assert_eq!(inv_ref.inventory_item_length(), 0);
 
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
         ts::return_shared(character);
@@ -573,7 +573,7 @@ fun test_authorize_extension() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
@@ -581,7 +581,7 @@ fun test_authorize_extension() {
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
 
         ts::return_shared(storage_unit);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
     ts::end(ts);
@@ -612,13 +612,13 @@ fun test_deposit_and_withdraw_via_extension() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
         ts::return_shared(storage_unit);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -684,7 +684,7 @@ fun test_deposit_and_withdraw_by_owner() {
     );
     let proof_bytes = bcs::to_bytes(&proof);
     let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-    let owner_cap = character.borrow_owner_cap<StorageUnit>(
+    let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
         ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
         ts.ctx(),
     );
@@ -718,7 +718,7 @@ fun test_deposit_and_withdraw_by_owner() {
         assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_TYPE_ID), AMMO_QUANTITY);
     };
     clock.destroy_for_testing();
-    character.return_owner_cap(owner_cap);
+    character.return_owner_cap(owner_cap, receipt);
     ts::return_shared(storage_unit);
     ts::return_shared(server_registry);
     ts::return_shared(character);
@@ -765,12 +765,12 @@ fun test_swap_ammo_for_lens() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap_b = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap_b, receipt_b) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
             ts.ctx(),
         );
         storage_unit.authorize_extension<SwapAuth>(&owner_cap_b);
-        character.return_owner_cap(owner_cap_b);
+        character.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
@@ -803,7 +803,7 @@ fun test_swap_ammo_for_lens() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
-        let owner_cap_a = character_a.borrow_owner_cap<Character>(
+        let (owner_cap_a, receipt_a) = character_a.borrow_owner_cap<Character>(
             ts::most_recent_receiving_ticket<OwnerCap<Character>>(&character_a_id),
             ts.ctx(),
         );
@@ -826,7 +826,7 @@ fun test_swap_ammo_for_lens() {
         );
 
         clock.destroy_for_testing();
-        character_a.return_owner_cap(owner_cap_a);
+        character_a.return_owner_cap(owner_cap_a, receipt_a);
         ts::return_shared(character_a);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
@@ -963,14 +963,14 @@ fun test_authorize_extension_fail_wrong_owner() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
 
         ts::return_shared(storage_unit);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
     ts::end(ts);
@@ -1046,7 +1046,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
     ts::next_tx(&mut ts, user_a());
     let item: Item;
     {
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
@@ -1070,7 +1070,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
             );
 
         clock.destroy_for_testing();
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(server_registry);
     };
 
@@ -1121,7 +1121,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character_b.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
             ts.ctx(),
         );
@@ -1154,7 +1154,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         );
 
         clock.destroy_for_testing();
-        character_b.return_owner_cap(owner_cap);
+        character_b.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character_b);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
@@ -1197,7 +1197,7 @@ fun test_deposit_by_owner_fail_wrong_owner() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
-        let owner_cap = character_a.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character_a.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_a_id),
             ts.ctx(),
         );
@@ -1213,7 +1213,7 @@ fun test_deposit_by_owner_fail_wrong_owner() {
             );
 
         ts::return_shared(storage_unit);
-        character_a.return_owner_cap(owner_cap);
+        character_a.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character_a);
     };
 
@@ -1230,7 +1230,7 @@ fun test_deposit_by_owner_fail_wrong_owner() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character_b.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
             ts.ctx(),
         );
@@ -1246,7 +1246,7 @@ fun test_deposit_by_owner_fail_wrong_owner() {
             ts.ctx(),
         );
 
-        character_b.return_owner_cap(owner_cap);
+        character_b.return_owner_cap(owner_cap, receipt);
         ts::return_shared(storage_unit);
         ts::return_shared(character_b);
     };
@@ -1287,7 +1287,7 @@ fun test_swap_fail_extension_not_authorized() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap_b = character_b.borrow_owner_cap<Character>(
+        let (owner_cap_b, receipt_b) = character_b.borrow_owner_cap<Character>(
             ts::most_recent_receiving_ticket<OwnerCap<Character>>(&character_b_id),
             ts.ctx(),
         );
@@ -1312,7 +1312,7 @@ fun test_swap_fail_extension_not_authorized() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        character_b.return_owner_cap(owner_cap_b);
+        character_b.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character_b);
     };
     ts::end(ts);
@@ -1354,7 +1354,7 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, user_a_storage_id);
         let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character_b.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
             ts.ctx(),
         );
@@ -1374,7 +1374,7 @@ public fun chain_item_to_game_inventory_fail_unauthorized_owner() {
             ts.ctx(),
         );
 
-        character_b.return_owner_cap(owner_cap);
+        character_b.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character_b);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
@@ -1428,7 +1428,7 @@ fun online_fail_by_unauthorized_owner() {
     ts::next_tx(&mut ts, user_a());
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let mut character = ts::take_shared_by_id<Character>(&ts, character_a_id);
-    let owner_cap = character.borrow_owner_cap<NetworkNode>(
+    let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
         ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_a_id),
         ts.ctx(),
     );
@@ -1448,7 +1448,7 @@ fun online_fail_by_unauthorized_owner() {
     {
         nwn.online(&owner_cap, &clock);
     };
-    character.return_owner_cap(owner_cap);
+    character.return_owner_cap(owner_cap, receipt);
     ts::return_shared(character);
     ts::return_shared(nwn);
 
@@ -1469,7 +1469,7 @@ fun online_fail_by_unauthorized_owner() {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character_b.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
             ts.ctx(),
         );
@@ -1478,7 +1478,7 @@ fun online_fail_by_unauthorized_owner() {
         ts::return_shared(nwn);
         ts::return_shared(storage_unit);
         ts::return_shared(energy_config);
-        character_b.return_owner_cap(owner_cap);
+        character_b.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character_b);
     };
 
@@ -1523,7 +1523,7 @@ fun offline_fail_by_unauthorized_owner() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap = character_b.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character_b.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
             ts.ctx(),
         );
@@ -1531,7 +1531,7 @@ fun offline_fail_by_unauthorized_owner() {
         ts::return_shared(storage_unit);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        character_b.return_owner_cap(owner_cap);
+        character_b.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character_b);
     };
     ts::end(ts);
@@ -1580,7 +1580,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         );
         let proof_bytes = bcs::to_bytes(&proof);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id_diff_tenant);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id_diff_tenant),
             ts.ctx(),
         );
@@ -1598,7 +1598,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -1618,7 +1618,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
@@ -1643,7 +1643,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
     ts::end(ts);
@@ -1686,7 +1686,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id_diff_tenant);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id_diff_tenant),
             ts.ctx(),
         );
@@ -1710,7 +1710,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -1729,13 +1729,13 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
         ts::return_shared(storage_unit);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -1779,7 +1779,7 @@ fun test_fail_network_node_offline() {
     ts::next_tx(&mut ts, user_a());
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-    let owner_cap = character.borrow_owner_cap<NetworkNode>(
+    let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
         ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
         ts.ctx(),
     );
@@ -1800,7 +1800,7 @@ fun test_fail_network_node_offline() {
         nwn.online(&owner_cap, &clock);
     };
     ts::return_shared(nwn);
-    character.return_owner_cap(owner_cap);
+    character.return_owner_cap(owner_cap, receipt);
     ts::return_shared(character);
 
     ts::next_tx(&mut ts, user_a());
@@ -1809,7 +1809,7 @@ fun test_fail_network_node_offline() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
@@ -1817,7 +1817,7 @@ fun test_fail_network_node_offline() {
         ts::return_shared(storage_unit);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -1827,7 +1827,7 @@ fun test_fail_network_node_offline() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
@@ -1853,7 +1853,7 @@ fun test_fail_network_node_offline() {
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
         ts::return_shared(fuel_config);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -1872,7 +1872,7 @@ fun test_fail_network_node_offline() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<StorageUnit>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
             ts.ctx(),
         );
@@ -1887,7 +1887,7 @@ fun test_fail_network_node_offline() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };

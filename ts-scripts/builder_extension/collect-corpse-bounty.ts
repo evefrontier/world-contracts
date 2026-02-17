@@ -61,7 +61,7 @@ async function collectCorpseBounty(
 
     const tx = new Transaction();
 
-    const [ownerCap] = tx.moveCall({
+    const [ownerCap, receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
         arguments: [tx.object(characterId), tx.object(playerOwnerCapId)],
@@ -87,7 +87,7 @@ async function collectCorpseBounty(
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
-        arguments: [tx.object(characterId), ownerCap],
+        arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
     const result = await client.signAndExecuteTransaction({

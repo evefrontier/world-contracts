@@ -410,7 +410,7 @@ public fun anchor(
     let network_node_id = object::id(network_node);
 
     // Create owner cap first with just the ID
-    let owner_cap = access::create_owner_cap_by_id<Gate>(admin_cap, gate_id, ctx);
+    let owner_cap = access::create_owner_cap_by_id<Gate>(gate_id, admin_cap, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let gate = Gate {
@@ -435,7 +435,7 @@ public fun anchor(
     };
 
     network_node.connect_assembly(gate_id);
-    owner_cap.transfer_owner_cap(object::id_address(character));
+    access::transfer_owner_cap(owner_cap, object::id_address(character));
 
     event::emit(GateCreatedEvent {
         assembly_id: gate_id,

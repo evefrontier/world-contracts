@@ -45,7 +45,7 @@ async function offline(
     const tx = new Transaction();
 
     const character = deriveObjectId(config.objectRegistry, GAME_CHARACTER_ID, config.packageId);
-    const [ownerCap] = tx.moveCall({
+    const [ownerCap, receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
         arguments: [tx.object(character), tx.object(ownerCapId)],
@@ -65,7 +65,7 @@ async function offline(
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
-        arguments: [tx.object(character), ownerCap],
+        arguments: [tx.object(character), ownerCap, receipt],
     });
 
     // Process each assembly from the hot potato

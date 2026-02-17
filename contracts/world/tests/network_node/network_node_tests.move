@@ -142,7 +142,7 @@ fun do_deposit_fuel(
     ts::next_tx(ts, sender);
     {
         let mut character = ts::take_shared_by_id<Character>(ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
@@ -154,7 +154,7 @@ fun do_deposit_fuel(
             quantity,
             clock,
         );
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -173,12 +173,12 @@ fun online_assembly(
         let mut assembly = ts::take_shared_by_id<Assembly>(ts, assembly_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(ts);
-        let owner_cap = character.borrow_owner_cap<Assembly>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<Assembly>(
             ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id),
             ts.ctx(),
         );
         assembly.online(&mut nwn, &energy_config, &owner_cap);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(assembly);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
@@ -199,12 +199,12 @@ fun offline_assembly(
         let mut assembly = ts::take_shared_by_id<Assembly>(ts, assembly_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(ts);
-        let owner_cap = character.borrow_owner_cap<Assembly>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<Assembly>(
             ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id),
             ts.ctx(),
         );
         assembly.offline(&mut nwn, &energy_config, &owner_cap);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(assembly);
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
@@ -247,11 +247,11 @@ fun anchor_network_node() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -297,13 +297,13 @@ fun withdraw_fuel() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.withdraw_fuel_test(&owner_cap, 5);
         assert_eq!(nwn.fuel().quantity(), 5);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -328,12 +328,12 @@ fun online() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
 
         // Check status is online
         assert_eq!(nwn.status().status_to_u8(), STATUS_ONLINE);
@@ -373,12 +373,12 @@ fun connected_assemblies_online_offline() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         assert_eq!(nwn.status().status_to_u8(), STATUS_ONLINE);
         assert_eq!(nwn.fuel().is_burning(), true);
         assert_eq!(nwn.energy().current_energy_production(), MAX_PRODUCTION);
@@ -445,13 +445,13 @@ fun update_fuel_intervals() {
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         clock.set_for_testing(time_start);
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         assert_eq!(nwn.fuel().quantity(), 9);
         ts::return_shared(nwn);
         ts::return_shared(character);
@@ -521,12 +521,12 @@ fun update_fuel_depletion_offline() {
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         assert_eq!(nwn.fuel().quantity(), 1);
         assert_eq!(nwn.fuel().is_burning(), true);
         ts::return_shared(nwn);
@@ -641,12 +641,12 @@ fun update_energy_source_after_unanchor() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -700,12 +700,12 @@ fun update_energy_source_after_unanchor() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -737,12 +737,12 @@ fun unanchor_orphaned_assembly_successfully() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -789,12 +789,12 @@ fun connect_assemblies_updates_energy_source() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -849,12 +849,12 @@ fun connect_assemblies_updates_energy_source() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -967,12 +967,12 @@ fun online_without_fuel() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock); // Should abort - no fuel
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
 
         ts::return_shared(nwn);
@@ -1000,13 +1000,13 @@ fun online_unauthorized_owner() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id_a);
         let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap = character_b.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character_b.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_b_id),
             ts.ctx(),
         );
         // Sender and character must match; use character_b + its (wrong) owner cap.
         nwn.online(&owner_cap, &clock); // Should abort - unauthorized
-        character_b.return_owner_cap(owner_cap);
+        character_b.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character_b);
         ts::return_shared(nwn);
     };
@@ -1034,12 +1034,12 @@ fun offline_hot_potato_not_consumed() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -1053,7 +1053,7 @@ fun offline_hot_potato_not_consumed() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let fuel_config = ts::take_shared<FuelConfig>(&ts);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
@@ -1079,7 +1079,7 @@ fun offline_hot_potato_not_consumed() {
         ts::return_shared(assembly1);
         ts::return_shared(energy_config);
         ts::return_shared(fuel_config);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
     clock.destroy_for_testing();
@@ -1101,12 +1101,12 @@ fun assembly_online_fails_without_updating_energy_source() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -1142,12 +1142,12 @@ fun assembly_online_fails_without_updating_energy_source() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn2_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
     };
@@ -1174,12 +1174,12 @@ fun update_energy_source_when_assembly_online() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn1_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
         ts::return_shared(nwn);
     };

@@ -153,7 +153,7 @@ fun bring_network_node_online(ts: &mut ts::Scenario, character_id: ID, nwn_id: I
         let mut character = ts::take_shared_by_id<Character>(ts, character_id);
         let nwn_owner_cap_id = nwn.owner_cap_id();
         let nwn_ticket = ts::receiving_ticket_by_id<OwnerCap<NetworkNode>>(nwn_owner_cap_id);
-        let owner_cap = character.borrow_owner_cap<NetworkNode>(nwn_ticket, ts.ctx());
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(nwn_ticket, ts.ctx());
         nwn.deposit_fuel_test(
             &owner_cap,
             FUEL_TYPE_ID,
@@ -162,7 +162,7 @@ fun bring_network_node_online(ts: &mut ts::Scenario, character_id: ID, nwn_id: I
             &clock,
         );
         nwn.online(&owner_cap, &clock);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
         ts::return_shared(character);
         clock.destroy_for_testing();
@@ -190,8 +190,8 @@ fun link_and_online_gates(
         let owner_cap_b_id = gate_b.owner_cap_id();
         let gate_a_ticket = ts::receiving_ticket_by_id<OwnerCap<Gate>>(owner_cap_a_id);
         let gate_b_ticket = ts::receiving_ticket_by_id<OwnerCap<Gate>>(owner_cap_b_id);
-        let owner_cap_a = character.borrow_owner_cap<Gate>(gate_a_ticket, ts.ctx());
-        let owner_cap_b = character.borrow_owner_cap<Gate>(gate_b_ticket, ts.ctx());
+        let (owner_cap_a, receipt_a) = character.borrow_owner_cap<Gate>(gate_a_ticket, ts.ctx());
+        let (owner_cap_b, receipt_b) = character.borrow_owner_cap<Gate>(gate_b_ticket, ts.ctx());
 
         let proof = test_helpers::construct_location_proof(
             test_helpers::get_verified_location_hash(),
@@ -214,8 +214,8 @@ fun link_and_online_gates(
         gate_b.online(&mut nwn, &energy_config, &owner_cap_b);
 
         clock.destroy_for_testing();
-        character.return_owner_cap(owner_cap_a);
-        character.return_owner_cap(owner_cap_b);
+        character.return_owner_cap(owner_cap_a, receipt_a);
+        character.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -233,9 +233,9 @@ fun authorize_gate_extension(ts: &mut ts::Scenario, character_id: ID, gate_id: I
         let mut character = ts::take_shared_by_id<Character>(ts, character_id);
         let owner_cap_id = gate_obj.owner_cap_id();
         let gate_ticket = ts::receiving_ticket_by_id<OwnerCap<Gate>>(owner_cap_id);
-        let owner_cap = character.borrow_owner_cap<Gate>(gate_ticket, ts.ctx());
+        let (owner_cap, receipt) = character.borrow_owner_cap<Gate>(gate_ticket, ts.ctx());
         gate_obj.authorize_extension<GateAuth>(&owner_cap);
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
         ts::return_shared(gate_obj);
     };
@@ -586,12 +586,12 @@ fun authorize_extension_fails_unauthorized_owner_cap() {
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let owner_cap_b = character_b.borrow_owner_cap<Gate>(
+        let (owner_cap_b, receipt_b) = character_b.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_b.owner_cap_id()),
             ts.ctx(),
         );
         gate_a.authorize_extension<GateAuth>(&owner_cap_b);
-        character_b.return_owner_cap(owner_cap_b);
+        character_b.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character_b);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -618,11 +618,11 @@ fun jump_fails_when_gate_is_offline() {
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap_a = character.borrow_owner_cap<Gate>(
+        let (owner_cap_a, receipt_a) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_a.owner_cap_id()),
             ts.ctx(),
         );
-        let owner_cap_b = character.borrow_owner_cap<Gate>(
+        let (owner_cap_b, receipt_b) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_b.owner_cap_id()),
             ts.ctx(),
         );
@@ -643,8 +643,8 @@ fun jump_fails_when_gate_is_offline() {
         );
         gate_a.test_jump(&gate_b, &character);
 
-        character.return_owner_cap(owner_cap_a);
-        character.return_owner_cap(owner_cap_b);
+        character.return_owner_cap(owner_cap_a, receipt_a);
+        character.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -676,12 +676,12 @@ fun jump_fails_after_gate_offlined() {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap_a = character.borrow_owner_cap<Gate>(
+        let (owner_cap_a, receipt_a) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_a.owner_cap_id()),
             ts.ctx(),
         );
         gate_a.offline(&mut nwn, &energy_config, &owner_cap_a);
-        character.return_owner_cap(owner_cap_a);
+        character.return_owner_cap(owner_cap_a, receipt_a);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(nwn);
@@ -718,18 +718,18 @@ fun unlink_fails_when_gates_not_linked() {
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap_a = character.borrow_owner_cap<Gate>(
+        let (owner_cap_a, receipt_a) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_a.owner_cap_id()),
             ts.ctx(),
         );
-        let owner_cap_b = character.borrow_owner_cap<Gate>(
+        let (owner_cap_b, receipt_b) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_b.owner_cap_id()),
             ts.ctx(),
         );
         gate_a.unlink_gates(&mut gate_b, &owner_cap_a, &owner_cap_b);
 
-        character.return_owner_cap(owner_cap_a);
-        character.return_owner_cap(owner_cap_b);
+        character.return_owner_cap(owner_cap_a, receipt_a);
+        character.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -819,11 +819,11 @@ fun link_fails_when_distance_exceeds_max() {
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap_a = character.borrow_owner_cap<Gate>(
+        let (owner_cap_a, receipt_a) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_a.owner_cap_id()),
             ts.ctx(),
         );
-        let owner_cap_b = character.borrow_owner_cap<Gate>(
+        let (owner_cap_b, receipt_b) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_b.owner_cap_id()),
             ts.ctx(),
         );
@@ -844,8 +844,8 @@ fun link_fails_when_distance_exceeds_max() {
             &clock,
             ts.ctx(),
         );
-        character.return_owner_cap(owner_cap_a);
-        character.return_owner_cap(owner_cap_b);
+        character.return_owner_cap(owner_cap_a, receipt_a);
+        character.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -944,17 +944,17 @@ fun cannot_jump_after_unanchor() {
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap_a = character.borrow_owner_cap<Gate>(
+        let (owner_cap_a, receipt_a) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_a.owner_cap_id()),
             ts.ctx(),
         );
-        let owner_cap_b = character.borrow_owner_cap<Gate>(
+        let (owner_cap_b, receipt_b) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_b.owner_cap_id()),
             ts.ctx(),
         );
         gate_a.unlink_gates(&mut gate_b, &owner_cap_a, &owner_cap_b);
-        character.return_owner_cap(owner_cap_a);
-        character.return_owner_cap(owner_cap_b);
+        character.return_owner_cap(owner_cap_a, receipt_a);
+        character.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
@@ -1008,17 +1008,17 @@ fun unanchor_orphan_gate_fails_when_energy_source_set() {
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap_a = character.borrow_owner_cap<Gate>(
+        let (owner_cap_a, receipt_a) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_a.owner_cap_id()),
             ts.ctx(),
         );
-        let owner_cap_b = character.borrow_owner_cap<Gate>(
+        let (owner_cap_b, receipt_b) = character.borrow_owner_cap<Gate>(
             ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_b.owner_cap_id()),
             ts.ctx(),
         );
         gate_a.unlink_gates(&mut gate_b, &owner_cap_a, &owner_cap_b);
-        character.return_owner_cap(owner_cap_a);
-        character.return_owner_cap(owner_cap_b);
+        character.return_owner_cap(owner_cap_a, receipt_a);
+        character.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
         ts::return_shared(character);

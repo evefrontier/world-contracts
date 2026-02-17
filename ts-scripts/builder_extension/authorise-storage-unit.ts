@@ -46,7 +46,7 @@ async function authoriseStorageUnit(
 
     const tx = new Transaction();
 
-    const [storageUnitOwnerCap] = tx.moveCall({
+    const [storageUnitOwnerCap, receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
         arguments: [tx.object(characterId), tx.object(storageUnitOwnerCapId)],
@@ -61,7 +61,7 @@ async function authoriseStorageUnit(
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
-        arguments: [tx.object(characterId), storageUnitOwnerCap],
+        arguments: [tx.object(characterId), storageUnitOwnerCap, receipt],
     });
 
     const result = await client.signAndExecuteTransaction({

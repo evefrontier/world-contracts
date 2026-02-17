@@ -352,7 +352,7 @@ public fun anchor(
     let network_node_id = object::id(network_node);
 
     // Create owner cap and transfer to Character object
-    let owner_cap = access::create_owner_cap_by_id<StorageUnit>(admin_cap, assembly_id, ctx);
+    let owner_cap = access::create_owner_cap_by_id<StorageUnit>(assembly_id, admin_cap, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let mut storage_unit = StorageUnit {

@@ -4,7 +4,7 @@ module world::metadata_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::test_scenario as ts;
 use world::{
-    access::{AdminCap, OwnerCap},
+    access::{AdminCap, OwnerCap, ReturnOwnerCapReceipt},
     assembly::{Self, Assembly},
     character::{Self, Character},
     in_game_id,
@@ -118,11 +118,11 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, owner: address, item_id: 
     (assembly_id, character_id)
 }
 
-/// Borrows OwnerCap<Assembly> from character; caller must return it with character::return_owner_cap and then ts::return_shared(character).
+/// Borrows OwnerCap<Assembly> from character; caller must return it with character.return_owner_cap(owner_cap, receipt)
 fun borrow_assembly_owner_cap(
     character: &mut Character,
     ts: &mut ts::Scenario,
-): OwnerCap<Assembly> {
+): (OwnerCap<Assembly>, ReturnOwnerCapReceipt) {
     let character_id = object::id(character);
     let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id);
     character.borrow_owner_cap<Assembly>(access_cap_ticket, ts.ctx())
@@ -153,10 +153,10 @@ fun test_metadata_lifecycle() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
+        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_name(assembly_key, &owner_cap, NEW_NAME.to_string());
         assert_eq!(metadata.name(), NEW_NAME.to_string());
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -164,10 +164,10 @@ fun test_metadata_lifecycle() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
+        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_description(assembly_key, &owner_cap, NEW_DESC.to_string());
         assert_eq!(metadata.description(), NEW_DESC.to_string());
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -175,10 +175,10 @@ fun test_metadata_lifecycle() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
+        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_url(assembly_key, &owner_cap, NEW_URL.to_string());
         assert_eq!(metadata.url(), NEW_URL.to_string());
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -212,9 +212,9 @@ fun test_update_name_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
-        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
+        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_name(assembly_key, &owner_cap, NEW_NAME.to_string());
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -245,9 +245,9 @@ fun test_update_description_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
-        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
+        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_description(assembly_key, &owner_cap, NEW_DESC.to_string());
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
@@ -278,9 +278,9 @@ fun test_update_url_unauthorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
-        let owner_cap = borrow_assembly_owner_cap(&mut character, &mut ts);
+        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
         metadata.update_url(assembly_key, &owner_cap, NEW_URL.to_string());
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 

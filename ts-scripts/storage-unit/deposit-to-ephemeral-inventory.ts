@@ -42,7 +42,7 @@ async function gameItemToChain(
     tx.setSender(playerAddress);
     tx.setGasOwner(adminAddress);
 
-    const [ownerCap] = tx.moveCall({
+    const [ownerCap, receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
         arguments: [tx.object(characterId), tx.object(ownerCapId)],
@@ -66,7 +66,7 @@ async function gameItemToChain(
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
-        arguments: [tx.object(characterId), ownerCap],
+        arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
     const result = await executeSponsoredTransaction(

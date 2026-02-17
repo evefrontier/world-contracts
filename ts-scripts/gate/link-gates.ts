@@ -45,13 +45,13 @@ async function linkGates(
 
     const tx = new Transaction();
 
-    const [gateAOwnerCap] = tx.moveCall({
+    const [gateAOwnerCap, gateAReceipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.GATE}::Gate`],
         arguments: [tx.object(characterId), tx.object(gateAOwnerCapId)],
     });
 
-    const [gateBOwnerCap] = tx.moveCall({
+    const [gateBOwnerCap, gateBReceipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.GATE}::Gate`],
         arguments: [tx.object(characterId), tx.object(gateBOwnerCapId)],
@@ -75,13 +75,13 @@ async function linkGates(
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.GATE}::Gate`],
-        arguments: [tx.object(characterId), gateAOwnerCap],
+        arguments: [tx.object(characterId), gateAOwnerCap, gateAReceipt],
     });
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.GATE}::Gate`],
-        arguments: [tx.object(characterId), gateBOwnerCap],
+        arguments: [tx.object(characterId), gateBOwnerCap, gateBReceipt],
     });
 
     const result = await client.signAndExecuteTransaction({

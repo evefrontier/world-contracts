@@ -36,7 +36,7 @@ async function depositFuel(
     // 1. Borrow OwnerCap from character using Receiving ticket.
     // The OwnerCap is stored in the character (transfer-to-object). We pass its object ID;
     // the SDK resolves it as a Receiving<OwnerCap<NetworkNode>> argument when the param type is Receiving.
-    const [ownerCap] = tx.moveCall({
+    const [ownerCap, receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
         arguments: [tx.object(characterId), tx.object(ownerCapId)],
@@ -60,7 +60,7 @@ async function depositFuel(
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
-        arguments: [tx.object(characterId), ownerCap],
+        arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
     const result = await executeSponsoredTransaction(

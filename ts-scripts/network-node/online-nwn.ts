@@ -25,7 +25,7 @@ async function online(
     const tx = new Transaction();
 
     // 1. Borrow OwnerCap from character (Receiving ticket = object ref of OwnerCap owned by character)
-    const [ownerCap] = tx.moveCall({
+    const [ownerCap, receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
         arguments: [tx.object(characterId), tx.object(ownerCapId)],
@@ -41,7 +41,7 @@ async function online(
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.NETWORK_NODE}::NetworkNode`],
-        arguments: [tx.object(characterId), ownerCap],
+        arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
     const result = await client.signAndExecuteTransaction({

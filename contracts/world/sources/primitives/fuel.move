@@ -342,15 +342,17 @@ public(package) fun delete(fuel: Fuel, assembly_id: ID, assembly_key: TenantItem
         quantity,
         ..,
     } = fuel;
-    event::emit(FuelEvent {
-        assembly_id,
-        assembly_key,
-        type_id: *option::borrow(&type_id),
-        old_quantity: quantity,
-        new_quantity: 0,
-        is_burning: false,
-        action: Action::DELETED,
-    });
+    if (option::is_some(&type_id)) {
+        event::emit(FuelEvent {
+            assembly_id,
+            assembly_key,
+            type_id: *option::borrow(&type_id),
+            old_quantity: quantity,
+            new_quantity: 0,
+            is_burning: false,
+            action: Action::DELETED,
+        });
+    };
 }
 
 /// Updates fuel consumption state. Consumes units based on elapsed time since last update.

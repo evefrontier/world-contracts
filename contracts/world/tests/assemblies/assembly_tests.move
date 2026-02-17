@@ -179,7 +179,7 @@ fun test_online_offline() {
     ts::next_tx(&mut ts, user_a());
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-    let owner_cap = character.borrow_owner_cap<NetworkNode>(
+    let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
         ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
         ts.ctx(),
     );
@@ -199,7 +199,7 @@ fun test_online_offline() {
     {
         nwn.online(&owner_cap, &clock);
     };
-    character.return_owner_cap(owner_cap);
+    character.return_owner_cap(owner_cap, receipt);
 
     ts::next_tx(&mut ts, user_a());
     let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
@@ -208,7 +208,7 @@ fun test_online_offline() {
     // OwnerCap<Assembly> is on Character; borrow from character, use, return
     ts::next_tx(&mut ts, user_a());
     {
-        let owner_cap = character.borrow_owner_cap<Assembly>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<Assembly>(
             ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id),
             ts.ctx(),
         );
@@ -218,13 +218,13 @@ fun test_online_offline() {
         assert_eq!(status::status_to_u8(assembly::status(&assembly)), STATUS_ONLINE);
         assert_eq!(energy::total_reserved_energy(nwn.energy()), ASSEMBLY_ENERGY_REQUIRED);
 
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
         let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id);
-        let owner_cap = character.borrow_owner_cap<Assembly>(
+        let (owner_cap, receipt) = character.borrow_owner_cap<Assembly>(
             access_cap_ticket,
             ts.ctx(),
         );
@@ -234,7 +234,7 @@ fun test_online_offline() {
         assert_eq!(status::status_to_u8(assembly::status(&assembly)), STATUS_OFFLINE);
         assert_eq!(energy::total_reserved_energy(nwn.energy()), 0);
 
-        character.return_owner_cap(owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
     };
 
     ts::return_shared(assembly);

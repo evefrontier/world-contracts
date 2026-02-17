@@ -732,6 +732,26 @@ fun get_fuel_efficiency_for_unconfigured_type() {
 }
 
 #[test]
+fun delete_fuel_without_deposit() {
+    // fuel.delete must not abort when type_id is None (no fuel ever deposited)
+    let mut ts = ts::begin(user_a());
+    test_helpers::setup_world(&mut ts);
+    create_network_node(&mut ts, FUEL_MAX_CAPACITY, FUEL_BURN_RATE_IN_SECONDS);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let nwn = ts::take_shared<NetworkNode>(&ts);
+        assert!(!option::is_some(&nwn.fuel.type_id()), 0);
+        let nwn_id = object::id(&nwn);
+        let NetworkNode { id, key, fuel, .. } = nwn;
+        fuel.delete(nwn_id, key);
+        id.delete();
+    };
+
+    ts::end(ts);
+}
+
+#[test]
 #[expected_failure(abort_code = fuel::EInsufficientFuel)]
 fun withdraw_insufficient_fuel() {
     let mut ts = ts::begin(user_a());

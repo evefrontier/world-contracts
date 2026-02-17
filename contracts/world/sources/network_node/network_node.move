@@ -230,7 +230,7 @@ public fun anchor(
     let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);
     let nwn_id = object::uid_to_inner(&nwn_uid);
 
-    let owner_cap = access::create_owner_cap_by_id<NetworkNode>(admin_cap, nwn_id, ctx);
+    let owner_cap = access::create_owner_cap_by_id<NetworkNode>(nwn_id, admin_cap, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let nwn = NetworkNode {

@@ -38,7 +38,7 @@ async function authoriseGate(
 
     const tx = new Transaction();
 
-    const [gateOwnerCap] = tx.moveCall({
+    const [gateOwnerCap, receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.GATE}::Gate`],
         arguments: [tx.object(characterId), tx.object(gateOwnerCapId)],
@@ -53,7 +53,7 @@ async function authoriseGate(
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
         typeArguments: [`${config.packageId}::${MODULES.GATE}::Gate`],
-        arguments: [tx.object(characterId), gateOwnerCap!],
+        arguments: [tx.object(characterId), gateOwnerCap!, receipt],
     });
 
     const result = await client.signAndExecuteTransaction({
