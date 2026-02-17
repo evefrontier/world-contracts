@@ -215,6 +215,7 @@ public(package) fun burn_items_with_proof(
 }
 
 // A wrapper function to transfer between inventories
+// If the inventory already has an item with the same type_id, adds quantity to the existing item instead of inserting.
 public(package) fun deposit_item(
     inventory: &mut Inventory,
     assembly_id: ID,
@@ -222,22 +223,42 @@ public(package) fun deposit_item(
     character: &Character,
     item: Item,
 ) {
+    let type_id = item.type_id;
     let req_capacity = calculate_volume(item.volume, item.quantity);
     let remaining_capacity = inventory.max_capacity - inventory.used_capacity;
     assert!(req_capacity <= remaining_capacity, EInventoryInsufficientCapacity);
 
-    inventory.used_capacity = inventory.used_capacity + req_capacity;
+    if (inventory.items.contains(&type_id)) {
+        inventory.used_capacity = inventory.used_capacity + req_capacity;
+        let existing = &mut inventory.items[&type_id];
+        existing.quantity = existing.quantity + item.quantity;
 
-    event::emit(ItemDepositedEvent {
-        assembly_id,
-        assembly_key,
-        character_id: character.id(),
-        character_key: character.key(),
-        item_id: item.item_id,
-        type_id: item.type_id,
-        quantity: item.quantity,
-    });
-    inventory.items.insert(item.type_id, item);
+        event::emit(ItemDepositedEvent {
+            assembly_id,
+            assembly_key,
+            character_id: character.id(),
+            character_key: character.key(),
+            item_id: item.item_id,
+            type_id,
+            quantity: item.quantity,
+        });
+        let Item { id, location, .. } = item;
+        location.remove();
+        id.delete();
+    } else {
+        inventory.used_capacity = inventory.used_capacity + req_capacity;
+
+        event::emit(ItemDepositedEvent {
+            assembly_id,
+            assembly_key,
+            character_id: character.id(),
+            character_key: character.key(),
+            item_id: item.item_id,
+            type_id,
+            quantity: item.quantity,
+        });
+        inventory.items.insert(type_id, item);
+    };
 }
 
 // A wrapper function to transfer between inventories
