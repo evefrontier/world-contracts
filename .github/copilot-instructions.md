@@ -58,7 +58,7 @@ This project uses a three-layer architecture pattern (see `docs/architechture.md
     - `public(package)` for state-mutating functions (e.g., `create`, `delete`, `online`, `offline`)
     - `public` for view/read-only functions (e.g., `hash`, `is_online`, `contains_item`)
     - `public` for utility functions that don't mutate primitive state
-    - `public` for admin functions that require capability checks (e.g., `location::update` requires `AdminCap`)
+    - `public` for admin functions that require ACL checks (e.g., `location::update` requires `AdminACL` + `verify_sponsor`)
 - Enforce the "digital physics" of the game world
 
 **Layer 2: Game-Defined Assemblies**

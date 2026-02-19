@@ -51,7 +51,7 @@ fun anchor_assembly() {
     ts::next_tx(&mut ts, admin());
     {
         let mut registry = ts::take_shared<AssemblyRegistry>(&ts);
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         // Test logic here...
 
@@ -78,7 +78,7 @@ fun anchor_duplicate_item_id() {
     ts::next_tx(&mut ts, admin());
     {
         let mut registry = ts::take_shared<AssemblyRegistry>(&ts);
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         // First anchor succeeds
         assembly::anchor(&mut registry, &admin_cap, /* ... */);

@@ -79,12 +79,12 @@ let value = vec_map::get(&vec_map, &key);
 This project uses a three-tier capability system:
 
 1. **GovernorCap**: Top-level, held by deployer
-    - Can create/delete AdminCaps
+    - Can add/remove sponsors in AdminACL
     - Can configure server addresses and ACLs
 
-2. **AdminCap**: Mid-level, held by game operators
-    - Can create/delete OwnerCaps
-    - Can perform admin operations (anchor, unanchor, etc.)
+2. **AdminACL**: Shared object with authorized sponsor addresses
+    - Authorized sponsors can create/delete OwnerCaps
+    - Authorized sponsors can perform admin operations (anchor, unanchor, etc.)
 
 3. **OwnerCap<T>**: Object-level, held by players
     - Grants access to specific objects
@@ -346,7 +346,7 @@ public fun chain_item_to_game_inventory<T: key>(
 ### Access Control Issues
 
 - Missing capability checks on mutating functions
-- Wrong capability type used (e.g., `AdminCap` where `OwnerCap` is needed)
+- Wrong capability type used (e.g., `AdminACL` where `OwnerCap` is needed)
 - Missing authorization assertion before state changes
 
 ### State Management Issues
