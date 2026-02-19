@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Deploy script for World Contracts
-# Publishes contracts, extracts package ID, and creates admin capabilities
+# Publishes contracts, extracts package ID, and adds sponsors to AdminACL
 
 set -e  # Exit on error
 
@@ -211,63 +211,6 @@ fi
 echo "GovernorCap ID: $GOVERNOR_CAP_ID"
 echo ""
 
-# Create admin capabilities
-echo "Creating admin capabilities..."
-ADMIN_CAP_IDS=()
-
-# Parse admin addresses (comma-separated)
-if [ -z "$ADMIN_ADDRESS" ]; then
-    echo "Warning: No admin addresses found in ADMIN_ADDRESS env variable"
-else
-    # Split by comma using IFS
-    IFS=',' read -ra ADMIN_ADDRS <<< "$ADMIN_ADDRESS"
-    
-    for ADMIN_ADDR in "${ADMIN_ADDRS[@]}"; do
-        # Trim whitespace
-        ADMIN_ADDR=$(echo "$ADMIN_ADDR" | xargs)
-        
-        echo "Creating AdminCap for: $ADMIN_ADDR"
-        
-        # Call create_admin_cap function
-        ADMIN_CAP_OUTPUT=$(sui client call \
-            --package $PACKAGE_ID \
-            --module access \
-            --function create_admin_cap \
-            --args $GOVERNOR_CAP_ID $ADMIN_ADDR \
-            --gas-budget ${GAS_BUDGET:-100000000} \
-            --json)
-        
-        # Save admin cap output for debugging
-        echo "$ADMIN_CAP_OUTPUT" > "deployments/.output/${ENV}-admin-cap-${ADMIN_ADDR}.json"
-        
-        # Check if admin cap creation was successful
-        ADMIN_CAP_STATUS=$(echo "$ADMIN_CAP_OUTPUT" | jq -r '.effects.status.status // "unknown"')
-        
-        if [ "$ADMIN_CAP_STATUS" != "success" ]; then
-            echo "Warning: Failed to create AdminCap for $ADMIN_ADDR (status: $ADMIN_CAP_STATUS)"
-            continue
-        fi
-        
-        # Extract AdminCap ID
-        ADMIN_CAP_ID=$(echo "$ADMIN_CAP_OUTPUT" | jq -r '.objectChanges[] | select(.objectType != null and (.objectType | contains("AdminCap"))) | .objectId')
-        
-        if [ -z "$ADMIN_CAP_ID" ] || [ "$ADMIN_CAP_ID" = "null" ]; then
-            echo "Warning: Failed to extract AdminCap ID for $ADMIN_ADDR"
-        else
-            ADMIN_CAP_IDS+=("{\"address\": \"$ADMIN_ADDR\", \"adminCapId\": \"$ADMIN_CAP_ID\"}")
-            echo "AdminCap created: $ADMIN_CAP_ID"
-        fi
-    done
-fi
-
-echo ""
-
-# Build admin caps JSON array
-ADMIN_CAPS_JSON="[]"
-if [ ${#ADMIN_CAP_IDS[@]} -gt 0 ]; then
-    ADMIN_CAPS_JSON=$(printf '%s\n' "${ADMIN_CAP_IDS[@]}" | jq -s '.')
-fi
-
 # Save deployment info to JSON file
 cat > "$OUTPUT_FILE" << EOF
 {
@@ -275,8 +218,7 @@ cat > "$OUTPUT_FILE" << EOF
   "deployedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "deployedBy": "$ACTIVE_ADDRESS",
   "packageId": "$PACKAGE_ID",
-  "governorCapId": "$GOVERNOR_CAP_ID",
-  "adminCaps": $ADMIN_CAPS_JSON
+  "governorCapId": "$GOVERNOR_CAP_ID"
 }
 EOF
 
@@ -285,7 +227,8 @@ echo "Deployment Complete!"
 echo "======================================"
 echo "Package ID: $PACKAGE_ID"
 echo "GovernorCap ID: $GOVERNOR_CAP_ID"
-echo "Admin Caps Created: ${#ADMIN_CAP_IDS[@]}"
+echo ""
+echo "Next: run 'npm run extract-object-ids' then 'npm run setup-access' to configure sponsors."
 echo ""
 echo "Deployment info saved to: $OUTPUT_FILE"
 echo "Debug files saved to: deployments/.output/${ENV}-*.json"

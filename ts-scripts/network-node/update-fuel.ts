@@ -16,7 +16,6 @@ import {
     initializeContext,
     handleError,
     getEnvConfig,
-    getAdminCapId,
 } from "../utils/helper";
 
 /**
@@ -38,7 +37,7 @@ import {
  */
 async function updateFuel(
     networkNodeId: string,
-    adminCap: string,
+    adminAcl: string,
     client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -68,7 +67,7 @@ async function updateFuel(
         arguments: [
             tx.object(networkNodeId),
             tx.object(config.fuelConfig),
-            tx.object(adminCap),
+            tx.object(adminAcl),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -122,8 +121,7 @@ async function main() {
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
-        const adminCap = await getAdminCapId(client, config.packageId);
-        if (!adminCap) throw new Error("AdminCap not found");
+        const adminAcl = config.adminAcl;
 
         const networkNodeObject = deriveObjectId(
             config.objectRegistry,
@@ -131,7 +129,7 @@ async function main() {
             config.packageId
         );
 
-        await updateFuel(networkNodeObject, adminCap, client, keypair, config);
+        await updateFuel(networkNodeObject, adminAcl, client, keypair, config);
     } catch (error) {
         handleError(error);
     }

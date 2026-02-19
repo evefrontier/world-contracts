@@ -7,7 +7,6 @@ import {
     HydratedWorldConfig,
     WorldConfig,
     getConfig,
-    MODULES,
     Network,
     DEFAULT_RPC_URLS,
     ExtractedObjectIds,
@@ -133,18 +132,6 @@ export function extractEvent<T = unknown>(
     const events = result.events || [];
     const event = events.find((event) => event.type.endsWith(eventTypeSuffix));
     return (event?.parsedJson as T) || null;
-}
-
-export async function getAdminCapId(client: SuiClient, packageId: string): Promise<string | null> {
-    const adminAddress = requireEnv("ADMIN_ADDRESS");
-    const type = `${packageId}::${MODULES.ACCESS}::AdminCap`;
-    const res = await client.getOwnedObjects({
-        owner: adminAddress,
-        filter: { StructType: type },
-        limit: 1,
-    });
-    const first = res.data?.[0]?.data;
-    return first?.objectId ?? null;
 }
 
 export async function hydrateWorldConfig(ctx: InitializedContext): Promise<HydratedWorldConfig> {

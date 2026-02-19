@@ -31,11 +31,15 @@ async function setupAccess() {
 
     const target = `${packageId}::${MODULES.ACCESS}`;
 
-    console.log("1. create_admin_cap...");
+    console.log("1. register_server_address...");
     const tx1 = new Transaction();
     tx1.moveCall({
-        target: `${target}::create_admin_cap`,
-        arguments: [tx1.object(governorCap), tx1.pure.address(adminAddress)],
+        target: `${target}::register_server_address`,
+        arguments: [
+            tx1.object(serverAddressRegistry),
+            tx1.object(governorCap),
+            tx1.pure.address(adminAddress),
+        ],
     });
     const r1 = await client.signAndExecuteTransaction({
         signer: keypair,
@@ -44,18 +48,18 @@ async function setupAccess() {
     });
     console.log("   Digest:", r1.digest);
     if (r1.effects?.status?.status === "failure") {
-        throw new Error(`create_admin_cap failed: ${JSON.stringify(r1.effects.status)}`);
+        throw new Error(`register_server_address failed: ${JSON.stringify(r1.effects.status)}`);
     }
     await delay(5000);
 
-    console.log("2. register_server_address...");
+    console.log("2. add_sponsor_to_acl ...");
     const tx2 = new Transaction();
     tx2.moveCall({
-        target: `${target}::register_server_address`,
+        target: `${target}::add_sponsor_to_acl`,
         arguments: [
-            tx2.object(serverAddressRegistry),
+            tx2.object(adminAcl),
             tx2.object(governorCap),
-            tx2.pure.address(adminAddress),
+            tx2.pure.address(sponsorAddress),
         ],
     });
     const r2 = await client.signAndExecuteTransaction({
@@ -65,28 +69,7 @@ async function setupAccess() {
     });
     console.log("   Digest:", r2.digest);
     if (r2.effects?.status?.status === "failure") {
-        throw new Error(`register_server_address failed: ${JSON.stringify(r2.effects.status)}`);
-    }
-    await delay(5000);
-
-    console.log("3. add_sponsor_to_acl...");
-    const tx3 = new Transaction();
-    tx3.moveCall({
-        target: `${target}::add_sponsor_to_acl`,
-        arguments: [
-            tx3.object(adminAcl),
-            tx3.object(governorCap),
-            tx3.pure.address(sponsorAddress),
-        ],
-    });
-    const r3 = await client.signAndExecuteTransaction({
-        signer: keypair,
-        transaction: tx3,
-        options: { showObjectChanges: true },
-    });
-    console.log("   Digest:", r3.digest);
-    if (r3.effects?.status?.status === "failure") {
-        throw new Error(`add_sponsor_to_acl failed: ${JSON.stringify(r3.effects.status)}`);
+        throw new Error(`add_sponsor_to_acl failed: ${JSON.stringify(r2.effects.status)}`);
     }
     await delay(5000);
 

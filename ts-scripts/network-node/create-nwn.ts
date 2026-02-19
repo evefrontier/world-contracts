@@ -8,7 +8,6 @@ import {
     extractEvent,
     hexToBytes,
     getEnvConfig,
-    getAdminCapId,
     hydrateWorldConfig,
 } from "../utils/helper";
 import { deriveObjectId } from "../utils/derive-object-id";
@@ -25,8 +24,7 @@ async function createNetworkNode(
     ctx: ReturnType<typeof initializeContext>
 ) {
     const { client, keypair, config } = ctx;
-    const adminCap = await getAdminCapId(client, config.packageId);
-    if (!adminCap) throw new Error("AdminCap not found");
+    const adminAcl = config.adminAcl;
     const tx = new Transaction();
 
     const [nwn] = tx.moveCall({
@@ -34,7 +32,7 @@ async function createNetworkNode(
         arguments: [
             tx.object(config.objectRegistry),
             tx.object(characterObjectId),
-            tx.object(adminCap),
+            tx.object(adminAcl),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -46,7 +44,7 @@ async function createNetworkNode(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.NETWORK_NODE}::share_network_node`,
-        arguments: [nwn, tx.object(adminCap)],
+        arguments: [nwn, tx.object(adminAcl)],
     });
 
     const result = await client.signAndExecuteTransaction({

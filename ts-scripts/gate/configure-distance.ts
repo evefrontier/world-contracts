@@ -2,7 +2,6 @@ import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import {
-    getAdminCapId,
     getEnvConfig,
     handleError,
     hydrateWorldConfig,
@@ -13,7 +12,7 @@ import { delay } from "../utils/delay";
 
 async function setGateMaxDistanceByType(
     gateConfigId: string,
-    adminCapId: string,
+    adminAcl: string,
     typeId: bigint,
     maxDistance: bigint,
     ctx: ReturnType<typeof initializeContext>
@@ -25,7 +24,7 @@ async function setGateMaxDistanceByType(
         target: `${config.packageId}::${MODULES.GATE}::set_max_distance`,
         arguments: [
             tx.object(gateConfigId),
-            tx.object(adminCapId),
+            tx.object(adminAcl),
             tx.pure.u64(typeId),
             tx.pure.u64(maxDistance),
         ],
@@ -51,8 +50,7 @@ async function main() {
         const config = await hydrateWorldConfig(ctx);
         const { client } = ctx;
 
-        const adminCapId = await getAdminCapId(client, config.packageId);
-        if (!adminCapId) throw new Error("AdminCap not found");
+        const adminAcl = config.adminAcl;
 
         const gateConfigId = config.gateConfig;
         if (!gateConfigId) throw new Error("GateConfig object not found");
@@ -71,7 +69,7 @@ async function main() {
             for (let i = 0; i < GATE_TYPE_IDS.length; i++) {
                 await setGateMaxDistanceByType(
                     gateConfigId,
-                    adminCapId,
+                    adminAcl,
                     GATE_TYPE_IDS[i],
                     MAX_DISTANCES[i],
                     ctx

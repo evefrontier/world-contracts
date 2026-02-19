@@ -8,7 +8,6 @@ import {
     extractEvent,
     hexToBytes,
     getEnvConfig,
-    getAdminCapId,
     hydrateWorldConfig,
 } from "../utils/helper";
 import {
@@ -29,8 +28,7 @@ async function createAssembly(
 ) {
     const { client, keypair } = ctx;
     const config = ctx.config as HydratedWorldConfig;
-    const adminCap = await getAdminCapId(client, config.packageId);
-    if (!adminCap) throw new Error("AdminCap not found");
+    const adminAcl = config.adminAcl;
     const tx = new Transaction();
 
     const [assembly] = tx.moveCall({
@@ -39,7 +37,7 @@ async function createAssembly(
             tx.object(config.objectRegistry),
             tx.object(networkNodeObjectId),
             tx.object(characterObjectId),
-            tx.object(adminCap),
+            tx.object(adminAcl),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -48,7 +46,7 @@ async function createAssembly(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.ASSEMBLY}::share_assembly`,
-        arguments: [assembly, tx.object(adminCap)],
+        arguments: [assembly, tx.object(adminAcl)],
     });
 
     const result = await client.signAndExecuteTransaction({

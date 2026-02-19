@@ -4,7 +4,7 @@ import { bcs } from "@mysten/sui/bcs";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
-import { hexToBytes, getAdminCapId } from "../utils/helper";
+import { hexToBytes } from "../utils/helper";
 import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 import {
     LOCATION_HASH,
@@ -22,7 +22,7 @@ async function createStorageUnit(
     networkNodeObjectId: string,
     typeId: bigint,
     itemId: bigint,
-    adminCap: string,
+    adminAcl: string,
     client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -35,7 +35,7 @@ async function createStorageUnit(
             tx.object(config.objectRegistry),
             tx.object(networkNodeObjectId),
             tx.object(characterObjectId),
-            tx.object(adminCap),
+            tx.object(adminAcl),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure.u64(MAX_CAPACITY),
@@ -45,7 +45,7 @@ async function createStorageUnit(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.STORAGE_UNIT}::share_storage_unit`,
-        arguments: [storageUnit, tx.object(adminCap)],
+        arguments: [storageUnit, tx.object(adminAcl)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -78,8 +78,7 @@ async function main() {
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
-        const adminCap = await getAdminCapId(client, config.packageId);
-        if (!adminCap) throw new Error("AdminCap not found");
+        const adminAcl = config.adminAcl;
 
         const characterObject = deriveObjectId(
             config.objectRegistry,
@@ -97,7 +96,7 @@ async function main() {
             networkNodeObject,
             STORAGE_A_TYPE_ID,
             STORAGE_A_ITEM_ID,
-            adminCap,
+            adminAcl,
             client,
             keypair,
             config

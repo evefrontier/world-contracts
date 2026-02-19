@@ -5,7 +5,6 @@ import {
     initializeContext,
     handleError,
     getEnvConfig,
-    getAdminCapId,
     requireEnv,
 } from "../utils/helper";
 import { keypairFromPrivateKey } from "../utils/client";
@@ -23,8 +22,7 @@ async function createCharacter(
     ctx: ReturnType<typeof initializeContext>
 ): Promise<string> {
     const { client, keypair, config } = ctx;
-    const adminCap = await getAdminCapId(client, config.packageId);
-    if (!adminCap) throw new Error("AdminCap not found )");
+    const adminAcl = config.adminAcl;
     console.log("\n==== Creating a character ====");
     console.log("Game Character ID:", gameCharacterId);
     console.log("Tribe ID:", TRIBE_ID);
@@ -42,7 +40,7 @@ async function createCharacter(
         target: `${config.packageId}::${MODULES.CHARACTER}::create_character`,
         arguments: [
             tx.object(config.objectRegistry),
-            tx.object(adminCap),
+            tx.object(adminAcl),
             tx.pure.u32(gameCharacterId),
             tx.pure.string(tenant),
             tx.pure.u32(TRIBE_ID),
@@ -53,7 +51,7 @@ async function createCharacter(
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::share_character`,
-        arguments: [character, tx.object(adminCap)],
+        arguments: [character, tx.object(adminAcl)],
     });
 
     const result = await client.signAndExecuteTransaction({

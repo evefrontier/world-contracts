@@ -8,7 +8,6 @@ import {
     initializeContext,
     handleError,
     getEnvConfig,
-    getAdminCapId,
     parseBigIntArray,
 } from "../utils/helper";
 import { delay } from "../utils/delay";
@@ -16,7 +15,7 @@ import { delay } from "../utils/delay";
 async function setFuelEfficiency(
     fuelTypeId: bigint,
     fuelEfficiency: bigint,
-    adminCap: string,
+    adminAcl: string,
     client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -32,7 +31,7 @@ async function setFuelEfficiency(
         target: `${config.packageId}::${MODULES.FUEL}::set_fuel_efficiency`,
         arguments: [
             tx.object(config.fuelConfig),
-            tx.object(adminCap),
+            tx.object(adminAcl),
             tx.pure.u64(fuelTypeId),
             tx.pure.u64(fuelEfficiency),
         ],
@@ -52,7 +51,7 @@ async function setFuelEfficiency(
 async function setEnergyConfig(
     assemblyTypeId: bigint,
     energyRequired: bigint,
-    adminCap: string,
+    adminAcl: string,
     client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -67,7 +66,7 @@ async function setEnergyConfig(
         target: `${config.packageId}::${MODULES.ENERGY}::set_energy_config`,
         arguments: [
             tx.object(config.energyConfig),
-            tx.object(adminCap),
+            tx.object(adminAcl),
             tx.pure.u64(assemblyTypeId),
             tx.pure.u64(energyRequired),
         ],
@@ -97,8 +96,7 @@ async function main() {
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
         const { client, keypair, config } = ctx;
-        const adminCap = await getAdminCapId(client, config.packageId);
-        if (!adminCap) throw new Error("AdminCap not found");
+        const adminAcl = config.adminAcl;
 
         // Configure fuel efficiencies
         if (FUEL_TYPE_IDS.length > 0 && FUEL_EFFICIENCIES.length > 0) {
@@ -112,7 +110,7 @@ async function main() {
                 await setFuelEfficiency(
                     FUEL_TYPE_IDS[i],
                     FUEL_EFFICIENCIES[i],
-                    adminCap,
+                    adminAcl,
                     client,
                     keypair,
                     config
@@ -135,7 +133,7 @@ async function main() {
                 await setEnergyConfig(
                     ASSEMBLY_TYPE_IDS[i],
                     ENERGY_REQUIRED_VALUES[i],
-                    adminCap,
+                    adminAcl,
                     client,
                     keypair,
                     config

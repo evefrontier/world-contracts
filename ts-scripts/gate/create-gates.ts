@@ -4,7 +4,6 @@ import { bcs } from "@mysten/sui/bcs";
 import { MODULES } from "../utils/config";
 import {
     extractEvent,
-    getAdminCapId,
     getEnvConfig,
     handleError,
     hexToBytes,
@@ -29,8 +28,7 @@ async function createGate(
     characterId: number
 ) {
     const { client, keypair, config } = ctx;
-    const adminCap = await getAdminCapId(client, config.packageId);
-    if (!adminCap) throw new Error("AdminCap not found");
+    const adminAcl = config.adminAcl;
 
     const characterObjectId = deriveObjectId(config.objectRegistry, characterId, config.packageId);
     const networkNodeObjectId = deriveObjectId(config.objectRegistry, nwnId, config.packageId);
@@ -43,7 +41,7 @@ async function createGate(
             tx.object(config.objectRegistry),
             tx.object(networkNodeObjectId),
             tx.object(characterObjectId),
-            tx.object(adminCap),
+            tx.object(adminAcl),
             tx.pure.u64(gateItemId),
             tx.pure.u64(GATE_TYPE_ID),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(LOCATION_HASH))),
@@ -51,7 +49,7 @@ async function createGate(
     });
     tx.moveCall({
         target: `${config.packageId}::${MODULES.GATE}::share_gate`,
-        arguments: [gate, tx.object(adminCap)],
+        arguments: [gate, tx.object(adminAcl)],
     });
 
     const result = await client.signAndExecuteTransaction({
