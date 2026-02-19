@@ -4,7 +4,7 @@ module world::energy_tests;
 use std::unit_test::assert_eq;
 use sui::{table::{Self, Table}, test_scenario as ts};
 use world::{
-    access::AdminCap,
+    access::AdminACL,
     energy::{Self, EnergyConfig, EnergySource},
     test_helpers::{
         Self,
@@ -71,12 +71,12 @@ fun set_energy_config_updates_existing() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
-        energy_config.set_energy_config(&admin_cap, assembly_type_1(), 75);
+        energy_config.set_energy_config(&admin_acl, assembly_type_1(), 75, ts.ctx());
 
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts::next_tx(&mut ts, admin());
     {
@@ -98,12 +98,12 @@ fun remove_energy_config() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
-        energy_config.remove_energy_config(&admin_cap, assembly_type_2());
+        energy_config.remove_energy_config(&admin_acl, assembly_type_2(), ts.ctx());
 
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts::next_tx(&mut ts, admin());
     {
@@ -264,10 +264,10 @@ fun reserve_energy_at_capacity() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
         // intentionally increase assembly energy requirement and see if it works
-        energy_config.set_energy_config(&admin_cap, assembly_type_1(), MAX_PRODUCTION);
+        energy_config.set_energy_config(&admin_acl, assembly_type_1(), MAX_PRODUCTION, ts.ctx());
 
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         nwn.energy.start_energy_production(nwn_id);
@@ -278,7 +278,7 @@ fun reserve_energy_at_capacity() {
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -471,12 +471,12 @@ fun set_energy_config_with_empty_type_id() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
-        energy_config.set_energy_config(&admin_cap, 0, 50);
+        energy_config.set_energy_config(&admin_acl, 0, 50, ts.ctx());
 
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -490,12 +490,12 @@ fun set_energy_config_with_zero_energy_required() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
-        energy_config.set_energy_config(&admin_cap, assembly_type_1(), 0);
+        energy_config.set_energy_config(&admin_acl, assembly_type_1(), 0, ts.ctx());
 
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -509,12 +509,12 @@ fun remove_energy_config_with_empty_type_id() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
-        energy_config.remove_energy_config(&admin_cap, 0);
+        energy_config.remove_energy_config(&admin_acl, 0, ts.ctx());
 
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -571,12 +571,12 @@ fun remove_energy_config_nonexistent() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
-        energy_config.remove_energy_config(&admin_cap, 9999);
+        energy_config.remove_energy_config(&admin_acl, 9999, ts.ctx());
 
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     abort
@@ -632,10 +632,10 @@ fun reserving_more_than_available_energy() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(&ts);
-        energy_config.set_energy_config(&admin_cap, assembly_type_1(), 80);
-        energy_config.set_energy_config(&admin_cap, assembly_type_2(), 30);
+        energy_config.set_energy_config(&admin_acl, assembly_type_1(), 80, ts.ctx());
+        energy_config.set_energy_config(&admin_acl, assembly_type_2(), 30, ts.ctx());
 
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         nwn.energy.start_energy_production(nwn_id);
@@ -644,7 +644,7 @@ fun reserving_more_than_available_energy() {
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);

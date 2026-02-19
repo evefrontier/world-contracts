@@ -5,7 +5,7 @@ module world::fuel_tests;
 use std::unit_test::assert_eq;
 use sui::{clock, derived_object, test_scenario as ts};
 use world::{
-    access::AdminCap,
+    access::AdminACL,
     fuel::{Self, FuelConfig, Fuel},
     in_game_id::{create_key, TenantItemId},
     object_registry::ObjectRegistry,
@@ -132,12 +132,12 @@ fun set_new_fuel_efficiency() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.set_fuel_efficiency(&admin_cap, 4, 95);
+        fuel_config.set_fuel_efficiency(&admin_acl, 4, 95, ts.ctx());
 
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts::next_tx(&mut ts, admin());
     {
@@ -159,12 +159,12 @@ fun unset_fuel_efficiency() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.unset_fuel_efficiency(&admin_cap, fuel_type_2());
+        fuel_config.unset_fuel_efficiency(&admin_acl, fuel_type_2(), ts.ctx());
 
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts::next_tx(&mut ts, admin());
     {
@@ -188,12 +188,12 @@ fun update_existing_fuel_efficiency() {
     // Update an existing fuel type efficiency
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.set_fuel_efficiency(&admin_cap, fuel_type_1(), 85);
+        fuel_config.set_fuel_efficiency(&admin_acl, fuel_type_1(), 85, ts.ctx());
 
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts::next_tx(&mut ts, admin());
     {
@@ -665,12 +665,12 @@ fun set_fuel_efficiency_with_empty_type_id() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.set_fuel_efficiency(&admin_cap, 0, 50); // Should abort
+        fuel_config.set_fuel_efficiency(&admin_acl, 0, 50, ts.ctx()); // Should abort
 
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -684,12 +684,12 @@ fun set_fuel_efficiency_exceeding_max() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.set_fuel_efficiency(&admin_cap, 5, 101); // Should abort
+        fuel_config.set_fuel_efficiency(&admin_acl, 5, 101, ts.ctx()); // Should abort
 
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -704,12 +704,12 @@ fun unset_fuel_efficiency_with_empty_type_id() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.unset_fuel_efficiency(&admin_cap, 0); // Should abort
+        fuel_config.unset_fuel_efficiency(&admin_acl, 0, ts.ctx()); // Should abort
 
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -948,12 +948,12 @@ fun set_fuel_efficiency_below_minimum() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.set_fuel_efficiency(&admin_cap, 5, 9); // Should abort (< 10)
+        fuel_config.set_fuel_efficiency(&admin_acl, 5, 9, ts.ctx()); // Should abort (< 10)
 
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -1286,11 +1286,11 @@ fun fuel_efficiency_impact() {
     // Configure fuel type with 50% efficiency
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(&ts);
-        fuel_config.set_fuel_efficiency(&admin_cap, FUEL_TYPE_ID, 50);
+        fuel_config.set_fuel_efficiency(&admin_acl, FUEL_TYPE_ID, 50, ts.ctx());
         ts::return_shared(fuel_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     let time_10_00 = 1000;

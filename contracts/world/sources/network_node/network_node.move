@@ -10,7 +10,7 @@ module world::network_node;
 
 use sui::{clock::Clock, derived_object, event};
 use world::{
-    access::{Self, OwnerCap, AdminCap, AdminACL},
+    access::{Self, OwnerCap, AdminACL},
     character::Character,
     energy::{Self, EnergySource},
     fuel::{Self, FuelConfig, Fuel},
@@ -211,7 +211,7 @@ public fun need_update(nwn: &NetworkNode, fuel_config: &FuelConfig, clock: &Cloc
 public fun anchor(
     registry: &mut ObjectRegistry,
     character: &Character,
-    admin_cap: &AdminCap,
+    admin_acl: &AdminACL,
     item_id: u64,
     type_id: u64,
     location_hash: vector<u8>,
@@ -230,7 +230,7 @@ public fun anchor(
     let nwn_uid = derived_object::claim(registry.borrow_registry_id(), nwn_key);
     let nwn_id = object::uid_to_inner(&nwn_uid);
 
-    let owner_cap = access::create_owner_cap_by_id<NetworkNode>(nwn_id, admin_cap, ctx);
+    let owner_cap = access::create_owner_cap_by_id<NetworkNode>(nwn_id, admin_acl, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let nwn = NetworkNode {
@@ -269,7 +269,8 @@ public fun anchor(
     nwn
 }
 
-public fun share_network_node(nwn: NetworkNode, _: &AdminCap) {
+public fun share_network_node(nwn: NetworkNode, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     transfer::share_object(nwn);
 }
 
@@ -281,9 +282,11 @@ public fun share_network_node(nwn: NetworkNode, _: &AdminCap) {
 /// have their energy sources updated before the transaction completes.
 public fun connect_assemblies(
     nwn: &mut NetworkNode,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     assembly_ids: vector<ID>,
+    ctx: &TxContext,
 ): UpdateEnergySources {
+    admin_acl.verify_sponsor(ctx);
     let mut connected_ids = vector[];
     let mut i = 0;
     let len = assembly_ids.length();
@@ -303,7 +306,12 @@ public fun connect_assemblies(
 /// For each assembly call unanchor_connected_assembly or unanchor_connected_storage_unit
 /// (brings offline, releases energy, clears energy source).
 /// After all assemblies are processed, call destroy_network_node with the hot potato to destroy the network node.
-public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): HandleOrphanedAssemblies {
+public fun unanchor(
+    nwn: &mut NetworkNode,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
+): HandleOrphanedAssemblies {
+    admin_acl.verify_sponsor(ctx);
     let nwn_id = object::id(nwn);
     if (nwn.energy_source.current_energy_production() > 0) {
         nwn.energy_source.stop_energy_production(nwn_id);
@@ -319,8 +327,10 @@ public fun unanchor(nwn: &mut NetworkNode, _: &AdminCap): HandleOrphanedAssembli
 public fun destroy_network_node(
     mut nwn: NetworkNode,
     orphaned_assemblies: HandleOrphanedAssemblies,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     let nwn_id = object::id(&nwn);
     orphaned_assemblies.destroy_orphaned_assemblies();
     // Clean up connected assembliesd
@@ -360,9 +370,11 @@ public fun destroy_network_node(
 public fun update_fuel(
     nwn: &mut NetworkNode,
     fuel_config: &FuelConfig,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     clock: &Clock,
+    ctx: &TxContext,
 ): OfflineAssemblies {
+    admin_acl.verify_sponsor(ctx);
     let nwn_id = object::id(nwn);
 
     if (nwn.status.is_online()) {

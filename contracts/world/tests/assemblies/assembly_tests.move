@@ -4,7 +4,7 @@ module world::assembly_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{AdminCap, OwnerCap},
+    access::{AdminACL, OwnerCap},
     assembly::{Self, Assembly},
     character::{Self, Character},
     energy::{Self, EnergyConfig},
@@ -50,11 +50,11 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
     ts::next_tx(ts, admin());
     {
         let character_id = {
-            let admin_cap = ts::take_from_sender<AdminCap>(ts);
+            let admin_acl = ts::take_shared<AdminACL>(ts);
             let mut registry = ts::take_shared<ObjectRegistry>(ts);
             let character = character::create_character(
                 &mut registry,
-                &admin_cap,
+                &admin_acl,
                 item_id,
                 tenant(),
                 100,
@@ -63,9 +63,9 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
                 ts.ctx(),
             );
             let character_id = object::id(&character);
-            character::share_character(character, &admin_cap);
+            character.share_character(&admin_acl, ts.ctx());
             ts::return_shared(registry);
-            ts::return_to_sender(ts, admin_cap);
+            ts::return_shared(admin_acl);
             character_id
         };
         character_id
@@ -77,12 +77,12 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
     ts::next_tx(ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(ts);
+    let admin_acl = ts::take_shared<AdminACL>(ts);
 
     let nwn = network_node::anchor(
         &mut registry,
         &character,
-        &admin_cap,
+        &admin_acl,
         NWN_ITEM_ID,
         NWN_TYPE_ID,
         LOCATION_HASH,
@@ -92,10 +92,10 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
         ts.ctx(),
     );
     let id = object::id(&nwn);
-    network_node::share_network_node(nwn, &admin_cap);
+    nwn.share_network_node(&admin_acl, ts.ctx());
 
     ts::return_shared(character);
-    ts::return_to_sender(ts, admin_cap);
+    ts::return_shared(admin_acl);
     ts::return_shared(registry);
     id
 }
@@ -106,23 +106,23 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, character_id: ID): ID {
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(ts);
+    let admin_acl = ts::take_shared<AdminACL>(ts);
 
     let assembly = assembly::anchor(
         &mut registry,
         &mut nwn,
         &character,
-        &admin_cap,
+        &admin_acl,
         ITEM_ID,
         TYPE_ID,
         LOCATION_HASH,
         ts.ctx(),
     );
     let assembly_id = object::id(&assembly);
-    assembly::share_assembly(assembly, &admin_cap);
+    assembly.share_assembly(&admin_acl, ts.ctx());
 
     ts::return_shared(character);
-    ts::return_to_sender(ts, admin_cap);
+    ts::return_shared(admin_acl);
     ts::return_shared(registry);
     ts::return_shared(nwn);
     assembly_id
@@ -257,13 +257,13 @@ fun test_unanchor() {
     let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+    let admin_acl = ts::take_shared<AdminACL>(&ts);
 
     let assembly = assembly::anchor(
         &mut registry,
         &mut nwn,
         &character,
-        &admin_cap,
+        &admin_acl,
         ITEM_ID,
         TYPE_ID,
         LOCATION_HASH,
@@ -275,7 +275,7 @@ fun test_unanchor() {
 
     // Unanchor - consumes assembly
     let energy_config = ts::take_shared<EnergyConfig>(&ts);
-    assembly::unanchor(assembly, &mut nwn, &energy_config, &admin_cap);
+    assembly.unanchor(&mut nwn, &energy_config, &admin_acl, ts.ctx());
     assert!(!network_node::is_assembly_connected(&nwn, assembly_id), 0);
 
     // As per implementation, derived object is not reclaimed, so assembly_exists should be true
@@ -284,7 +284,7 @@ fun test_unanchor() {
 
     ts::return_shared(nwn);
     ts::return_shared(energy_config);
-    ts::return_to_sender(&ts, admin_cap);
+    ts::return_shared(admin_acl);
     ts::return_shared(registry);
     ts::end(ts);
 }
@@ -302,34 +302,34 @@ fun test_anchor_duplicate_item_id() {
     let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+    let admin_acl = ts::take_shared<AdminACL>(&ts);
     let assembly1 = assembly::anchor(
         &mut registry,
         &mut nwn,
         &character,
-        &admin_cap,
+        &admin_acl,
         ITEM_ID,
         TYPE_ID,
         LOCATION_HASH,
         ts.ctx(),
     );
-    assembly::share_assembly(assembly1, &admin_cap);
+    assembly1.share_assembly(&admin_acl, ts.ctx());
 
     // Second anchor with same ITEM_ID should fail
     let assembly2 = assembly::anchor(
         &mut registry,
         &mut nwn,
         &character,
-        &admin_cap,
+        &admin_acl,
         ITEM_ID,
         TYPE_ID,
         LOCATION_HASH,
         ts.ctx(),
     );
     ts::return_shared(character);
-    assembly::share_assembly(assembly2, &admin_cap);
+    assembly2.share_assembly(&admin_acl, ts.ctx());
 
-    ts::return_to_sender(&ts, admin_cap);
+    ts::return_shared(admin_acl);
     ts::return_shared(registry);
     ts::return_shared(nwn);
     ts::end(ts);
@@ -348,22 +348,22 @@ fun test_anchor_invalid_type_id() {
     let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+    let admin_acl = ts::take_shared<AdminACL>(&ts);
 
     let assembly = assembly::anchor(
         &mut registry,
         &mut nwn,
         &character,
-        &admin_cap,
+        &admin_acl,
         ITEM_ID,
         0, // Invalid Type ID
         LOCATION_HASH,
         ts.ctx(),
     );
     ts::return_shared(character);
-    assembly::share_assembly(assembly, &admin_cap);
+    assembly.share_assembly(&admin_acl, ts.ctx());
 
-    ts::return_to_sender(&ts, admin_cap);
+    ts::return_shared(admin_acl);
     ts::return_shared(registry);
     ts::return_shared(nwn);
     ts::end(ts);
@@ -381,22 +381,22 @@ fun test_anchor_invalid_item_id() {
     let mut registry = ts::take_shared<ObjectRegistry>(&ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+    let admin_acl = ts::take_shared<AdminACL>(&ts);
 
     let assembly = assembly::anchor(
         &mut registry,
         &mut nwn,
         &character,
-        &admin_cap,
+        &admin_acl,
         0, // Invalid Item ID
         TYPE_ID,
         LOCATION_HASH,
         ts.ctx(),
     );
     ts::return_shared(character);
-    assembly::share_assembly(assembly, &admin_cap);
+    assembly.share_assembly(&admin_acl, ts.ctx());
 
-    ts::return_to_sender(&ts, admin_cap);
+    ts::return_shared(admin_acl);
     ts::return_shared(registry);
     ts::return_shared(nwn);
     ts::end(ts);
@@ -415,10 +415,10 @@ fun test_unanchor_orphan_fails_when_energy_source_set() {
     // Attempting to orphan-unanchor while still connected should fail.
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
-        assembly.unanchor_orphan(&admin_cap);
-        ts::return_to_sender(&ts, admin_cap);
+        assembly.unanchor_orphan(&admin_acl, ts.ctx());
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);

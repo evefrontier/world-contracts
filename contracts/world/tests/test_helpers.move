@@ -4,7 +4,7 @@ module world::test_helpers;
 use std::string::String;
 use sui::test_scenario as ts;
 use world::{
-    access::{Self, AdminCap, ServerAddressRegistry, AdminACL},
+    access::{Self, ServerAddressRegistry, AdminACL},
     energy::{Self, EnergyConfig},
     fuel::{Self, FuelConfig},
     in_game_id::{Self, TenantItemId},
@@ -93,7 +93,7 @@ public fun assembly_type_2_energy(): u64 { ASSEMBLY_TYPE_2_ENERGY }
 
 public fun assembly_type_3_energy(): u64 { ASSEMBLY_TYPE_3_ENERGY }
 
-/// Initialize world and create admin cap for ADMIN
+/// Initialize world and add admin as authorized sponsor
 public fun setup_world(ts: &mut ts::Scenario) {
     ts::next_tx(ts, governor());
     {
@@ -108,8 +108,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
     {
         let gov_cap = ts::take_from_sender<GovernorCap>(ts);
         let mut admin_acl = ts::take_shared<AdminACL>(ts);
-        access::create_admin_cap(&gov_cap, admin(), ts.ctx());
-        access::add_sponsor_to_acl(&mut admin_acl, &gov_cap, admin()); // here admin and sponsor is the same
+        access::add_sponsor_to_acl(&mut admin_acl, &gov_cap, admin());
         ts::return_to_sender(ts, gov_cap);
         ts::return_shared(admin_acl);
     };
@@ -119,14 +118,14 @@ public fun setup_world(ts: &mut ts::Scenario) {
 public fun setup_owner_cap<T: key>(ts: &mut ts::Scenario, owner: address, object: &T) {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         access::create_and_transfer_owner_cap<T>(
             object::id(object),
-            &admin_cap,
+            &admin_acl,
             owner,
             ts.ctx(),
         );
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 }
 
@@ -139,7 +138,6 @@ public fun register_server_address(ts: &mut ts::Scenario) {
     {
         let gov_cap = ts::take_from_sender<GovernorCap>(ts);
         let mut server_registry = ts::take_shared<ServerAddressRegistry>(ts);
-        access::create_admin_cap(&gov_cap, server_admin(), ts.ctx());
         access::register_server_address(&mut server_registry, &gov_cap, server_admin());
         ts::return_to_sender(ts, gov_cap);
         ts::return_shared(server_registry);
@@ -203,29 +201,44 @@ public fun create_test_object(ts: &mut ts::Scenario, owner: address): ID {
 public fun configure_fuel(ts: &mut ts::Scenario) {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut fuel_config = ts::take_shared<FuelConfig>(ts);
 
-        fuel_config.set_fuel_efficiency(&admin_cap, FUEL_TYPE_1, FUEL_EFFICIENCY_1);
-        fuel_config.set_fuel_efficiency(&admin_cap, FUEL_TYPE_2, FUEL_EFFICIENCY_2);
-        fuel_config.set_fuel_efficiency(&admin_cap, FUEL_TYPE_3, FUEL_EFFICIENCY_3);
+        fuel_config.set_fuel_efficiency(&admin_acl, FUEL_TYPE_1, FUEL_EFFICIENCY_1, ts.ctx());
+        fuel_config.set_fuel_efficiency(&admin_acl, FUEL_TYPE_2, FUEL_EFFICIENCY_2, ts.ctx());
+        fuel_config.set_fuel_efficiency(&admin_acl, FUEL_TYPE_3, FUEL_EFFICIENCY_3, ts.ctx());
 
         ts::return_shared(fuel_config);
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
     }
 }
 
 public fun configure_assembly_energy(ts: &mut ts::Scenario) {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut energy_config = ts::take_shared<EnergyConfig>(ts);
 
-        energy_config.set_energy_config(&admin_cap, ASSEMBLY_TYPE_1, ASSEMBLY_TYPE_1_ENERGY);
-        energy_config.set_energy_config(&admin_cap, ASSEMBLY_TYPE_2, ASSEMBLY_TYPE_2_ENERGY);
-        energy_config.set_energy_config(&admin_cap, ASSEMBLY_TYPE_3, ASSEMBLY_TYPE_3_ENERGY);
+        energy_config.set_energy_config(
+            &admin_acl,
+            ASSEMBLY_TYPE_1,
+            ASSEMBLY_TYPE_1_ENERGY,
+            ts.ctx(),
+        );
+        energy_config.set_energy_config(
+            &admin_acl,
+            ASSEMBLY_TYPE_2,
+            ASSEMBLY_TYPE_2_ENERGY,
+            ts.ctx(),
+        );
+        energy_config.set_energy_config(
+            &admin_acl,
+            ASSEMBLY_TYPE_3,
+            ASSEMBLY_TYPE_3_ENERGY,
+            ts.ctx(),
+        );
 
         ts::return_shared(energy_config);
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
     }
 }

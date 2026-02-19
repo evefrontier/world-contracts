@@ -4,7 +4,7 @@ module world::gate_tests;
 use std::{bcs, string::utf8};
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{AdminCap, OwnerCap, ServerAddressRegistry},
+    access::{AdminACL, OwnerCap, ServerAddressRegistry},
     character::{Self, Character},
     energy::EnergyConfig,
     gate::{Self, Gate, GateConfig, JumpPermit},
@@ -66,21 +66,21 @@ fun setup(ts: &mut ts::Scenario) {
     // Configure max distance for our gate type
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut gate_config = ts::take_shared<GateConfig>(ts);
-        gate::set_max_distance(&mut gate_config, &admin_cap, GATE_TYPE_ID, 1_000_000_000);
+        gate::set_max_distance(&mut gate_config, &admin_acl, GATE_TYPE_ID, 1_000_000_000, ts.ctx());
         ts::return_shared(gate_config);
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 }
 
 fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
     ts::next_tx(ts, admin());
-    let admin_cap = ts::take_from_sender<AdminCap>(ts);
+    let admin_acl = ts::take_shared<AdminACL>(ts);
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let character = character::create_character(
         &mut registry,
-        &admin_cap,
+        &admin_acl,
         item_id,
         tenant(),
         100,
@@ -89,9 +89,9 @@ fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
         ts.ctx(),
     );
     let character_id = object::id(&character);
-    character.share_character(&admin_cap);
+    character.share_character(&admin_acl, ts.ctx());
     ts::return_shared(registry);
-    ts::return_to_sender(ts, admin_cap);
+    ts::return_shared(admin_acl);
     character_id
 }
 
@@ -99,11 +99,11 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
     ts::next_tx(ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(ts);
+    let admin_acl = ts::take_shared<AdminACL>(ts);
     let nwn = network_node::anchor(
         &mut registry,
         &character,
-        &admin_cap,
+        &admin_acl,
         NWN_ITEM_ID,
         NWN_TYPE_ID,
         test_helpers::get_verified_location_hash(),
@@ -113,10 +113,10 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
         ts.ctx(),
     );
     let nwn_id = object::id(&nwn);
-    nwn.share_network_node(&admin_cap);
+    nwn.share_network_node(&admin_acl, ts.ctx());
     ts::return_shared(character);
     ts::return_shared(registry);
-    ts::return_to_sender(ts, admin_cap);
+    ts::return_shared(admin_acl);
     nwn_id
 }
 
@@ -125,23 +125,23 @@ fun create_gate(ts: &mut ts::Scenario, character_id: ID, nwn_id: ID, item_id: u6
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(ts);
+    let admin_acl = ts::take_shared<AdminACL>(ts);
     let gate_obj = gate::anchor(
         &mut registry,
         &mut nwn,
         &character,
-        &admin_cap,
+        &admin_acl,
         item_id,
         GATE_TYPE_ID,
         test_helpers::get_verified_location_hash(),
         ts.ctx(),
     );
     let gate_id = object::id(&gate_obj);
-    gate_obj.share_gate(&admin_cap);
+    gate_obj.share_gate(&admin_acl, ts.ctx());
     ts::return_shared(character);
     ts::return_shared(nwn);
     ts::return_shared(registry);
-    ts::return_to_sender(ts, admin_cap);
+    ts::return_shared(admin_acl);
     gate_id
 }
 
@@ -356,8 +356,8 @@ fun unanchor_orphan_gate() {
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let orphaned_assemblies = nwn.unanchor(&admin_cap);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let orphaned_assemblies = nwn.unanchor(&admin_acl, ts.ctx());
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let updated_orphaned_assemblies = gate_a.offline_orphaned_gate(
@@ -370,20 +370,20 @@ fun unanchor_orphan_gate() {
             &mut nwn,
             &energy_config,
         );
-        nwn.destroy_network_node(updated_orphaned_assemblies, &admin_cap);
+        nwn.destroy_network_node(updated_orphaned_assemblies, &admin_acl, ts.ctx());
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
-        gate_a.unanchor_orphan(&admin_cap);
-        gate_b.unanchor_orphan(&admin_cap);
-        ts::return_to_sender(&ts, admin_cap);
+        gate_a.unanchor_orphan(&admin_acl, ts.ctx());
+        gate_b.unanchor_orphan(&admin_acl, ts.ctx());
+        ts::return_shared(admin_acl);
     };
     ts::end(ts);
 }
@@ -752,11 +752,11 @@ fun unlink_gates_by_admin_succeeds() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
 
-        gate::unlink_gates_by_admin(&mut gate_a, &mut gate_b, &admin_cap);
+        gate::unlink_gates_by_admin(&mut gate_a, &mut gate_b, &admin_acl, ts.ctx());
 
         assert!(!gate::are_gates_linked(&gate_a, &gate_b), 0);
         let linked_a = gate_a.linked_gate_id();
@@ -766,7 +766,7 @@ fun unlink_gates_by_admin_succeeds() {
 
         ts::return_shared(gate_a);
         ts::return_shared(gate_b);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -805,11 +805,11 @@ fun link_fails_when_distance_exceeds_max() {
     // Set max distance to 1 for our type
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut gate_config = ts::take_shared<GateConfig>(&ts);
-        gate::set_max_distance(&mut gate_config, &admin_cap, GATE_TYPE_ID, 1);
+        gate::set_max_distance(&mut gate_config, &admin_acl, GATE_TYPE_ID, 1, ts.ctx());
         ts::return_shared(gate_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::next_tx(&mut ts, user_a());
@@ -963,14 +963,14 @@ fun cannot_jump_after_unanchor() {
     // Unanchor gate_a
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
-        gate::unanchor(gate_a, &mut nwn, &energy_config, &admin_cap);
+        gate_a.unanchor(&mut nwn, &energy_config, &admin_acl, ts.ctx());
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     // Now jump cannot happen
@@ -1025,12 +1025,12 @@ fun unanchor_orphan_gate_fails_when_energy_source_set() {
     };
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
-        gate_a.unanchor_orphan(&admin_cap);
-        gate_b.unanchor_orphan(&admin_cap);
-        ts::return_to_sender(&ts, admin_cap);
+        gate_a.unanchor_orphan(&admin_acl, ts.ctx());
+        gate_b.unanchor_orphan(&admin_acl, ts.ctx());
+        ts::return_shared(admin_acl);
     };
     ts::end(ts);
 }

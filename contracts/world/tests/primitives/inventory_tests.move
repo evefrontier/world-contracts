@@ -4,7 +4,7 @@ module world::inventory_tests;
 use std::{bcs, string::utf8, unit_test::assert_eq};
 use sui::{dynamic_field as df, test_scenario as ts};
 use world::{
-    access::{AdminCap, ServerAddressRegistry},
+    access::{AdminACL, ServerAddressRegistry},
     character::{Self, Character},
     in_game_id,
     inventory::{Self, Inventory},
@@ -36,12 +36,12 @@ public struct StorageUnit has key {
 fun create_character_for_user_a(ts: &mut ts::Scenario): ID {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut registry = ts::take_shared<ObjectRegistry>(ts);
         // Create character with item_id = 1
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             1u32,
             tenant(),
             100,
@@ -50,9 +50,9 @@ fun create_character_for_user_a(ts: &mut ts::Scenario): ID {
             ts.ctx(),
         );
         let character_id = object::id(&character);
-        character.share_character(&admin_cap);
+        character.share_character(&admin_acl, ts.ctx());
         ts::return_shared(registry);
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
         character_id
     }
 }
@@ -60,12 +60,12 @@ fun create_character_for_user_a(ts: &mut ts::Scenario): ID {
 fun create_character_for_user_b(ts: &mut ts::Scenario): ID {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut registry = ts::take_shared<ObjectRegistry>(ts);
         // Create character with item_id = 2
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             2u32,
             tenant(),
             100,
@@ -74,9 +74,9 @@ fun create_character_for_user_b(ts: &mut ts::Scenario): ID {
             ts.ctx(),
         );
         let character_id = object::id(&character);
-        character.share_character(&admin_cap);
+        character.share_character(&admin_acl, ts.ctx());
         ts::return_shared(registry);
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
         character_id
     }
 }

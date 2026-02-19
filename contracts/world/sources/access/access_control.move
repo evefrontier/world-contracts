@@ -2,12 +2,12 @@
 ///
 /// The module defines three levels of capabilities:
 /// - `GovernorCap`: Top-level capability (defined in world module)
-/// - `AdminCap`: Mid-level capability that can be created by the Governor
-/// - `OwnerCap`: Object-level capability that can be created by Admins
+/// - `AdminACL`: Shared object with a table of authorized sponsor addresses
+/// - `OwnerCap`: Object-level capability that can be created by authorized sponsors
 ///
 /// This hierarchy allows for delegation of permissions:
-/// - Governor can create/delete AdminCaps for specific addresses
-/// - Admins can create/transfer/delete OwnerCaps
+/// - Governor can add/remove sponsors in AdminACL
+/// - Authorized sponsors can create/transfer/delete OwnerCaps
 /// Future: Capability registry to support multi party access/shared control. (eg: A capability for corporation/tribe with multiple members)
 /// Capabilities based on different roles/permission in a corporation/tribe.
 
@@ -22,10 +22,8 @@ const ECharacterTransfer: vector<u8> = b"Character cannot be transferred";
 #[error(code = 1)]
 const EUnauthorizedSponsor: vector<u8> = b"Unauthorized sponsor";
 #[error(code = 2)]
-const ETransactionNotSponsored: vector<u8> = b"Transaction not sponsored";
-#[error(code = 3)]
 const EOwnerIdMismatch: vector<u8> = b"Owner ID mismatch";
-#[error(code = 4)]
+#[error(code = 3)]
 const EOwnerCapIdMismatch: vector<u8> = b"Owner Cap ID mismatch";
 
 /// Proof that an owner cap was borrowed from an object; must be used to either return or transfer the cap.
@@ -37,11 +35,6 @@ public struct ReturnOwnerCapReceipt {
 public struct AdminACL has key {
     id: UID,
     authorized_sponsors: Table<address, bool>,
-}
-
-public struct AdminCap has key {
-    id: UID,
-    admin: address,
 }
 
 /// `OwnerCap` serves as a transferable capability ("KeyCard") for accessing and mutating shared objects.
@@ -155,21 +148,26 @@ public fun is_authorized<T: key>(owner_cap: &OwnerCap<T>, object_id: ID): bool {
     owner_cap.authorized_object_id == object_id
 }
 
+/// Verifies that the transaction is from an authorized address.
+/// Checks the sponsor if the transaction is sponsored, otherwise falls back to the sender.
 public fun verify_sponsor(admin_acl: &AdminACL, ctx: &TxContext) {
     let sponsor_opt = tx_context::sponsor(ctx);
-    assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
-    let sponsor = *option::borrow(&sponsor_opt);
-    assert!(admin_acl.authorized_sponsors.contains(sponsor), EUnauthorizedSponsor);
+    let authorized_address = if (option::is_some(&sponsor_opt)) {
+        *option::borrow(&sponsor_opt)
+    } else {
+        ctx.sender()
+    };
+    assert!(admin_acl.authorized_sponsors.contains(authorized_address), EUnauthorizedSponsor);
 }
 
 // === Package Functions ===
 public(package) fun create_and_transfer_owner_cap<T: key>(
     object_id: ID,
-    admin_cap: &AdminCap,
+    admin_acl: &AdminACL,
     owner: address,
     ctx: &mut TxContext,
 ): ID {
-    let owner_cap = create_owner_cap_by_id<T>(object_id, admin_cap, ctx);
+    let owner_cap = create_owner_cap_by_id<T>(object_id, admin_acl, ctx);
     let owner_cap_id = object::id(&owner_cap);
     transfer<T>(owner_cap, @0x0, owner);
     owner_cap_id
@@ -205,20 +203,12 @@ public fun add_sponsor_to_acl(
     admin_acl.authorized_sponsors.add(sponsor, true);
 }
 
-public fun create_admin_cap(_: &GovernorCap, admin: address, ctx: &mut TxContext) {
-    let admin_cap = AdminCap {
-        id: object::new(ctx),
-        admin: admin,
-    };
-    transfer::transfer(admin_cap, admin);
-}
-
-public fun delete_admin_cap(admin_cap: AdminCap, _: &GovernorCap) {
-    let AdminCap { id, .. } = admin_cap;
-    id.delete();
-}
-
-public fun create_owner_cap<T: key>(_: &AdminCap, obj: &T, ctx: &mut TxContext): OwnerCap<T> {
+public fun create_owner_cap<T: key>(
+    admin_acl: &AdminACL,
+    obj: &T,
+    ctx: &mut TxContext,
+): OwnerCap<T> {
+    admin_acl.verify_sponsor(ctx);
     let object_id = object::id(obj);
     let owner_cap = OwnerCap<T> {
         id: object::new(ctx),
@@ -233,9 +223,10 @@ public fun create_owner_cap<T: key>(_: &AdminCap, obj: &T, ctx: &mut TxContext):
 
 public fun create_owner_cap_by_id<T: key>(
     object_id: ID,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     ctx: &mut TxContext,
 ): OwnerCap<T> {
+    admin_acl.verify_sponsor(ctx);
     let owner_cap = OwnerCap<T> {
         id: object::new(ctx),
         authorized_object_id: object_id,
@@ -263,8 +254,8 @@ public fun remove_server_address(
     server_address_registry.authorized_address.remove(server_address);
 }
 
-// Ideally only the owner can delete the owner cap
-public fun delete_owner_cap<T: key>(owner_cap: OwnerCap<T>, _: &AdminCap) {
+public fun delete_owner_cap<T: key>(owner_cap: OwnerCap<T>, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     let OwnerCap { id, .. } = owner_cap;
     id.delete();
 }

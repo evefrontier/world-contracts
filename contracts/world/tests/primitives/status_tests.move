@@ -5,7 +5,6 @@ module world::status_tests;
 use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
-    access::AdminCap,
     in_game_id,
     status::{Self, AssemblyStatus},
     test_helpers::{Self, governor, admin, user_a, tenant}
@@ -44,7 +43,6 @@ fun create_storage_unit(ts: &mut ts::Scenario) {
 fun destroy_storage_unit(ts: &mut ts::Scenario) {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
         let storage_unit = ts::take_shared<StorageUnit>(ts);
         let assembly_id = object::id(&storage_unit);
         let StorageUnit { id, status, max_capacity: _ } = storage_unit;
@@ -52,8 +50,6 @@ fun destroy_storage_unit(ts: &mut ts::Scenario) {
         let assembly_key = in_game_id::create_key(STORAGE_ITEM_ID, tenant());
         status.unanchor(assembly_id, assembly_key);
         id.delete();
-
-        ts::return_to_sender(ts, admin_cap);
     }
 }
 

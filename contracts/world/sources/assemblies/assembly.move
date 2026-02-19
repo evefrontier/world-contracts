@@ -4,7 +4,7 @@ module world::assembly;
 
 use sui::{derived_object, event};
 use world::{
-    access::{Self, AdminCap, OwnerCap},
+    access::{Self, AdminACL, OwnerCap},
     character::Character,
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
@@ -111,7 +111,7 @@ public fun anchor(
     registry: &mut ObjectRegistry,
     network_node: &mut NetworkNode,
     character: &Character,
-    admin_cap: &AdminCap,
+    admin_acl: &AdminACL,
     item_id: u64,
     type_id: u64,
     location_hash: vector<u8>,
@@ -130,7 +130,7 @@ public fun anchor(
     let network_node_id = object::id(network_node);
 
     // Create owner cap first with just the ID
-    let owner_cap = access::create_owner_cap_by_id<Assembly>(assembly_id, admin_cap, ctx);
+    let owner_cap = access::create_owner_cap_by_id<Assembly>(assembly_id, admin_acl, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let assembly = Assembly {
@@ -166,7 +166,8 @@ public fun anchor(
     assembly
 }
 
-public fun share_assembly(assembly: Assembly, _: &AdminCap) {
+public fun share_assembly(assembly: Assembly, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     transfer::share_object(assembly);
 }
 
@@ -174,8 +175,10 @@ public fun share_assembly(assembly: Assembly, _: &AdminCap) {
 public fun update_energy_source(
     assembly: &mut Assembly,
     network_node: &mut NetworkNode,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     let assembly_id = object::id(assembly);
     let nwn_id = object::id(network_node);
     assert!(!assembly.status.is_online(), EAssemblyOnline);
@@ -190,8 +193,10 @@ public fun update_energy_source_connected_assembly(
     assembly: &mut Assembly,
     mut update_energy_sources: UpdateEnergySources,
     network_node: &NetworkNode,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ): UpdateEnergySources {
+    admin_acl.verify_sponsor(ctx);
     if (update_energy_sources.update_energy_sources_ids_length() > 0) {
         let assembly_id = object::id(assembly);
         let found = update_energy_sources.remove_energy_sources_assembly_id(
@@ -249,8 +254,10 @@ public fun unanchor(
     assembly: Assembly,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     let Assembly {
         id,
         key,
@@ -289,7 +296,8 @@ public fun unanchor(
     // derived_object::reclaim(&mut registry, id);
 }
 
-public fun unanchor_orphan(assembly: Assembly, _: &AdminCap) {
+public fun unanchor_orphan(assembly: Assembly, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     let Assembly {
         id,
         key,

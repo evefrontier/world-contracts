@@ -23,7 +23,7 @@ module world::storage_unit;
 use std::type_name::{Self, TypeName};
 use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
-    access::{Self, OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
+    access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
     character::Character,
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
@@ -334,7 +334,7 @@ public fun anchor(
     registry: &mut ObjectRegistry,
     network_node: &mut NetworkNode,
     character: &Character,
-    admin_cap: &AdminCap,
+    admin_acl: &AdminACL,
     item_id: u64,
     type_id: u64,
     max_capacity: u64,
@@ -352,7 +352,7 @@ public fun anchor(
     let network_node_id = object::id(network_node);
 
     // Create owner cap and transfer to Character object
-    let owner_cap = access::create_owner_cap_by_id<StorageUnit>(assembly_id, admin_cap, ctx);
+    let owner_cap = access::create_owner_cap_by_id<StorageUnit>(assembly_id, admin_acl, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let mut storage_unit = StorageUnit {
@@ -400,15 +400,18 @@ public fun anchor(
     storage_unit
 }
 
-public fun share_storage_unit(storage_unit: StorageUnit, _: &AdminCap) {
+public fun share_storage_unit(storage_unit: StorageUnit, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     transfer::share_object(storage_unit);
 }
 
 public fun update_energy_source(
     storage_unit: &mut StorageUnit,
     network_node: &mut NetworkNode,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     let storage_unit_id = object::id(storage_unit);
     let nwn_id = object::id(network_node);
     assert!(!storage_unit.status.is_online(), EStorageUnitInvalidState);
@@ -423,8 +426,10 @@ public fun update_energy_source_connected_storage_unit(
     storage_unit: &mut StorageUnit,
     mut update_energy_sources: UpdateEnergySources,
     network_node: &NetworkNode,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ): UpdateEnergySources {
+    admin_acl.verify_sponsor(ctx);
     if (update_energy_sources.update_energy_sources_ids_length() > 0) {
         let storage_unit_id = object::id(storage_unit);
         let found = update_energy_sources.remove_energy_sources_assembly_id(
@@ -496,8 +501,10 @@ public fun unanchor(
     storage_unit: StorageUnit,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     let StorageUnit {
         mut id,
         key,
@@ -537,7 +544,8 @@ public fun unanchor(
     id.delete();
 }
 
-public fun unanchor_orphan(storage_unit: StorageUnit, _: &AdminCap) {
+public fun unanchor_orphan(storage_unit: StorageUnit, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     let StorageUnit {
         mut id,
         key,

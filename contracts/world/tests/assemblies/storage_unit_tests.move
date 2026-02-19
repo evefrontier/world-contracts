@@ -3,7 +3,7 @@ module world::storage_unit_tests;
 use std::{bcs, string::{utf8, String}, unit_test::assert_eq};
 use sui::{clock, derived_object, test_scenario as ts};
 use world::{
-    access::{OwnerCap, AdminCap, ServerAddressRegistry},
+    access::{OwnerCap, AdminACL, ServerAddressRegistry},
     character::{Self, Character},
     energy::EnergyConfig,
     fuel::FuelConfig,
@@ -114,7 +114,7 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
     ts::next_tx(ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
-    let admin_cap = ts::take_from_sender<AdminCap>(ts);
+    let admin_acl = ts::take_shared<AdminACL>(ts);
 
     // Check if network node already exists
     let tenant = character.tenant();
@@ -131,7 +131,7 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
         let nwn = network_node::anchor(
             &mut registry,
             &character,
-            &admin_cap,
+            &admin_acl,
             NWN_ITEM_ID,
             NWN_TYPE_ID,
             LOCATION_A_HASH,
@@ -141,12 +141,12 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
             ts.ctx(),
         );
         let id = object::id(&nwn);
-        network_node::share_network_node(nwn, &admin_cap);
+        nwn.share_network_node(&admin_acl, ts.ctx());
         id
     };
 
     ts::return_shared(character);
-    ts::return_to_sender(ts, admin_cap);
+    ts::return_shared(admin_acl);
     ts::return_shared(registry);
     id
 }
@@ -164,12 +164,12 @@ fun create_storage_unit(
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let storage_unit_id = {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let storage_unit = storage_unit::anchor(
             &mut registry,
             &mut nwn,
             &character,
-            &admin_cap,
+            &admin_acl,
             item_id,
             type_id,
             MAX_CAPACITY,
@@ -177,8 +177,8 @@ fun create_storage_unit(
             ts.ctx(),
         );
         let storage_unit_id = object::id(&storage_unit);
-        storage_unit.share_storage_unit(&admin_cap);
-        ts::return_to_sender(ts, admin_cap);
+        storage_unit.share_storage_unit(&admin_acl, ts.ctx());
+        ts::return_shared(admin_acl);
         storage_unit_id
     };
     ts::return_shared(character);
@@ -306,11 +306,11 @@ fun create_character_with_tenant(
 ): ID {
     ts::next_tx(ts, admin());
     let character_id = {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut registry = ts::take_shared<ObjectRegistry>(ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             item_id,
             tenant,
             100,
@@ -319,9 +319,9 @@ fun create_character_with_tenant(
             ts::ctx(ts),
         );
         let character_id = object::id(&character);
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts.ctx());
         ts::return_shared(registry);
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
         character_id
     };
     character_id
@@ -881,14 +881,14 @@ fun test_unachor_storage_unit() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
-        storage_unit::unanchor(storage_unit, &mut nwn, &energy_config, &admin_cap);
+        storage_unit.unanchor(&mut nwn, &energy_config, &admin_acl, ts.ctx());
         ts::return_shared(nwn);
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -913,8 +913,8 @@ fun test_unanchor_orphaned_storage_unit() {
     ts::next_tx(&mut ts, admin());
     {
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
-        let orphaned_assemblies = nwn.unanchor(&admin_cap);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let orphaned_assemblies = nwn.unanchor(&admin_acl, ts.ctx());
 
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
@@ -923,11 +923,11 @@ fun test_unanchor_orphaned_storage_unit() {
             &mut nwn,
             &energy_config,
         );
-        nwn.destroy_network_node(updated_orphaned_assemblies, &admin_cap);
-        storage_unit.unanchor_orphan(&admin_cap);
+        nwn.destroy_network_node(updated_orphaned_assemblies, &admin_acl, ts.ctx());
+        storage_unit.unanchor_orphan(&admin_acl, ts.ctx());
 
         ts::return_shared(energy_config);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);

@@ -5,12 +5,11 @@ module world::character_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::{derived_object, test_scenario as ts};
 use world::{
-    access::{Self, AdminCap, OwnerCap},
+    access::{Self, AdminACL, OwnerCap},
     character::{Self, Character},
     in_game_id as character_id,
-    object_registry::{Self, ObjectRegistry},
-    test_helpers::{governor, admin, user_a, user_b, tenant},
-    world::{Self, GovernorCap}
+    object_registry::ObjectRegistry,
+    test_helpers::{Self, governor, admin, user_a, user_b, tenant}
 };
 
 const TENANT_A: vector<u8> = b"TESTA";
@@ -19,18 +18,7 @@ const EMPTY_TENANT: vector<u8> = b"";
 // Helper functions
 
 fun setup_world(ts: &mut ts::Scenario) {
-    ts::next_tx(ts, governor());
-    {
-        world::init_for_testing(ts::ctx(ts));
-        object_registry::init_for_testing(ts.ctx());
-    };
-
-    ts::next_tx(ts, governor());
-    {
-        let gov_cap = ts::take_from_sender<GovernorCap>(ts);
-        access::create_admin_cap(&gov_cap, admin(), ts::ctx(ts));
-        ts::return_to_sender(ts, gov_cap);
-    };
+    test_helpers::setup_world(ts);
 }
 
 fun setup_character(
@@ -41,11 +29,11 @@ fun setup_character(
 ) {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut registry = ts::take_shared<ObjectRegistry>(ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             in_game_character_id,
             tenant(),
             tribe_id,
@@ -53,9 +41,9 @@ fun setup_character(
             utf8(name),
             ts::ctx(ts),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(ts));
         ts::return_shared(registry);
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 }
 
@@ -97,7 +85,7 @@ fun deterministic_character_id() {
     ts::next_tx(&mut ts, admin());
     {
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         // Pre-compute the character ID before creation
         // Pre-computation formula: blake2b_hash(registry_id || type_tag || bcs_serialize(CharacterKey))
@@ -111,7 +99,7 @@ fun deterministic_character_id() {
 
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             in_game_character_id,
             tenant(),
             100,
@@ -124,9 +112,9 @@ fun deterministic_character_id() {
         // Verify that the actual ID matches the pre-computed ID
         assert_eq!(character_id_1, precomputed_id);
 
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts.end();
 }
@@ -145,11 +133,11 @@ fun different_character_ids_produce_different_character_ids() {
     // Create first character with in_game_character_id = 1
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             1u32,
             tenant(),
             100,
@@ -158,19 +146,19 @@ fun different_character_ids_produce_different_character_ids() {
             ts::ctx(&mut ts),
         );
         character_id_1 = character::id(&character);
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     // Create second character with in_game_character_id = 2
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             2u32,
             tenant(),
             100,
@@ -179,9 +167,9 @@ fun different_character_ids_produce_different_character_ids() {
             ts::ctx(&mut ts),
         );
         character_id_2 = character::id(&character);
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::next_tx(&mut ts, admin());
@@ -208,11 +196,11 @@ fun different_tenant_create_character_id() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             in_game_character_id,
             tenant(),
             100,
@@ -221,18 +209,18 @@ fun different_tenant_create_character_id() {
             ts::ctx(&mut ts),
         );
         character_id_1 = character::id(&character);
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             in_game_character_id,
             TENANT_A.to_string(),
             100,
@@ -241,9 +229,9 @@ fun different_tenant_create_character_id() {
             ts::ctx(&mut ts),
         );
         character_id_2 = character::id(&character);
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::next_tx(&mut ts, admin());
@@ -299,14 +287,14 @@ fun update_tribe() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
 
-        character::update_tribe(&mut character, &admin_cap, 200);
+        character.update_tribe(&admin_acl, 200, ts::ctx(&mut ts));
         assert_eq!(character::tribe_id(&character), 200);
 
         ts::return_shared(character);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts.end();
@@ -323,12 +311,12 @@ fun delete_character() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let character = ts::take_shared<Character>(&ts);
 
-        character::delete_character(character, &admin_cap);
+        character.delete_character(&admin_acl, ts::ctx(&mut ts));
 
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts.end();
@@ -367,11 +355,11 @@ fun create_character_with_empty_address() {
     setup_world(&mut ts);
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             123u32,
             tenant(),
             100,
@@ -379,10 +367,10 @@ fun create_character_with_empty_address() {
             utf8(b"test1"),
             ts::ctx(&mut ts),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
 
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     abort
@@ -396,11 +384,11 @@ fun create_character_with_empty_tenant() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             123u32,
             EMPTY_TENANT.to_string(),
             100,
@@ -408,10 +396,10 @@ fun create_character_with_empty_tenant() {
             utf8(b"test1"),
             ts::ctx(&mut ts),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
 
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     abort
 }
@@ -430,11 +418,11 @@ fun duplicate_character_id_fails() {
     // Create first character with in_game_character_id = 123
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             in_game_character_id,
             tenant(),
             100,
@@ -442,21 +430,21 @@ fun duplicate_character_id_fails() {
             utf8(b"test1"),
             ts::ctx(&mut ts),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
 
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     // Try to create another character with the same in_game_character_id = 123
     // This should fail because the derived UID was already claimed
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             in_game_character_id,
             tenant(),
             200,
@@ -464,10 +452,10 @@ fun duplicate_character_id_fails() {
             utf8(b"test2"),
             ts::ctx(&mut ts),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
 
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts.end();
@@ -486,11 +474,11 @@ fun delete_recreate_character() {
     // Create first character with in_game_character_id = 1
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             1u32,
             tenant(),
             100,
@@ -498,29 +486,29 @@ fun delete_recreate_character() {
             utf8(b"character1"),
             ts::ctx(&mut ts),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
 
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     // Delete the character
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let character = ts::take_shared<Character>(&ts);
-        character::delete_character(character, &admin_cap);
-        ts::return_to_sender(&ts, admin_cap);
+        character.delete_character(&admin_acl, ts::ctx(&mut ts));
+        ts::return_shared(admin_acl);
     };
 
     // Create another character with the same in_game_character_id = 42
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             1u32,
             tenant(),
             200,
@@ -529,10 +517,10 @@ fun delete_recreate_character() {
             ts::ctx(&mut ts),
         );
 
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
 
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts.end();
@@ -540,8 +528,8 @@ fun delete_recreate_character() {
 
 /// Tests that creating a character without admin capability fails
 /// Scenario: User A (not admin) attempts to create a character
-/// Expected: Transaction aborts because AdminCap is required
-/// Note: Security is enforced at compile time via &AdminCap parameter
+/// Expected: Transaction aborts because AdminACL authorization is required
+/// Note: Security is enforced via verify_sponsor (sender must be in AdminACL)
 #[test]
 #[expected_failure]
 fun create_character_without_admin_cap() {
@@ -550,11 +538,11 @@ fun create_character_without_admin_cap() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             1,
             tenant(),
             100,
@@ -562,7 +550,7 @@ fun create_character_without_admin_cap() {
             utf8(b"test"),
             ts::ctx(&mut ts),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts::ctx(&mut ts));
         abort
     }
 }
@@ -608,14 +596,14 @@ fun update_tribe_to_zero() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut character = ts::take_shared<Character>(&ts);
 
-        character::update_tribe(&mut character, &admin_cap, 0);
+        character.update_tribe(&admin_acl, 0, ts::ctx(&mut ts));
 
         // This should abort with ETribeIdEmpty
         ts::return_shared(character);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts.end();
@@ -623,8 +611,8 @@ fun update_tribe_to_zero() {
 
 /// Tests that updating tribe without admin capability fails
 /// Scenario: User A (not admin) attempts to update character tribe_id
-/// Expected: Transaction aborts because AdminCap is required
-/// Note: Security is enforced at compile time via &AdminCap parameter
+/// Expected: Transaction aborts because AdminACL authorization is required
+/// Note: Security is enforced via verify_sponsor (sender must be in AdminACL)
 #[test]
 #[expected_failure]
 fun update_tribe_without_admin_cap() {
@@ -635,7 +623,7 @@ fun update_tribe_without_admin_cap() {
     ts::next_tx(&mut ts, user_a());
     {
         let _character = ts::take_shared<Character>(&ts);
-        // This should fail - user_a doesn't have AdminCap
+        // This should fail - user_a doesn't have AdminACL authorization
         abort
     }
 }
@@ -659,11 +647,11 @@ fun return_owner_cap_to_different_character_fails() {
         character_a_id = character::id(&character_from_setup);
         ts::return_shared(character_from_setup);
 
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character_b = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             2u32,
             tenant(),
             100,
@@ -672,9 +660,9 @@ fun return_owner_cap_to_different_character_fails() {
             ts::ctx(&mut ts),
         );
         character_b_id = character::id(&character_b);
-        character::share_character(character_b, &admin_cap);
+        character_b.share_character(&admin_acl, ts::ctx(&mut ts));
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::next_tx(&mut ts, user_a());

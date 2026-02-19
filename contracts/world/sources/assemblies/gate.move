@@ -17,7 +17,7 @@ module world::gate;
 use std::{bcs, type_name::{Self, TypeName}};
 use sui::{clock::Clock, derived_object, event, hash, table::{Self, Table}};
 use world::{
-    access::{Self, OwnerCap, AdminCap, ServerAddressRegistry, AdminACL},
+    access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
     character::{Self, Character},
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
@@ -393,7 +393,7 @@ public fun anchor(
     registry: &mut ObjectRegistry,
     network_node: &mut NetworkNode,
     character: &Character,
-    admin_cap: &AdminCap,
+    admin_acl: &AdminACL,
     item_id: u64,
     type_id: u64,
     location_hash: vector<u8>,
@@ -410,7 +410,7 @@ public fun anchor(
     let network_node_id = object::id(network_node);
 
     // Create owner cap first with just the ID
-    let owner_cap = access::create_owner_cap_by_id<Gate>(gate_id, admin_cap, ctx);
+    let owner_cap = access::create_owner_cap_by_id<Gate>(gate_id, admin_acl, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let gate = Gate {
@@ -449,11 +449,18 @@ public fun anchor(
     gate
 }
 
-public fun share_gate(gate: Gate, _: &AdminCap) {
+public fun share_gate(gate: Gate, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     transfer::share_object(gate);
 }
 
-public fun update_energy_source(gate: &mut Gate, network_node: &mut NetworkNode, _: &AdminCap) {
+public fun update_energy_source(
+    gate: &mut Gate,
+    network_node: &mut NetworkNode,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
     let gate_id = object::id(gate);
     let nwn_id = object::id(network_node);
     assert!(!gate.status.is_online(), ENotOnline);
@@ -466,8 +473,10 @@ public fun unanchor(
     gate: Gate,
     network_node: &mut NetworkNode,
     energy_config: &EnergyConfig,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     let Gate {
         id,
         key,
@@ -503,7 +512,8 @@ public fun unanchor(
     id.delete();
 }
 
-public fun unanchor_orphan(gate: Gate, _: &AdminCap) {
+public fun unanchor_orphan(gate: Gate, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     let Gate {
         id,
         key,
@@ -529,10 +539,12 @@ public fun unanchor_orphan(gate: Gate, _: &AdminCap) {
 
 public fun set_max_distance(
     gate_config: &mut GateConfig,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     type_id: u64,
     max_distance: u64,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     assert!(type_id != 0, EGateTypeIdEmpty);
     assert!(max_distance > 0, EOutOfRange);
 
@@ -545,8 +557,10 @@ public fun set_max_distance(
 public fun unlink_gates_by_admin(
     source_gate: &mut Gate,
     destination_gate: &mut Gate,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     unlink(source_gate, destination_gate);
 }
 

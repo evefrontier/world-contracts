@@ -5,7 +5,7 @@
 module world::killmail;
 
 use sui::event;
-use world::{access::AdminCap, in_game_id::{Self, TenantItemId}};
+use world::{access::AdminACL, in_game_id::{Self, TenantItemId}};
 
 // === Errors ===
 #[error(code = 0)]
@@ -65,7 +65,7 @@ public struct KillmailCreatedEvent has copy, drop {
 /// Creates a new killmail as a shared object on-chain
 /// Only authorized admin can create killmails
 public fun create_killmail(
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     killmail_id: TenantItemId,
     killer_character_id: TenantItemId,
     victim_character_id: TenantItemId,
@@ -74,6 +74,7 @@ public fun create_killmail(
     solar_system_id: TenantItemId,
     ctx: &mut TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     // Validate inputs
     assert!(in_game_id::item_id(&killmail_id) != 0, EKillmailIdEmpty);
     assert!(in_game_id::item_id(&killer_character_id) != 0, ECharacterIdEmpty);

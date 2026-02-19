@@ -4,21 +4,20 @@ module world::access_tests;
 use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
-    access::{Self, AdminCap, OwnerCap},
+    access::{Self, AdminACL, OwnerCap},
     character::{Self, Character},
     object_registry::ObjectRegistry,
-    test_helpers::{Self, TestObject, governor, admin, user_a, user_b},
-    world::{Self, GovernorCap}
+    test_helpers::{Self, TestObject, governor, admin, user_a, user_b}
 };
 
 fun setup_character_for_receipt_tests(ts: &mut ts::Scenario) {
     ts::next_tx(ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut registry = ts::take_shared<ObjectRegistry>(ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             2000,
             b"TEST".to_string(),
             100,
@@ -26,43 +25,10 @@ fun setup_character_for_receipt_tests(ts: &mut ts::Scenario) {
             b"name".to_string(),
             ts.ctx(),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts.ctx());
         ts::return_shared(registry);
-        ts::return_to_sender(ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
-}
-
-/// Tests creating and deleting an admin cap
-/// Scenario: Governor creates an admin cap for an admin, then deletes it
-/// Expected: Admin cap is created successfully and can be deleted by governor
-#[test]
-fun create_and_delete_admin_cap() {
-    let admin = @0xB;
-
-    let mut ts = ts::begin(governor());
-    {
-        world::init_for_testing(ts::ctx(&mut ts));
-    };
-
-    ts::next_tx(&mut ts, governor());
-    {
-        let gov_cap = ts::take_from_sender<GovernorCap>(&ts);
-        access::create_admin_cap(&gov_cap, admin, ts::ctx(&mut ts));
-
-        ts::return_to_sender(&ts, gov_cap);
-    };
-
-    ts::next_tx(&mut ts, governor());
-    {
-        let gov_cap = ts::take_from_sender<GovernorCap>(&ts);
-        let admin_cap = ts::take_from_address<AdminCap>(&ts, admin);
-
-        access::delete_admin_cap(admin_cap, &gov_cap);
-
-        ts::return_to_sender(&ts, gov_cap);
-    };
-
-    ts::end(ts);
 }
 
 /// Tests creating, transferring, and deleting an owner cap
@@ -77,12 +43,12 @@ fun create_transfer_and_delete_owner_cap() {
     ts::next_tx(&mut ts, admin());
     {
         let owner_cap = ts::take_from_address<OwnerCap<TestObject>>(&ts, user_a());
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         // Only possible in tests
-        access::delete_owner_cap(owner_cap, &admin_cap);
+        access::delete_owner_cap(owner_cap, &admin_acl, ts.ctx());
 
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts::end(ts);
 }
@@ -164,11 +130,11 @@ fun character_owner_cap_transfer_fail() {
     // Create a character which also creates a OwnerCap to mutate the Character object
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = character::create_character(
             &mut registry,
-            &admin_cap,
+            &admin_acl,
             1005,
             b"TEST".to_string(),
             100,
@@ -176,9 +142,9 @@ fun character_owner_cap_transfer_fail() {
             b"name".to_string(),
             ts.ctx(),
         );
-        character::share_character(character, &admin_cap);
+        character.share_character(&admin_acl, ts.ctx());
         ts::return_shared(registry);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     // Transfer Character OwnerCap should fail

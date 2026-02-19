@@ -7,7 +7,7 @@
 module world::location;
 
 use sui::{bcs, clock::Clock};
-use world::{access::{Self, AdminCap, ServerAddressRegistry}, sig_verify};
+use world::{access::{Self, AdminACL, ServerAddressRegistry}, sig_verify};
 
 // === Errors ===
 #[error(code = 0)]
@@ -189,7 +189,13 @@ public fun hash(location: &Location): vector<u8> {
 
 // === Admin Functions ===
 
-public fun update(location: &mut Location, _: &AdminCap, location_hash: vector<u8>) {
+public fun update(
+    location: &mut Location,
+    admin_acl: &AdminACL,
+    location_hash: vector<u8>,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
     assert!(location_hash.length() == 32, EInvalidHashLength);
     location.location_hash = location_hash;
 }

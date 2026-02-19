@@ -2,7 +2,7 @@
 module world::killmail_tests;
 
 use sui::test_scenario as ts;
-use world::{access::AdminCap, in_game_id, killmail, test_helpers::{Self, admin}};
+use world::{access::AdminACL, in_game_id, killmail, test_helpers::{Self, admin}};
 
 // Test constants
 const KILLMAIL_ID_1: u64 = 1001;
@@ -30,11 +30,11 @@ fun test_create_killmail() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_address<AdminCap>(&ts, admin());
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         // Create a killmail - this creates a shared object on-chain
         killmail::create_killmail(
-            &admin_cap,
+            &admin_acl,
             in_game_id::create_key(KILLMAIL_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
@@ -44,7 +44,7 @@ fun test_create_killmail() {
             ts.ctx(),
         );
 
-        ts::return_to_address(admin(), admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -58,11 +58,11 @@ fun test_create_multiple_killmails() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_address<AdminCap>(&ts, admin());
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         // Create first killmail
         killmail::create_killmail(
-            &admin_cap,
+            &admin_acl,
             in_game_id::create_key(KILLMAIL_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
@@ -74,7 +74,7 @@ fun test_create_multiple_killmails() {
 
         // Create second killmail
         killmail::create_killmail(
-            &admin_cap,
+            &admin_acl,
             in_game_id::create_key(KILLMAIL_ID_2, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
@@ -84,7 +84,7 @@ fun test_create_multiple_killmails() {
             ts.ctx(),
         );
 
-        ts::return_to_address(admin(), admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -99,11 +99,11 @@ fun test_create_killmail_invalid_id() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_address<AdminCap>(&ts, admin());
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         // Try to create killmail with invalid ID (0)
         killmail::create_killmail(
-            &admin_cap,
+            &admin_acl,
             in_game_id::create_key(0, std::string::utf8(TENANT)), // Invalid ID
             in_game_id::create_key(CHARACTER_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
@@ -113,7 +113,7 @@ fun test_create_killmail_invalid_id() {
             ts.ctx(),
         );
 
-        ts::return_to_address(admin(), admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);
@@ -128,11 +128,11 @@ fun test_create_killmail_invalid_killer_id() {
 
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_address<AdminCap>(&ts, admin());
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
 
         // Try to create killmail with invalid killer ID (0)
         killmail::create_killmail(
-            &admin_cap,
+            &admin_acl,
             in_game_id::create_key(KILLMAIL_ID_1, std::string::utf8(TENANT)),
             in_game_id::create_key(0, std::string::utf8(TENANT)), // Invalid killer ID
             in_game_id::create_key(CHARACTER_ID_2, std::string::utf8(TENANT)),
@@ -142,7 +142,7 @@ fun test_create_killmail_invalid_killer_id() {
             ts.ctx(),
         );
 
-        ts::return_to_address(admin(), admin_cap);
+        ts::return_shared(admin_acl);
     };
 
     ts::end(ts);

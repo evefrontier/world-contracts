@@ -2,7 +2,7 @@
 module world::fuel;
 
 use sui::{clock::Clock, event, table::{Self, Table}};
-use world::{access::AdminCap, in_game_id::TenantItemId};
+use world::{access::AdminACL, in_game_id::TenantItemId};
 
 // === Errors ===
 #[error(code = 0)]
@@ -147,10 +147,12 @@ public fun need_update(fuel: &Fuel, fuel_config: &FuelConfig, clock: &Clock): bo
 /// Sets or updates the fuel efficiency percentage for a fuel type (10-100%)
 public fun set_fuel_efficiency(
     fuel_config: &mut FuelConfig,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     fuel_type_id: u64,
     fuel_efficiency: u64,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     assert!(fuel_type_id != 0, ETypeIdEmtpy);
     assert!(
         fuel_efficiency >= MIN_FUEL_EFFICIENCY && fuel_efficiency <= MAX_FUEL_EFFICIENCY,
@@ -167,7 +169,13 @@ public fun set_fuel_efficiency(
 }
 
 /// Removes the fuel efficiency configuration for a fuel type
-public fun unset_fuel_efficiency(fuel_config: &mut FuelConfig, _: &AdminCap, fuel_type_id: u64) {
+public fun unset_fuel_efficiency(
+    fuel_config: &mut FuelConfig,
+    admin_acl: &AdminACL,
+    fuel_type_id: u64,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
     assert!(fuel_type_id != 0, ETypeIdEmtpy);
     fuel_config.fuel_efficiency.remove(fuel_type_id);
     event::emit(FuelEfficiencyRemovedEvent {

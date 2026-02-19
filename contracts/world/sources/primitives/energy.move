@@ -1,7 +1,7 @@
 module world::energy;
 
 use sui::{event, table::{Self, Table}};
-use world::access::AdminCap;
+use world::access::AdminACL;
 
 // === Errors ===
 #[error(code = 0)]
@@ -95,10 +95,12 @@ public fun max_energy_production(energy_source: &EnergySource): u64 {
 /// Sets or updates the energy requirement for an assembly type id
 public fun set_energy_config(
     energy_config: &mut EnergyConfig,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     assembly_type_id: u64,
     energy_required: u64,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     assert!(assembly_type_id != 0, ETypeIdEmpty);
     assert!(energy_required > 0, EInvalidEnergyAmount);
 
@@ -111,9 +113,11 @@ public fun set_energy_config(
 /// Removes the energy configuration for an assembly type id
 public fun remove_energy_config(
     energy_config: &mut EnergyConfig,
-    _: &AdminCap,
+    admin_acl: &AdminACL,
     assembly_type_id: u64,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     assert!(assembly_type_id != 0, ETypeIdEmpty);
     assert!(energy_config.assembly_energy.contains(assembly_type_id), EIncorrectAssemblyType);
     energy_config.assembly_energy.remove(assembly_type_id);

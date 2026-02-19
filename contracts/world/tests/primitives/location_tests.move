@@ -3,7 +3,7 @@ module world::location_tests;
 use std::{bcs, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{AdminCap, ServerAddressRegistry},
+    access::{AdminACL, ServerAddressRegistry},
     location::{Self, Location},
     test_helpers::{Self, governor, admin, server_admin, user_a, user_b}
 };
@@ -78,15 +78,15 @@ fun update_assembly_location() {
     };
     ts::next_tx(&mut ts, admin());
     {
-        let admin_cap = ts::take_from_sender<AdminCap>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut gate = ts::take_shared<Gate>(&ts);
         let location_hash: vector<u8> =
             x"7a8f5b1e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
-        location::update(&mut gate.location, &admin_cap, location_hash);
+        location::update(&mut gate.location, &admin_acl, location_hash, ts.ctx());
 
         assert_eq!(location::hash(&gate.location), location_hash);
         ts::return_shared(gate);
-        ts::return_to_sender(&ts, admin_cap);
+        ts::return_shared(admin_acl);
     };
     ts::end(ts);
 }

@@ -8,7 +8,7 @@ module world::character;
 use std::string::String;
 use sui::{derived_object, event, transfer::Receiving};
 use world::{
-    access::{Self, AdminCap, OwnerCap},
+    access::{Self, AdminACL, OwnerCap},
     in_game_id::{Self, TenantItemId},
     metadata::{Self, Metadata},
     object_registry::ObjectRegistry
@@ -77,7 +77,7 @@ public fun owner_cap_id(character: &Character): ID {
 // === Admin Functions ===
 public fun create_character(
     registry: &mut ObjectRegistry,
-    admin_cap: &AdminCap,
+    admin_acl: &AdminACL,
     game_character_id: u32,
     tenant: String,
     tribe_id: u32,
@@ -98,7 +98,7 @@ public fun create_character(
     let character_uid = derived_object::claim(registry.borrow_registry_id(), character_key);
     let character_id = object::uid_to_inner(&character_uid);
 
-    let owner_cap = access::create_owner_cap_by_id<Character>(character_id, admin_cap, ctx);
+    let owner_cap = access::create_owner_cap_by_id<Character>(character_id, admin_acl, ctx);
     let owner_cap_id = object::id(&owner_cap);
 
     let character = Character {
@@ -155,28 +155,48 @@ public fun return_owner_cap<T: key>(
     access::return_owner_cap_to_object(owner_cap, receipt, object::id_address(character));
 }
 
-public fun share_character(character: Character, _: &AdminCap) {
+public fun share_character(character: Character, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     transfer::share_object(character);
 }
 
-public fun update_tribe(character: &mut Character, _: &AdminCap, tribe_id: u32) {
+public fun update_tribe(
+    character: &mut Character,
+    admin_acl: &AdminACL,
+    tribe_id: u32,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
     assert!(tribe_id != 0, ETribeIdEmpty);
     character.tribe_id = tribe_id;
 }
 
-public fun update_address(character: &mut Character, _: &AdminCap, character_address: address) {
+public fun update_address(
+    character: &mut Character,
+    admin_acl: &AdminACL,
+    character_address: address,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
     assert!(character_address != @0x0, EAddressEmpty);
     character.character_address = character_address;
 }
 
 // for emergencies
-public fun update_tenant_id(character: &mut Character, _: &AdminCap, tenant: String) {
+public fun update_tenant_id(
+    character: &mut Character,
+    admin_acl: &AdminACL,
+    tenant: String,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
     assert!(tenant.length() > 0, ETenantEmpty);
     let current_id = in_game_id::item_id(&character.key);
     character.key = in_game_id::create_key(current_id, tenant);
 }
 
-public fun delete_character(character: Character, _: &AdminCap) {
+public fun delete_character(character: Character, admin_acl: &AdminACL, ctx: &TxContext) {
+    admin_acl.verify_sponsor(ctx);
     let Character { id, metadata, .. } = character;
     if (std::option::is_some(&metadata)) {
         let m = std::option::destroy_some(metadata);
