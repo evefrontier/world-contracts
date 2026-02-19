@@ -222,17 +222,20 @@ public fun withdraw_item<Auth: drop>(
     )
 }
 
-// TODO: add additional check for proximity proof
 public fun deposit_by_owner<T: key>(
     storage_unit: &mut StorageUnit,
     item: Item,
     server_registry: &ServerAddressRegistry,
     character: &Character,
+    admin_acl: &AdminACL,
     owner_cap: &OwnerCap<T>,
     proximity_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    // TODO: Remove admin_acl once a location service is exposed for signed server proofs.
+    // Until then, this txn must be an authorized sponsored transaction.
+    admin_acl.verify_sponsor(ctx);
     assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);
@@ -267,17 +270,20 @@ public fun deposit_by_owner<T: key>(
     );
 }
 
-// TODO: add additional check for proximity proof
 public fun withdraw_by_owner<T: key>(
     storage_unit: &mut StorageUnit,
     server_registry: &ServerAddressRegistry,
     character: &Character,
+    admin_acl: &AdminACL,
     owner_cap: &OwnerCap<T>,
     type_id: u64,
     proximity_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Item {
+    // TODO: Remove admin_acl once a location service is exposed for signed server proofs.
+    // Until then, this txn must be an authorized sponsored transaction.
+    admin_acl.verify_sponsor(ctx);
     assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
     let storage_unit_id = object::id(storage_unit);
     let owner_cap_id = object::id(owner_cap);

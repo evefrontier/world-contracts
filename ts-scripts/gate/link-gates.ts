@@ -16,14 +16,19 @@ import {
     hexToBytes,
     hydrateWorldConfig,
     initializeContext,
+    shareHydratedConfig,
     requireEnv,
 } from "../utils/helper";
 import { getOwnerCap } from "./helper";
 import { keypairFromPrivateKey } from "../utils/client";
 import { generateLocationProof } from "../utils/proof";
+import { executeSponsoredTransaction } from "../utils/transaction";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
 async function linkGates(
     ctx: ReturnType<typeof initializeContext>,
+    adminKeypair: Ed25519Keypair,
+    adminAddress: string,
     character: number,
     gateAItemId: bigint,
     gateBItemId: bigint,
@@ -44,6 +49,8 @@ async function linkGates(
     }
 
     const tx = new Transaction();
+    tx.setSender(address);
+    tx.setGasOwner(adminAddress);
 
     const [gateAOwnerCap, gateAReceipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
@@ -65,6 +72,7 @@ async function linkGates(
             tx.object(characterId),
             tx.object(gateConfigId),
             tx.object(config.serverAddressRegistry),
+            tx.object(config.adminAcl),
             gateAOwnerCap,
             gateBOwnerCap,
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
@@ -84,11 +92,15 @@ async function linkGates(
         arguments: [tx.object(characterId), gateBOwnerCap, gateBReceipt],
     });
 
-    const result = await client.signAndExecuteTransaction({
-        transaction: tx,
-        signer: keypair,
-        options: { showEffects: true, showObjectChanges: true, showEvents: true },
-    });
+    const result = await executeSponsoredTransaction(
+        tx,
+        client,
+        keypair,
+        adminKeypair,
+        address,
+        adminAddress,
+        { showEffects: true, showObjectChanges: true, showEvents: true },
+    );
 
     console.log("\nGates linked successfully!");
     console.log("Transaction digest:", result.digest);
@@ -98,31 +110,43 @@ async function linkGates(
 async function main() {
     try {
         const env = getEnvConfig();
+        const adminCtx = initializeContext(env.network, env.adminExportedKey);
+        await hydrateWorldConfig(adminCtx);
         const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
-        const ctx = initializeContext(env.network, playerKey);
-        await hydrateWorldConfig(ctx);
+        const playerCtx = initializeContext(env.network, playerKey);
+        shareHydratedConfig(adminCtx, playerCtx);
+
+        const adminKeypair = adminCtx.keypair;
+        const adminAddress = adminKeypair.getPublicKey().toSuiAddress();
 
         const characterId = deriveObjectId(
-            ctx.config.objectRegistry,
+            playerCtx.config.objectRegistry,
             GAME_CHARACTER_ID,
-            ctx.config.packageId
+            playerCtx.config.packageId
         );
         const gateAId = deriveObjectId(
-            ctx.config.objectRegistry,
+            playerCtx.config.objectRegistry,
             GATE_ITEM_ID_1,
-            ctx.config.packageId
+            playerCtx.config.packageId
         );
 
-        const adminKeypair = keypairFromPrivateKey(requireEnv("ADMIN_PRIVATE_KEY"));
         const proofHex = await generateLocationProof(
             adminKeypair,
-            ctx.address,
+            playerCtx.address,
             characterId,
             gateAId,
             LOCATION_HASH
         );
 
-        await linkGates(ctx, GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2, proofHex);
+        await linkGates(
+            playerCtx,
+            adminKeypair,
+            adminAddress,
+            GAME_CHARACTER_ID,
+            GATE_ITEM_ID_1,
+            GATE_ITEM_ID_2,
+            proofHex,
+        );
     } catch (error) {
         handleError(error);
     }

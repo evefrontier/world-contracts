@@ -10,7 +10,7 @@ module extension_examples::corpse_gate_bounty;
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
 use sui::clock::Clock;
 use world::{
-    access::{OwnerCap, ServerAddressRegistry},
+    access::{AdminACL, OwnerCap, ServerAddressRegistry},
     character::Character,
     gate::{Self, Gate},
     storage_unit::StorageUnit
@@ -40,6 +40,7 @@ public fun collect_corpse_bounty<T: key>(
     source_gate: &Gate,
     destination_gate: &Gate,
     character: &Character,
+    admin_acl: &AdminACL,
     player_inventory_owner_cap: &OwnerCap<T>,
     corpe_item_id: u64,
     proximity_proof: vector<u8>,
@@ -56,6 +57,7 @@ public fun collect_corpse_bounty<T: key>(
     let corpse = storage_unit.withdraw_by_owner<T>(
         server_registry,
         character,
+        admin_acl,
         player_inventory_owner_cap,
         corpe_item_id,
         proximity_proof,

@@ -109,6 +109,8 @@ public fun setup_world(ts: &mut ts::Scenario) {
         let gov_cap = ts::take_from_sender<GovernorCap>(ts);
         let mut admin_acl = ts::take_shared<AdminACL>(ts);
         access::add_sponsor_to_acl(&mut admin_acl, &gov_cap, admin());
+        access::add_sponsor_to_acl(&mut admin_acl, &gov_cap, user_a());
+        access::add_sponsor_to_acl(&mut admin_acl, &gov_cap, user_b());
         ts::return_to_sender(ts, gov_cap);
         ts::return_shared(admin_acl);
     };

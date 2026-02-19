@@ -59,6 +59,7 @@ public fun swap_ammo_for_lens_extension<T: key>(
     storage_unit: &mut StorageUnit,
     owner_cap: &OwnerCap<T>,
     character: &Character,
+    admin_acl: &AdminACL,
     server_registry: &ServerAddressRegistry,
     proof_bytes: vector<u8>,
     clock: &sui::clock::Clock,
@@ -77,6 +78,7 @@ public fun swap_ammo_for_lens_extension<T: key>(
         lens,
         server_registry,
         character,
+        admin_acl,
         owner_cap,
         proof_bytes,
         clock,
@@ -87,6 +89,7 @@ public fun swap_ammo_for_lens_extension<T: key>(
     let ammo = storage_unit.withdraw_by_owner(
         server_registry,
         character,
+        admin_acl,
         owner_cap,
         AMMO_TYPE_ID,
         proof_bytes,
@@ -678,6 +681,7 @@ fun test_deposit_and_withdraw_by_owner() {
     ts::next_tx(&mut ts, user_a());
     let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
     let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+    let admin_acl = ts::take_shared<AdminACL>(&ts);
     let clock = clock::create_for_testing(ts.ctx());
     let proof = test_helpers::construct_location_proof(
         test_helpers::get_verified_location_hash(),
@@ -696,6 +700,7 @@ fun test_deposit_and_withdraw_by_owner() {
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &character,
+                &admin_acl,
                 &owner_cap,
                 AMMO_TYPE_ID,
                 proof_bytes,
@@ -710,6 +715,7 @@ fun test_deposit_and_withdraw_by_owner() {
             item,
             &server_registry,
             &character,
+            &admin_acl,
             &owner_cap,
             proof_bytes,
             &clock,
@@ -721,6 +727,7 @@ fun test_deposit_and_withdraw_by_owner() {
     character.return_owner_cap(owner_cap, receipt);
     ts::return_shared(storage_unit);
     ts::return_shared(server_registry);
+    ts::return_shared(admin_acl);
     ts::return_shared(character);
 
     ts::end(ts);
@@ -808,6 +815,7 @@ fun test_swap_ammo_for_lens() {
             ts.ctx(),
         );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
         let proof = test_helpers::construct_location_proof(
@@ -819,6 +827,7 @@ fun test_swap_ammo_for_lens() {
             &mut storage_unit,
             &owner_cap_a,
             &character_a,
+            &admin_acl,
             &server_registry,
             proof_bytes,
             &clock,
@@ -830,6 +839,7 @@ fun test_swap_ammo_for_lens() {
         ts::return_shared(character_a);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
     };
 
     // Verify swap
@@ -1051,6 +1061,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
             ts.ctx(),
         );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
         let proof = test_helpers::construct_location_proof(
@@ -1062,6 +1073,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &character,
+                &admin_acl,
                 &owner_cap,
                 AMMO_TYPE_ID,
                 proof_bytes,
@@ -1072,6 +1084,7 @@ fun test_deposit_via_extension_fail_not_authorized() {
         clock.destroy_for_testing();
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
     };
 
     ts::next_tx(&mut ts, user_a());
@@ -1126,6 +1139,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
             ts.ctx(),
         );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
         let proof = test_helpers::construct_location_proof(
@@ -1136,6 +1150,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         let item = storage_unit.withdraw_by_owner(
             &server_registry,
             &character_b,
+            &admin_acl,
             &owner_cap,
             AMMO_TYPE_ID,
             proof_bytes,
@@ -1147,6 +1162,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
             item,
             &server_registry,
             &character_b,
+            &admin_acl,
             &owner_cap,
             proof_bytes,
             &clock,
@@ -1158,6 +1174,7 @@ fun test_withdraw_by_owner_fail_wrong_owner() {
         ts::return_shared(character_b);
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
     };
     ts::end(ts);
 }
@@ -1183,14 +1200,6 @@ fun test_deposit_by_owner_fail_wrong_owner() {
     online_storage_unit(&mut ts, user_a(), character_a_id, storage_id, nwn_id);
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
 
-    ts::next_tx(&mut ts, user_a());
-    let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-    let clock = clock::create_for_testing(ts.ctx());
-    let proof = test_helpers::construct_location_proof(
-        test_helpers::get_verified_location_hash(),
-    );
-    let proof_bytes = bcs::to_bytes(&proof);
-
     // user_a withdraws item
     ts::next_tx(&mut ts, user_a());
     let item: Item;
@@ -1201,10 +1210,19 @@ fun test_deposit_by_owner_fail_wrong_owner() {
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_a_id),
             ts.ctx(),
         );
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let clock = clock::create_for_testing(ts.ctx());
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
+
         item =
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &character_a,
+                &admin_acl,
                 &owner_cap,
                 AMMO_TYPE_ID,
                 proof_bytes,
@@ -1212,9 +1230,12 @@ fun test_deposit_by_owner_fail_wrong_owner() {
                 ts.ctx(),
             );
 
+        clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         character_a.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character_a);
+        ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
     };
 
     create_storage_unit(
@@ -1234,24 +1255,33 @@ fun test_deposit_by_owner_fail_wrong_owner() {
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
             ts.ctx(),
         );
+        let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let clock = clock::create_for_testing(ts.ctx());
+        let proof = test_helpers::construct_location_proof(
+            test_helpers::get_verified_location_hash(),
+        );
+        let proof_bytes = bcs::to_bytes(&proof);
 
         // This should fail with EAssemblyNotAuthorized
         storage_unit.deposit_by_owner(
             item,
             &server_registry,
             &character_b,
+            &admin_acl,
             &owner_cap,
             proof_bytes,
             &clock,
             ts.ctx(),
         );
 
+        clock.destroy_for_testing();
         character_b.return_owner_cap(owner_cap, receipt);
         ts::return_shared(storage_unit);
         ts::return_shared(character_b);
+        ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
     };
-    clock.destroy_for_testing();
-    ts::return_shared(server_registry);
     ts::end(ts);
 }
 
@@ -1292,6 +1322,7 @@ fun test_swap_fail_extension_not_authorized() {
             ts.ctx(),
         );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
         let proof = test_helpers::construct_location_proof(
@@ -1303,6 +1334,7 @@ fun test_swap_fail_extension_not_authorized() {
             &mut storage_unit,
             &owner_cap_b,
             &character_b,
+            &admin_acl,
             &server_registry,
             proof_bytes,
             &clock,
@@ -1312,6 +1344,7 @@ fun test_swap_fail_extension_not_authorized() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
         character_b.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character_b);
     };
@@ -1574,6 +1607,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
         let proof = test_helpers::construct_location_proof(
             test_helpers::get_verified_location_hash(),
@@ -1588,6 +1622,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &character,
+                &admin_acl,
                 &owner_cap,
                 AMMO_TYPE_ID,
                 proof_bytes,
@@ -1598,6 +1633,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
@@ -1623,6 +1659,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
             ts.ctx(),
         );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
 
         let proof = test_helpers::construct_location_proof(
@@ -1634,6 +1671,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
             item,
             &server_registry,
             &character,
+            &admin_acl,
             &owner_cap,
             proof_bytes,
             &clock,
@@ -1643,6 +1681,7 @@ fun test_deposit_by_owner_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
@@ -1691,6 +1730,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
             ts.ctx(),
         );
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let clock = clock::create_for_testing(ts.ctx());
         let proof = test_helpers::construct_location_proof(
             test_helpers::get_verified_location_hash(),
@@ -1700,6 +1740,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
             storage_unit.withdraw_by_owner(
                 &server_registry,
                 &character,
+                &admin_acl,
                 &owner_cap,
                 AMMO_TYPE_ID,
                 proof_bytes,
@@ -1710,6 +1751,7 @@ fun test_deposit_via_extension_fail_tenant_mismatch() {
         clock.destroy_for_testing();
         ts::return_shared(storage_unit);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };

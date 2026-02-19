@@ -157,12 +157,16 @@ public fun link_gates(
     _: &Character,
     gate_config: &GateConfig,
     server_registry: &ServerAddressRegistry,
+    admin_acl: &AdminACL,
     source_gate_owner_cap: &OwnerCap<Gate>,
     destination_gate_owner_cap: &OwnerCap<Gate>,
     distance_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    // TODO: Remove admin_acl once a location service is exposed for signed server proofs.
+    // Until then, this txn must be an authorized sponsored transaction.
+    admin_acl.verify_sponsor(ctx);
     let source_gate_id = object::id(source_gate);
     let destination_gate_id = object::id(destination_gate);
 

@@ -11,12 +11,7 @@ import {
 } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
-import {
-    hydrateWorldConfig,
-    initializeContext,
-    handleError,
-    getEnvConfig,
-} from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 /**
  * Updates fuel for a network node and handles fuel depletion if it occurs.

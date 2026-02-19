@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
 import {
@@ -18,6 +19,7 @@ import {
     hexToBytes,
     hydrateWorldConfig,
     initializeContext,
+    shareHydratedConfig,
     requireEnv,
 } from "../utils/helper";
 import { resolveBuilderGateExtensionIds } from "../utils/builder-extension";
@@ -25,9 +27,12 @@ import { MODULE as extensionModule } from "./modules";
 import { getCharacterOwnerCap } from "../character/helper";
 import { keypairFromPrivateKey } from "../utils/client";
 import { generateLocationProof } from "../utils/proof";
+import { executeSponsoredTransaction } from "../utils/transaction";
 
 async function collectCorpseBounty(
     ctx: ReturnType<typeof initializeContext>,
+    adminKeypair: Ed25519Keypair,
+    adminAddress: string,
     sourceGateItemId: bigint,
     destinationGateItemId: bigint,
     storageUnitItemId: bigint,
@@ -53,13 +58,14 @@ async function collectCorpseBounty(
         config.packageId
     );
 
-    // Ephemeral inventory is owned by the character
     const playerOwnerCapId = await getCharacterOwnerCap(characterId, client, config, address);
     if (!playerOwnerCapId) {
         throw new Error(`OwnerCap not found for ${characterId}`);
     }
 
     const tx = new Transaction();
+    tx.setSender(address);
+    tx.setGasOwner(adminAddress);
 
     const [ownerCap, receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
@@ -77,6 +83,7 @@ async function collectCorpseBounty(
             tx.object(sourceGateId!),
             tx.object(destinationGateId!),
             tx.object(characterId!),
+            tx.object(config.adminAcl),
             ownerCap,
             tx.pure.u64(ITEM_A_TYPE_ID),
             tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
@@ -90,11 +97,15 @@ async function collectCorpseBounty(
         arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
-    const result = await client.signAndExecuteTransaction({
-        transaction: tx,
-        signer: keypair,
-        options: { showEffects: true, showObjectChanges: true, showEvents: true },
-    });
+    const result = await executeSponsoredTransaction(
+        tx,
+        client,
+        keypair,
+        adminKeypair,
+        address,
+        adminAddress,
+        { showEffects: true, showObjectChanges: true, showEvents: true },
+    );
 
     console.log("\nCorpse bounty collected + JumpPermit issued!");
     console.log("Transaction digest:", result.digest);
@@ -105,32 +116,38 @@ async function main() {
     console.log("============= Collect Corpse Bounty ==============\n");
     try {
         const env = getEnvConfig();
+        const adminCtx = initializeContext(env.network, env.adminExportedKey);
+        await hydrateWorldConfig(adminCtx);
         const playerKey = requireEnv("PLAYER_B_PRIVATE_KEY");
-        const ctx = initializeContext(env.network, playerKey);
-        await hydrateWorldConfig(ctx);
+        const playerCtx = initializeContext(env.network, playerKey);
+        shareHydratedConfig(adminCtx, playerCtx);
+
+        const adminKeypair = adminCtx.keypair;
+        const adminAddress = adminKeypair.getPublicKey().toSuiAddress();
 
         const characterId = deriveObjectId(
-            ctx.config.objectRegistry,
+            playerCtx.config.objectRegistry,
             BigInt(GAME_CHARACTER_B_ID),
-            ctx.config.packageId
+            playerCtx.config.packageId
         );
         const storageUnitId = deriveObjectId(
-            ctx.config.objectRegistry,
+            playerCtx.config.objectRegistry,
             STORAGE_A_ITEM_ID,
-            ctx.config.packageId
+            playerCtx.config.packageId
         );
 
-        const adminKeypair = keypairFromPrivateKey(requireEnv("ADMIN_PRIVATE_KEY"));
         const proofHex = await generateLocationProof(
             adminKeypair,
-            ctx.address,
+            playerCtx.address,
             characterId,
             storageUnitId,
             LOCATION_HASH
         );
 
         await collectCorpseBounty(
-            ctx,
+            playerCtx,
+            adminKeypair,
+            adminAddress,
             GATE_ITEM_ID_1,
             GATE_ITEM_ID_2,
             STORAGE_A_ITEM_ID,

@@ -182,6 +182,7 @@ fun link_and_online_gates(
         let energy_config = ts::take_shared<EnergyConfig>(ts);
         let gate_config = ts::take_shared<GateConfig>(ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut gate_a = ts::take_shared_by_id<Gate>(ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(ts, gate_b_id);
         let mut character = ts::take_shared_by_id<Character>(ts, character_id);
@@ -203,6 +204,7 @@ fun link_and_online_gates(
             &character,
             &gate_config,
             &server_registry,
+            &admin_acl,
             &owner_cap_a,
             &owner_cap_b,
             proof_bytes,
@@ -223,6 +225,7 @@ fun link_and_online_gates(
         ts::return_shared(energy_config);
         ts::return_shared(gate_config);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
     };
 }
 
@@ -615,6 +618,7 @@ fun jump_fails_when_gate_is_offline() {
     {
         let gate_config = ts::take_shared<GateConfig>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
@@ -635,6 +639,7 @@ fun jump_fails_when_gate_is_offline() {
             &character,
             &gate_config,
             &server_registry,
+            &admin_acl,
             &owner_cap_a,
             &owner_cap_b,
             proof_bytes,
@@ -650,6 +655,7 @@ fun jump_fails_when_gate_is_offline() {
         ts::return_shared(gate_b);
         ts::return_shared(gate_config);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
         clock.destroy_for_testing();
     };
     ts::end(ts);
@@ -816,6 +822,7 @@ fun link_fails_when_distance_exceeds_max() {
     {
         let gate_config = ts::take_shared<GateConfig>(&ts);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
@@ -838,6 +845,7 @@ fun link_fails_when_distance_exceeds_max() {
             &character,
             &gate_config,
             &server_registry,
+            &admin_acl,
             &owner_cap_a,
             &owner_cap_b,
             proof_bytes,
@@ -851,6 +859,7 @@ fun link_fails_when_distance_exceeds_max() {
         ts::return_shared(gate_b);
         ts::return_shared(gate_config);
         ts::return_shared(server_registry);
+        ts::return_shared(admin_acl);
         clock.destroy_for_testing();
     };
     ts::end(ts);
