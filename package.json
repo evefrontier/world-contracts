@@ -54,6 +54,7 @@
     "debug:prepare": "chmod +x ./scripts/prepare-debug.sh && ./scripts/prepare-debug.sh"
   },
   "dependencies": {
+    "@mysten/bcs": "^2.0.2",
     "@mysten/prettier-plugin-move": "^0.3.3",
     "@mysten/sui": "^1.45.2",
     "@noble/hashes": "^1.8.0",
