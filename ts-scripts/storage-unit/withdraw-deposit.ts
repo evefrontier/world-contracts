@@ -1,17 +1,9 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { bcs } from "@mysten/sui/bcs";
 import { SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
-import { hexToBytes } from "../utils/helper";
-import {
-    CLOCK_OBJECT_ID,
-    GAME_CHARACTER_ID,
-    STORAGE_A_ITEM_ID,
-    ITEM_A_TYPE_ID,
-    LOCATION_HASH,
-} from "../utils/constants";
+import { GAME_CHARACTER_ID, STORAGE_A_ITEM_ID, ITEM_A_TYPE_ID } from "../utils/constants";
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import {
@@ -22,8 +14,6 @@ import {
     shareHydratedConfig,
     requireEnv,
 } from "../utils/helper";
-import { keypairFromPrivateKey } from "../utils/client";
-import { generateLocationProof } from "../utils/proof";
 import { executeSponsoredTransaction } from "../utils/transaction";
 
 async function withdraw(
@@ -31,7 +21,6 @@ async function withdraw(
     characterId: string,
     ownerCapId: string,
     typeId: bigint,
-    proofHex: string,
     playerAddress: string,
     adminAddress: string,
     client: SuiClient,
@@ -54,13 +43,10 @@ async function withdraw(
         typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
         arguments: [
             tx.object(storageUnit),
-            tx.object(config.serverAddressRegistry),
             tx.object(characterId),
             tx.object(config.adminAcl),
             ownerCap,
             tx.pure.u64(typeId),
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
-            tx.object(CLOCK_OBJECT_ID),
         ],
     });
 
@@ -70,12 +56,9 @@ async function withdraw(
         arguments: [
             tx.object(storageUnit),
             tx.object(item),
-            tx.object(config.serverAddressRegistry),
             tx.object(characterId),
             tx.object(config.adminAcl),
             ownerCap,
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
-            tx.object(CLOCK_OBJECT_ID),
         ],
     });
 
@@ -92,7 +75,7 @@ async function withdraw(
         adminKeypair,
         playerAddress,
         adminAddress,
-        { showEvents: true },
+        { showEvents: true }
     );
     console.log("Transaction digest:", result.digest);
 
@@ -137,20 +120,11 @@ async function main() {
             throw new Error(`OwnerCap not found for ${storageUnit}`);
         }
 
-        const proofHex = await generateLocationProof(
-            adminKeypair,
-            playerAddress,
-            characterObject,
-            storageUnit,
-            LOCATION_HASH
-        );
-
         await withdraw(
             storageUnit,
             characterObject,
             storageUnitOwnerCap,
             ITEM_A_TYPE_ID,
-            proofHex,
             playerAddress,
             adminAddress,
             client,

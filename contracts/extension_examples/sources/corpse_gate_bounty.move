@@ -1,7 +1,7 @@
 /// Example builder extension for the `world` package.
 ///
 /// This module demonstrates how to extend `world`'s `StorageUnit` and `Gate` assemblies:
-/// - withdraw an item from a player's `StorageUnit` (with owner auth + proximity proof)
+/// - withdraw an item from a player's `StorageUnit` (with owner auth)
 /// - validate it against a bounty rule (stored under `ExtensionConfig`)
 /// - deposit it into an owner `StorageUnit`
 /// - issue a `world::gate::JumpPermit` so the player can use the gate
@@ -10,7 +10,7 @@ module extension_examples::corpse_gate_bounty;
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
 use sui::clock::Clock;
 use world::{
-    access::{AdminACL, OwnerCap, ServerAddressRegistry},
+    access::{AdminACL, OwnerCap},
     character::Character,
     gate::{Self, Gate},
     storage_unit::StorageUnit
@@ -36,14 +36,12 @@ public struct BountyConfigKey has copy, drop, store {}
 public fun collect_corpse_bounty<T: key>(
     extension_config: &ExtensionConfig,
     storage_unit: &mut StorageUnit,
-    server_registry: &ServerAddressRegistry,
     source_gate: &Gate,
     destination_gate: &Gate,
     character: &Character,
     admin_acl: &AdminACL,
     player_inventory_owner_cap: &OwnerCap<T>,
     corpe_item_id: u64,
-    proximity_proof: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -53,15 +51,12 @@ public fun collect_corpse_bounty<T: key>(
         BountyConfig,
     >(BountyConfigKey {});
 
-    // Withdraw the corpse from the player's inventory (owner-authorized + proximity proof).
+    // Withdraw the corpse from the player's inventory (owner-authorized).
     let corpse = storage_unit.withdraw_by_owner<T>(
-        server_registry,
         character,
         admin_acl,
         player_inventory_owner_cap,
         corpe_item_id,
-        proximity_proof,
-        clock,
         ctx,
     );
 

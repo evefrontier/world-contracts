@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
@@ -11,12 +10,10 @@ import {
     ITEM_A_TYPE_ID,
     STORAGE_A_ITEM_ID,
     GAME_CHARACTER_B_ID,
-    LOCATION_HASH,
 } from "../utils/constants";
 import {
     getEnvConfig,
     handleError,
-    hexToBytes,
     hydrateWorldConfig,
     initializeContext,
     shareHydratedConfig,
@@ -25,8 +22,6 @@ import {
 import { resolveBuilderGateExtensionIds } from "../utils/builder-extension";
 import { MODULE as extensionModule } from "./modules";
 import { getCharacterOwnerCap } from "../character/helper";
-import { keypairFromPrivateKey } from "../utils/client";
-import { generateLocationProof } from "../utils/proof";
 import { executeSponsoredTransaction } from "../utils/transaction";
 
 async function collectCorpseBounty(
@@ -36,8 +31,7 @@ async function collectCorpseBounty(
     sourceGateItemId: bigint,
     destinationGateItemId: bigint,
     storageUnitItemId: bigint,
-    characterItemId: bigint,
-    proofHex: string
+    characterItemId: bigint
 ) {
     const { client, keypair, config, address } = ctx;
 
@@ -79,14 +73,12 @@ async function collectCorpseBounty(
         arguments: [
             tx.object(extensionConfigId),
             tx.object(storageUnitId),
-            tx.object(config.serverAddressRegistry),
             tx.object(sourceGateId!),
             tx.object(destinationGateId!),
             tx.object(characterId!),
             tx.object(config.adminAcl),
             ownerCap,
             tx.pure.u64(ITEM_A_TYPE_ID),
-            tx.pure(bcs.vector(bcs.u8()).serialize(hexToBytes(proofHex))),
             tx.object(CLOCK_OBJECT_ID),
         ],
     });
@@ -104,7 +96,7 @@ async function collectCorpseBounty(
         adminKeypair,
         address,
         adminAddress,
-        { showEffects: true, showObjectChanges: true, showEvents: true },
+        { showEffects: true, showObjectChanges: true, showEvents: true }
     );
 
     console.log("\nCorpse bounty collected + JumpPermit issued!");
@@ -125,25 +117,6 @@ async function main() {
         const adminKeypair = adminCtx.keypair;
         const adminAddress = adminKeypair.getPublicKey().toSuiAddress();
 
-        const characterId = deriveObjectId(
-            playerCtx.config.objectRegistry,
-            BigInt(GAME_CHARACTER_B_ID),
-            playerCtx.config.packageId
-        );
-        const storageUnitId = deriveObjectId(
-            playerCtx.config.objectRegistry,
-            STORAGE_A_ITEM_ID,
-            playerCtx.config.packageId
-        );
-
-        const proofHex = await generateLocationProof(
-            adminKeypair,
-            playerCtx.address,
-            characterId,
-            storageUnitId,
-            LOCATION_HASH
-        );
-
         await collectCorpseBounty(
             playerCtx,
             adminKeypair,
@@ -151,8 +124,7 @@ async function main() {
             GATE_ITEM_ID_1,
             GATE_ITEM_ID_2,
             STORAGE_A_ITEM_ID,
-            BigInt(GAME_CHARACTER_B_ID),
-            proofHex
+            BigInt(GAME_CHARACTER_B_ID)
         );
     } catch (error) {
         handleError(error);

@@ -99,7 +99,7 @@ async function linkGates(
         adminKeypair,
         address,
         adminAddress,
-        { showEffects: true, showObjectChanges: true, showEvents: true },
+        { showEffects: true, showObjectChanges: true, showEvents: true }
     );
 
     console.log("\nGates linked successfully!");
@@ -145,7 +145,7 @@ async function main() {
             GAME_CHARACTER_ID,
             GATE_ITEM_ID_1,
             GATE_ITEM_ID_2,
-            proofHex,
+            proofHex
         );
     } catch (error) {
         handleError(error);
