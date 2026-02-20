@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
@@ -21,7 +21,7 @@ import { keypairFromPrivateKey } from "../utils/client";
 import { executeSponsoredTransaction } from "../utils/transaction";
 
 async function getOwnedJumpPermitId(
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     owner: string,
     worldPackageId: string
 ): Promise<string | null> {

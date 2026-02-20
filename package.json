@@ -1,6 +1,7 @@
 {
   "name": "world-contracts",
   "version": "1.0.0",
+  "type": "module",
   "description": "contracts for eve frontier",
   "scripts": {
     "build": "find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move build --path {}",
@@ -56,7 +57,7 @@
   "dependencies": {
     "@mysten/bcs": "^2.0.2",
     "@mysten/prettier-plugin-move": "^0.3.3",
-    "@mysten/sui": "^1.45.2",
+    "@mysten/sui": "^2.0.0",
     "@noble/hashes": "^1.8.0",
     "dotenv": "^17.2.3",
     "prettier": "^3.7.4"

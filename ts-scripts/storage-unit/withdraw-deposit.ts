@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { GAME_CHARACTER_ID, STORAGE_A_ITEM_ID, ITEM_A_TYPE_ID } from "../utils/constants";
@@ -23,7 +23,7 @@ async function withdraw(
     typeId: bigint,
     playerAddress: string,
     adminAddress: string,
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     playerKeypair: Ed25519Keypair,
     adminKeypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>

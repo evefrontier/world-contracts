@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { hexToBytes } from "../utils/helper";
@@ -31,7 +31,7 @@ async function chainItemToGame(
     typeId: bigint,
     quantity: number,
     proofHex: string,
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     playerKeypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
 ) {

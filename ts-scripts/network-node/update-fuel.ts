@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import {
@@ -33,7 +33,7 @@ import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from
 async function updateFuel(
     networkNodeId: string,
     adminAcl: string,
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
 ) {

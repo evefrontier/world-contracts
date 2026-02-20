@@ -1,10 +1,10 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiClient, ExecuteTransactionBlockParams } from "@mysten/sui/client";
+import { SuiJsonRpcClient, ExecuteTransactionBlockParams } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
 export async function executeSponsoredTransaction(
     tx: Transaction,
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     playerKeypair: Ed25519Keypair,
     adminKeypair: Ed25519Keypair,
     playerAddress: string,

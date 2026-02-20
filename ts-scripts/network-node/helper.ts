@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { getConfig, MODULES } from "../utils/config";
 import { bcs } from "@mysten/sui/bcs";
 import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
@@ -11,7 +11,7 @@ export interface AssemblyTypeInfo {
 
 export async function getFuelQuantity(
     networkNodeId: string,
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<bigint | null> {
@@ -40,7 +40,7 @@ export async function getFuelQuantity(
 
 export async function getConnectedAssemblies(
     networkNodeId: string,
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<string[] | null> {
@@ -69,7 +69,7 @@ export async function getConnectedAssemblies(
 
 export async function isNetworkNodeOnline(
     networkNodeId: string,
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<boolean | null> {
@@ -97,7 +97,7 @@ export async function isNetworkNodeOnline(
 
 export async function getOwnerCap(
     networkNodeId: string,
-    client: SuiClient,
+    client: SuiJsonRpcClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<string | null> {
@@ -121,7 +121,7 @@ export async function getOwnerCap(
 
 export async function getAssemblyTypes(
     assemblyIds: string[],
-    client: SuiClient
+    client: SuiJsonRpcClient
 ): Promise<AssemblyTypeInfo[]> {
     return await Promise.all(
         assemblyIds.map(async (assemblyId) => {
