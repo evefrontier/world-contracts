@@ -6,12 +6,7 @@ import { getConfig, MODULES } from "../utils/config";
 import { getConnectedAssemblies, getAssemblyTypes } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { NWN_ITEM_ID } from "../utils/constants";
-import {
-    hydrateWorldConfig,
-    initializeContext,
-    handleError,
-    getEnvConfig,
-} from "../utils/helper";
+import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
 /**
  * Unanchors (destroys) the network node and handles connected assemblies.
