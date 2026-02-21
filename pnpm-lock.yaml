@@ -237,6 +237,9 @@ packages:
   '@mysten/bcs@2.0.2':
     resolution: {integrity: sha512-c/nVRPJEV1fRZdKXhysVsy/yCPdiFt7jn6A4/7W2LH1ZPSVPzRkxtLY362D0zaLuBnyT5Y9d9nFLm3ixI8Goug==}
 
+  '@mysten/bcs@2.0.2':
+    resolution: {integrity: sha512-c/nVRPJEV1fRZdKXhysVsy/yCPdiFt7jn6A4/7W2LH1ZPSVPzRkxtLY362D0zaLuBnyT5Y9d9nFLm3ixI8Goug==}
+
   '@mysten/prettier-plugin-move@0.3.3':
     resolution: {integrity: sha512-UCq9W95fyYI6EUG3Lm1mtEyxBqVHzg7PdofMX7nSxn6841GwC7Tv6VhdRcDIANMbq+m6e2whxgEi+xXtDSnXrg==}
     hasBin: true
@@ -449,6 +452,11 @@ snapshots:
   '@graphql-typed-document-node/core@3.2.0(graphql@16.12.0)':
     dependencies:
       graphql: 16.12.0
+
+  '@mysten/bcs@2.0.2':
+    dependencies:
+      '@mysten/utils': 0.3.1
+      '@scure/base': 2.0.0
 
   '@mysten/bcs@2.0.2':
     dependencies:
