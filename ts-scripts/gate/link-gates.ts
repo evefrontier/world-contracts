@@ -69,7 +69,6 @@ async function linkGates(
         arguments: [
             tx.object(gateAId),
             tx.object(gateBId),
-            tx.object(characterId),
             tx.object(gateConfigId),
             tx.object(config.serverAddressRegistry),
             tx.object(config.adminAcl),

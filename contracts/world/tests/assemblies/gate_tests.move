@@ -201,7 +201,6 @@ fun link_and_online_gates(
         let clock = clock::create_for_testing(ts.ctx());
         gate_a.link_gates(
             &mut gate_b,
-            &character,
             &gate_config,
             &server_registry,
             &admin_acl,
@@ -636,7 +635,6 @@ fun jump_fails_when_gate_is_offline() {
         let clock = clock::create_for_testing(ts.ctx());
         gate_a.link_gates(
             &mut gate_b,
-            &character,
             &gate_config,
             &server_registry,
             &admin_acl,
@@ -842,7 +840,6 @@ fun link_fails_when_distance_exceeds_max() {
         let clock = clock::create_for_testing(ts.ctx());
         gate_a.link_gates(
             &mut gate_b,
-            &character,
             &gate_config,
             &server_registry,
             &admin_acl,

@@ -101,6 +101,20 @@ public struct GateCreatedEvent has copy, drop {
     status: status::Status,
 }
 
+public struct GateLinkedEvent has copy, drop {
+    source_gate_id: ID,
+    source_gate_key: TenantItemId,
+    destination_gate_id: ID,
+    destination_gate_key: TenantItemId,
+}
+
+public struct GateUnlinkedEvent has copy, drop {
+    source_gate_id: ID,
+    source_gate_key: TenantItemId,
+    destination_gate_id: ID,
+    destination_gate_key: TenantItemId,
+}
+
 public struct JumpEvent has copy, drop {
     source_gate_id: ID,
     source_gate_key: TenantItemId,
@@ -154,7 +168,6 @@ public fun offline(
 public fun link_gates(
     source_gate: &mut Gate,
     destination_gate: &mut Gate,
-    _: &Character,
     gate_config: &GateConfig,
     server_registry: &ServerAddressRegistry,
     admin_acl: &AdminACL,
@@ -196,8 +209,16 @@ public fun link_gates(
     // Link the gates
     source_gate.linked_gate_id = option::some(destination_gate_id);
     destination_gate.linked_gate_id = option::some(source_gate_id);
+
+    event::emit(GateLinkedEvent {
+        source_gate_id,
+        source_gate_key: source_gate.key,
+        destination_gate_id,
+        destination_gate_key: destination_gate.key,
+    });
 }
 
+// TODO:  Should we allow this ?
 public fun unlink_gates(
     source_gate: &mut Gate,
     destination_gate: &mut Gate,
@@ -700,6 +721,13 @@ fun unlink(source_gate: &mut Gate, destination_gate: &mut Gate) {
     // Unlink the gates
     source_gate.linked_gate_id = option::none();
     destination_gate.linked_gate_id = option::none();
+
+    event::emit(GateUnlinkedEvent {
+        source_gate_id,
+        source_gate_key: source_gate.key,
+        destination_gate_id,
+        destination_gate_key: destination_gate.key,
+    });
 }
 
 // === Package Functions (Init) ===
