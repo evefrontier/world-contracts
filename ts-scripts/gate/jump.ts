@@ -79,7 +79,7 @@ async function main() {
         const adminAddress = adminKeypair.getPublicKey().toSuiAddress();
         const playerAddress = playerCtx.address;
 
-        await jump(
+        const result = await jump(
             playerCtx,
             GAME_CHARACTER_ID,
             GATE_ITEM_ID_1,
@@ -88,6 +88,8 @@ async function main() {
             adminAddress,
             adminKeypair
         );
+
+        console.log("Jump transaction result:", result);
     } catch (error) {
         handleError(error);
     }

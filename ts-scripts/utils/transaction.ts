@@ -42,6 +42,6 @@ export async function executeSponsoredTransaction(
     return await client.executeTransactionBlock({
         transactionBlock: transactionBytes,
         signature: [playerSignature.signature, adminSignature.signature],
-        options: options || { showObjectChanges: true, showEffects: true },
+        options: options || { showObjectChanges: true, showEffects: true, showEvents: true },
     });
 }
