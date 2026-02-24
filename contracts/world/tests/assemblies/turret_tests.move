@@ -53,7 +53,7 @@ public fun get_target_priority_list(
     _: vector<u8>,
     receipt: OnlineReceipt,
 ): vector<u8> {
-    assert!(turret::receipt_turret_id(&receipt) == object::id(turret), 0);
+    assert!(receipt.turret_id() == object::id(turret), 0);
     receipt.destroy_online_receipt(TurretAuth {});
     // for testing purposes, don't add the target to the priority list; return the priority list as is
     priority_list
@@ -634,7 +634,73 @@ fun unanchor_then_anchor_with_new_network_node() {
 
 // === Negative tests ===
 
-// anchor_fails_type_id_empty / anchor_fails_item_id_empty
+#[test]
+#[expected_failure(abort_code = turret::ETurretTypeIdEmpty)]
+fun anchor_fails_type_id_empty() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 110, 100);
+    let nwn_id = create_network_node(&mut ts, character_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let turret = turret::anchor(
+            &mut registry,
+            &mut nwn,
+            &character,
+            &admin_acl,
+            TURRET_ITEM_ID_1,
+            0, // type_id empty
+            test_helpers::get_verified_location_hash(),
+            ts.ctx(),
+        );
+        turret.share_turret(&admin_acl, ts.ctx());
+        ts::return_shared(character);
+        ts::return_shared(nwn);
+        ts::return_shared(registry);
+        ts::return_shared(admin_acl);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = turret::ETurretItemIdEmpty)]
+fun anchor_fails_item_id_empty() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 111, 100);
+    let nwn_id = create_network_node(&mut ts, character_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let turret = turret::anchor(
+            &mut registry,
+            &mut nwn,
+            &character,
+            &admin_acl,
+            0, // item_id empty
+            TURRET_TYPE_ID,
+            test_helpers::get_verified_location_hash(),
+            ts.ctx(),
+        );
+        turret.share_turret(&admin_acl, ts.ctx());
+        ts::return_shared(character);
+        ts::return_shared(nwn);
+        ts::return_shared(registry);
+        ts::return_shared(admin_acl);
+    };
+    ts::end(ts);
+}
 
 #[test]
 #[expected_failure(abort_code = turret::ENotOnline)]

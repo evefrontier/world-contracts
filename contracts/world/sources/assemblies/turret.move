@@ -220,7 +220,7 @@ public fun get_target_priority_list(
     receipt: OnlineReceipt,
 ): vector<u8> {
     // this is a additional check to ensure the receipt is valid and the turret is online
-    assert!(receipt_turret_id(&receipt) == object::id(turret), EInvalidOnlineReceipt);
+    assert!(receipt.turret_id() == object::id(turret), EInvalidOnlineReceipt);
     assert!(option::is_none(&turret.extension), EExtensionConfigured);
 
     let mut priority_list_vec = unpack_priority_list(priority_list);
@@ -319,7 +319,7 @@ public fun weight(target: &TurretTarget): u64 {
 }
 
 /// Returns the turret ID from an OnlineReceipt.
-public fun receipt_turret_id(receipt: &OnlineReceipt): ID {
+public fun turret_id(receipt: &OnlineReceipt): ID {
     receipt.turret_id
 }
 
