@@ -41,6 +41,8 @@ const ETurretAlreadyExists: vector<u8> = b"Turret with this item ID already exis
 const ETurretHasEnergySource: vector<u8> = b"Turret has an energy source";
 #[error(code = 7)]
 const EExtensionConfigured: vector<u8> = b"Extension is configured";
+#[error(code = 8)]
+const EInvalidOnlineReceipt: vector<u8> = b"Invalid online receipt";
 
 // === Structs ===
 public struct Turret has key {
@@ -74,28 +76,9 @@ public struct TurretTarget has copy, drop, store {
     weight: u64,
 }
 
-public fun target_id(target: &TurretTarget): ID {
-    target.target_id
-}
-
-public fun target_type_id(target: &TurretTarget): u64 {
-    target.target_type_id
-}
-
-public fun target_character_id(target: &TurretTarget): ID {
-    target.target_character_id
-}
-
-public fun target_character_tribe(target: &TurretTarget): u32 {
-    target.target_character_tribe
-}
-
-public fun is_agressor(target: &TurretTarget): bool {
-    target.is_agressor
-}
-
-public fun weight(target: &TurretTarget): u64 {
-    target.weight
+/// Proof that a turret was online().
+public struct OnlineReceipt {
+    turret_id: ID,
 }
 
 // === Events ===
@@ -131,6 +114,7 @@ public fun online(
         ENetworkNodeMismatch,
     );
     reserve_energy(turret, network_node, energy_config);
+    turret.status.online(turret_id, turret.key);
 }
 
 public fun offline(
@@ -214,6 +198,12 @@ public fun offline_orphaned_turret(
     orphaned_assemblies
 }
 
+/// Returns a receipt proving the turret is online. Aborts if turret is offline.
+public fun verify_online(turret: &Turret): OnlineReceipt {
+    assert!(turret.status.is_online(), ENotOnline);
+    OnlineReceipt { turret_id: object::id(turret) }
+}
+
 // This behaviour of this function can be customized by the builder through the extension contract.
 /// A function that is invoked by the game when a new target enters the proximity of the turret.
 /// It applies the rules and decides weather the the new target should be added to the priority list or not.
@@ -222,27 +212,33 @@ public fun offline_orphaned_turret(
 /// `priority_list` - is the list of targets (vector<TurretTarget>) that are currently in the priority list
 /// `new_target` - is the new target`TurretTarget` that enters the proximity in-game
 /// Returns the updated priority list(vector<TurretTarget>) as BCS vector<u8>.
-public fun priority_list(
+public fun get_target_priority_list(
     turret: &Turret,
     owner_character: &Character,
     priority_list: vector<u8>,
     new_target: vector<u8>,
+    receipt: OnlineReceipt,
 ): vector<u8> {
-    // Check if its online
-    assert!(turret.status.is_online(), ENotOnline);
-    // Check if its not authorized
+    // this is a additional check to ensure the receipt is valid and the turret is online
+    assert!(receipt_turret_id(&receipt) == object::id(turret), EInvalidOnlineReceipt);
     assert!(option::is_none(&turret.extension), EExtensionConfigured);
+
     let mut priority_list_vec = unpack_priority_list(priority_list);
     let new_target_decoded = peel_turret_target(new_target);
 
     apply_target_priority_rules(&mut priority_list_vec, owner_character, new_target_decoded);
 
     let result = bcs::to_bytes(&priority_list_vec);
+    let OnlineReceipt { .. } = receipt;
     event::emit(PriorityListUpdatedEvent {
         turret_id: object::id(turret),
         priority_list: priority_list_vec,
     });
     result
+}
+
+public fun destroy_online_receipt<Auth: drop>(receipt: OnlineReceipt, _: Auth) {
+    let OnlineReceipt { .. } = receipt;
 }
 
 /// Deserializes vector<TurretTarget> from BCS bytes.
@@ -295,6 +291,36 @@ public fun is_extension_configured(turret: &Turret): bool {
 
 public fun type_id(turret: &Turret): u64 {
     turret.type_id
+}
+
+/// Returns whether the target is an aggressor.
+public fun is_agressor(target: &TurretTarget): bool {
+    target.is_agressor
+}
+
+public fun target_id(target: &TurretTarget): ID {
+    target.target_id
+}
+
+public fun target_type_id(target: &TurretTarget): u64 {
+    target.target_type_id
+}
+
+public fun target_character_id(target: &TurretTarget): ID {
+    target.target_character_id
+}
+
+public fun target_character_tribe(target: &TurretTarget): u32 {
+    target.target_character_tribe
+}
+
+public fun weight(target: &TurretTarget): u64 {
+    target.weight
+}
+
+/// Returns the turret ID from an OnlineReceipt.
+public fun receipt_turret_id(receipt: &OnlineReceipt): ID {
+    receipt.turret_id
 }
 
 // === Admin Functions ===
@@ -499,4 +525,9 @@ fun apply_target_priority_rules(
         }
     };
 }
+
 // === Test Functions ===
+#[test_only]
+public fun destroy_online_receipt_test(receipt: OnlineReceipt) {
+    let OnlineReceipt { .. } = receipt;
+}
