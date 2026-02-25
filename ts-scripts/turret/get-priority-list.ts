@@ -64,6 +64,7 @@ export async function getTurretExtensionInfo(
 export const TurretTargetBcs = bcs.struct("TurretTarget", {
     target_id: bcs.Address,
     target_type_id: bcs.u64(),
+    target_group_id: bcs.u64(),
     target_character_id: bcs.Address,
     target_character_tribe: bcs.u32(),
     hp_ratio: bcs.u64(),
@@ -76,6 +77,7 @@ export const TurretTargetBcs = bcs.struct("TurretTarget", {
 export type TurretTargetArg = {
     target_id: string;
     target_type_id: bigint;
+    target_group_id: bigint;
     target_character_id: string;
     target_character_tribe: number;
     hp_ratio: bigint;
@@ -249,6 +251,7 @@ async function main() {
         const newTarget: TurretTargetArg = {
             target_id: SAMPLE_TARGET_ID,
             target_type_id: 1n,
+            target_group_id: 0n,
             target_character_id: characterId,
             target_character_tribe: 100,
             hp_ratio: 100n,

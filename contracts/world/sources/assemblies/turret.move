@@ -67,6 +67,9 @@ public struct TurretTarget has copy, drop, store {
     target_id: ID,
     // target type either a ship or a NPC
     target_type_id: u64,
+    // target group id, this is none for npcs, This can help the turret to prioritize the targets
+    // as the turret can be specialized against a specific group of ships <todo: doc link>
+    target_group_id: u64,
     // pilot character id, this is none for npcs
     target_character_id: ID,
     target_character_tribe: u32,
@@ -255,7 +258,7 @@ public fun unpack_priority_list(priority_list_bytes: vector<u8>): vector<TurretT
     bcs_data.peel_vec!(|bcs| peel_turret_target_from_bcs(bcs))
 }
 
-/// Deserializes a TurretTarget from BCS bytes (field order: target_id, target_type_id,
+/// Deserializes a TurretTarget from BCS bytes (field order: target_id, target_type_id, target_group_id,
 /// target_character_id, target_character_tribe, hp_ratio, shield_ratio, armor_ratio, is_agressor, weight).
 public fun peel_turret_target(target_bytes: vector<u8>): TurretTarget {
     let mut bcs_data = bcs::new(target_bytes);
@@ -309,6 +312,10 @@ public fun target_id(target: &TurretTarget): ID {
 
 public fun target_type_id(target: &TurretTarget): u64 {
     target.target_type_id
+}
+
+public fun target_group_id(target: &TurretTarget): u64 {
+    target.target_group_id
 }
 
 public fun target_character_id(target: &TurretTarget): ID {
@@ -494,6 +501,7 @@ fun release_energy_by_type(
 fun peel_turret_target_from_bcs(bcs_data: &mut bcs::BCS): TurretTarget {
     let target_id = object::id_from_address(bcs_data.peel_address());
     let target_type_id = bcs_data.peel_u64();
+    let target_group_id = bcs_data.peel_u64();
     let target_character_id = object::id_from_address(bcs_data.peel_address());
     let target_character_tribe = bcs_data.peel_u32();
     let hp_ratio = bcs_data.peel_u64();
@@ -504,6 +512,7 @@ fun peel_turret_target_from_bcs(bcs_data: &mut bcs::BCS): TurretTarget {
     TurretTarget {
         target_id,
         target_type_id,
+        target_group_id,
         target_character_id,
         target_character_tribe,
         hp_ratio,

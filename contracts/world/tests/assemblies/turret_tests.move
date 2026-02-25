@@ -29,10 +29,11 @@ const MAX_PRODUCTION: u64 = 100;
 const FUEL_TYPE_ID: u64 = 1;
 const FUEL_VOLUME: u64 = 10;
 
-// BCS layout for TurretTarget: (address, u64, address, u32, u64, u64, u64, bool, u64)
+// BCS layout for TurretTarget: (address, u64, u64, address, u32, u64, u64, u64, bool, u64)
 public struct TurretTargetBcs has copy, drop {
     target_id: address,
     target_type_id: u64,
+    target_group_id: u64,
     target_character_id: address,
     target_character_tribe: u32,
     hp_ratio: u64,
@@ -208,6 +209,7 @@ fun bring_turret_online(ts: &mut ts::Scenario, character_id: ID, turret_id: ID, 
 fun turret_target_bcs_to_bytes(
     target_id: address,
     target_type_id: u64,
+    target_group_id: u64,
     target_character_id: address,
     target_character_tribe: u32,
     hp_ratio: u64,
@@ -219,6 +221,7 @@ fun turret_target_bcs_to_bytes(
     let target = TurretTargetBcs {
         target_id,
         target_type_id,
+        target_group_id,
         target_character_id,
         target_character_tribe,
         hp_ratio,
@@ -344,6 +347,7 @@ fun priority_list_without_extension_adds_aggressor() {
     let new_target_bytes = turret_target_bcs_to_bytes(
         @0x1,
         1,
+        0,
         @0x2,
         200,
         80,
@@ -387,6 +391,7 @@ fun priority_list_without_extension_adds_different_tribe() {
     let new_target_bytes = turret_target_bcs_to_bytes(
         @0x1,
         1,
+        0,
         @0x2,
         200,
         80,
@@ -430,6 +435,7 @@ fun priority_list_without_extension_does_not_add_same_tribe() {
     let new_target_bytes = turret_target_bcs_to_bytes(
         @0x1,
         1,
+        0,
         @0x2,
         100,
         80,
@@ -488,6 +494,7 @@ fun priority_list_with_extension_contract() {
     let new_target_bytes = turret_target_bcs_to_bytes(
         @0x1,
         1,
+        0,
         @0x2,
         100,
         80,
@@ -523,12 +530,13 @@ fun peel_turret_target() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let bytes = turret_target_bcs_to_bytes(@0x1, 2, @0x3, 4, 50, 60, 70, true, 99);
+    let bytes = turret_target_bcs_to_bytes(@0x1, 2, 31, @0x3, 4, 50, 60, 70, true, 99);
     let decoded = turret::peel_turret_target(bytes);
     let re_encoded = bcs::to_bytes(&decoded);
     let decoded2 = turret::peel_turret_target(re_encoded);
     assert_eq!(turret::target_id(&decoded), turret::target_id(&decoded2));
     assert_eq!(turret::target_type_id(&decoded), turret::target_type_id(&decoded2));
+    assert_eq!(turret::target_group_id(&decoded), turret::target_group_id(&decoded2));
     assert_eq!(turret::target_character_tribe(&decoded), turret::target_character_tribe(&decoded2));
     assert_eq!(turret::is_agressor(&decoded), turret::is_agressor(&decoded2));
     assert_eq!(turret::weight(&decoded), turret::weight(&decoded2));
@@ -748,7 +756,7 @@ fun priority_list_fails_when_extension_configured() {
         ts::return_shared(turret);
     };
 
-    let new_target_bytes = turret_target_bcs_to_bytes(@0x1, 1, @0x2, 100, 80, 50, 30, true, 10);
+    let new_target_bytes = turret_target_bcs_to_bytes(@0x1, 1, 0, @0x2, 100, 80, 50, 30, true, 10);
     let empty_list: vector<u8> = vector::empty();
 
     ts::next_tx(&mut ts, user_a());
