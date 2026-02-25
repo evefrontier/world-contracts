@@ -15,6 +15,7 @@ type TestResources = {
     assembly: { typeId: number; itemId: number };
     storageUnit: { typeId: number; itemId: number };
     gate: { typeId: number; itemId1: number; itemId2: number };
+    turret: { typeId: number; itemId: number };
     item: { typeId: number; itemId: number };
 };
 
@@ -62,6 +63,10 @@ export const STORAGE_A_ITEM_ID = BigInt(res.storageUnit.itemId);
 export const GATE_TYPE_ID = BigInt(res.gate.typeId);
 export const GATE_ITEM_ID_1 = BigInt(res.gate.itemId1);
 export const GATE_ITEM_ID_2 = BigInt(res.gate.itemId2);
+
+// Turret
+export const TURRET_TYPE_ID = BigInt(res.turret.typeId);
+export const TURRET_ITEM_ID = BigInt(res.turret.itemId);
 
 // Item
 export const ITEM_A_TYPE_ID = BigInt(res.item.typeId);

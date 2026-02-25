@@ -65,6 +65,7 @@ export const MODULES = {
     ASSEMBLY: "assembly",
     STORAGE_UNIT: "storage_unit",
     GATE: "gate",
+    TURRET: "turret",
     FUEL: "fuel",
     ENERGY: "energy",
 } as const;
