@@ -77,7 +77,9 @@ async function offline(
                 ? { module: MODULES.STORAGE_UNIT, functionName: "offline_connected_storage_unit" }
                 : kind === "gate"
                   ? { module: MODULES.GATE, functionName: "offline_connected_gate" }
-                  : { module: MODULES.ASSEMBLY, functionName: "offline_connected_assembly" };
+                  : kind === "turret"
+                    ? { module: MODULES.TURRET, functionName: "offline_connected_turret" }
+                    : { module: MODULES.ASSEMBLY, functionName: "offline_connected_assembly" };
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,

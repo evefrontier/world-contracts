@@ -6,7 +6,7 @@ import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
 
 export interface AssemblyTypeInfo {
     id: string;
-    kind: "assembly" | "storage_unit" | "gate";
+    kind: "assembly" | "storage_unit" | "gate" | "turret";
 }
 
 export async function getFuelQuantity(
@@ -136,6 +136,10 @@ export async function getAssemblyTypes(
                 // including `Gate` and `StorageUnit`, which require different Move entrypoints.
                 if (type?.includes(`::${MODULES.GATE}::Gate`)) {
                     return { id: assemblyId, kind: "gate" };
+                }
+
+                if (type?.includes(`::${MODULES.TURRET}::Turret`)) {
+                    return { id: assemblyId, kind: "turret" };
                 }
 
                 if (type?.includes("StorageUnit")) {

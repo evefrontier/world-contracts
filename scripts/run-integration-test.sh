@@ -32,6 +32,11 @@ commands=(
   "create-assembly"
   "online"
   "update-fuel"
+  "anchor-turret"
+  "online-turret"
+  "get-priority-list"
+  "authorize-turret-extension"
+  "get-priority-list"
   "offline-nwn"
   "unanchor-nwn"
 )

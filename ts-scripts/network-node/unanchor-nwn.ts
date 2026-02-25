@@ -49,7 +49,9 @@ async function unanchor(
                 ? { module: MODULES.STORAGE_UNIT, functionName: "offline_orphaned_storage_unit" }
                 : kind === "gate"
                   ? { module: MODULES.GATE, functionName: "offline_orphaned_gate" }
-                  : { module: MODULES.ASSEMBLY, functionName: "offline_orphaned_assembly" };
+                  : kind === "turret"
+                    ? { module: MODULES.TURRET, functionName: "offline_orphaned_turret" }
+                    : { module: MODULES.ASSEMBLY, functionName: "offline_orphaned_assembly" };
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,
