@@ -15,7 +15,7 @@ use sui::{bcs, event};
 use world::{character::Character, turret::{Self, Turret, OnlineReceipt}};
 
 #[error(code = 0)]
-const EInvalidOnlineReceipt: u64 = 0;
+const EInvalidOnlineReceipt: vector<u8> = b"Invalid online receipt";
 
 public struct PriorityListUpdatedEvent has copy, drop {
     turret_id: ID,
@@ -24,7 +24,7 @@ public struct PriorityListUpdatedEvent has copy, drop {
 
 public struct TurretAuth has drop {}
 
-// More details to make the decisions 
+// More details to make decisions
 // The below are the groupIDs for the different ship types and the turrets that are specialized against them
 // This can help the turret to prioritize the targets based on the ship type and the turret that is specialized against it
 // Shuttle - groupID: 31

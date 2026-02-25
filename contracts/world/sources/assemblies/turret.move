@@ -5,7 +5,7 @@
 /// rules enforced on chain for targeting priorities.
 ///
 /// Builders control two key behaviours: InProximity (reacts to ships entering range) and
-/// Aggression (responds to hostile actions when ships entering the range). A configurable on-chain priority queue
+/// Aggression (responds to hostile actions when ships enter the range). A configurable on-chain priority queue
 /// determines how targets are ranked and attacked. The owner can define custom logic through
 /// extension contracts using the typed witness pattern to control the target priority queue.
 ///
@@ -211,7 +211,7 @@ public fun verify_online(turret: &Turret): OnlineReceipt {
 
 // This behaviour of this function can be customized by the builder through the extension contract.
 /// A function that is invoked by the game when a new target enters the proximity of the turret.
-/// It applies the rules and decides weather the the new target should be added to the priority list or not.
+/// It applies the rules and decides whether the new target should be added to the priority list or not.
 /// `turret` - the programmable turret that is configured for defence or attack in game.
 /// `owner_character` - the character that owns the turret
 /// `priority_list` - is the list of targets (vector<TurretTarget>) that are currently in the priority list
@@ -224,7 +224,7 @@ public fun get_target_priority_list(
     new_target: vector<u8>,
     receipt: OnlineReceipt,
 ): vector<u8> {
-    // this is a additional check to ensure the receipt is valid and the turret is online
+    // this is an additional check to ensure the receipt is valid and the turret is online
     assert!(receipt.turret_id() == object::id(turret), EInvalidOnlineReceipt);
     assert!(option::is_none(&turret.extension), EExtensionConfigured);
 

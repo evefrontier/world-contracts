@@ -21,6 +21,8 @@ import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
 import { GAME_CHARACTER_ID, TURRET_ITEM_ID } from "../utils/constants";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 
+const SAMPLE_TARGET_ID = "0x00000000000000000000000000000000000000000000000000000000000000ab";
+
 export type TurretExtensionInfo = {
     hasExtension: boolean;
     typeName?: string;
@@ -54,8 +56,8 @@ export async function getTurretExtensionInfo(
     const firstColonColon = typeName.indexOf("::");
     const addressPart = firstColonColon === -1 ? typeName : typeName.slice(0, firstColonColon);
     const packageId = addressPart.startsWith("0x") ? addressPart : `0x${addressPart}`;
-    const parts = typeName.split("::");
-    const moduleName = parts.length >= 2 ? parts[1] : "turret";
+    // Extension's get_target_priority_list is in the "turret" module of the package (type name may be package::config::XAuth).
+    const moduleName = "turret";
     return { hasExtension: true, typeName, packageId, moduleName };
 }
 
@@ -245,7 +247,7 @@ async function main() {
         );
 
         const newTarget: TurretTargetArg = {
-            target_id: "0x00000000000000000000000000000000000000000000000000000000000000ab",
+            target_id: SAMPLE_TARGET_ID,
             target_type_id: 1n,
             target_character_id: characterId,
             target_character_tribe: 100,
