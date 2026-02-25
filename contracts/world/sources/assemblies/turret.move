@@ -8,6 +8,11 @@
 /// Aggression (responds to hostile actions when ships entering the range). A configurable on-chain priority queue
 /// determines how targets are ranked and attacked. The owner can define custom logic through
 /// extension contracts using the typed witness pattern to control the target priority queue.
+///
+/// By default the game calls `world::turret::get_target_priority_list` to update the priority list.
+/// If an extension is configured via the auth witness pattern (`authorize_extension`), the game
+/// resolves the package id from the configured/authorised type name and calls the
+/// `get_target_priority_list` function in the package where that auth type is defined.
 module world::turret;
 
 use std::type_name::{Self, TypeName};
