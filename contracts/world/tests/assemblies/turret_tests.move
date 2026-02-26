@@ -422,6 +422,75 @@ fun priority_list_without_extension_adds_different_tribe() {
 }
 
 #[test]
+fun priority_list_skips_existing_target_no_duplicate() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 106, 100);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let turret_id = create_turret(&mut ts, character_id, nwn_id, TURRET_ITEM_ID_1);
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
+
+    let target_id = @0x1;
+    let first_call_bytes = turret_target_bcs_to_bytes(
+        target_id,
+        1,
+        0,
+        @0x2,
+        200,
+        80,
+        50,
+        30,
+        true,
+        10,
+    );
+    let same_target_updated_bytes = turret_target_bcs_to_bytes(
+        target_id,
+        1,
+        0,
+        @0x2,
+        200,
+        50,
+        40,
+        20,
+        true,
+        99,
+    );
+    let empty_list: vector<u8> = vector::empty();
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let turret = ts::take_shared_by_id<Turret>(&ts, turret_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let receipt = turret::verify_online(&turret);
+        let result1 = turret.get_target_priority_list(
+            &character,
+            empty_list,
+            first_call_bytes,
+            receipt,
+        );
+        let decoded1 = turret::unpack_priority_list(result1);
+        assert_eq!(vector::length(&decoded1), 1);
+        assert_eq!(turret::weight(vector::borrow(&decoded1, 0)), 10);
+
+        let receipt2 = turret::verify_online(&turret);
+        let result2 = turret.get_target_priority_list(
+            &character,
+            result1,
+            same_target_updated_bytes,
+            receipt2,
+        );
+        let decoded2 = turret::unpack_priority_list(result2);
+        assert_eq!(vector::length(&decoded2), 1);
+        assert_eq!(turret::weight(vector::borrow(&decoded2, 0)), 10);
+        ts::return_shared(character);
+        ts::return_shared(turret);
+    };
+    ts::end(ts);
+}
+
+#[test]
 fun priority_list_without_extension_does_not_add_same_tribe() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);

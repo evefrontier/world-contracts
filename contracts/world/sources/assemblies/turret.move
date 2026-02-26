@@ -217,9 +217,10 @@ public fun verify_online(turret: &Turret): OnlineReceipt {
 /// It applies the rules and decides whether the new target should be added to the priority list or not.
 /// `turret` - the programmable turret that is configured for defence or attack in game.
 /// `owner_character` - the character that owns the turret
-/// `priority_list` - is the list of targets (vector<TurretTarget>) that are currently in the priority list
+/// `priority_list` - is the list of existing targets (vector<TurretTarget>) ordered by priority, index 0 being the lowest priority
 /// `new_target` - is the new target`TurretTarget` that enters the proximity in-game
 /// Returns the updated priority list(vector<TurretTarget>) as BCS vector<u8>.
+/// The game receives the updated priority list and select targets based on the reverse order of the new list.
 public fun get_target_priority_list(
     turret: &Turret,
     owner_character: &Character,
@@ -524,20 +525,35 @@ fun peel_turret_target_from_bcs(bcs_data: &mut bcs::BCS): TurretTarget {
 }
 
 /// Default rules for the priority list.
-/// If the new target is an aggressor, add it to the priority list.
-/// If the new target is not an aggressor, add it to the priority list if it's not the same tribe as the owner character.
+/// If the target is already in the list (same target_id), skip.
+/// Otherwise, if the new target is an aggressor or not the same tribe as the owner, add it.
 fun apply_target_priority_rules(
     priority_list: &mut vector<TurretTarget>,
     owner_character: &Character,
     new_target: TurretTarget,
 ) {
-    if (new_target.is_aggressor) {
-        vector::push_back(priority_list, new_target);
-    } else {
-        if (new_target.target_character_tribe != owner_character.tribe()) {
+    let id = find_target_index(priority_list, new_target.target_id);
+    if (!option::is_some(&id)) {
+        if (new_target.is_aggressor) {
             vector::push_back(priority_list, new_target);
+        } else {
+            if (new_target.target_character_tribe != owner_character.tribe()) {
+                vector::push_back(priority_list, new_target);
+            }
         }
     };
+}
+
+fun find_target_index(priority_list: &vector<TurretTarget>, target_id: ID): Option<u64> {
+    let mut i = 0u64;
+    let len = vector::length(priority_list);
+    while (i < len) {
+        if (target_id(vector::borrow(priority_list, i)) == target_id) {
+            return option::some(i)
+        };
+        i = i + 1;
+    };
+    option::none()
 }
 
 // === Test Functions ===
