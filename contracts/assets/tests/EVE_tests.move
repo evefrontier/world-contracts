@@ -1,11 +1,9 @@
 #[test_only]
 module assets::EVE_tests;
 
+use assets::EVE::{Self, AdminCap, EveTreasury, EVE as EVEToken};
 use std::unit_test::assert_eq;
-use sui::coin;
-use sui::test_scenario as ts;
-use assets::EVE;
-use assets::EVE::{AdminCap, EveTreasury, EVE as EVEToken};
+use sui::{coin, test_scenario as ts};
 
 const SCALE: u64 = 1_000_000_000;
 const TOTAL_SUPPLY: u64 = 10_000_000_000;
@@ -57,7 +55,6 @@ fun test_transfer_from_treasury() {
     {
         EVE::init_for_testing(ts.ctx());
     };
-
 
     let transfer_amount = 1_000_000 * SCALE; // 1M EVE
 

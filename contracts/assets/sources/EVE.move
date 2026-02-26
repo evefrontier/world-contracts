@@ -2,9 +2,7 @@
 module assets::EVE;
 
 use std::string;
-use sui::balance::{Self, Balance};
-use sui::coin;
-use sui::coin_registry::{Self, Currency, MetadataCap};
+use sui::{balance::{Self, Balance}, coin, coin_registry::{Self, Currency, MetadataCap}};
 
 // === Constants ===
 const DECIMALS: u8 = 9;
@@ -13,7 +11,8 @@ const INITIAL_DEPLOYER_ALLOCATION: u64 = 10_000_000; // 10M to deployer at init
 const SCALE: u64 = 1_000_000_000; // 10^DECIMALS
 const SYMBOL: vector<u8> = b"EVE";
 const NAME: vector<u8> = b"EVE Token";
-const DESCRIPTION: vector<u8> = b"Native token for EVE Frontier on Sui. Powers the open, composable Eve Frontier Game and the builder-driven economy.";
+const DESCRIPTION: vector<u8> =
+    b"Native token for EVE Frontier on Sui. Powers the open, composable Eve Frontier Game and the builder-driven economy.";
 const ICON_URL: vector<u8> = b"";
 
 /// One-time witness for EVE; ensures a single currency per type.
