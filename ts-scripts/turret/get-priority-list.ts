@@ -70,7 +70,7 @@ export const TurretTargetBcs = bcs.struct("TurretTarget", {
     hp_ratio: bcs.u64(),
     shield_ratio: bcs.u64(),
     armor_ratio: bcs.u64(),
-    is_agressor: bcs.bool(),
+    is_aggressor: bcs.bool(),
     weight: bcs.u64(),
 });
 
@@ -83,7 +83,7 @@ export type TurretTargetArg = {
     hp_ratio: bigint;
     shield_ratio: bigint;
     armor_ratio: bigint;
-    is_agressor: boolean;
+    is_aggressor: boolean;
     weight: bigint;
 };
 
@@ -257,7 +257,7 @@ async function main() {
             hp_ratio: 100n,
             shield_ratio: 100n,
             armor_ratio: 100n,
-            is_agressor: true,
+            is_aggressor: true,
             weight: 1n,
         };
 

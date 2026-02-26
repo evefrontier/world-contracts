@@ -39,7 +39,7 @@ public struct TurretTargetBcs has copy, drop {
     hp_ratio: u64,
     shield_ratio: u64,
     armor_ratio: u64,
-    is_agressor: bool,
+    is_aggressor: bool,
     weight: u64,
 }
 
@@ -215,7 +215,7 @@ fun turret_target_bcs_to_bytes(
     hp_ratio: u64,
     shield_ratio: u64,
     armor_ratio: u64,
-    is_agressor: bool,
+    is_aggressor: bool,
     weight: u64,
 ): vector<u8> {
     let target = TurretTargetBcs {
@@ -227,7 +227,7 @@ fun turret_target_bcs_to_bytes(
         hp_ratio,
         shield_ratio,
         armor_ratio,
-        is_agressor,
+        is_aggressor,
         weight,
     };
     bcs::to_bytes(&target)
@@ -538,7 +538,7 @@ fun peel_turret_target() {
     assert_eq!(turret::target_type_id(&decoded), turret::target_type_id(&decoded2));
     assert_eq!(turret::target_group_id(&decoded), turret::target_group_id(&decoded2));
     assert_eq!(turret::target_character_tribe(&decoded), turret::target_character_tribe(&decoded2));
-    assert_eq!(turret::is_agressor(&decoded), turret::is_agressor(&decoded2));
+    assert_eq!(turret::is_aggressor(&decoded), turret::is_aggressor(&decoded2));
     assert_eq!(turret::weight(&decoded), turret::weight(&decoded2));
 
     ts::end(ts);

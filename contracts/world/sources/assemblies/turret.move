@@ -80,7 +80,7 @@ public struct TurretTarget has copy, drop, store {
     // percentage of armor hit points remaining (0-100)
     armor_ratio: u64,
     // is this target attacking anyone on grid (structure or another player)
-    is_agressor: bool,
+    is_aggressor: bool,
     weight: u64,
 }
 
@@ -259,7 +259,7 @@ public fun unpack_priority_list(priority_list_bytes: vector<u8>): vector<TurretT
 }
 
 /// Deserializes a TurretTarget from BCS bytes (field order: target_id, target_type_id, target_group_id,
-/// target_character_id, target_character_tribe, hp_ratio, shield_ratio, armor_ratio, is_agressor, weight).
+/// target_character_id, target_character_tribe, hp_ratio, shield_ratio, armor_ratio, is_aggressor, weight).
 public fun peel_turret_target(target_bytes: vector<u8>): TurretTarget {
     let mut bcs_data = bcs::new(target_bytes);
     peel_turret_target_from_bcs(&mut bcs_data)
@@ -302,8 +302,8 @@ public fun type_id(turret: &Turret): u64 {
 }
 
 /// Returns whether the target is an aggressor.
-public fun is_agressor(target: &TurretTarget): bool {
-    target.is_agressor
+public fun is_aggressor(target: &TurretTarget): bool {
+    target.is_aggressor
 }
 
 public fun target_id(target: &TurretTarget): ID {
@@ -507,7 +507,7 @@ fun peel_turret_target_from_bcs(bcs_data: &mut bcs::BCS): TurretTarget {
     let hp_ratio = bcs_data.peel_u64();
     let shield_ratio = bcs_data.peel_u64();
     let armor_ratio = bcs_data.peel_u64();
-    let is_agressor = bcs_data.peel_bool();
+    let is_aggressor = bcs_data.peel_bool();
     let weight = bcs_data.peel_u64();
     TurretTarget {
         target_id,
@@ -518,7 +518,7 @@ fun peel_turret_target_from_bcs(bcs_data: &mut bcs::BCS): TurretTarget {
         hp_ratio,
         shield_ratio,
         armor_ratio,
-        is_agressor,
+        is_aggressor,
         weight,
     }
 }
@@ -531,7 +531,7 @@ fun apply_target_priority_rules(
     owner_character: &Character,
     new_target: TurretTarget,
 ) {
-    if (new_target.is_agressor) {
+    if (new_target.is_aggressor) {
         vector::push_back(priority_list, new_target);
     } else {
         if (new_target.target_character_tribe != owner_character.tribe()) {
