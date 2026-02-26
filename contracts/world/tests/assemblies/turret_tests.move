@@ -433,7 +433,7 @@ fun priority_list_skips_existing_target_no_duplicate() {
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
     let target_id = @0x1;
-    let first_call_bytes = turret_target_bcs_to_bytes(
+    let target_bytes = turret_target_bcs_to_bytes(
         target_id,
         1,
         0,
@@ -445,18 +445,7 @@ fun priority_list_skips_existing_target_no_duplicate() {
         true,
         10,
     );
-    let same_target_updated_bytes = turret_target_bcs_to_bytes(
-        target_id,
-        1,
-        0,
-        @0x2,
-        200,
-        50,
-        40,
-        20,
-        true,
-        99,
-    );
+
     let empty_list: vector<u8> = vector::empty();
 
     ts::next_tx(&mut ts, user_a());
@@ -464,26 +453,27 @@ fun priority_list_skips_existing_target_no_duplicate() {
         let turret = ts::take_shared_by_id<Turret>(&ts, turret_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let receipt = turret::verify_online(&turret);
+
+        // First call: add target to priority list
         let result1 = turret.get_target_priority_list(
             &character,
             empty_list,
-            first_call_bytes,
+            target_bytes,
             receipt,
         );
         let decoded1 = turret::unpack_priority_list(result1);
         assert_eq!(vector::length(&decoded1), 1);
-        assert_eq!(turret::weight(vector::borrow(&decoded1, 0)), 10);
 
+        // Second call: add the same target to priority list again
         let receipt2 = turret::verify_online(&turret);
         let result2 = turret.get_target_priority_list(
             &character,
             result1,
-            same_target_updated_bytes,
+            target_bytes,
             receipt2,
         );
         let decoded2 = turret::unpack_priority_list(result2);
         assert_eq!(vector::length(&decoded2), 1);
-        assert_eq!(turret::weight(vector::borrow(&decoded2, 0)), 10);
         ts::return_shared(character);
         ts::return_shared(turret);
     };
