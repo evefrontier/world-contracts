@@ -47,6 +47,7 @@
     "issue-tribe-jump-permit": "tsx ts-scripts/builder_extension/issue-tribe-jump-permit.ts",
     "collect-corpse-bounty": "tsx ts-scripts/builder_extension/collect-corpse-bounty.ts",
     "jump-with-permit": "tsx ts-scripts/builder_extension/jump-with-permit.ts",
+    "transfer-eve": "tsx ts-scripts/assets/transfer-eve.ts",
     "extract:errors": "tsx tools/error-decoder/error-extractor.ts",
     "compile:decoder": "tsc --project tools/error-decoder/tsconfig.json",
     "prepare:decoder": "cd tools/error-decoder && cp index.html styles.css dist/",
