@@ -14,10 +14,8 @@ import { createClient, keypairFromPrivateKey } from "../utils/client";
 const COIN_REGISTRY_ID = "0xc";
 
 async function main() {
-    const currencyObjectId =
-        process.env.EVE_CURRENCY_OBJECT_ID;
-    const packageId =
-        process.env.ASSETS_PACKAGE_ID;
+    const currencyObjectId = process.env.EVE_CURRENCY_OBJECT_ID;
+    const packageId = process.env.ASSETS_PACKAGE_ID;
 
     if (!currencyObjectId || !packageId) {
         console.error(
@@ -26,7 +24,11 @@ async function main() {
         process.exit(1);
     }
 
-    const network = (process.env.SUI_NETWORK ?? "testnet") as "localnet" | "testnet" | "devnet" | "mainnet";
+    const network = (process.env.SUI_NETWORK ?? "testnet") as
+        | "localnet"
+        | "testnet"
+        | "devnet"
+        | "mainnet";
     const client = createClient(network);
     const privateKey = process.env.GOVERNOR_PRIVATE_KEY;
     if (!privateKey) {
