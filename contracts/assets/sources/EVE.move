@@ -13,7 +13,7 @@ const SYMBOL: vector<u8> = b"EVE";
 const NAME: vector<u8> = b"EVE Token";
 const DESCRIPTION: vector<u8> =
     b"Native token for EVE Frontier on Sui. Powers the open, composable Eve Frontier Game and the builder-driven economy.";
-const ICON_URL: vector<u8> = b"";
+const ICON_URL: vector<u8> = b"https://artifacts.evefrontier.com/logos/eve-test-token.png";
 
 /// One-time witness for EVE; ensures a single currency per type.
 public struct EVE has drop {}
