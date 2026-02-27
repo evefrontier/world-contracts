@@ -10,7 +10,7 @@ use world::{
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
     test_helpers::{Self, admin, governor, tenant, user_a},
-    turret::{Self, Turret, OnlineReceipt, AffectedTarget}
+    turret::{Self, Turret, OnlineReceipt}
 };
 
 // Turret constants
@@ -29,8 +29,8 @@ const MAX_PRODUCTION: u64 = 100;
 const FUEL_TYPE_ID: u64 = 1;
 const FUEL_VOLUME: u64 = 10;
 
-// BCS layout for TurretTarget: (u64, u64, u64, u32, u32, u64, u64, u64, bool, u64)
-public struct TurretTargetBcs has copy, drop {
+// BCS layout for TargetCandidate: (u64, u64, u64, u32, u32, u64, u64, u64, bool, u64, behaviour_change u8). behaviour_change: 0=UNSPECIFIED, 1=ENTERED, 2=STARTED_ATTACK, 3=STOPPED_ATTACK
+public struct TargetCandidateBcs has copy, drop {
     item_id: u64,
     type_id: u64,
     group_id: u64,
@@ -41,12 +41,7 @@ public struct TurretTargetBcs has copy, drop {
     armor_ratio: u64,
     is_aggressor: bool,
     priority_weight: u64,
-}
-
-// BCS for one AffectedTarget: (target_item_id: u64, change_type: u8). 0=UNSPECIFIED, 1=ENTERED, 2=STARTED_ATTACK, 3=STOPPED_ATTACK
-public struct AffectedTargetBcs has copy, drop {
-    target_item_id: u64,
-    change_type: u8,
+    behaviour_change: u8,
 }
 
 // Mock extension witness for authorize_extension tests
@@ -56,23 +51,22 @@ public struct TurretAuth has drop {}
 public fun get_target_priority_list(
     turret: &Turret,
     _: &Character,
-    priority_list: vector<u8>,
-    _: vector<u8>,
+    target_candidate_list: vector<u8>,
     receipt: OnlineReceipt,
 ): vector<u8> {
     assert!(receipt.turret_id() == object::id(turret), 0);
     receipt.destroy_online_receipt(TurretAuth {});
-    let list = turret::unpack_priority_list(priority_list);
+    let list = turret::unpack_candidate_list(target_candidate_list);
     let mut return_list = vector::empty();
     let mut i = 0u64;
     let len = vector::length(&list);
     while (i < len) {
-        let turret_target = vector::borrow(&list, i);
+        let target_candidate = vector::borrow(&list, i);
         vector::push_back(
             &mut return_list,
             turret::new_return_target_priority_list(
-                turret_target.item_id(),
-                turret_target.priority_weight(),
+                target_candidate.item_id(),
+                target_candidate.priority_weight(),
             ),
         );
         i = i + 1;
@@ -226,7 +220,7 @@ fun bring_turret_online(ts: &mut ts::Scenario, character_id: ID, turret_id: ID, 
     };
 }
 
-fun turret_target_bcs_to_bytes(
+fun target_candidate_bcs_to_bytes(
     item_id: u64,
     type_id: u64,
     group_id: u64,
@@ -237,8 +231,9 @@ fun turret_target_bcs_to_bytes(
     armor_ratio: u64,
     is_aggressor: bool,
     priority_weight: u64,
+    behaviour_change: u8,
 ): vector<u8> {
-    let target = TurretTargetBcs {
+    let target_candidate = TargetCandidateBcs {
         item_id,
         type_id,
         group_id,
@@ -249,11 +244,12 @@ fun turret_target_bcs_to_bytes(
         armor_ratio,
         is_aggressor,
         priority_weight,
+        behaviour_change,
     };
-    bcs::to_bytes(&target)
+    bcs::to_bytes(&target_candidate)
 }
 
-fun priority_list_bytes_from_one_target(
+fun candidate_list_bytes_from_target_candidate(
     item_id: u64,
     type_id: u64,
     group_id: u64,
@@ -264,8 +260,9 @@ fun priority_list_bytes_from_one_target(
     armor_ratio: u64,
     is_aggressor: bool,
     priority_weight: u64,
+    behaviour_change: u8,
 ): vector<u8> {
-    let t = TurretTargetBcs {
+    let target_candidate = TargetCandidateBcs {
         item_id,
         type_id,
         group_id,
@@ -276,46 +273,9 @@ fun priority_list_bytes_from_one_target(
         armor_ratio,
         is_aggressor,
         priority_weight,
+        behaviour_change,
     };
-    bcs::to_bytes(&vector[t])
-}
-
-fun empty_affected_bytes(): vector<u8> {
-    bcs::to_bytes(&vector::empty<AffectedTarget>())
-}
-
-/// BCS for vector<AffectedTarget> with one entry (contract expects vector, not single struct).
-fun affected_target_bcs_to_bytes(target_item_id: u64, change_type: u8): vector<u8> {
-    let a = AffectedTargetBcs { target_item_id, change_type };
-    bcs::to_bytes(&vector[a])
-}
-
-/// Builds priority_list bytes containing two targets with the same item_id (duplicate scenario).
-fun priority_list_bytes_with_duplicate_item_id(
-    item_id: u64,
-    type_id: u64,
-    group_id: u64,
-    character_id: u32,
-    character_tribe: u32,
-    hp_ratio: u64,
-    shield_ratio: u64,
-    armor_ratio: u64,
-    is_aggressor: bool,
-    priority_weight: u64,
-): vector<u8> {
-    let t = TurretTargetBcs {
-        item_id,
-        type_id,
-        group_id,
-        character_id,
-        character_tribe,
-        hp_ratio,
-        shield_ratio,
-        armor_ratio,
-        is_aggressor,
-        priority_weight,
-    };
-    bcs::to_bytes(&vector[t, t])
+    bcs::to_bytes(&vector[target_candidate])
 }
 
 // === Tests ===
@@ -429,7 +389,7 @@ fun priority_list_without_extension_adds_aggressor() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -440,8 +400,8 @@ fun priority_list_without_extension_adds_aggressor() {
         30,
         true,
         10,
+        0,
     );
-    let affected_bytes = empty_affected_bytes();
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -450,8 +410,7 @@ fun priority_list_without_extension_adds_aggressor() {
         let receipt = turret.verify_online();
         let result = turret.get_target_priority_list(
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
@@ -476,7 +435,7 @@ fun priority_list_without_extension_adds_different_tribe() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -487,53 +446,8 @@ fun priority_list_without_extension_adds_different_tribe() {
         30,
         false,
         10,
-    );
-    let affected_bytes = empty_affected_bytes();
-
-    ts::next_tx(&mut ts, user_a());
-    {
-        let turret = ts::take_shared_by_id<Turret>(&ts, turret_id);
-        let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let receipt = turret.verify_online();
-        let result = turret.get_target_priority_list(
-            &character,
-            priority_list_bytes,
-            affected_bytes,
-            receipt,
-        );
-        let decoded = turret::unpack_return_priority_list(result);
-        assert_eq!(vector::length(&decoded), 1);
-        ts::return_shared(character);
-        ts::return_shared(turret);
-    };
-    ts::end(ts);
-}
-
-#[test]
-fun priority_list_no_duplicates_in_return_list() {
-    let mut ts = ts::begin(governor());
-    setup(&mut ts);
-
-    let character_id = create_character(&mut ts, user_a(), 106, 100);
-    let nwn_id = create_network_node(&mut ts, character_id);
-    let turret_id = create_turret(&mut ts, character_id, nwn_id, TURRET_ITEM_ID_1);
-    bring_network_node_online(&mut ts, character_id, nwn_id);
-    bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
-
-    // Send priority_list with duplicate item_id (same target twice); return list must check for duplicates
-    let priority_list_bytes = priority_list_bytes_with_duplicate_item_id(
-        1,
-        1,
         0,
-        2,
-        200,
-        80,
-        50,
-        30,
-        true,
-        10,
     );
-    let affected_bytes = empty_affected_bytes();
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -542,15 +456,11 @@ fun priority_list_no_duplicates_in_return_list() {
         let receipt = turret.verify_online();
         let result = turret.get_target_priority_list(
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
         assert_eq!(vector::length(&decoded), 1);
-        let entry = vector::borrow(&decoded, 0);
-        assert_eq!(turret::return_target_item_id(entry), 1);
-        assert_eq!(turret::return_priority_weight(entry), 10);
         ts::return_shared(character);
         ts::return_shared(turret);
     };
@@ -568,8 +478,8 @@ fun priority_list_without_extension_does_not_add_same_tribe() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    // Game sends one target (same tribe 100 as owner).
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    // Game sends one target (same tribe 100 as owner, not aggressor).
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -580,8 +490,8 @@ fun priority_list_without_extension_does_not_add_same_tribe() {
         30,
         false,
         10,
+        0,
     );
-    let affected_bytes = empty_affected_bytes();
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -591,8 +501,7 @@ fun priority_list_without_extension_does_not_add_same_tribe() {
         let receipt = turret.verify_online();
         let result = turret.get_target_priority_list(
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
@@ -614,7 +523,7 @@ fun priority_list_same_tribe_aggressor_included() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -625,8 +534,8 @@ fun priority_list_same_tribe_aggressor_included() {
         30,
         true,
         10,
+        0,
     );
-    let affected_bytes = empty_affected_bytes();
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -635,8 +544,7 @@ fun priority_list_same_tribe_aggressor_included() {
         let receipt = turret.verify_online();
         let result = turret.get_target_priority_list(
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
@@ -660,7 +568,7 @@ fun affected_bytes_unspecified() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -671,8 +579,8 @@ fun affected_bytes_unspecified() {
         30,
         false,
         10,
-    );
-    let affected_bytes = affected_target_bcs_to_bytes(1, 0); // UNSPECIFIED
+        0,
+    ); // behaviour_change 0 = UNSPECIFIED
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -681,8 +589,7 @@ fun affected_bytes_unspecified() {
         let receipt = turret.verify_online();
         let result = turret.get_target_priority_list(
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
@@ -706,7 +613,7 @@ fun affected_bytes_entered() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -717,8 +624,8 @@ fun affected_bytes_entered() {
         30,
         false,
         10,
-    );
-    let affected_bytes = affected_target_bcs_to_bytes(1, 1); // ENTERED
+        1,
+    ); // behaviour_change 1 = ENTERED
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -727,8 +634,7 @@ fun affected_bytes_entered() {
         let receipt = turret.verify_online();
         let result = turret.get_target_priority_list(
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
@@ -752,7 +658,7 @@ fun affected_bytes_started_attack() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -763,8 +669,8 @@ fun affected_bytes_started_attack() {
         30,
         false,
         10,
-    );
-    let affected_bytes = affected_target_bcs_to_bytes(1, 2); // STARTED_ATTACK
+        2,
+    ); // behaviour_change 2 = STARTED_ATTACK
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -773,8 +679,7 @@ fun affected_bytes_started_attack() {
         let receipt = turret.verify_online();
         let result = turret.get_target_priority_list(
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
@@ -798,7 +703,7 @@ fun affected_bytes_stopped_attack() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -809,8 +714,8 @@ fun affected_bytes_stopped_attack() {
         30,
         false,
         10,
-    );
-    let affected_bytes = affected_target_bcs_to_bytes(1, 3); // STOPPED_ATTACK
+        3,
+    ); // behaviour_change 3 = STOPPED_ATTACK
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -819,8 +724,7 @@ fun affected_bytes_stopped_attack() {
         let receipt = turret.verify_online();
         let result = turret.get_target_priority_list(
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
@@ -857,7 +761,7 @@ fun priority_list_with_extension_contract() {
     bring_network_node_online(&mut ts, character_id, nwn_id);
     bring_turret_online(&mut ts, character_id, turret_id, nwn_id);
 
-    let priority_list_bytes = priority_list_bytes_from_one_target(
+    let candidate_list_bytes = candidate_list_bytes_from_target_candidate(
         1,
         1,
         0,
@@ -868,8 +772,8 @@ fun priority_list_with_extension_contract() {
         30,
         true,
         10,
+        0,
     );
-    let affected_bytes = empty_affected_bytes();
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -879,8 +783,7 @@ fun priority_list_with_extension_contract() {
         let result = get_target_priority_list(
             &turret,
             &character,
-            priority_list_bytes,
-            affected_bytes,
+            candidate_list_bytes,
             receipt,
         );
         let decoded = turret::unpack_return_priority_list(result);
@@ -892,14 +795,14 @@ fun priority_list_with_extension_contract() {
 }
 
 #[test]
-fun peel_turret_target() {
+fun peel_target_candidate() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let bytes = turret_target_bcs_to_bytes(1, 2, 31, 3, 4, 50, 60, 70, true, 99);
-    let decoded = turret::peel_turret_target(bytes);
+    let bytes = target_candidate_bcs_to_bytes(1, 2, 31, 3, 4, 50, 60, 70, true, 99, 0);
+    let decoded = turret::peel_target_candidate(bytes);
     let re_encoded = bcs::to_bytes(&decoded);
-    let decoded2 = turret::peel_turret_target(re_encoded);
+    let decoded2 = turret::peel_target_candidate(re_encoded);
     assert_eq!(decoded.item_id(), decoded2.item_id());
     assert_eq!(decoded.target_type_id(), decoded2.target_type_id());
     assert_eq!(decoded.group_id(), decoded2.group_id());
@@ -1124,8 +1027,6 @@ fun priority_list_fails_when_extension_configured() {
     };
 
     let empty_priority: vector<u8> = vector::empty();
-    let empty_affected: vector<u8> = vector::empty();
-
     ts::next_tx(&mut ts, user_a());
     {
         let turret = ts::take_shared_by_id<Turret>(&ts, turret_id);
@@ -1134,7 +1035,6 @@ fun priority_list_fails_when_extension_configured() {
         let _ = turret.get_target_priority_list(
             &character,
             empty_priority,
-            empty_affected,
             receipt,
         );
         ts::return_shared(character);

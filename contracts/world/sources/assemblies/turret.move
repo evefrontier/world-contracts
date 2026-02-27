@@ -50,8 +50,13 @@ const EExtensionConfigured: vector<u8> = b"Extension is configured";
 #[error(code = 8)]
 const EInvalidOnlineReceipt: vector<u8> = b"Invalid online receipt";
 
+// Priority weight increments applied by default rules (effective_weight_and_excluded)
+const STARTED_ATTACK_WEIGHT_INCREMENT: u64 = 10000;
+const ENTERED_WEIGHT_INCREMENT: u64 = 1000;
+
 // === Enums ===
-public enum AffectedTargetChangeType has copy, drop, store {
+/// Reason for invoking get_target_priority_list; the game sends exactly one per target candidate.
+public enum BehaviourChangeReason has copy, drop, store {
     UNSPECIFIED,
     ENTERED, // target entered the proximity of the turret
     STARTED_ATTACK, // target started attacking the base
@@ -72,15 +77,17 @@ public struct Turret has key {
 }
 
 /// Target information struct
-public struct TurretTarget has copy, drop, store {
-    item_id: u64, // TODO: is the item id enough or should we add the object id?
-    // target type either a ship or a NPC
+public struct TargetCandidate has copy, drop, store {
+    // unique identifier for the target candidate (ship_id/npc_id)
+    item_id: u64,
+    // target candidate type either a ship or a NPC
     type_id: u64,
     // target group id, this is none for npcs, This can help the turret to prioritize the targets
     // as the turret can be specialized against a specific group of ships <todo: doc link>
     group_id: u64,
-    // pilot character id, this is none for npcs
+    // Pilot character id; use 0 for NPCs
     character_id: u32,
+    // Character tribe; use 0 for NPCs (same as character_id).
     character_tribe: u32,
     // percentage of structure hit points remaining (0-100)
     hp_ratio: u64,
@@ -92,18 +99,15 @@ public struct TurretTarget has copy, drop, store {
     is_aggressor: bool,
     // priority weight of the target, this is used to sort the targets in the priority list
     priority_weight: u64,
-}
-
-/// Affected target information struct
-public struct AffectedTarget has copy, drop, store {
-    target_item_id: u64,
-    change_type: AffectedTargetChangeType,
+    // One reason per candidate; game sends the single most relevant (e.g. STARTED_ATTACK over ENTERED when both apply).
+    behaviour_change: BehaviourChangeReason,
 }
 
 /// Return Target info struct
 /// Game starts shooting the target with the highest priority weight in the list,
 /// If it has the same priority weight, it will shoot the first one in the list.
 public struct ReturnTargetPriorityList has copy, drop, store {
+    // unique identifier for the target candidate (ship_id/npc_id)
     target_item_id: u64,
     priority_weight: u64,
 }
@@ -123,7 +127,7 @@ public struct TurretCreatedEvent has copy, drop {
 
 public struct PriorityListUpdatedEvent has copy, drop {
     turret_id: ID,
-    priority_list: vector<TurretTarget>,
+    priority_list: vector<TargetCandidate>,
 }
 
 // === Public Functions ===
@@ -237,36 +241,31 @@ public fun verify_online(turret: &Turret): OnlineReceipt {
 }
 
 // This behaviour of this function can be customized by the builder through the extension contract.
-/// A function that is invoked by the game when a new target enters the proximity of the turret.
-/// It applies the rules and decides whether the new target should be added to the priority list or not.
-/// This function is called by the game whenever there is a change in the target in proximity of the turret.
-/// `turret` - the programmable turret that is configured for defence or attack in game.
-/// `owner_character` - the character that owns the turret
-/// `priority_list` - is the list of targets (vector<TurretTarget>) in proximity ordered by priority, index 0 being the lowest priority
-/// `affected_targets` - is the list of target ids(vector<AffectedTarget>) that have changed its behaviour in the TurretTarget list
-/// Either entered in proximity or started attacking or stopped attacking. Many targets can be affected at the same time.
-/// Returns a priority_list(vector<ReturnTargetPriorityList>) that contains the target ids and their priority weights.
-/// The game receives the priority list and starts shooting the target with the highest priority weight,
-/// If it has the same priority weight, it will shoot the first one in the list in the order of the list.
+/// Called by the game whenever target behaviour changes (e.g. a ship enters range, starts or stops attacking).
+/// The game sends exactly one behaviour_change per candidate; if both ENTERED and STARTED_ATTACK apply,
+/// the game sends STARTED_ATTACK (higher priority). This function applies the rules and returns which
+/// targets to shoot and at what priority weight.
+/// - `turret`: the programmable turret.
+/// - `owner_character`: the character that owns the turret.
+/// - `target_candidate_list`: BCS of vector<TargetCandidate> (targets in proximity, each with one behaviour_change).
+/// Returns BCS of vector<ReturnTargetPriorityList> (target_item_id, priority_weight).
+/// The game shoots the target with the highest priority weight,
+/// if it has the same priority weight, it will shoot the first one in the list.
 public fun get_target_priority_list(
     turret: &Turret,
     owner_character: &Character,
-    priority_list: vector<u8>,
-    affected_targets: vector<u8>,
+    target_candidate_list: vector<u8>,
     receipt: OnlineReceipt,
 ): vector<u8> {
-    // this is an additional check to ensure the receipt is valid and the turret is online
     assert!(receipt.turret_id() == object::id(turret), EInvalidOnlineReceipt);
     assert!(option::is_none(&turret.extension), EExtensionConfigured);
 
-    let priority_list_vec = unpack_priority_list(priority_list);
-    let affected = unpack_affected_targets(affected_targets);
-
-    let return_list = build_return_priority_list(&priority_list_vec, owner_character, &affected);
+    let candidates = unpack_candidate_list(target_candidate_list);
+    let return_list = build_return_priority_list(&candidates, owner_character);
     let OnlineReceipt { .. } = receipt;
     event::emit(PriorityListUpdatedEvent {
         turret_id: object::id(turret),
-        priority_list: priority_list_vec,
+        priority_list: candidates,
     });
     bcs::to_bytes(&return_list)
 }
@@ -275,22 +274,18 @@ public fun destroy_online_receipt<Auth: drop>(receipt: OnlineReceipt, _: Auth) {
     let OnlineReceipt { .. } = receipt;
 }
 
-/// Deserializes vector<TurretTarget> from BCS bytes.
-public fun unpack_priority_list(priority_list_bytes: vector<u8>): vector<TurretTarget> {
-    if (vector::length(&priority_list_bytes) == 0) {
+/// Deserializes vector<TargetCandidate> from BCS bytes.
+public fun unpack_candidate_list(candidate_list_bytes: vector<u8>): vector<TargetCandidate> {
+    if (vector::length(&candidate_list_bytes) == 0) {
         return vector::empty()
     };
-    let mut bcs_data = bcs::new(priority_list_bytes);
-    bcs_data.peel_vec!(|bcs| peel_turret_target_from_bcs(bcs))
+    let mut bcs_data = bcs::new(candidate_list_bytes);
+    bcs_data.peel_vec!(|bcs| peel_target_candidate_from_bcs(bcs))
 }
 
-/// Deserializes vector<AffectedTarget> from BCS bytes.
-public fun unpack_affected_targets(affected_targets_bytes: vector<u8>): vector<AffectedTarget> {
-    if (vector::length(&affected_targets_bytes) == 0) {
-        return vector::empty()
-    };
-    let mut bcs_data = bcs::new(affected_targets_bytes);
-    bcs_data.peel_vec!(|bcs| peel_affected_target_from_bcs(bcs))
+/// Alias for unpack_candidate_list (e.g. for extensions).
+public fun unpack_priority_list(candidate_list_bytes: vector<u8>): vector<TargetCandidate> {
+    unpack_candidate_list(candidate_list_bytes)
 }
 
 /// Deserializes vector<ReturnTargetPriorityList> from BCS bytes.
@@ -302,11 +297,11 @@ public fun unpack_return_priority_list(return_bytes: vector<u8>): vector<ReturnT
     bcs_data.peel_vec!(|bcs| peel_return_target_priority_list_from_bcs(bcs))
 }
 
-/// Deserializes a TurretTarget from BCS bytes (field order: item_id, type_id, group_id,
-/// character_id, character_tribe, hp_ratio, shield_ratio, armor_ratio, is_aggressor, priority_weight).
-public fun peel_turret_target(target_bytes: vector<u8>): TurretTarget {
-    let mut bcs_data = bcs::new(target_bytes);
-    peel_turret_target_from_bcs(&mut bcs_data)
+/// Deserializes a TargetCandidate from BCS bytes (field order: item_id, type_id, group_id,
+/// character_id, character_tribe, hp_ratio, shield_ratio, armor_ratio, is_aggressor, priority_weight, behaviour_change u8).
+public fun peel_target_candidate(candidate_bytes: vector<u8>): TargetCandidate {
+    let mut bcs_data = bcs::new(candidate_bytes);
+    peel_target_candidate_from_bcs(&mut bcs_data)
 }
 
 // === View Functions ===
@@ -346,33 +341,37 @@ public fun type_id(turret: &Turret): u64 {
 }
 
 /// Returns whether the target is an aggressor.
-public fun is_aggressor(target: &TurretTarget): bool {
-    target.is_aggressor
+public fun is_aggressor(candidate: &TargetCandidate): bool {
+    candidate.is_aggressor
 }
 
-public fun item_id(target: &TurretTarget): u64 {
-    target.item_id
+public fun item_id(candidate: &TargetCandidate): u64 {
+    candidate.item_id
 }
 
 /// Returns the target's type id (ship/NPC type).
-public fun target_type_id(target: &TurretTarget): u64 {
-    target.type_id
+public fun target_type_id(candidate: &TargetCandidate): u64 {
+    candidate.type_id
 }
 
-public fun group_id(target: &TurretTarget): u64 {
-    target.group_id
+public fun group_id(candidate: &TargetCandidate): u64 {
+    candidate.group_id
 }
 
-public fun character_id(target: &TurretTarget): u32 {
-    target.character_id
+public fun character_id(candidate: &TargetCandidate): u32 {
+    candidate.character_id
 }
 
-public fun character_tribe(target: &TurretTarget): u32 {
-    target.character_tribe
+public fun character_tribe(candidate: &TargetCandidate): u32 {
+    candidate.character_tribe
 }
 
-public fun priority_weight(target: &TurretTarget): u64 {
-    target.priority_weight
+public fun priority_weight(candidate: &TargetCandidate): u64 {
+    candidate.priority_weight
+}
+
+public fun behaviour_change(candidate: &TargetCandidate): BehaviourChangeReason {
+    candidate.behaviour_change
 }
 
 /// Returns the target item id from a ReturnTargetPriorityList entry.
@@ -561,7 +560,7 @@ fun release_energy_by_type(
         );
 }
 
-fun peel_turret_target_from_bcs(bcs_data: &mut bcs::BCS): TurretTarget {
+fun peel_target_candidate_from_bcs(bcs_data: &mut bcs::BCS): TargetCandidate {
     let item_id = bcs_data.peel_u64();
     let type_id = bcs_data.peel_u64();
     let group_id = bcs_data.peel_u64();
@@ -572,7 +571,8 @@ fun peel_turret_target_from_bcs(bcs_data: &mut bcs::BCS): TurretTarget {
     let armor_ratio = bcs_data.peel_u64();
     let is_aggressor = bcs_data.peel_bool();
     let priority_weight = bcs_data.peel_u64();
-    TurretTarget {
+    let behaviour_change = peel_behaviour_change_reason(bcs_data.peel_u8());
+    TargetCandidate {
         item_id,
         type_id,
         group_id,
@@ -583,21 +583,16 @@ fun peel_turret_target_from_bcs(bcs_data: &mut bcs::BCS): TurretTarget {
         armor_ratio,
         is_aggressor,
         priority_weight,
+        behaviour_change,
     }
 }
 
-fun peel_affected_target_from_bcs(bcs_data: &mut bcs::BCS): AffectedTarget {
-    let target_item_id = bcs_data.peel_u64();
-    let change_type = peel_affected_target_change_type(bcs_data.peel_u8());
-    AffectedTarget { target_item_id, change_type }
-}
-
-fun peel_affected_target_change_type(v: u8): AffectedTargetChangeType {
-    if (v == 0) { AffectedTargetChangeType::UNSPECIFIED } else if (v == 1) {
-        AffectedTargetChangeType::ENTERED
-    } else if (v == 2) { AffectedTargetChangeType::STARTED_ATTACK } else if (v == 3) {
-        AffectedTargetChangeType::STOPPED_ATTACK
-    } else { AffectedTargetChangeType::UNSPECIFIED }
+fun peel_behaviour_change_reason(v: u8): BehaviourChangeReason {
+    if (v == 0) { BehaviourChangeReason::UNSPECIFIED } else if (v == 1) {
+        BehaviourChangeReason::ENTERED
+    } else if (v == 2) { BehaviourChangeReason::STARTED_ATTACK } else if (v == 3) {
+        BehaviourChangeReason::STOPPED_ATTACK
+    } else { BehaviourChangeReason::UNSPECIFIED }
 }
 
 fun peel_return_target_priority_list_from_bcs(bcs_data: &mut bcs::BCS): ReturnTargetPriorityList {
@@ -608,57 +603,49 @@ fun peel_return_target_priority_list_from_bcs(bcs_data: &mut bcs::BCS): ReturnTa
 
 /// Default rules for turret to shoot:
 /// - Same tribe as owner and not aggressor: exclude from the return list
-/// - STOPPED_ATTACK (in affected): exclude from the return list
-/// - STARTED_ATTACK (in affected): add 10000 to priority weight
-/// - ENTERED (in affected): add 1000 to priority weight if not same tribe as owner or is aggressor
+/// - STOPPED_ATTACK (candidate's behaviour_change): exclude from the return list
+/// - STARTED_ATTACK: add STARTED_ATTACK_WEIGHT_INCREMENT to priority weight
+/// - ENTERED: add ENTERED_WEIGHT_INCREMENT to priority weight if not same tribe as owner or is aggressor
 /// - UNSPECIFIED: no change to weight
 fun effective_weight_and_excluded(
-    target: &TurretTarget,
+    candidate: &TargetCandidate,
     owner_character: &Character,
-    affected: &vector<AffectedTarget>,
 ): (u64, bool) {
-    let mut weight = target.priority_weight;
-    let same_tribe = target.character_tribe == character::tribe(owner_character);
-    let mut excluded = same_tribe && !target.is_aggressor;
-    let mut j = 0u64;
-    let aff_len = vector::length(affected);
-    while (j < aff_len) {
-        let affected_target = vector::borrow(affected, j);
-        if (affected_target.target_item_id == target.item_id) {
-            if (affected_target.change_type == AffectedTargetChangeType::STOPPED_ATTACK) {
-                excluded = true;
-            } else if (affected_target.change_type == AffectedTargetChangeType::STARTED_ATTACK) {
-                weight = weight + 10000;
-            } else if (affected_target.change_type == AffectedTargetChangeType::ENTERED) {
-                if (
-                    target.character_tribe != character::tribe(owner_character) || target.is_aggressor == true
-                ) {
-                    weight = weight + 1000;
-                }
-            }
-        };
-        j = j + 1;
+    let mut weight = candidate.priority_weight;
+    let same_tribe = candidate.character_tribe == character::tribe(owner_character);
+    let mut excluded = same_tribe && !candidate.is_aggressor;
+    let reason = candidate.behaviour_change;
+    if (reason == BehaviourChangeReason::STOPPED_ATTACK) {
+        excluded = true;
+    } else if (reason == BehaviourChangeReason::STARTED_ATTACK) {
+        weight = weight + STARTED_ATTACK_WEIGHT_INCREMENT;
+    } else if (reason == BehaviourChangeReason::ENTERED) {
+        if (
+            candidate.character_tribe != character::tribe(owner_character) || candidate.is_aggressor == true
+        ) {
+            weight = weight + ENTERED_WEIGHT_INCREMENT;
+        }
     };
     (weight, excluded)
 }
 
-/// Builds the return list from the priority_list
+/// Builds the return list from the candidate list.
 fun build_return_priority_list(
-    priority_list: &vector<TurretTarget>,
+    candidates: &vector<TargetCandidate>,
     owner_character: &Character,
-    affected: &vector<AffectedTarget>,
 ): vector<ReturnTargetPriorityList> {
     let mut result = vector::empty();
     let mut i = 0u64;
-    let len = vector::length(priority_list);
+    let len = vector::length(candidates);
     while (i < len) {
-        let t = vector::borrow(priority_list, i);
-        let (weight, excluded) = effective_weight_and_excluded(t, owner_character, affected);
-        if (!excluded && !return_list_contains_id(&result, t.item_id)) {
+        let target_candidate = vector::borrow(candidates, i);
+        let (weight, excluded) = effective_weight_and_excluded(target_candidate, owner_character);
+        // TODO: The game always send a non-duplicate target item id in the target candidate list
+        if (!excluded) {
             vector::push_back(
                 &mut result,
                 ReturnTargetPriorityList {
-                    target_item_id: t.item_id,
+                    target_item_id: target_candidate.item_id,
                     priority_weight: weight,
                 },
             );
@@ -668,6 +655,8 @@ fun build_return_priority_list(
     result
 }
 
+#[allow(unused_function)]
+/// Checks if the return list contains the target item id.
 fun return_list_contains_id(list: &vector<ReturnTargetPriorityList>, search_key: u64): bool {
     let mut i = 0u64;
     let len = vector::length(list);

@@ -1,9 +1,8 @@
 /// Extension contract for custom turret targeting behaviour.
 ///
-/// This module lets builders change how a turret decides whether to attack a target. The game calls
-/// `get_target_priority_list` with the current priority list, affected targets, and an
-/// `OnlineReceipt`. You can apply rules based on these inputs and return a list of
-/// (target_item_id, priority_weight) for shoot order.
+/// The game calls `get_target_priority_list` on behaviour change with a target candidate list
+/// (vector<TargetCandidate>; one behaviour_change per candidate. e.g. STARTED_ATTACK if both ENTERED and STARTED_ATTACK apply).
+/// You apply rules and return BCS of vector<ReturnTargetPriorityList> (target_item_id, priority_weight).
 ///
 /// The caller receives an `OnlineReceipt` from the world to prove the turret is online; the receipt
 /// is a hot potato and must be consumed. Before returning, the extension must call
@@ -41,18 +40,18 @@ public struct TurretAuth has drop {}
 //   - Specialized against: Cruiser(26), Combat Battlecruiser(419)
 // Regardless of the target, add it to the priority list as a example
 // Example: build return list (target_item_id, priority_weight) from the priority list.
-// Extension can apply custom rules using turret::unpack_affected_targets(affected_targets).
+// Extension uses turret::unpack_candidate_list(target_candidate_list) to get vector<TargetCandidate>.
 public fun get_target_priority_list(
     turret: &Turret,
     _: &Character,
-    priority_list: vector<u8>,
-    _: vector<u8>,
+    target_candidate_list: vector<u8>,
     receipt: OnlineReceipt,
 ): vector<u8> {
     assert!(receipt.turret_id() == object::id(turret), EInvalidOnlineReceipt);
 
-    let _ = turret::unpack_priority_list(priority_list);
-    // return a empty priority list for testing purposes
+    let _ = turret::unpack_candidate_list(target_candidate_list);
+    // Return empty priority list for this example; extension can build return_list from candidates.
+    // TODO: The return list is mutable expecting the extension to mutate it.
     let mut return_list = vector::empty<turret::ReturnTargetPriorityList>();
     let result = bcs::to_bytes(&return_list);
 
