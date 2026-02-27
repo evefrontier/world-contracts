@@ -1,9 +1,12 @@
 /**
  * Get turret target priority list (world or extension by type name).
  *
+ * API: get_target_priority_list(turret, character, priority_list, affected_targets, receipt)
+ * -> BCS of vector<ReturnTargetPriorityList> (target_item_id + priority_weight per entry).
+ *
  * Resolves extension via world::turret::is_extension_configured + extension_type;
- * then calls world::turret::get_target_priority_list or extension_package::module::get_target_priority_list.
- * Run: pnpm run get-priority-list (or get-default-priority-list / get-priority-list-from-extension).
+ * then calls world or extension get_target_priority_list.
+ * Run: pnpm run get-priority-list
  */
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
@@ -21,14 +24,62 @@ import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
 import { GAME_CHARACTER_ID, TURRET_ITEM_ID } from "../utils/constants";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 
-const SAMPLE_TARGET_ID = "0x00000000000000000000000000000000000000000000000000000000000000ab";
-
 export type TurretExtensionInfo = {
     hasExtension: boolean;
     typeName?: string;
     packageId?: string;
     moduleName?: string;
 };
+
+export type TurretTargetArg = {
+    item_id: bigint;
+    type_id: bigint;
+    group_id: bigint;
+    character_id: number;
+    character_tribe: number;
+    hp_ratio: bigint;
+    shield_ratio: bigint;
+    armor_ratio: bigint;
+    is_aggressor: boolean;
+    priority_weight: bigint;
+};
+
+export type ReturnTargetPriorityListArg = {
+    target_item_id: bigint;
+    priority_weight: bigint;
+};
+
+// TurretTarget BCS: (item_id, type_id, group_id, character_id, character_tribe, hp_ratio, shield_ratio, armor_ratio, is_aggressor, priority_weight)
+export const TurretTargetBcs = bcs.struct("TurretTarget", {
+    item_id: bcs.u64(),
+    type_id: bcs.u64(),
+    group_id: bcs.u64(),
+    character_id: bcs.u32(),
+    character_tribe: bcs.u32(),
+    hp_ratio: bcs.u64(),
+    shield_ratio: bcs.u64(),
+    armor_ratio: bcs.u64(),
+    is_aggressor: bcs.bool(),
+    priority_weight: bcs.u64(),
+});
+
+// AffectedTarget BCS: (target_item_id: u64, change_type: u8)
+// change_type: 0=UNSPECIFIED, 1=ENTERED, 2=STARTED_ATTACK, 3=STOPPED_ATTACK (AffectedTargetChangeType)
+export const AffectedTargetBcs = bcs.struct("AffectedTarget", {
+    target_item_id: bcs.u64(),
+    change_type: bcs.u8(),
+});
+
+export type AffectedTargetArg = {
+    target_item_id: bigint;
+    change_type: number;
+};
+
+// ReturnTargetPriorityList BCS: (target_item_id: u64, priority_weight: u64)
+export const ReturnTargetPriorityListBcs = bcs.struct("ReturnTargetPriorityList", {
+    target_item_id: bcs.u64(),
+    priority_weight: bcs.u64(),
+});
 
 /** Resolve extension type name and package/module from world turret. */
 export async function getTurretExtensionInfo(
@@ -56,98 +107,81 @@ export async function getTurretExtensionInfo(
     const firstColonColon = typeName.indexOf("::");
     const addressPart = firstColonColon === -1 ? typeName : typeName.slice(0, firstColonColon);
     const packageId = addressPart.startsWith("0x") ? addressPart : `0x${addressPart}`;
-    // Extension's get_target_priority_list is in the "turret" module of the package (type name may be package::config::XAuth).
     const moduleName = "turret";
     return { hasExtension: true, typeName, packageId, moduleName };
 }
 
-export const TurretTargetBcs = bcs.struct("TurretTarget", {
-    target_id: bcs.Address,
-    target_type_id: bcs.u64(),
-    target_group_id: bcs.u64(),
-    target_character_id: bcs.Address,
-    target_character_tribe: bcs.u32(),
-    hp_ratio: bcs.u64(),
-    shield_ratio: bcs.u64(),
-    armor_ratio: bcs.u64(),
-    is_aggressor: bcs.bool(),
-    weight: bcs.u64(),
-});
-
-export type TurretTargetArg = {
-    target_id: string;
-    target_type_id: bigint;
-    target_group_id: bigint;
-    target_character_id: string;
-    target_character_tribe: number;
-    hp_ratio: bigint;
-    shield_ratio: bigint;
-    armor_ratio: bigint;
-    is_aggressor: boolean;
-    weight: bigint;
-};
-
-/** Serialize priority list and new target to BCS bytes for move calls. */
+/** Serialize priority list and affected targets for move calls. */
 export function serializePriorityListArgs(
     priorityList: TurretTargetArg[],
-    newTarget: TurretTargetArg
+    affectedTargets: AffectedTargetArg[]
 ) {
+    const priorityListBytes = new Uint8Array(
+        bcs.vector(TurretTargetBcs).serialize(priorityList).toBytes()
+    );
+    const affectedTargetsBytes = new Uint8Array(
+        bcs.vector(AffectedTargetBcs).serialize(affectedTargets).toBytes()
+    );
     return {
-        priorityListBytes: bcs.vector(TurretTargetBcs).serialize(priorityList).toBytes(),
-        newTargetBytes: TurretTargetBcs.serialize(newTarget).toBytes(),
+        priorityListBytes: Array.from(priorityListBytes),
+        affectedTargetsBytes: Array.from(affectedTargetsBytes),
     };
 }
 
-/** Parse devInspect return value (second move call) and return priority list length. */
-export function parsePriorityListReturnLength(returnValues: unknown): number {
+/** Parse return value bytes as vector<ReturnTargetPriorityList>. */
+export function parseReturnPriorityList(returnBytes: Uint8Array): ReturnTargetPriorityListArg[] {
+    if (returnBytes.length === 0) return [];
+    const inner = new Uint8Array(bcs.vector(bcs.u8()).parse(returnBytes));
+    if (inner.length === 0) return [];
+    const raw = bcs.vector(ReturnTargetPriorityListBcs).parse(inner);
+    return raw.map((r: { target_item_id: bigint | string; priority_weight: bigint | string }) => ({
+        target_item_id:
+            typeof r.target_item_id === "bigint" ? r.target_item_id : BigInt(r.target_item_id),
+        priority_weight:
+            typeof r.priority_weight === "bigint" ? r.priority_weight : BigInt(r.priority_weight),
+    }));
+}
+
+function parseDevInspectReturn(returnValues: unknown): ReturnTargetPriorityListArg[] {
     const arr = returnValues as [Uint8Array | number[], unknown][] | undefined;
-    if (!arr?.length) return 0;
+    if (!arr?.length) return [];
     const raw = arr[0][0];
     const returnBytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-    const outerBytes = new Uint8Array(returnBytes);
-    const innerBytes =
-        outerBytes.length === 0
-            ? new Uint8Array(0)
-            : new Uint8Array(bcs.vector(bcs.u8()).parse(outerBytes));
-    const list = innerBytes.length === 0 ? [] : bcs.vector(TurretTargetBcs).parse(innerBytes);
-    return list.length;
+    return parseReturnPriorityList(returnBytes);
 }
 
 /**
- * Get turret priority list from world contracts only:
- * world::turret::verify_online(turret) -> receipt, then
- * world::turret::get_target_priority_list(turret, character, priority_list, new_target, receipt) -> vector<u8>.
- * Uses devInspect (read-only simulation).
+ * Get turret priority list from world:
+ * get_target_priority_list(turret, character, priority_list, affected_targets, receipt)
+ * -> vector<ReturnTargetPriorityList>.
  */
 export async function getTurretPriorityListFromWorld(
     turretId: string,
     characterId: string,
     priorityList: TurretTargetArg[],
-    newTarget: TurretTargetArg,
+    affectedTargets: AffectedTargetArg[],
     ctx: ReturnType<typeof initializeContext>
-): Promise<number> {
+): Promise<ReturnTargetPriorityListArg[]> {
     const { client, keypair } = ctx;
     const config = ctx.config as HydratedWorldConfig;
 
-    const { priorityListBytes, newTargetBytes } = serializePriorityListArgs(
+    const { priorityListBytes, affectedTargetsBytes } = serializePriorityListArgs(
         priorityList,
-        newTarget
+        affectedTargets
     );
 
     const tx = new Transaction();
-
     const [receipt] = tx.moveCall({
         target: `${config.packageId}::${MODULES.TURRET}::verify_online`,
         arguments: [tx.object(turretId)],
     });
-
     tx.moveCall({
         target: `${config.packageId}::${MODULES.TURRET}::get_target_priority_list`,
         arguments: [
             tx.object(turretId),
             tx.object(characterId),
-            tx.pure(bcs.vector(bcs.u8()).serialize(Array.from(priorityListBytes)).toBytes()),
-            tx.pure(bcs.vector(bcs.u8()).serialize(Array.from(newTargetBytes)).toBytes()),
+            tx.pure(bcs.vector(bcs.u8()).serialize(priorityListBytes).toBytes()),
+            tx.pure(bcs.vector(bcs.u8()).serialize(affectedTargetsBytes).toBytes()),
             receipt,
         ],
     });
@@ -162,20 +196,19 @@ export async function getTurretPriorityListFromWorld(
         throw new Error(`DevInspect failed: ${JSON.stringify(err)}`);
     }
 
-    return parsePriorityListReturnLength(result.results?.[1]?.returnValues);
+    return parseDevInspectReturn(result.results?.[1]?.returnValues);
 }
 
 /**
- * Get priority list by type name: if turret has an extension, call extension get_target_priority_list;
- * otherwise world::turret::get_target_priority_list.
+ * Get priority list: if turret has extension, call extension; otherwise world.
  */
 export async function getTurretPriorityList(
     turretId: string,
     characterId: string,
     priorityList: TurretTargetArg[],
-    newTarget: TurretTargetArg,
+    affectedTargets: AffectedTargetArg[],
     ctx: ReturnType<typeof initializeContext>
-): Promise<number> {
+): Promise<ReturnTargetPriorityListArg[]> {
     const extensionInfo = await getTurretExtensionInfo(ctx.client, ctx.config.packageId, turretId);
 
     if (
@@ -185,9 +218,9 @@ export async function getTurretPriorityList(
     ) {
         const { client, keypair } = ctx;
         const config = ctx.config as HydratedWorldConfig;
-        const { priorityListBytes, newTargetBytes } = serializePriorityListArgs(
+        const { priorityListBytes, affectedTargetsBytes } = serializePriorityListArgs(
             priorityList,
-            newTarget
+            affectedTargets
         );
 
         const tx = new Transaction();
@@ -200,8 +233,8 @@ export async function getTurretPriorityList(
             arguments: [
                 tx.object(turretId),
                 tx.object(characterId),
-                tx.pure(bcs.vector(bcs.u8()).serialize(Array.from(priorityListBytes)).toBytes()),
-                tx.pure(bcs.vector(bcs.u8()).serialize(Array.from(newTargetBytes)).toBytes()),
+                tx.pure(bcs.vector(bcs.u8()).serialize(priorityListBytes).toBytes()),
+                tx.pure(bcs.vector(bcs.u8()).serialize(affectedTargetsBytes).toBytes()),
                 receipt,
             ],
         });
@@ -214,10 +247,16 @@ export async function getTurretPriorityList(
             const err = result.effects?.status?.error ?? result.effects?.status;
             throw new Error(`DevInspect failed: ${JSON.stringify(err)}`);
         }
-        return parsePriorityListReturnLength(result.results?.[1]?.returnValues);
+        return parseDevInspectReturn(result.results?.[1]?.returnValues);
     }
 
-    return getTurretPriorityListFromWorld(turretId, characterId, priorityList, newTarget, ctx);
+    return getTurretPriorityListFromWorld(
+        turretId,
+        characterId,
+        priorityList,
+        affectedTargets,
+        ctx
+    );
 }
 
 async function main() {
@@ -248,21 +287,40 @@ async function main() {
             extensionInfo.hasExtension ? (extensionInfo.typeName ?? "configured") : "none (world)"
         );
 
-        const newTarget: TurretTargetArg = {
-            target_id: SAMPLE_TARGET_ID,
-            target_type_id: 1n,
-            target_group_id: 0n,
-            target_character_id: characterId,
-            target_character_tribe: 100,
-            hp_ratio: 100n,
-            shield_ratio: 100n,
-            armor_ratio: 100n,
-            is_aggressor: true,
-            weight: 1n,
-        };
+        const priorityList: TurretTargetArg[] = [
+            {
+                item_id: 0xabn,
+                type_id: 1n,
+                group_id: 0n,
+                character_id: 2,
+                character_tribe: 100,
+                hp_ratio: 100n,
+                shield_ratio: 100n,
+                armor_ratio: 100n,
+                is_aggressor: true,
+                priority_weight: 10n,
+            },
+        ];
+        const affectedTargets: AffectedTargetArg[] = [
+            {
+                target_item_id: 0xabn,
+                change_type: 1,
+            },
+        ];
 
-        const length = await getTurretPriorityList(turretId, characterId, [], newTarget, ctx);
-        console.log("priority_list length:", length);
+        const list = await getTurretPriorityList(
+            turretId,
+            characterId,
+            priorityList,
+            affectedTargets,
+            ctx
+        );
+        console.log("ReturnTargetPriorityList length:", list.length);
+        list.forEach((entry, i) => {
+            console.log(
+                `  [${i}] target_item_id=${entry.target_item_id} priority_weight=${entry.priority_weight}`
+            );
+        });
     } catch (error) {
         handleError(error);
     }

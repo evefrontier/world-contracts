@@ -1,9 +1,9 @@
 /// Extension contract for custom turret targeting behaviour.
 ///
 /// This module lets builders change how a turret decides whether to attack a target. The game calls
-/// `get_target_priority_list` with the current priority list, a new target, and an
-/// `OnlineReceipt`. You can add rules based on these inputs—e.g. target type, tribe, hp/shield/armor
-/// ratios, aggressor flag—to filter or reorder targets (attack or ignore).
+/// `get_target_priority_list` with the current priority list, affected targets, and an
+/// `OnlineReceipt`. You can apply rules based on these inputs and return a list of
+/// (target_item_id, priority_weight) for shoot order.
 ///
 /// The caller receives an `OnlineReceipt` from the world to prove the turret is online; the receipt
 /// is a hot potato and must be consumed. Before returning, the extension must call
@@ -40,20 +40,21 @@ public struct TurretAuth has drop {}
 // Turret - Howitzer (92484)
 //   - Specialized against: Cruiser(26), Combat Battlecruiser(419)
 // Regardless of the target, add it to the priority list as a example
+// Example: build return list (target_item_id, priority_weight) from the priority list.
+// Extension can apply custom rules using turret::unpack_affected_targets(affected_targets).
 public fun get_target_priority_list(
     turret: &Turret,
     _: &Character,
     priority_list: vector<u8>,
-    new_target: vector<u8>,
+    _: vector<u8>,
     receipt: OnlineReceipt,
 ): vector<u8> {
     assert!(receipt.turret_id() == object::id(turret), EInvalidOnlineReceipt);
 
-    let mut list = turret::unpack_priority_list(priority_list);
-    let target = turret::peel_turret_target(new_target);
-    vector::push_back(&mut list, target);
-    // add additional rules
-    let result = bcs::to_bytes(&list);
+    let _ = turret::unpack_priority_list(priority_list);
+    // return a empty priority list for testing purposes
+    let mut return_list = vector::empty<turret::ReturnTargetPriorityList>();
+    let result = bcs::to_bytes(&return_list);
 
     turret::destroy_online_receipt(receipt, TurretAuth {});
     event::emit(PriorityListUpdatedEvent {
