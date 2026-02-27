@@ -51,6 +51,7 @@
     "online-turret": "tsx ts-scripts/turret/online.ts",
     "authorize-turret-extension": "tsx ts-scripts/builder_extension/authorize-turret.ts",
     "get-priority-list": "tsx ts-scripts/turret/get-priority-list.ts",
+    "transfer-eve": "tsx ts-scripts/assets/transfer-eve.ts",
     "extract:errors": "tsx tools/error-decoder/error-extractor.ts",
     "compile:decoder": "tsc --project tools/error-decoder/tsconfig.json",
     "prepare:decoder": "cd tools/error-decoder && cp index.html styles.css dist/",

@@ -35,3 +35,7 @@ tools/error-decoder/*.js.map
 tools/error-decoder/dist/
 dist/
 .replay/
+
+# pnpm-store when pnpm install executed in containers
+.pnpm-store
+
