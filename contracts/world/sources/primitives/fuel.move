@@ -255,11 +255,12 @@ public(package) fun withdraw(
     fuel: &mut Fuel,
     assembly_id: ID,
     assembly_key: TenantItemId,
+    type_id: u64,
     quantity: u64,
 ) {
     assert!(quantity > 0, EInvalidWithdrawQuantity);
     assert!(fuel.quantity >= quantity, EInsufficientFuel);
-    assert!(option::is_some(&fuel.type_id), ETypeIdEmtpy);
+    assert!(fuel.type_id == option::some(type_id), EFuelTypeMismatch);
     let old_quantity = fuel.quantity;
     fuel.quantity = fuel.quantity - quantity;
     event::emit(FuelEvent {

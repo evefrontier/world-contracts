@@ -106,6 +106,7 @@ public fun withdraw_fuel(
     nwn: &mut NetworkNode,
     admin_acl: &AdminACL,
     owner_cap: &OwnerCap<NetworkNode>,
+    type_id: u64,
     quantity: u64,
     ctx: &mut TxContext,
 ) {
@@ -113,7 +114,7 @@ public fun withdraw_fuel(
     let nwn_key = nwn.key;
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
     admin_acl.verify_sponsor(ctx);
-    nwn.fuel.withdraw(nwn_id, nwn_key, quantity);
+    nwn.fuel.withdraw(nwn_id, nwn_key, type_id, quantity);
 }
 
 public fun online(nwn: &mut NetworkNode, owner_cap: &OwnerCap<NetworkNode>, clock: &Clock) {
@@ -535,9 +536,10 @@ public fun deposit_fuel_test(
 public fun withdraw_fuel_test(
     nwn: &mut NetworkNode,
     owner_cap: &OwnerCap<NetworkNode>,
+    type_id: u64,
     quantity: u64,
 ) {
     let nwn_id = object::id(nwn);
     assert!(access::is_authorized(owner_cap, nwn_id), ENetworkNodeNotAuthorized);
-    nwn.fuel.withdraw(nwn_id, nwn.key, quantity);
+    nwn.fuel.withdraw(nwn_id, nwn.key, type_id, quantity);
 }

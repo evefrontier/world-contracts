@@ -55,10 +55,10 @@ fun fuel_deposit(
     nwn.fuel.deposit(nwn_id, nwn_key, type_id, volume, quantity, clock);
 }
 
-fun fuel_withdraw(nwn: &mut NetworkNode, quantity: u64) {
+fun fuel_withdraw(nwn: &mut NetworkNode, type_id: u64, quantity: u64) {
     let nwn_id = object::id(nwn);
     let nwn_key = nwn.key;
-    nwn.fuel.withdraw(nwn_id, nwn_key, quantity);
+    nwn.fuel.withdraw(nwn_id, nwn_key, type_id, quantity);
 }
 
 fun fuel_start_burning(nwn: &mut NetworkNode, clock: &clock::Clock) {
@@ -272,7 +272,7 @@ fun withdraw_fuel() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        fuel_withdraw(&mut nwn, WITHDRAW_AMOUNT);
+        fuel_withdraw(&mut nwn, FUEL_TYPE_ID, WITHDRAW_AMOUNT);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT - WITHDRAW_AMOUNT);
         ts::return_shared(nwn);
     };
@@ -298,7 +298,7 @@ fun deposit_and_withdraw_fuel() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        fuel_withdraw(&mut nwn, WITHDRAW_AMOUNT);
+        fuel_withdraw(&mut nwn, FUEL_TYPE_ID, WITHDRAW_AMOUNT);
         assert_eq!(nwn.fuel.quantity(), DEPOSIT_AMOUNT - WITHDRAW_AMOUNT);
         ts::return_shared(nwn);
     };
@@ -761,7 +761,7 @@ fun withdraw_insufficient_fuel() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
-        fuel_withdraw(&mut nwn, WITHDRAW_AMOUNT); // Should abort
+        fuel_withdraw(&mut nwn, FUEL_TYPE_ID, WITHDRAW_AMOUNT); // Should abort
         ts::return_shared(nwn);
     };
 
@@ -913,7 +913,7 @@ fun withdraw_with_zero_quantity() {
     {
         let mut nwn = ts::take_shared<NetworkNode>(&ts);
         fuel_deposit(&mut nwn, FUEL_TYPE_ID, FUEL_VOLUME, DEPOSIT_AMOUNT, &clock);
-        fuel_withdraw(&mut nwn, 0); // Should abort
+        fuel_withdraw(&mut nwn, FUEL_TYPE_ID, 0); // Should abort
         ts::return_shared(nwn);
     };
 

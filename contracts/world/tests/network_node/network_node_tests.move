@@ -301,7 +301,7 @@ fun withdraw_fuel() {
             ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
             ts.ctx(),
         );
-        nwn.withdraw_fuel_test(&owner_cap, 5);
+        nwn.withdraw_fuel_test(&owner_cap, FUEL_TYPE_ID, 5);
         assert_eq!(nwn.fuel().quantity(), 5);
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(nwn);
