@@ -8,6 +8,21 @@ import { deriveObjectId } from "../utils/derive-object-id";
 import { NWN_ITEM_ID } from "../utils/constants";
 import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
 
+const ORPHANED_OFFLINE_BY_KIND: Record<string, { module: string; functionName: string }> = {
+    storage_unit: { module: MODULES.STORAGE_UNIT, functionName: "offline_orphaned_storage_unit" },
+    gate: { module: MODULES.GATE, functionName: "offline_orphaned_gate" },
+    turret: { module: MODULES.TURRET, functionName: "offline_orphaned_turret" },
+};
+
+function getOrphanedOfflineCall(kind: string): { module: string; functionName: string } {
+    return (
+        ORPHANED_OFFLINE_BY_KIND[kind] ?? {
+            module: MODULES.ASSEMBLY,
+            functionName: "offline_orphaned_assembly",
+        }
+    );
+}
+
 /**
  * Unanchors (destroys) the network node and handles connected assemblies.
  *
@@ -44,14 +59,7 @@ async function unanchor(
 
     let currentHotPotato = unanchorAssemblies;
     for (const { id: assemblyId, kind } of assemblyTypes) {
-        const { module, functionName } =
-            kind === "storage_unit"
-                ? { module: MODULES.STORAGE_UNIT, functionName: "offline_orphaned_storage_unit" }
-                : kind === "gate"
-                  ? { module: MODULES.GATE, functionName: "offline_orphaned_gate" }
-                  : kind === "turret"
-                    ? { module: MODULES.TURRET, functionName: "offline_orphaned_turret" }
-                    : { module: MODULES.ASSEMBLY, functionName: "offline_orphaned_assembly" };
+        const { module, functionName } = getOrphanedOfflineCall(kind);
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,

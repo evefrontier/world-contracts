@@ -14,6 +14,21 @@ import {
     requireEnv,
 } from "../utils/helper";
 
+const CONNECTED_OFFLINE_BY_KIND: Record<string, { module: string; functionName: string }> = {
+    storage_unit: { module: MODULES.STORAGE_UNIT, functionName: "offline_connected_storage_unit" },
+    gate: { module: MODULES.GATE, functionName: "offline_connected_gate" },
+    turret: { module: MODULES.TURRET, functionName: "offline_connected_turret" },
+};
+
+function getConnectedOfflineCall(kind: string): { module: string; functionName: string } {
+    return (
+        CONNECTED_OFFLINE_BY_KIND[kind] ?? {
+            module: MODULES.ASSEMBLY,
+            functionName: "offline_connected_assembly",
+        }
+    );
+}
+
 /**
  * Takes the network node offline and handles connected assemblies.
  *
@@ -72,14 +87,7 @@ async function offline(
     // The hot potato contains the assembly IDs connected to the network node
     let currentHotPotato = offlineAssemblies;
     for (const { id: assemblyId, kind } of assemblyTypes) {
-        const { module, functionName } =
-            kind === "storage_unit"
-                ? { module: MODULES.STORAGE_UNIT, functionName: "offline_connected_storage_unit" }
-                : kind === "gate"
-                  ? { module: MODULES.GATE, functionName: "offline_connected_gate" }
-                  : kind === "turret"
-                    ? { module: MODULES.TURRET, functionName: "offline_connected_turret" }
-                    : { module: MODULES.ASSEMBLY, functionName: "offline_connected_assembly" };
+        const { module, functionName } = getConnectedOfflineCall(kind);
 
         const [updatedHotPotato] = tx.moveCall({
             target: `${config.packageId}::${module}::${functionName}`,
