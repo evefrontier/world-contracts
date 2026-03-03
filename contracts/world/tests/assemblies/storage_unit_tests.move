@@ -2267,12 +2267,12 @@ fun test_deposit_to_owned_fail_parent_id_mismatch() {
 }
 
 // ==========================================
-// === Bearer Inventory / DepositReceipt Tests
+// === Warehouse Inventory / WarehouseReceipt Tests
 // ==========================================
 
-/// Test: deposit_for_receipt mints a DepositReceipt backed by the bearer inventory
-/// Scenario: Extension withdraws ammo from main inventory, deposits into bearer,
-///           receives a DepositReceipt with correct metadata
+/// Test: deposit_for_receipt mints a WarehouseReceipt backed by the warehouse inventory
+/// Scenario: Extension withdraws ammo from main inventory, deposits into warehouse,
+///           receives a WarehouseReceipt with correct metadata
 #[test]
 fun test_deposit_for_receipt() {
     let mut ts = ts::begin(governor());
@@ -2320,7 +2320,7 @@ fun test_deposit_for_receipt() {
             ts.ctx(),
         );
 
-        // Deposit into bearer inventory and get receipt
+        // Deposit into warehouse inventory and get receipt
         let deposit_receipt = storage_unit.deposit_for_receipt(
             &character,
             item,
@@ -2335,9 +2335,9 @@ fun test_deposit_for_receipt() {
         // Verify main inventory is empty
         assert!(!storage_unit.contains_item(owner_cap_id, AMMO_TYPE_ID));
 
-        // Verify bearer inventory has the items
-        let bearer_inv = storage_unit.bearer_inventory();
-        assert_eq!(bearer_inv.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
+        // Verify warehouse inventory has the items
+        let warehouse_inv = storage_unit.warehouse_inventory();
+        assert_eq!(warehouse_inv.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
 
         transfer::public_transfer(deposit_receipt, user_a());
         ts::return_shared(storage_unit);
@@ -2347,7 +2347,7 @@ fun test_deposit_for_receipt() {
 }
 
 /// Test: redeem_deposit_receipt returns the Item
-/// Scenario: Full round-trip — mint ammo, withdraw, deposit into bearer,
+/// Scenario: Full round-trip — mint ammo, withdraw, deposit into warehouse,
 ///           get receipt, redeem receipt, get Item back
 #[test]
 fun test_redeem_deposit_receipt() {
@@ -2381,7 +2381,7 @@ fun test_redeem_deposit_receipt() {
         ts::return_shared(character);
     };
 
-    // Withdraw from main, deposit into bearer, get receipt
+    // Withdraw from main, deposit into warehouse, get receipt
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -2404,12 +2404,12 @@ fun test_redeem_deposit_receipt() {
         ts::return_shared(character);
     };
 
-    // Redeem receipt — bearer should send Item back
+    // Redeem receipt — warehouse should send Item back
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+        let deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
 
         let item = storage_unit.redeem_deposit_receipt(
             &character,
@@ -2417,9 +2417,9 @@ fun test_redeem_deposit_receipt() {
             ts.ctx(),
         );
 
-        // Verify bearer inventory is now empty
-        let bearer_inv = storage_unit.bearer_inventory();
-        assert!(!bearer_inv.contains_item(AMMO_TYPE_ID));
+        // Verify warehouse inventory is now empty
+        let warehouse_inv = storage_unit.warehouse_inventory();
+        assert!(!warehouse_inv.contains_item(AMMO_TYPE_ID));
 
         // Verify the returned Item
         assert_eq!(inventory::type_id(&item), AMMO_TYPE_ID);
@@ -2503,7 +2503,7 @@ fun test_split_receipt_and_partial_redeem() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let mut deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+        let mut deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
 
         let partial_amount: u32 = 4;
         let partial_receipt = deposit_receipt.split(partial_amount, ts.ctx());
@@ -2518,10 +2518,10 @@ fun test_split_receipt_and_partial_redeem() {
         );
         assert_eq!(inventory::quantity(&item), partial_amount);
 
-        // Bearer inventory should still have the remaining items
-        let bearer_inv = storage_unit.bearer_inventory();
+        // Warehouse inventory should still have the remaining items
+        let warehouse_inv = storage_unit.warehouse_inventory();
         assert_eq!(
-            bearer_inv.item_quantity(AMMO_TYPE_ID),
+            warehouse_inv.item_quantity(AMMO_TYPE_ID),
             AMMO_QUANTITY - partial_amount,
         );
 
@@ -2540,9 +2540,9 @@ fun test_split_receipt_and_partial_redeem() {
     ts::end(ts);
 }
 
-/// Test: bearer inventory exists after anchor
+/// Test: warehouse inventory exists after anchor
 #[test]
-fun test_bearer_inventory_created_on_anchor() {
+fun test_warehouse_inventory_created_on_anchor() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::configure_assembly_energy(&mut ts);
@@ -2558,11 +2558,11 @@ fun test_bearer_inventory_created_on_anchor() {
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        assert!(storage_unit.has_bearer_inventory());
+        assert!(storage_unit.has_warehouse_inventory());
 
-        let bearer_inv = storage_unit.bearer_inventory();
-        assert_eq!(bearer_inv.used_capacity(), 0);
-        assert_eq!(bearer_inv.remaining_capacity(), MAX_CAPACITY);
+        let warehouse_inv = storage_unit.warehouse_inventory();
+        assert_eq!(warehouse_inv.used_capacity(), 0);
+        assert_eq!(warehouse_inv.remaining_capacity(), MAX_CAPACITY);
 
         ts::return_shared(storage_unit);
     };
@@ -2621,7 +2621,7 @@ fun test_receipt_transfer_and_redeem_by_different_user() {
             ts.ctx(),
         );
 
-        // Transfer receipt to user_b — bearer instrument!
+        // Transfer receipt to user_b — warehouse instrument!
         transfer::public_transfer(deposit_receipt, user_b());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
@@ -2632,7 +2632,7 @@ fun test_receipt_transfer_and_redeem_by_different_user() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+        let deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
 
         let item = storage_unit.redeem_deposit_receipt(
             &character_b,
@@ -2657,7 +2657,7 @@ fun test_receipt_transfer_and_redeem_by_different_user() {
     ts::end(ts);
 }
 
-/// Test: non-owner (user_b) can deposit into bearer inventory via extension
+/// Test: non-owner (user_b) can deposit into warehouse inventory via extension
 /// Scenario: user_a owns the storage unit and authorizes SwapAuth. user_a withdraws
 ///           an item and transfers it to user_b. user_b then calls deposit_for_receipt
 ///           using character_b — proving deposit_for_receipt is fully permissionless.
@@ -2731,9 +2731,9 @@ fun test_non_owner_deposit_for_receipt() {
         assert_eq!(deposit_receipt.type_id(), AMMO_TYPE_ID);
         assert_eq!(deposit_receipt.quantity(), AMMO_QUANTITY);
 
-        // Verify bearer inventory has the items
-        let bearer_inv = storage_unit.bearer_inventory();
-        assert_eq!(bearer_inv.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
+        // Verify warehouse inventory has the items
+        let warehouse_inv = storage_unit.warehouse_inventory();
+        assert_eq!(warehouse_inv.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
 
         transfer::public_transfer(deposit_receipt, user_b());
         ts::return_shared(storage_unit);
@@ -2743,8 +2743,8 @@ fun test_non_owner_deposit_for_receipt() {
 }
 
 /// Test: non-owner (user_b) can deposit and redeem in a full round-trip
-/// Scenario: user_b deposits into bearer inventory and then redeems the receipt,
-///           proving the full bearer flow works end-to-end for non-owners.
+/// Scenario: user_b deposits into warehouse inventory and then redeems the receipt,
+///           proving the full warehouse flow works end-to-end for non-owners.
 #[test]
 fun test_non_owner_deposit_and_redeem_round_trip() {
     let mut ts = ts::begin(governor());
@@ -2797,7 +2797,7 @@ fun test_non_owner_deposit_and_redeem_round_trip() {
         ts::return_shared(character);
     };
 
-    // user_b deposits into bearer and gets receipt
+    // user_b deposits into warehouse and gets receipt
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -2820,7 +2820,7 @@ fun test_non_owner_deposit_and_redeem_round_trip() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+        let deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
 
         let item = storage_unit.redeem_deposit_receipt(
             &character_b,
@@ -2831,9 +2831,9 @@ fun test_non_owner_deposit_and_redeem_round_trip() {
         assert_eq!(inventory::type_id(&item), AMMO_TYPE_ID);
         assert_eq!(inventory::quantity(&item), AMMO_QUANTITY);
 
-        // Bearer inventory should be empty now
-        let bearer_inv = storage_unit.bearer_inventory();
-        assert!(!bearer_inv.contains_item(AMMO_TYPE_ID));
+        // Warehouse inventory should be empty now
+        let warehouse_inv = storage_unit.warehouse_inventory();
+        assert!(!warehouse_inv.contains_item(AMMO_TYPE_ID));
 
         // Deposit back into main inventory
         storage_unit.deposit_item<SwapAuth>(
@@ -2983,7 +2983,7 @@ fun test_redeem_receipt_offline() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+        let deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
 
         let item = storage_unit.redeem_deposit_receipt(
             &character,
@@ -3104,15 +3104,15 @@ fun test_deposit_for_receipt_fail_parent_id_mismatch() {
     ts::end(ts);
 }
 
-/// Test: OwnerCap<StorageUnit> cannot withdraw from bearer inventory
-/// Scenario: Items are in the bearer inventory; owner tries withdraw_by_owner
+/// Test: OwnerCap<StorageUnit> cannot withdraw from warehouse inventory
+/// Scenario: Items are in the warehouse inventory; owner tries withdraw_by_owner
 ///           with the storage unit's OwnerCap — the DF lookup uses owner_cap_id
-///           (an ID key) which is a different key type from BearerInventoryKey,
-///           so the bearer inventory is structurally unreachable.
-/// Expected: Aborts because the main inventory doesn't contain the bearer items
+///           (an ID key) which is a different key type from WarehouseInventoryKey,
+///           so the warehouse inventory is structurally unreachable.
+/// Expected: Aborts because the main inventory doesn't contain the warehouse items
 #[test]
 #[expected_failure(abort_code = world::inventory::EItemDoesNotExist)]
-fun test_cannot_withdraw_bearer_items_via_storage_owner_cap() {
+fun test_cannot_withdraw_warehouse_items_via_storage_owner_cap() {
     let mut ts = ts::begin(governor());
     setup_nwn(&mut ts);
     let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
@@ -3142,7 +3142,7 @@ fun test_cannot_withdraw_bearer_items_via_storage_owner_cap() {
         ts::return_shared(character);
     };
 
-    // Move all ammo into bearer inventory via extension
+    // Move all ammo into warehouse inventory via extension
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -3198,14 +3198,14 @@ fun test_cannot_withdraw_bearer_items_via_storage_owner_cap() {
     ts::end(ts);
 }
 
-/// Test: OwnerCap<Character> cannot withdraw from bearer inventory
-/// Scenario: Items are in the bearer inventory; a different player tries
+/// Test: OwnerCap<Character> cannot withdraw from warehouse inventory
+/// Scenario: Items are in the warehouse inventory; a different player tries
 ///           withdraw_by_owner with their OwnerCap<Character> — the DF lookup
 ///           uses their owner_cap_id which has no inventory at all.
 /// Expected: Aborts because no owned inventory exists for that owner_cap_id
 #[test]
 #[expected_failure]
-fun test_cannot_withdraw_bearer_items_via_character_owner_cap() {
+fun test_cannot_withdraw_warehouse_items_via_character_owner_cap() {
     let mut ts = ts::begin(governor());
     setup_nwn(&mut ts);
     let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
@@ -3236,7 +3236,7 @@ fun test_cannot_withdraw_bearer_items_via_character_owner_cap() {
         ts::return_shared(character);
     };
 
-    // Move all ammo into bearer inventory via extension
+    // Move all ammo into warehouse inventory via extension
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);

@@ -297,7 +297,7 @@ fun split_and_transfer_receipt() {
     // Verify recipient received the split receipt
     ts::next_tx(&mut ts, RECIPIENT);
     {
-        let receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+        let receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
         assert_eq!(receipt.quantity(), 40);
         assert_eq!(receipt.storage_unit_id(), storage_unit_id());
         assert_eq!(receipt.type_id(), TYPE_ID);

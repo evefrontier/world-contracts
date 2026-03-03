@@ -1,6 +1,6 @@
-/// A bearer instrument representing a claim on items in a StorageUnit's bearer inventory.
+/// A warehouse instrument representing a claim on items in a StorageUnit's warehouse inventory.
 ///
-/// Modelled after Sui's `Coin` — a `DepositReceipt` is an owned, transferable
+/// Modelled after Sui's `Coin` — a `WarehouseReceipt` is an owned, transferable
 /// object that proves entitlement to a specific quantity of a given `type_id`
 /// stored inside a particular StorageUnit.
 ///
@@ -39,9 +39,9 @@ const ENotEnough: vector<u8> = b"Cannot divide into more parts than receipt quan
 
 // === Structs ===
 
-/// Bearer instrument — anyone who holds this object can redeem the underlying
-/// items from the referenced StorageUnit's bearer inventory.
-public struct DepositReceipt has key, store {
+/// Warehouse instrument — anyone who holds this object can redeem the underlying
+/// items from the referenced StorageUnit's warehouse inventory.
+public struct WarehouseReceipt has key, store {
     id: UID,
     storage_unit_id: ID,
     type_id: u64,
@@ -52,10 +52,10 @@ public struct DepositReceipt has key, store {
 
 /// Split `amount` from this receipt into a new receipt.
 /// Analogous to `coin::split` — the original retains the remainder.
-public fun split(receipt: &mut DepositReceipt, amount: u32, ctx: &mut TxContext): DepositReceipt {
+public fun split(receipt: &mut WarehouseReceipt, amount: u32, ctx: &mut TxContext): WarehouseReceipt {
     assert!(amount > 0 && amount < receipt.quantity, ESplitQuantityInvalid);
     receipt.quantity = receipt.quantity - amount;
-    DepositReceipt {
+    WarehouseReceipt {
         id: object::new(ctx),
         storage_unit_id: receipt.storage_unit_id,
         type_id: receipt.type_id,
@@ -66,10 +66,10 @@ public fun split(receipt: &mut DepositReceipt, amount: u32, ctx: &mut TxContext)
 /// Split `self` into `n - 1` receipts with equal quantities. The remainder is
 /// left in `self`. Analogous to `coin::divide_into_n`.
 public fun divide_into_n(
-    self: &mut DepositReceipt,
+    self: &mut WarehouseReceipt,
     n: u32,
     ctx: &mut TxContext,
-): vector<DepositReceipt> {
+): vector<WarehouseReceipt> {
     assert!(n > 0, EInvalidArg);
     assert!(n <= self.quantity, ENotEnough);
 
@@ -86,8 +86,8 @@ public fun divide_into_n(
 /// Merge another receipt into this one. Both must reference the same
 /// storage unit and item type. Analogous to `coin::join`.
 #[allow(lint(public_entry))]
-public entry fun join(receipt: &mut DepositReceipt, other: DepositReceipt) {
-    let DepositReceipt { id, storage_unit_id, type_id, quantity } = other;
+public entry fun join(receipt: &mut WarehouseReceipt, other: WarehouseReceipt) {
+    let WarehouseReceipt { id, storage_unit_id, type_id, quantity } = other;
     assert!(storage_unit_id == receipt.storage_unit_id, EStorageUnitMismatch);
     assert!(type_id == receipt.type_id, ETypeIdMismatch);
     receipt.quantity = receipt.quantity + quantity;
@@ -98,7 +98,7 @@ public entry fun join(receipt: &mut DepositReceipt, other: DepositReceipt) {
 /// Convenience entry point — no PTB required for the common "send some to a friend" flow.
 #[allow(lint(public_entry))]
 public entry fun split_and_transfer(
-    self: &mut DepositReceipt,
+    self: &mut WarehouseReceipt,
     amount: u32,
     recipient: address,
     ctx: &mut TxContext,
@@ -109,7 +109,7 @@ public entry fun split_and_transfer(
 /// Merge a vector of receipts into `self`. All must reference the same
 /// storage unit and item type. Analogous to `sui::pay::join_vec`.
 #[allow(lint(public_entry))]
-public entry fun join_vec(self: &mut DepositReceipt, mut others: vector<DepositReceipt>) {
+public entry fun join_vec(self: &mut WarehouseReceipt, mut others: vector<WarehouseReceipt>) {
     while (!others.is_empty()) {
         self.join(others.pop_back());
     };
@@ -118,15 +118,15 @@ public entry fun join_vec(self: &mut DepositReceipt, mut others: vector<DepositR
 
 /// Destroy a zero-quantity receipt. Useful after repeated splits.
 #[allow(lint(public_entry))]
-public entry fun destroy_zero(receipt: DepositReceipt) {
-    let DepositReceipt { id, quantity, .. } = receipt;
+public entry fun destroy_zero(receipt: WarehouseReceipt) {
+    let WarehouseReceipt { id, quantity, .. } = receipt;
     assert!(quantity == 0, ENonZeroQuantity);
     id.delete();
 }
 
 /// Make a zero-quantity receipt. Useful as a join accumulation target.
-public fun zero(storage_unit_id: ID, type_id: u64, ctx: &mut TxContext): DepositReceipt {
-    DepositReceipt {
+public fun zero(storage_unit_id: ID, type_id: u64, ctx: &mut TxContext): WarehouseReceipt {
+    WarehouseReceipt {
         id: object::new(ctx),
         storage_unit_id,
         type_id,
@@ -137,31 +137,31 @@ public fun zero(storage_unit_id: ID, type_id: u64, ctx: &mut TxContext): Deposit
 // === View Functions ===
 
 /// The StorageUnit this receipt is a claim against.
-public fun storage_unit_id(receipt: &DepositReceipt): ID {
+public fun storage_unit_id(receipt: &WarehouseReceipt): ID {
     receipt.storage_unit_id
 }
 
 /// The item type this receipt represents.
-public fun type_id(receipt: &DepositReceipt): u64 {
+public fun type_id(receipt: &WarehouseReceipt): u64 {
     receipt.type_id
 }
 
-/// How many units of the item this receipt entitles the bearer to.
-public fun quantity(receipt: &DepositReceipt): u32 {
+/// How many units of the item this receipt entitles the warehouse to.
+public fun quantity(receipt: &WarehouseReceipt): u32 {
     receipt.quantity
 }
 
 // === Package Functions ===
 
-/// Mint a new deposit receipt. Only callable from within the `world` package.
+/// Mint a new Warehouse Receipt. Only callable from within the `world` package.
 public(package) fun mint(
     storage_unit_id: ID,
     type_id: u64,
     quantity: u32,
     ctx: &mut TxContext,
-): DepositReceipt {
+): WarehouseReceipt {
     assert!(quantity > 0, EZeroQuantity);
-    DepositReceipt {
+    WarehouseReceipt {
         id: object::new(ctx),
         storage_unit_id,
         type_id,
@@ -169,10 +169,10 @@ public(package) fun mint(
     }
 }
 
-/// Burn a deposit receipt, returning `(storage_unit_id, type_id, quantity)`.
+/// Burn a Warehouse Receipt, returning `(storage_unit_id, type_id, quantity)`.
 /// Only callable from within the `world` package.
-public(package) fun burn(receipt: DepositReceipt): (ID, u64, u32) {
-    let DepositReceipt { id, storage_unit_id, type_id, quantity } = receipt;
+public(package) fun burn(receipt: WarehouseReceipt): (ID, u64, u32) {
+    let WarehouseReceipt { id, storage_unit_id, type_id, quantity } = receipt;
     id.delete();
     (storage_unit_id, type_id, quantity)
 }
@@ -185,11 +185,11 @@ public fun mint_for_testing(
     type_id: u64,
     quantity: u32,
     ctx: &mut TxContext,
-): DepositReceipt {
+): WarehouseReceipt {
     mint(storage_unit_id, type_id, quantity, ctx)
 }
 
 #[test_only]
-public fun burn_for_testing(receipt: DepositReceipt): (ID, u64, u32) {
+public fun burn_for_testing(receipt: WarehouseReceipt): (ID, u64, u32) {
     burn(receipt)
 }
