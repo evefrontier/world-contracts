@@ -52,7 +52,7 @@ public fun get_target_priority_list(
     let _ = turret::unpack_candidate_list(target_candidate_list);
     // Return empty priority list for this example; extension can build return_list from candidates.
     // TODO: The return list is mutable expecting the extension to mutate it.
-    let return_list = vector::empty<turret::ReturnTargetPriorityList>();
+    let mut return_list = vector::empty<turret::ReturnTargetPriorityList>();
     let result = bcs::to_bytes(&return_list);
 
     turret::destroy_online_receipt(receipt, TurretAuth {});
