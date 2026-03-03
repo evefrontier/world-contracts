@@ -1,10 +1,10 @@
 #[test_only]
-module world::deposit_receipt_tests;
+module world::warehouse_receipt_tests;
 
 use std::unit_test::assert_eq;
 use sui::test_scenario as ts;
 use world::{
-    deposit_receipt,
+    warehouse_receipt,
     test_helpers::{Self, governor}
 };
 
@@ -34,7 +34,7 @@ fun mint_and_burn() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let receipt = deposit_receipt::mint_for_testing(
+        let receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -44,7 +44,7 @@ fun mint_and_burn() {
         assert_eq!(receipt.type_id(), TYPE_ID);
         assert_eq!(receipt.quantity(), QUANTITY);
 
-        let (su_id, type_id, quantity) = deposit_receipt::burn_for_testing(receipt);
+        let (su_id, type_id, quantity) = warehouse_receipt::burn_for_testing(receipt);
         assert_eq!(su_id, storage_unit_id());
         assert_eq!(type_id, TYPE_ID);
         assert_eq!(quantity, QUANTITY);
@@ -59,7 +59,7 @@ fun split_receipt() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -72,8 +72,8 @@ fun split_receipt() {
         assert_eq!(split.storage_unit_id(), storage_unit_id());
         assert_eq!(split.type_id(), TYPE_ID);
 
-        deposit_receipt::burn_for_testing(receipt);
-        deposit_receipt::burn_for_testing(split);
+        warehouse_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(split);
     };
     ts::end(ts);
 }
@@ -85,13 +85,13 @@ fun join_receipts() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt_a = deposit_receipt::mint_for_testing(
+        let mut receipt_a = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             60,
             ts.ctx(),
         );
-        let receipt_b = deposit_receipt::mint_for_testing(
+        let receipt_b = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             40,
@@ -103,7 +103,7 @@ fun join_receipts() {
         assert_eq!(receipt_a.storage_unit_id(), storage_unit_id());
         assert_eq!(receipt_a.type_id(), TYPE_ID);
 
-        deposit_receipt::burn_for_testing(receipt_a);
+        warehouse_receipt::burn_for_testing(receipt_a);
     };
     ts::end(ts);
 }
@@ -115,7 +115,7 @@ fun split_then_join() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -128,7 +128,7 @@ fun split_then_join() {
         receipt.join(split);
         assert_eq!(receipt.quantity(), QUANTITY);
 
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
@@ -140,7 +140,7 @@ fun zero_receipt() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let receipt = deposit_receipt::zero(storage_unit_id(), TYPE_ID, ts.ctx());
+        let receipt = warehouse_receipt::zero(storage_unit_id(), TYPE_ID, ts.ctx());
         assert_eq!(receipt.quantity(), 0);
         assert_eq!(receipt.storage_unit_id(), storage_unit_id());
         assert_eq!(receipt.type_id(), TYPE_ID);
@@ -156,13 +156,13 @@ fun zero_as_join_accumulator() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut acc = deposit_receipt::zero(storage_unit_id(), TYPE_ID, ts.ctx());
-        let a = deposit_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 30, ts.ctx());
-        let b = deposit_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 70, ts.ctx());
+        let mut acc = warehouse_receipt::zero(storage_unit_id(), TYPE_ID, ts.ctx());
+        let a = warehouse_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 30, ts.ctx());
+        let b = warehouse_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 70, ts.ctx());
         acc.join(a);
         acc.join(b);
         assert_eq!(acc.quantity(), 100);
-        deposit_receipt::burn_for_testing(acc);
+        warehouse_receipt::burn_for_testing(acc);
     };
     ts::end(ts);
 }
@@ -174,14 +174,14 @@ fun value_equals_quantity() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let receipt = deposit_receipt::mint_for_testing(
+        let receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
             ts.ctx(),
         );
         assert_eq!(receipt.quantity(), QUANTITY);
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
@@ -193,7 +193,7 @@ fun divide_into_n_even() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -213,9 +213,9 @@ fun divide_into_n_even() {
         };
 
         // Cleanup
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
         while (!parts.is_empty()) {
-            deposit_receipt::burn_for_testing(parts.pop_back());
+            warehouse_receipt::burn_for_testing(parts.pop_back());
         };
         parts.destroy_empty();
     };
@@ -229,7 +229,7 @@ fun divide_into_n_with_remainder() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -243,9 +243,9 @@ fun divide_into_n_with_remainder() {
         assert_eq!(parts[1].quantity(), 33);
 
         // Cleanup
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
         while (!parts.is_empty()) {
-            deposit_receipt::burn_for_testing(parts.pop_back());
+            warehouse_receipt::burn_for_testing(parts.pop_back());
         };
         parts.destroy_empty();
     };
@@ -259,7 +259,7 @@ fun divide_into_one() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -270,7 +270,7 @@ fun divide_into_one() {
         assert_eq!(parts.length(), 0);
         assert_eq!(receipt.quantity(), QUANTITY);
 
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
         parts.destroy_empty();
     };
     ts::end(ts);
@@ -283,7 +283,7 @@ fun split_and_transfer_receipt() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -291,17 +291,17 @@ fun split_and_transfer_receipt() {
         );
         receipt.split_and_transfer(40, RECIPIENT, ts.ctx());
         assert_eq!(receipt.quantity(), 60);
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
     };
 
     // Verify recipient received the split receipt
     ts::next_tx(&mut ts, RECIPIENT);
     {
-        let receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
+        let receipt = ts::take_from_sender<warehouse_receipt::WarehouseReceipt>(&ts);
         assert_eq!(receipt.quantity(), 40);
         assert_eq!(receipt.storage_unit_id(), storage_unit_id());
         assert_eq!(receipt.type_id(), TYPE_ID);
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
@@ -313,21 +313,21 @@ fun join_vec_multiple_receipts() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut base = deposit_receipt::mint_for_testing(
+        let mut base = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             10,
             ts.ctx(),
         );
         let others = vector[
-            deposit_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 20, ts.ctx()),
-            deposit_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 30, ts.ctx()),
-            deposit_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 40, ts.ctx()),
+            warehouse_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 20, ts.ctx()),
+            warehouse_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 30, ts.ctx()),
+            warehouse_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 40, ts.ctx()),
         ];
         base.join_vec(others);
         assert_eq!(base.quantity(), 100);
         assert_eq!(base.storage_unit_id(), storage_unit_id());
-        deposit_receipt::burn_for_testing(base);
+        warehouse_receipt::burn_for_testing(base);
     };
     ts::end(ts);
 }
@@ -339,7 +339,7 @@ fun join_vec_empty() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -347,7 +347,7 @@ fun join_vec_empty() {
         );
         receipt.join_vec(vector[]);
         assert_eq!(receipt.quantity(), QUANTITY);
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
@@ -359,8 +359,8 @@ fun destroy_zero_entry() {
 
     ts::next_tx(&mut ts, governor());
     {
-        let receipt = deposit_receipt::zero(storage_unit_id(), TYPE_ID, ts.ctx());
-        deposit_receipt::destroy_zero(receipt);
+        let receipt = warehouse_receipt::zero(storage_unit_id(), TYPE_ID, ts.ctx());
+        warehouse_receipt::destroy_zero(receipt);
     };
     ts::end(ts);
 }
@@ -368,34 +368,34 @@ fun destroy_zero_entry() {
 // === Failure Tests ===
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::EZeroQuantity)]
+#[expected_failure(abort_code = warehouse_receipt::EZeroQuantity)]
 fun mint_zero_quantity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let receipt = deposit_receipt::mint_for_testing(
+        let receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             0,
             ts.ctx(),
         );
         // Abort happens above; cleanup below satisfies the compiler
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::ESplitQuantityInvalid)]
+#[expected_failure(abort_code = warehouse_receipt::ESplitQuantityInvalid)]
 fun split_zero_amount() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -403,21 +403,21 @@ fun split_zero_amount() {
         );
         let split = receipt.split(0, ts.ctx());
         // Abort happens above; cleanup below satisfies the compiler
-        deposit_receipt::burn_for_testing(split);
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(split);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::ESplitQuantityInvalid)]
+#[expected_failure(abort_code = warehouse_receipt::ESplitQuantityInvalid)]
 fun split_entire_amount() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -425,27 +425,27 @@ fun split_entire_amount() {
         );
         let split = receipt.split(QUANTITY, ts.ctx());
         // Abort happens above; cleanup below satisfies the compiler
-        deposit_receipt::burn_for_testing(split);
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(split);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::EStorageUnitMismatch)]
+#[expected_failure(abort_code = warehouse_receipt::EStorageUnitMismatch)]
 fun join_different_storage_units() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt_a = deposit_receipt::mint_for_testing(
+        let mut receipt_a = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             50,
             ts.ctx(),
         );
-        let receipt_b = deposit_receipt::mint_for_testing(
+        let receipt_b = warehouse_receipt::mint_for_testing(
             storage_unit_id_2(),
             TYPE_ID,
             50,
@@ -453,26 +453,26 @@ fun join_different_storage_units() {
         );
         receipt_a.join(receipt_b);
         // Abort happens above; cleanup below satisfies the compiler
-        deposit_receipt::burn_for_testing(receipt_a);
+        warehouse_receipt::burn_for_testing(receipt_a);
     };
     ts::end(ts);
 }
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::ETypeIdMismatch)]
+#[expected_failure(abort_code = warehouse_receipt::ETypeIdMismatch)]
 fun join_different_type_ids() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt_a = deposit_receipt::mint_for_testing(
+        let mut receipt_a = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             50,
             ts.ctx(),
         );
-        let receipt_b = deposit_receipt::mint_for_testing(
+        let receipt_b = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID_2,
             50,
@@ -480,20 +480,20 @@ fun join_different_type_ids() {
         );
         receipt_a.join(receipt_b);
         // Abort happens above; cleanup below satisfies the compiler
-        deposit_receipt::burn_for_testing(receipt_a);
+        warehouse_receipt::burn_for_testing(receipt_a);
     };
     ts::end(ts);
 }
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::EInvalidArg)]
+#[expected_failure(abort_code = warehouse_receipt::EInvalidArg)]
 fun divide_into_zero_parts() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -502,23 +502,23 @@ fun divide_into_zero_parts() {
         let mut parts = receipt.divide_into_n(0, ts.ctx());
         // Abort happens above; cleanup below satisfies the compiler
         while (!parts.is_empty()) {
-            deposit_receipt::burn_for_testing(parts.pop_back());
+            warehouse_receipt::burn_for_testing(parts.pop_back());
         };
         parts.destroy_empty();
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::ENotEnough)]
+#[expected_failure(abort_code = warehouse_receipt::ENotEnough)]
 fun divide_into_more_than_quantity() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut receipt = deposit_receipt::mint_for_testing(
+        let mut receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             3,
@@ -528,23 +528,23 @@ fun divide_into_more_than_quantity() {
         let mut parts = receipt.divide_into_n(4, ts.ctx());
         // Abort happens above; cleanup below satisfies the compiler
         while (!parts.is_empty()) {
-            deposit_receipt::burn_for_testing(parts.pop_back());
+            warehouse_receipt::burn_for_testing(parts.pop_back());
         };
         parts.destroy_empty();
-        deposit_receipt::burn_for_testing(receipt);
+        warehouse_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);
 }
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::ENonZeroQuantity)]
+#[expected_failure(abort_code = warehouse_receipt::ENonZeroQuantity)]
 fun destroy_non_zero_receipt() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let receipt = deposit_receipt::mint_for_testing(
+        let receipt = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             QUANTITY,
@@ -557,26 +557,26 @@ fun destroy_non_zero_receipt() {
 }
 
 #[test]
-#[expected_failure(abort_code = deposit_receipt::EStorageUnitMismatch)]
+#[expected_failure(abort_code = warehouse_receipt::EStorageUnitMismatch)]
 fun join_vec_different_storage_units() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
     ts::next_tx(&mut ts, governor());
     {
-        let mut base = deposit_receipt::mint_for_testing(
+        let mut base = warehouse_receipt::mint_for_testing(
             storage_unit_id(),
             TYPE_ID,
             50,
             ts.ctx(),
         );
         let others = vector[
-            deposit_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 20, ts.ctx()),
-            deposit_receipt::mint_for_testing(storage_unit_id_2(), TYPE_ID, 30, ts.ctx()),
+            warehouse_receipt::mint_for_testing(storage_unit_id(), TYPE_ID, 20, ts.ctx()),
+            warehouse_receipt::mint_for_testing(storage_unit_id_2(), TYPE_ID, 30, ts.ctx()),
         ];
         base.join_vec(others);
         // Abort happens above; cleanup below satisfies the compiler
-        deposit_receipt::burn_for_testing(base);
+        warehouse_receipt::burn_for_testing(base);
     };
     ts::end(ts);
 }

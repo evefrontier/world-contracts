@@ -4,7 +4,7 @@
 /// object that proves entitlement to a specific quantity of a given `type_id`
 /// stored inside a particular StorageUnit.
 ///
-/// Supports the same composition primitives as `Coin`:
+/// Supports most of the same composition primitives as `Coin`:
 ///
 /// - **`split`** — carve off a sub-quantity into a new receipt.
 /// - **`divide_into_n`** — split evenly into N receipts.
@@ -18,7 +18,7 @@
 ///
 /// Minting and burning are `public(package)` — only the assembly layer
 /// (e.g. `storage_unit.move`) can create or consume receipts.
-module world::deposit_receipt;
+module world::warehouse_receipt;
 
 // === Errors ===
 #[error(code = 0)]

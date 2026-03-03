@@ -26,7 +26,7 @@
 ///
 /// 4. **Warehouse inventory** (fully immutable, receipt-gated):
 ///    - `deposit_for_receipt`: deposits an Item and mints a transferable WarehouseReceipt (no extension required)
-///    - `redeem_deposit_receipt`: anyone holding a receipt can redeem it for the underlying Item.
+///    - `warehouse_receiptosit_receipt`: anyone holding a receipt can redeem it for the underlying Item.
 ///    - WarehouseReceipts are Coin-like warehouse instruments: split, join, transfer. They are runtime enforced,
 ///      not type-enforced like Coins.
 ///    - This means the WarehouseReceipt is a transferrable owned object that can used for trade (escrow), payments, etc
@@ -42,7 +42,7 @@ use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
     character::Character,
-    deposit_receipt::{Self, WarehouseReceipt},
+    warehouse_receipt::{Self, WarehouseReceipt},
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     inventory::{Self, Inventory, Item},
@@ -409,7 +409,7 @@ public fun deposit_for_receipt(
         item,
     );
 
-    let receipt = deposit_receipt::mint(storage_unit_id, item_type_id, item_quantity, ctx);
+    let receipt = warehouse_receipt::mint(storage_unit_id, item_type_id, item_quantity, ctx);
 
     event::emit(WarehouseReceiptMintedEvent {
         storage_unit_id,
@@ -428,14 +428,14 @@ public fun deposit_for_receipt(
 /// extension authorization required. The receipt is burned and the
 /// corresponding `Item` is returned in the form of a hot potato that can be
 /// moved to other inventories in the same storage unit.
-public fun redeem_deposit_receipt(
+public fun redeem_warehouse_receipt(
     storage_unit: &mut StorageUnit,
     character: &Character,
     receipt: WarehouseReceipt,
     ctx: &mut TxContext,
 ): Item {
     let storage_unit_id = object::id(storage_unit);
-    let (receipt_storage_unit_id, type_id, quantity) = deposit_receipt::burn(receipt);
+    let (receipt_storage_unit_id, type_id, quantity) = warehouse_receipt::burn(receipt);
     assert!(receipt_storage_unit_id == storage_unit_id, EReceiptStorageUnitMismatch);
     assert!(storage_unit.status.is_online(), ENotOnline);
 

@@ -5,7 +5,7 @@ use sui::{clock, derived_object, test_scenario as ts};
 use world::{
     access::{OwnerCap, AdminACL, ServerAddressRegistry},
     character::{Self, Character},
-    deposit_receipt,
+    warehouse_receipt,
     energy::EnergyConfig,
     fuel::FuelConfig,
     in_game_id,
@@ -2321,16 +2321,16 @@ fun test_deposit_for_receipt() {
         );
 
         // Deposit into warehouse inventory and get receipt
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character,
             item,
             ts.ctx(),
         );
 
         // Verify receipt metadata
-        assert_eq!(deposit_receipt.storage_unit_id(), storage_id);
-        assert_eq!(deposit_receipt.type_id(), AMMO_TYPE_ID);
-        assert_eq!(deposit_receipt.quantity(), AMMO_QUANTITY);
+        assert_eq!(warehouse_receipt.storage_unit_id(), storage_id);
+        assert_eq!(warehouse_receipt.type_id(), AMMO_TYPE_ID);
+        assert_eq!(warehouse_receipt.quantity(), AMMO_QUANTITY);
 
         // Verify main inventory is empty
         assert!(!storage_unit.contains_item(owner_cap_id, AMMO_TYPE_ID));
@@ -2339,18 +2339,18 @@ fun test_deposit_for_receipt() {
         let warehouse_inv = storage_unit.warehouse_inventory();
         assert_eq!(warehouse_inv.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
 
-        transfer::public_transfer(deposit_receipt, user_a());
+        transfer::public_transfer(warehouse_receipt, user_a());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
     ts::end(ts);
 }
 
-/// Test: redeem_deposit_receipt returns the Item
+/// Test: redeem_warehouse_receipt returns the Item
 /// Scenario: Full round-trip — mint ammo, withdraw, deposit into warehouse,
 ///           get receipt, redeem receipt, get Item back
 #[test]
-fun test_redeem_deposit_receipt() {
+fun test_redeem_warehouse_receipt() {
     let mut ts = ts::begin(governor());
     setup_nwn(&mut ts);
     let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
@@ -2394,12 +2394,12 @@ fun test_redeem_deposit_receipt() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character,
             item,
             ts.ctx(),
         );
-        transfer::public_transfer(deposit_receipt, user_a());
+        transfer::public_transfer(warehouse_receipt, user_a());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
@@ -2409,11 +2409,11 @@ fun test_redeem_deposit_receipt() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
+        let warehouse_receipt = ts::take_from_sender<warehouse_receipt::WarehouseReceipt>(&ts);
 
-        let item = storage_unit.redeem_deposit_receipt(
+        let item = storage_unit.redeem_warehouse_receipt(
             &character,
-            deposit_receipt,
+            warehouse_receipt,
             ts.ctx(),
         );
 
@@ -2488,12 +2488,12 @@ fun test_split_receipt_and_partial_redeem() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character,
             item,
             ts.ctx(),
         );
-        transfer::public_transfer(deposit_receipt, user_a());
+        transfer::public_transfer(warehouse_receipt, user_a());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
@@ -2503,15 +2503,15 @@ fun test_split_receipt_and_partial_redeem() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let mut deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
+        let mut warehouse_receipt = ts::take_from_sender<warehouse_receipt::WarehouseReceipt>(&ts);
 
         let partial_amount: u32 = 4;
-        let partial_receipt = deposit_receipt.split(partial_amount, ts.ctx());
-        assert_eq!(deposit_receipt.quantity(), AMMO_QUANTITY - partial_amount);
+        let partial_receipt = warehouse_receipt.split(partial_amount, ts.ctx());
+        assert_eq!(warehouse_receipt.quantity(), AMMO_QUANTITY - partial_amount);
         assert_eq!(partial_receipt.quantity(), partial_amount);
 
         // Redeem partial receipt
-        let item = storage_unit.redeem_deposit_receipt(
+        let item = storage_unit.redeem_warehouse_receipt(
             &character,
             partial_receipt,
             ts.ctx(),
@@ -2533,7 +2533,7 @@ fun test_split_receipt_and_partial_redeem() {
             ts.ctx(),
         );
 
-        transfer::public_transfer(deposit_receipt, user_a());
+        transfer::public_transfer(warehouse_receipt, user_a());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
@@ -2615,14 +2615,14 @@ fun test_receipt_transfer_and_redeem_by_different_user() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character,
             item,
             ts.ctx(),
         );
 
         // Transfer receipt to user_b — warehouse instrument!
-        transfer::public_transfer(deposit_receipt, user_b());
+        transfer::public_transfer(warehouse_receipt, user_b());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
@@ -2632,11 +2632,11 @@ fun test_receipt_transfer_and_redeem_by_different_user() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
+        let warehouse_receipt = ts::take_from_sender<warehouse_receipt::WarehouseReceipt>(&ts);
 
-        let item = storage_unit.redeem_deposit_receipt(
+        let item = storage_unit.redeem_warehouse_receipt(
             &character_b,
-            deposit_receipt,
+            warehouse_receipt,
             ts.ctx(),
         );
 
@@ -2720,22 +2720,22 @@ fun test_non_owner_deposit_for_receipt() {
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
         let item = ts::take_from_sender<inventory::Item>(&ts);
 
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character_b,
             item,
             ts.ctx(),
         );
 
         // Verify receipt
-        assert_eq!(deposit_receipt.storage_unit_id(), storage_id);
-        assert_eq!(deposit_receipt.type_id(), AMMO_TYPE_ID);
-        assert_eq!(deposit_receipt.quantity(), AMMO_QUANTITY);
+        assert_eq!(warehouse_receipt.storage_unit_id(), storage_id);
+        assert_eq!(warehouse_receipt.type_id(), AMMO_TYPE_ID);
+        assert_eq!(warehouse_receipt.quantity(), AMMO_QUANTITY);
 
         // Verify warehouse inventory has the items
         let warehouse_inv = storage_unit.warehouse_inventory();
         assert_eq!(warehouse_inv.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
 
-        transfer::public_transfer(deposit_receipt, user_b());
+        transfer::public_transfer(warehouse_receipt, user_b());
         ts::return_shared(storage_unit);
         ts::return_shared(character_b);
     };
@@ -2804,13 +2804,13 @@ fun test_non_owner_deposit_and_redeem_round_trip() {
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
         let item = ts::take_from_sender<inventory::Item>(&ts);
 
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character_b,
             item,
             ts.ctx(),
         );
 
-        transfer::public_transfer(deposit_receipt, user_b());
+        transfer::public_transfer(warehouse_receipt, user_b());
         ts::return_shared(storage_unit);
         ts::return_shared(character_b);
     };
@@ -2820,11 +2820,11 @@ fun test_non_owner_deposit_and_redeem_round_trip() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
+        let warehouse_receipt = ts::take_from_sender<warehouse_receipt::WarehouseReceipt>(&ts);
 
-        let item = storage_unit.redeem_deposit_receipt(
+        let item = storage_unit.redeem_warehouse_receipt(
             &character_b,
-            deposit_receipt,
+            warehouse_receipt,
             ts.ctx(),
         );
 
@@ -2878,7 +2878,7 @@ fun test_redeem_receipt_wrong_storage_unit() {
         let fake_storage_id = object::id_from_bytes(
             x"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         );
-        let fake_receipt = deposit_receipt::mint_for_testing(
+        let fake_receipt = warehouse_receipt::mint_for_testing(
             fake_storage_id,
             AMMO_TYPE_ID,
             AMMO_QUANTITY,
@@ -2886,7 +2886,7 @@ fun test_redeem_receipt_wrong_storage_unit() {
         );
 
         // This should fail — receipt references a different storage unit
-        let item = storage_unit.redeem_deposit_receipt(
+        let item = storage_unit.redeem_warehouse_receipt(
             &character,
             fake_receipt,
             ts.ctx(),
@@ -2904,7 +2904,7 @@ fun test_redeem_receipt_wrong_storage_unit() {
     ts::end(ts);
 }
 
-/// Test: redeem_deposit_receipt fails when storage unit is offline
+/// Test: redeem_warehouse_receipt fails when storage unit is offline
 #[test]
 #[expected_failure(abort_code = storage_unit::ENotOnline)]
 fun test_redeem_receipt_offline() {
@@ -2949,12 +2949,12 @@ fun test_redeem_receipt_offline() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character,
             item,
             ts.ctx(),
         );
-        transfer::public_transfer(deposit_receipt, user_a());
+        transfer::public_transfer(warehouse_receipt, user_a());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
@@ -2983,11 +2983,11 @@ fun test_redeem_receipt_offline() {
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let deposit_receipt = ts::take_from_sender<deposit_receipt::WarehouseReceipt>(&ts);
+        let warehouse_receipt = ts::take_from_sender<warehouse_receipt::WarehouseReceipt>(&ts);
 
-        let item = storage_unit.redeem_deposit_receipt(
+        let item = storage_unit.redeem_warehouse_receipt(
             &character,
-            deposit_receipt,
+            warehouse_receipt,
             ts.ctx(),
         );
         // Abort happens above; cleanup below satisfies the compiler
@@ -3090,14 +3090,14 @@ fun test_deposit_for_receipt_fail_parent_id_mismatch() {
         let mut storage_b = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
 
-        let deposit_receipt = storage_b.deposit_for_receipt(
+        let warehouse_receipt = storage_b.deposit_for_receipt(
             &character,
             item,
             ts.ctx(),
         );
 
         // Abort happens above; cleanup below satisfies the compiler
-        transfer::public_transfer(deposit_receipt, user_a());
+        transfer::public_transfer(warehouse_receipt, user_a());
         ts::return_shared(storage_b);
         ts::return_shared(character);
     };
@@ -3155,12 +3155,12 @@ fun test_cannot_withdraw_warehouse_items_via_storage_owner_cap() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character,
             item,
             ts.ctx(),
         );
-        transfer::public_transfer(deposit_receipt, user_a());
+        transfer::public_transfer(warehouse_receipt, user_a());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
@@ -3249,12 +3249,12 @@ fun test_cannot_withdraw_warehouse_items_via_character_owner_cap() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_for_receipt(
+        let warehouse_receipt = storage_unit.deposit_for_receipt(
             &character,
             item,
             ts.ctx(),
         );
-        transfer::public_transfer(deposit_receipt, user_b());
+        transfer::public_transfer(warehouse_receipt, user_b());
         ts::return_shared(storage_unit);
         ts::return_shared(character);
     };
