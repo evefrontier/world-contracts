@@ -65,7 +65,9 @@ async function setupAccess() {
 
     for (let i = 0; i < sponsorAddresses.length; i++) {
         const sponsorAddress = sponsorAddresses[i];
-        console.log(`2. add_sponsor_to_acl (${i + 1}/${sponsorAddresses.length}) ${sponsorAddress}...`);
+        console.log(
+            `2. add_sponsor_to_acl (${i + 1}/${sponsorAddresses.length}) ${sponsorAddress}...`
+        );
         const tx2 = new Transaction();
         tx2.moveCall({
             target: `${target}::add_sponsor_to_acl`,

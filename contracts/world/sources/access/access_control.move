@@ -32,6 +32,7 @@ public struct ReturnOwnerCapReceipt {
     owner_cap_id: ID,
 }
 
+// TODO: Add authorized_admins: Table<address, bool> to seperate admins and sponsors
 public struct AdminACL has key {
     id: UID,
     authorized_sponsors: Table<address, bool>,
