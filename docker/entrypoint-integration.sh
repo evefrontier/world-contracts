@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CI entrypoint: start local Sui node, create keys, fund, generate .env, then exec CMD.
-set -e
+set -euo pipefail
 
 SUI_CFG="${SUI_CONFIG_DIR:-/root/.sui}"
 KEYSTORE="$SUI_CFG/sui.keystore"
@@ -45,11 +45,16 @@ NODE_PID=$!
 trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
 
 echo "[ci] Waiting for RPC on port 9000..."
+rpc_ready() {
+  curl -sf -X POST http://127.0.0.1:9000 \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' > /dev/null 2>&1
+}
 for i in $(seq 1 30); do
-  curl -s -o /dev/null http://127.0.0.1:9000 2>/dev/null && break
+  rpc_ready && break
   if [ "$i" -eq 30 ]; then
     echo "[ci] ERROR: RPC did not become ready" >&2
-    kill $NODE_PID 2>/dev/null || true
+    kill "$NODE_PID" 2>/dev/null || true
     exit 1
   fi
   sleep 1
