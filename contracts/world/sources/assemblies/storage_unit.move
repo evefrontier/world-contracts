@@ -5,7 +5,7 @@
 /// The behaviour of a Storage Unit can be customized by registering a custom contract
 /// using the typed witness pattern. https://github.com/evefrontier/world-contracts/blob/main/docs/architechture.md#layer-3-player-extensions-moddability
 ///
-/// Storage Units support three access modes to enable player-to-player interactions:
+/// Storage Units support four access modes to enable player-to-player interactions:
 ///
 /// 1. **Extension-based access** (Main inventory):
 ///    - Functions: `deposit_item<Auth>`, `withdraw_item<Auth>`
@@ -24,6 +24,11 @@
 ///    - Allows the owner to deposit/withdraw from their owned inventory
 ///    - Requires OwnerCap + sender == character address
 ///
+/// 4. **Bearer inventory** (fully immutable, receipt-gated):
+///    - `deposit_item_and_mint<Auth>`: extension deposits an Item and mints a transferable DepositReceipt
+///    - `redeem_deposit_receipt_and_withdraw`: anyone holding a receipt can redeem it for the underlying Item
+///    - DepositReceipts are Coin-like bearer instruments: split, join, transfer
+///
 /// Future pattern: Storage Units (extension-controlled), Ships (owner-controlled)
 module world::storage_unit;
 
@@ -32,6 +37,7 @@ use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
     character::Character,
+    deposit_receipt::{Self, DepositReceipt},
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     inventory::{Self, Inventory, Item},
@@ -69,9 +75,17 @@ const EStorageUnitInvalidState: vector<u8> = b"Storage Unit should be offline";
 const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Character";
 #[error(code = 11)]
 const EItemParentMismatch: vector<u8> = b"Item was not withdrawn from this storage unit";
+#[error(code = 12)]
+const EReceiptStorageUnitMismatch: vector<u8> =
+    b"Deposit receipt does not belong to this storage unit";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
+
+/// Sentinel key for the bearer inventory dynamic field.
+/// Exactly one bearer inventory exists per StorageUnit, keyed by this marker.
+public struct BearerInventoryKey has copy, drop, store {}
+
 public struct StorageUnit has key {
     id: UID,
     key: TenantItemId,
@@ -94,6 +108,21 @@ public struct StorageUnitCreatedEvent has copy, drop {
     max_capacity: u64,
     location_hash: vector<u8>,
     status: Status,
+}
+
+public struct DepositReceiptMintedEvent has copy, drop {
+    storage_unit_id: ID,
+    receipt_id: ID,
+    type_id: u64,
+    quantity: u32,
+    character_id: ID,
+}
+
+public struct DepositReceiptRedeemedEvent has copy, drop {
+    storage_unit_id: ID,
+    type_id: u64,
+    quantity: u32,
+    character_id: ID,
 }
 
 // === Public Functions ===
@@ -340,6 +369,95 @@ public fun withdraw_by_owner<T: key>(
     )
 }
 
+/// Extension-authorized deposit into the bearer inventory.
+///
+/// Consumes a transit `Item` (the hot potato) and deposits it into the
+/// storage unit's bearer inventory. Returns a transferable `DepositReceipt`
+/// that acts as a bearer claim on the deposited items.
+///
+/// Flow: withdraw from main inventory → `deposit_item_and_mint` → receipt
+public fun deposit_item_and_mint<Auth: drop>(
+    storage_unit: &mut StorageUnit,
+    character: &Character,
+    item: Item,
+    _: Auth,
+    ctx: &mut TxContext,
+): DepositReceipt {
+    let storage_unit_id = object::id(storage_unit);
+    assert!(
+        storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
+        EExtensionNotAuthorized,
+    );
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
+    assert!(inventory::parent_id(&item) == storage_unit_id, EItemParentMismatch);
+
+    let item_type_id = inventory::type_id(&item);
+    let item_quantity = inventory::quantity(&item);
+
+    let bearer_inv = df::borrow_mut<BearerInventoryKey, Inventory>(
+        &mut storage_unit.id,
+        BearerInventoryKey {},
+    );
+    bearer_inv.deposit_item(
+        storage_unit_id,
+        storage_unit.key,
+        character,
+        item,
+    );
+
+    let receipt = deposit_receipt::mint(storage_unit_id, item_type_id, item_quantity, ctx);
+
+    event::emit(DepositReceiptMintedEvent {
+        storage_unit_id,
+        receipt_id: object::id(&receipt),
+        type_id: item_type_id,
+        quantity: item_quantity,
+        character_id: character.id(),
+    });
+
+    receipt
+}
+
+/// Redeem a deposit receipt to withdraw items from the bearer inventory.
+///
+/// Anyone holding a valid `DepositReceipt` can call this — no `OwnerCap` or
+/// extension authorization required. The receipt is burned and the
+/// corresponding `Item` is returned in transit form.
+public fun redeem_deposit_receipt_and_withdraw(
+    storage_unit: &mut StorageUnit,
+    character: &Character,
+    receipt: DepositReceipt,
+    ctx: &mut TxContext,
+): Item {
+    let storage_unit_id = object::id(storage_unit);
+    let (receipt_storage_unit_id, type_id, quantity) = deposit_receipt::burn(receipt);
+    assert!(receipt_storage_unit_id == storage_unit_id, EReceiptStorageUnitMismatch);
+    assert!(storage_unit.status.is_online(), ENotOnline);
+
+    let bearer_inv = df::borrow_mut<BearerInventoryKey, Inventory>(
+        &mut storage_unit.id,
+        BearerInventoryKey {},
+    );
+
+    event::emit(DepositReceiptRedeemedEvent {
+        storage_unit_id,
+        type_id,
+        quantity,
+        character_id: character.id(),
+    });
+
+    bearer_inv.withdraw_item(
+        storage_unit_id,
+        storage_unit.key,
+        character,
+        type_id,
+        quantity,
+        storage_unit.location.hash(),
+        ctx,
+    )
+}
+
 // === View Functions ===
 public fun status(storage_unit: &StorageUnit): &AssemblyStatus {
     &storage_unit.status
@@ -360,6 +478,11 @@ public fun owner_cap_id(storage_unit: &StorageUnit): ID {
 /// Returns the storage unit's energy source (network node) ID if set
 public fun energy_source_id(storage_unit: &StorageUnit): &Option<ID> {
     &storage_unit.energy_source_id
+}
+
+/// Returns a reference to the bearer inventory.
+public fun bearer_inventory(storage_unit: &StorageUnit): &Inventory {
+    df::borrow(&storage_unit.id, BearerInventoryKey {})
 }
 
 // === Admin Functions ===
@@ -419,6 +542,10 @@ public fun anchor(
 
     storage_unit.inventory_keys.push_back(owner_cap_id);
     df::add(&mut storage_unit.id, owner_cap_id, inventory);
+
+    // Create the bearer inventory (immutable, receipt-gated)
+    let bearer_inventory = inventory::create(max_capacity);
+    df::add(&mut storage_unit.id, BearerInventoryKey {}, bearer_inventory);
 
     event::emit(StorageUnitCreatedEvent {
         storage_unit_id: assembly_id,
@@ -572,6 +699,15 @@ public fun unanchor(
             key,
         ),
     );
+
+    // Clean up bearer inventory
+    if (df::exists_<BearerInventoryKey>(&id, BearerInventoryKey {})) {
+        df::remove<BearerInventoryKey, Inventory>(&mut id, BearerInventoryKey {}).delete(
+            storage_unit_id,
+            key,
+        );
+    };
+
     metadata.do!(|metadata| metadata.delete());
     let _ = option::destroy_with_default(energy_source_id, object::id(network_node));
     id.delete();
@@ -598,6 +734,15 @@ public fun unanchor_orphan(storage_unit: StorageUnit, admin_acl: &AdminACL, ctx:
             key,
         ),
     );
+
+    // Clean up bearer inventory
+    if (df::exists_<BearerInventoryKey>(&id, BearerInventoryKey {})) {
+        df::remove<BearerInventoryKey, Inventory>(&mut id, BearerInventoryKey {}).delete(
+            storage_unit_id,
+            key,
+        );
+    };
+
     status.unanchor(storage_unit_id, key);
     metadata.do!(|metadata| metadata.delete());
     option::destroy_none(energy_source_id);
@@ -829,4 +974,14 @@ public fun game_item_to_chain_inventory_test<T: key>(
         volume,
         quantity,
     )
+}
+
+#[test_only]
+public fun has_bearer_inventory(storage_unit: &StorageUnit): bool {
+    df::exists_<BearerInventoryKey>(&storage_unit.id, BearerInventoryKey {})
+}
+
+#[test_only]
+public fun bearer_inventory_mut(storage_unit: &mut StorageUnit): &mut Inventory {
+    df::borrow_mut<BearerInventoryKey, Inventory>(&mut storage_unit.id, BearerInventoryKey {})
 }

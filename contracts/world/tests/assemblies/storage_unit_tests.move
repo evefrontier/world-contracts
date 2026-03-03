@@ -5,10 +5,11 @@ use sui::{clock, derived_object, test_scenario as ts};
 use world::{
     access::{OwnerCap, AdminACL, ServerAddressRegistry},
     character::{Self, Character},
+    deposit_receipt,
     energy::EnergyConfig,
     fuel::FuelConfig,
     in_game_id,
-    inventory::Item,
+    inventory::{Self, Item},
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
     storage_unit::{Self, StorageUnit},
@@ -53,6 +54,9 @@ const FUEL_VOLUME: u64 = 10;
 // Mock 3rd Party Extension Witness Types
 /// Authorized extension witness type
 public struct SwapAuth has drop {}
+
+/// Unauthorized extension witness type (for negative tests)
+public struct UnauthorizedAuth has drop {}
 
 /// mock of a an external marketplace or swap contract
 public fun swap_ammo_for_lens_extension<T: key>(
@@ -2256,6 +2260,909 @@ fun test_deposit_to_owned_fail_parent_id_mismatch() {
             SwapAuth {},
             ts.ctx(),
         );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character_b);
+    };
+    ts::end(ts);
+}
+
+// ==========================================
+// === Bearer Inventory / DepositReceipt Tests
+// ==========================================
+
+/// Test: deposit_item_and_mint mints a DepositReceipt backed by the bearer inventory
+/// Scenario: Extension withdraws ammo from main inventory, deposits into bearer,
+///           receives a DepositReceipt with correct metadata
+#[test]
+fun test_deposit_item_and_mint() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    // Authorize extension
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Withdraw from main inventory and mint receipt
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+        // Withdraw item from main inventory
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+
+        // Deposit into bearer inventory and get receipt
+        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+
+        // Verify receipt metadata
+        assert_eq!(deposit_receipt.storage_unit_id(), storage_id);
+        assert_eq!(deposit_receipt.type_id(), AMMO_TYPE_ID);
+        assert_eq!(deposit_receipt.quantity(), AMMO_QUANTITY);
+
+        // Verify main inventory is empty
+        assert!(!storage_unit.contains_item(owner_cap_id, AMMO_TYPE_ID));
+
+        // Verify bearer inventory has the items
+        let bearer_inv = storage_unit.bearer_inventory();
+        assert_eq!(bearer_inv.item_quantity(AMMO_TYPE_ID), AMMO_QUANTITY);
+
+        transfer::public_transfer(deposit_receipt, user_a());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+/// Test: redeem_deposit_receipt_and_withdraw returns the Item
+/// Scenario: Full round-trip — mint ammo, withdraw, deposit into bearer,
+///           get receipt, redeem receipt, get Item back
+#[test]
+fun test_redeem_deposit_receipt() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    let owner_cap_id = storage_owner_cap_id(&mut ts, storage_id);
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    // Authorize extension
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Withdraw from main, deposit into bearer, get receipt
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        transfer::public_transfer(deposit_receipt, user_a());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Redeem receipt — bearer should send Item back
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+
+        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+            &character,
+            deposit_receipt,
+            ts.ctx(),
+        );
+
+        // Verify bearer inventory is now empty
+        let bearer_inv = storage_unit.bearer_inventory();
+        assert!(!bearer_inv.contains_item(AMMO_TYPE_ID));
+
+        // Verify the returned Item
+        assert_eq!(inventory::type_id(&item), AMMO_TYPE_ID);
+        assert_eq!(inventory::quantity(&item), AMMO_QUANTITY);
+
+        // Deposit back into main inventory via extension
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+
+        // Verify main inventory has items again
+        assert_eq!(storage_unit.item_quantity(owner_cap_id, AMMO_TYPE_ID), AMMO_QUANTITY);
+
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+/// Test: split receipt then redeem partial amount
+/// Scenario: Mint receipt, split, redeem partial
+#[test]
+fun test_split_receipt_and_partial_redeem() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    // Authorize extension
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Withdraw and mint receipt
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        transfer::public_transfer(deposit_receipt, user_a());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Split receipt and redeem partial
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let mut deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+
+        let partial_amount: u32 = 4;
+        let partial_receipt = deposit_receipt.split(partial_amount, ts.ctx());
+        assert_eq!(deposit_receipt.quantity(), AMMO_QUANTITY - partial_amount);
+        assert_eq!(partial_receipt.quantity(), partial_amount);
+
+        // Redeem partial receipt
+        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+            &character,
+            partial_receipt,
+            ts.ctx(),
+        );
+        assert_eq!(inventory::quantity(&item), partial_amount);
+
+        // Bearer inventory should still have the remaining items
+        let bearer_inv = storage_unit.bearer_inventory();
+        assert_eq!(
+            bearer_inv.item_quantity(AMMO_TYPE_ID),
+            AMMO_QUANTITY - partial_amount,
+        );
+
+        // Deposit item back via extension
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+
+        transfer::public_transfer(deposit_receipt, user_a());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+/// Test: bearer inventory exists after anchor
+#[test]
+fun test_bearer_inventory_created_on_anchor() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::configure_assembly_energy(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let (storage_id, _) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        assert!(storage_unit.has_bearer_inventory());
+
+        let bearer_inv = storage_unit.bearer_inventory();
+        assert_eq!(bearer_inv.used_capacity(), 0);
+        assert_eq!(bearer_inv.remaining_capacity(), MAX_CAPACITY);
+
+        ts::return_shared(storage_unit);
+    };
+    ts::end(ts);
+}
+
+/// Test: another user (user_b) can redeem a receipt transferred from user_a
+#[test]
+fun test_receipt_transfer_and_redeem_by_different_user() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_b_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_a_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_a_id, storage_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
+
+    // Authorize extension as user_a
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_a_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Withdraw and mint receipt, transfer to user_b
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_a_id);
+
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+
+        // Transfer receipt to user_b — bearer instrument!
+        transfer::public_transfer(deposit_receipt, user_b());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // user_b redeems the receipt
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+
+        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+            &character_b,
+            deposit_receipt,
+            ts.ctx(),
+        );
+
+        assert_eq!(inventory::type_id(&item), AMMO_TYPE_ID);
+        assert_eq!(inventory::quantity(&item), AMMO_QUANTITY);
+
+        // Deposit into main inventory (extension authorized)
+        storage_unit.deposit_item<SwapAuth>(
+            &character_b,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+
+        ts::return_shared(storage_unit);
+        ts::return_shared(character_b);
+    };
+    ts::end(ts);
+}
+
+/// Test: deposit_item_and_mint fails without extension authorization
+#[test]
+#[expected_failure(abort_code = storage_unit::EExtensionNotAuthorized)]
+fun test_deposit_item_and_mint_no_extension() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
+
+    // Mint some items via test helper (into main inventory using storage owner cap)
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    // Authorize extension so we can withdraw, but use a DIFFERENT witness for deposit_item_and_mint
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Withdraw via authorized extension, then try to deposit into bearer with unauthorized witness
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+
+        // This should fail — UnauthorizedAuth is not the registered extension
+        let receipt = storage_unit.deposit_item_and_mint<UnauthorizedAuth>(
+            &character,
+            item,
+            UnauthorizedAuth {},
+            ts.ctx(),
+        );
+        // Abort happens above; cleanup below satisfies the compiler
+        transfer::public_transfer(receipt, user_a());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+/// Test: redeem fails when receipt references a different storage unit
+#[test]
+#[expected_failure(abort_code = storage_unit::EReceiptStorageUnitMismatch)]
+fun test_redeem_receipt_wrong_storage_unit() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
+
+    // Create a receipt referencing a different storage unit
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+        let fake_storage_id = object::id_from_bytes(
+            x"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        );
+        let fake_receipt = deposit_receipt::mint_for_testing(
+            fake_storage_id,
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+
+        // This should fail — receipt references a different storage unit
+        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+            &character,
+            fake_receipt,
+            ts.ctx(),
+        );
+        // Abort happens above; cleanup below satisfies the compiler
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+/// Test: redeem_deposit_receipt_and_withdraw fails when storage unit is offline
+#[test]
+#[expected_failure(abort_code = storage_unit::ENotOnline)]
+fun test_redeem_receipt_offline() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    // Authorize extension and mint a receipt while online
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        transfer::public_transfer(deposit_receipt, user_a());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Take storage unit offline
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.offline(&mut nwn, &energy_config, &owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(character);
+    };
+
+    // Attempt to redeem while offline — should fail
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
+
+        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+            &character,
+            deposit_receipt,
+            ts.ctx(),
+        );
+        // Abort happens above; cleanup below satisfies the compiler
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+/// Test: deposit_item_and_mint fails when item parent_id doesn't match this storage unit
+/// Scenario: Withdraw item from storage A, try to deposit_item_and_mint at storage B
+/// Expected: Transaction aborts with EItemParentMismatch
+#[test]
+#[expected_failure(abort_code = storage_unit::EItemParentMismatch)]
+fun test_deposit_item_and_mint_fail_parent_id_mismatch() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    // Create storage unit A
+    let (storage_a_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_a_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_a_id, character_id, user_a());
+
+    // Authorize extension on storage A and withdraw item
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Create storage unit B (same character, different item_id, reuses NWN)
+    let (storage_b_id, nwn_b_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+    );
+
+    // Bring storage B online manually (NWN already online from storage A)
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_b_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.online(&mut nwn, &energy_config, &owner_cap);
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(character);
+    };
+
+    // Try to deposit_item_and_mint at storage B with item from storage A — parent_id mismatch
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_b = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+        let deposit_receipt = storage_b.deposit_item_and_mint<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+
+        // Abort happens above; cleanup below satisfies the compiler
+        transfer::public_transfer(deposit_receipt, user_a());
+        ts::return_shared(storage_b);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+/// Test: OwnerCap<StorageUnit> cannot withdraw from bearer inventory
+/// Scenario: Items are in the bearer inventory; owner tries withdraw_by_owner
+///           with the storage unit's OwnerCap — the DF lookup uses owner_cap_id
+///           (an ID key) which is a different key type from BearerInventoryKey,
+///           so the bearer inventory is structurally unreachable.
+/// Expected: Aborts because the main inventory doesn't contain the bearer items
+#[test]
+#[expected_failure(abort_code = world::inventory::EItemDoesNotExist)]
+fun test_cannot_withdraw_bearer_items_via_storage_owner_cap() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    // Authorize extension
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Move all ammo into bearer inventory via extension
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        transfer::public_transfer(deposit_receipt, user_a());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Attempt to withdraw_by_owner using OwnerCap<StorageUnit>
+    // Main inventory is now empty — this should fail with EItemDoesNotExist
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+
+        let item = storage_unit.withdraw_by_owner(
+            &character,
+            &owner_cap,
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+
+        // Abort happens above; cleanup below satisfies the compiler
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+/// Test: OwnerCap<Character> cannot withdraw from bearer inventory
+/// Scenario: Items are in the bearer inventory; a different player tries
+///           withdraw_by_owner with their OwnerCap<Character> — the DF lookup
+///           uses their owner_cap_id which has no inventory at all.
+/// Expected: Aborts because no owned inventory exists for that owner_cap_id
+#[test]
+#[expected_failure]
+fun test_cannot_withdraw_bearer_items_via_character_owner_cap() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_b_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_a_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_a_id, storage_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_a_id, user_a());
+
+    // Authorize extension
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_a_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // Move all ammo into bearer inventory via extension
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_a_id);
+
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+            &character,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        transfer::public_transfer(deposit_receipt, user_b());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    // user_b attempts withdraw_by_owner using OwnerCap<Character>
+    // No owned inventory exists for user_b's owner_cap_id — dynamic field lookup aborts
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let (owner_cap, receipt) = character_b.borrow_owner_cap<Character>(
+            ts::most_recent_receiving_ticket<OwnerCap<Character>>(&character_b_id),
+            ts.ctx(),
+        );
+
+        let item = storage_unit.withdraw_by_owner(
+            &character_b,
+            &owner_cap,
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+
+        // Abort happens above; cleanup below satisfies the compiler
+        storage_unit.deposit_item<SwapAuth>(
+            &character_b,
+            item,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        character_b.return_owner_cap(owner_cap, receipt);
         ts::return_shared(storage_unit);
         ts::return_shared(character_b);
     };
