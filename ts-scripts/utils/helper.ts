@@ -29,11 +29,13 @@ export interface InitializedContext {
 }
 
 type PublishObjectChange = {
-    type?: string;
-    packageId?: string;
+    idOperation?: string;
     objectType?: string;
     objectId?: string;
-    owner?: { AddressOwner?: string } | unknown;
+    outputOwner?: {
+        kind: 'SHARED' | 'ADDRESS'
+        address: string
+    } | unknown;
 };
 
 // Parse arrays from environment variables
@@ -195,32 +197,26 @@ export function getDefaultBuilderPackageId(network: string): string {
 
 export function readPublishOutputFile(filePath: string): { objectChanges: PublishObjectChange[] } {
     const raw = fs.readFileSync(filePath, "utf8");
-    let parsed: { objectChanges?: unknown; effects?: { objectChanges?: unknown } };
+    let parsed: { changed_objects?: unknown; };
     try {
         parsed = JSON.parse(raw) as typeof parsed;
     } catch {
         throw new Error(`Invalid JSON in ${filePath}`);
     }
 
-    const objectChanges = Array.isArray(parsed.objectChanges)
-        ? parsed.objectChanges
-        : Array.isArray(parsed.effects?.objectChanges)
-          ? parsed.effects.objectChanges
-          : undefined;
-
-    if (!objectChanges) {
+    if (!Array.isArray(parsed.changed_objects)) {
         throw new Error(`Invalid publish output file (missing objectChanges[]): ${filePath}`);
     }
 
-    return { objectChanges: objectChanges as PublishObjectChange[] };
+    return { objectChanges: parsed.changed_objects as PublishObjectChange[] };
 }
 
 export function getPublishedPackageId(changes: PublishObjectChange[]): string {
-    const published = changes.find((c) => c?.type === "published");
-    if (typeof published?.packageId !== "string") {
+    const published = changes.find((c) => c?.objectType === "package");
+    if (typeof published?.objectId !== "string") {
         throw new Error("Publish output missing published packageId");
     }
-    return published.packageId;
+    return published.objectId;
 }
 
 // TODO: use grpc query the object id instead of the publish output file
@@ -230,13 +226,13 @@ export function findCreatedObjectId(
     opts?: { addressOwner?: string }
 ): string | undefined {
     for (const c of changes) {
-        if (c?.type !== "created") continue;
+        if (c?.idOperation !== "CREATED") continue;
         if (c?.objectType !== objectType) continue;
         if (typeof c?.objectId !== "string") continue;
 
         if (opts?.addressOwner) {
-            const owner = c.owner as any;
-            if (owner?.AddressOwner !== opts.addressOwner) continue;
+            const owner = c.outputOwner as any;
+            if (owner.address !== opts.addressOwner) continue;
         }
 
         return c.objectId;
