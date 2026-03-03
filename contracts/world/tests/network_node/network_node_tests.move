@@ -833,8 +833,6 @@ fun connect_assemblies_updates_energy_source() {
         let updated_energy_sources = assembly.update_energy_source_connected_assembly(
             update_energy_sources,
             &nwn2,
-            &admin_acl,
-            ts.ctx(),
         );
         updated_energy_sources.destroy_update_energy_sources();
 

@@ -193,10 +193,7 @@ public fun update_energy_source_connected_assembly(
     assembly: &mut Assembly,
     mut update_energy_sources: UpdateEnergySources,
     network_node: &NetworkNode,
-    admin_acl: &AdminACL,
-    ctx: &TxContext,
 ): UpdateEnergySources {
-    admin_acl.verify_sponsor(ctx);
     if (update_energy_sources.update_energy_sources_ids_length() > 0) {
         let assembly_id = object::id(assembly);
         let found = update_energy_sources.remove_energy_sources_assembly_id(
