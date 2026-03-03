@@ -44,22 +44,16 @@ async function withdraw(
         arguments: [
             tx.object(storageUnit),
             tx.object(characterId),
-            tx.object(config.adminAcl),
             ownerCap,
             tx.pure.u64(typeId),
+            tx.pure.u32(1),
         ],
     });
 
     tx.moveCall({
         target: `${config.packageId}::${MODULES.STORAGE_UNIT}::deposit_by_owner`,
         typeArguments: [`${config.packageId}::${MODULES.STORAGE_UNIT}::StorageUnit`],
-        arguments: [
-            tx.object(storageUnit),
-            tx.object(item),
-            tx.object(characterId),
-            tx.object(config.adminAcl),
-            ownerCap,
-        ],
+        arguments: [tx.object(storageUnit), tx.object(item), tx.object(characterId), ownerCap],
     });
 
     tx.moveCall({
