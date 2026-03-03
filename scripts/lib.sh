@@ -36,6 +36,7 @@ publish() {
     local pkg=$1
     local out_file=$2
     local env=$3
+    local localnet_pubfile=${4:-}
     local tmp
     tmp=$(mktemp)
     trap "rm -f $tmp" RETURN
@@ -43,7 +44,16 @@ publish() {
     sui client switch --env "$env"
 
     if [[ "$env" == "localnet" ]]; then
-        (cd "contracts/$pkg" && sui client test-publish --build-env testnet --json) > "$tmp" 2>&1 || true
+        if [[ -n "$localnet_pubfile" ]]; then
+            # Path is relative to contracts/$pkg (same as test-publish cwd); check from there.
+            if ! (cd "contracts/$pkg" && [[ -f "$localnet_pubfile" && -r "$localnet_pubfile" ]]); then
+                echo "Error: localnet pubfile not found or not readable: $localnet_pubfile (from contracts/$pkg)" >&2
+                exit 1
+            fi
+            (cd "contracts/$pkg" && sui client test-publish --build-env testnet --pubfile-path "$localnet_pubfile" --json) > "$tmp" 2>&1 || true
+        else
+            (cd "contracts/$pkg" && sui client test-publish --build-env testnet --json) > "$tmp" 2>&1 || true
+        fi
     else
         (cd "contracts/$pkg" && sui client publish --json) > "$tmp" 2>&1 || true
     fi
