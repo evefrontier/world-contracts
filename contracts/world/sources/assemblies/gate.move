@@ -129,6 +129,7 @@ public struct ExtensionAuthorizedEvent has copy, drop {
     assembly_key: TenantItemId,
     extension_type: TypeName,
     previous_extension: Option<TypeName>,
+    owner_cap_id: ID,
 }
 
 // === Public Functions ===
@@ -142,6 +143,7 @@ public fun authorize_extension<Auth: drop>(gate: &mut Gate, owner_cap: &OwnerCap
         assembly_key: gate.key,
         extension_type: type_name::with_defining_ids<Auth>(),
         previous_extension,
+        owner_cap_id: object::id(owner_cap),
     });
 }
 
