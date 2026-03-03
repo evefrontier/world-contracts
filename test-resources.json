@@ -22,6 +22,10 @@
     "itemId1": 90185,
     "itemId2": 90186
   },
+  "turret": {
+    "typeId": 5555,
+    "itemId": 6001
+  },
   "item": {
     "typeId": 446,
     "itemId": 444000001
