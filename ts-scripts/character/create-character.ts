@@ -83,7 +83,9 @@ async function main() {
             await delay(getDelayMs());
             await createCharacter(
                 env.tenant,
-                keypairFromPrivateKey(process.env.PLAYER_C_PRIVATE_KEY).getPublicKey().toSuiAddress(),
+                keypairFromPrivateKey(process.env.PLAYER_C_PRIVATE_KEY)
+                    .getPublicKey()
+                    .toSuiAddress(),
                 GAME_CHARACTER_C_ID,
                 ctx
             );
