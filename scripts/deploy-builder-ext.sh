@@ -14,7 +14,8 @@ echo "--- pnpm i ---"
 pnpm i
 
 echo "--- sui client publish ---"
-publish extension_examples "deployments/$ENV/builder_package.json" "$ENV"
+# For localnet, extension_examples must use world's Pub.localnet.toml (deploy world first).
+publish extension_examples "deployments/$ENV/builder_package.json" "$ENV" "../world/Pub.localnet.toml"
 
 echo "--- extract-object-ids ---"
 export SUI_NETWORK="$ENV"

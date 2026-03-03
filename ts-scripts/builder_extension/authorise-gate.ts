@@ -13,6 +13,7 @@ import {
 import { requireBuilderPackageId } from "../utils/builder-extension";
 import { getOwnerCap as getGateOwnerCap } from "../gate/helper";
 import { MODULE as extensionModule } from "./modules";
+import { delay, getDelayMs } from "../utils/delay";
 
 const builderPackageId = requireBuilderPackageId();
 const characterItemId = GAME_CHARACTER_ID;
@@ -75,6 +76,7 @@ async function main() {
         const ctx = initializeContext(env.network, playerKey);
         await hydrateWorldConfig(ctx);
         await authoriseGate(ctx, gateAItemId, BigInt(characterItemId));
+        await delay(getDelayMs());
         await authoriseGate(ctx, gateBItemId, BigInt(characterItemId));
     } catch (error) {
         handleError(error);
