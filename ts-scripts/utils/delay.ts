@@ -8,7 +8,6 @@ export function delay(ms: number): Promise<void> {
 export function getDelayMs(): number {
     const raw = process.env.DELAY_SECONDS;
     const parsed = raw !== undefined ? Number(raw) : NaN;
-    const seconds =
-        Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
+    const seconds = Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
     return seconds * 1000;
 }
