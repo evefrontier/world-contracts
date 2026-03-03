@@ -812,6 +812,7 @@ fun mint_ignores_volume_change() {
 
     online(&mut ts);
 
+    // Mint 5 ammo at volume 100 → used=500
     ts::next_tx(&mut ts, admin());
     {
         let mut storage_unit = ts::take_shared<StorageUnit>(&ts);
@@ -1116,7 +1117,7 @@ fun mint_items_fail_empty_type_id() {
             assembly_key,
             &character,
             tenant(),
-            AMMO_TYPE_ID,
+            AMMO_ITEM_ID,
             0,
             AMMO_VOLUME,
             AMMO_QUANTITY,
