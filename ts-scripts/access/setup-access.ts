@@ -4,18 +4,25 @@ import { MODULES, Network } from "../utils/config";
 import { delay } from "../utils/delay";
 import { handleError, hydrateWorldConfig, initializeContext, requireEnv } from "../utils/helper";
 
+function getSponsorAddresses(raw: string): string[] {
+    return raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+
 function getAccessSetupEnv() {
     const network = (process.env.SUI_NETWORK as Network) || "testnet";
     // during development, we use the same private key for governor and admin
     const governorKey = process.env.GOVERNOR_PRIVATE_KEY || requireEnv("ADMIN_PRIVATE_KEY");
     const adminAddress = requireEnv("ADMIN_ADDRESS");
-    const sponsorAddress = requireEnv("SPONSOR_ADDRESS");
+    const sponsorAddresses = getSponsorAddresses(requireEnv("SPONSOR_ADDRESSES"));
 
-    return { network, governorKey, adminAddress, sponsorAddress };
+    return { network, governorKey, adminAddress, sponsorAddresses };
 }
 
 async function setupAccess() {
-    const { network, governorKey, adminAddress, sponsorAddress } = getAccessSetupEnv();
+    const { network, governorKey, adminAddress, sponsorAddresses } = getAccessSetupEnv();
     const ctx = initializeContext(network, governorKey);
     const { client, keypair } = ctx;
     const config = await hydrateWorldConfig(ctx);
@@ -27,6 +34,10 @@ async function setupAccess() {
 
     if (!packageId || !governorCap || !serverAddressRegistry || !adminAcl) {
         throw new Error(`Config missing`);
+    }
+
+    if (sponsorAddresses.length === 0) {
+        throw new Error("SPONSOR_ADDRESSES must contain at least one address");
     }
 
     const target = `${packageId}::${MODULES.ACCESS}`;
@@ -52,26 +63,29 @@ async function setupAccess() {
     }
     await delay(5000);
 
-    console.log("2. add_sponsor_to_acl ...");
-    const tx2 = new Transaction();
-    tx2.moveCall({
-        target: `${target}::add_sponsor_to_acl`,
-        arguments: [
-            tx2.object(adminAcl),
-            tx2.object(governorCap),
-            tx2.pure.address(sponsorAddress),
-        ],
-    });
-    const r2 = await client.signAndExecuteTransaction({
-        signer: keypair,
-        transaction: tx2,
-        options: { showObjectChanges: true },
-    });
-    console.log("   Digest:", r2.digest);
-    if (r2.effects?.status?.status === "failure") {
-        throw new Error(`add_sponsor_to_acl failed: ${JSON.stringify(r2.effects.status)}`);
+    for (let i = 0; i < sponsorAddresses.length; i++) {
+        const sponsorAddress = sponsorAddresses[i];
+        console.log(`2. add_sponsor_to_acl (${i + 1}/${sponsorAddresses.length}) ${sponsorAddress}...`);
+        const tx2 = new Transaction();
+        tx2.moveCall({
+            target: `${target}::add_sponsor_to_acl`,
+            arguments: [
+                tx2.object(adminAcl),
+                tx2.object(governorCap),
+                tx2.pure.address(sponsorAddress),
+            ],
+        });
+        const r2 = await client.signAndExecuteTransaction({
+            signer: keypair,
+            transaction: tx2,
+            options: { showObjectChanges: true },
+        });
+        console.log("   Digest:", r2.digest);
+        if (r2.effects?.status?.status === "failure") {
+            throw new Error(`add_sponsor_to_acl failed: ${JSON.stringify(r2.effects.status)}`);
+        }
+        await delay(5000);
     }
-    await delay(5000);
 
     console.log("\n==== Access setup complete ====");
 }
