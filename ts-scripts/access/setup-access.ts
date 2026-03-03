@@ -7,7 +7,7 @@ import { handleError, hydrateWorldConfig, initializeContext, requireEnv } from "
 function getSponsorAddresses(raw: string): string[] {
     return raw
         .split(",")
-        .map((s) => s.trim())
+        .map((s) => s.trim().toLowerCase())
         .filter(Boolean);
 }
 
@@ -63,12 +63,9 @@ async function setupAccess() {
     }
     await delay(5000);
 
-    for (let i = 0; i < sponsorAddresses.length; i++) {
-        const sponsorAddress = sponsorAddresses[i];
-        console.log(
-            `2. add_sponsor_to_acl (${i + 1}/${sponsorAddresses.length}) ${sponsorAddress}...`
-        );
-        const tx2 = new Transaction();
+    console.log(`2. add_sponsor_to_acl (${sponsorAddresses.length} sponsors, atomic)...`);
+    const tx2 = new Transaction();
+    for (const sponsorAddress of sponsorAddresses) {
         tx2.moveCall({
             target: `${target}::add_sponsor_to_acl`,
             arguments: [
@@ -77,16 +74,15 @@ async function setupAccess() {
                 tx2.pure.address(sponsorAddress),
             ],
         });
-        const r2 = await client.signAndExecuteTransaction({
-            signer: keypair,
-            transaction: tx2,
-            options: { showObjectChanges: true },
-        });
-        console.log("   Digest:", r2.digest);
-        if (r2.effects?.status?.status === "failure") {
-            throw new Error(`add_sponsor_to_acl failed: ${JSON.stringify(r2.effects.status)}`);
-        }
-        await delay(5000);
+    }
+    const r2 = await client.signAndExecuteTransaction({
+        signer: keypair,
+        transaction: tx2,
+        options: { showObjectChanges: true },
+    });
+    console.log("   Digest:", r2.digest);
+    if (r2.effects?.status?.status === "failure") {
+        throw new Error(`add_sponsor_to_acl failed: ${JSON.stringify(r2.effects.status)}`);
     }
 
     console.log("\n==== Access setup complete ====");
