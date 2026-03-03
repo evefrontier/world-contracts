@@ -96,13 +96,28 @@ public struct StorageUnitCreatedEvent has copy, drop {
     status: Status,
 }
 
+public struct ExtensionAuthorizedEvent has copy, drop {
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    extension_type: TypeName,
+    previous_extension: Option<TypeName>,
+}
+
 // === Public Functions ===
 public fun authorize_extension<Auth: drop>(
     storage_unit: &mut StorageUnit,
     owner_cap: &OwnerCap<StorageUnit>,
 ) {
-    assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    let storage_unit_id = object::id(storage_unit);
+    assert!(access::is_authorized(owner_cap, storage_unit_id), EAssemblyNotAuthorized);
+    let previous_extension = storage_unit.extension;
     storage_unit.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
+    event::emit(ExtensionAuthorizedEvent {
+        assembly_id: storage_unit_id,
+        assembly_key: storage_unit.key,
+        extension_type: type_name::with_defining_ids<Auth>(),
+        previous_extension,
+    });
 }
 
 public fun online(

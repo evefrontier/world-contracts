@@ -130,11 +130,25 @@ public struct PriorityListUpdatedEvent has copy, drop {
     priority_list: vector<TargetCandidate>,
 }
 
+public struct ExtensionAuthorizedEvent has copy, drop {
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    extension_type: TypeName,
+    previous_extension: Option<TypeName>,
+}
+
 // === Public Functions ===
 public fun authorize_extension<Auth: drop>(turret: &mut Turret, owner_cap: &OwnerCap<Turret>) {
     let turret_id = object::id(turret);
     assert!(access::is_authorized(owner_cap, turret_id), ETurretNotAuthorized);
+    let previous_extension = turret.extension;
     turret.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
+    event::emit(ExtensionAuthorizedEvent {
+        assembly_id: turret_id,
+        assembly_key: turret.key,
+        extension_type: type_name::with_defining_ids<Auth>(),
+        previous_extension,
+    });
 }
 
 public fun online(

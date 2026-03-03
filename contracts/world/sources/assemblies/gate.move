@@ -124,11 +124,25 @@ public struct JumpEvent has copy, drop {
     character_key: TenantItemId,
 }
 
+public struct ExtensionAuthorizedEvent has copy, drop {
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    extension_type: TypeName,
+    previous_extension: Option<TypeName>,
+}
+
 // === Public Functions ===
 public fun authorize_extension<Auth: drop>(gate: &mut Gate, owner_cap: &OwnerCap<Gate>) {
     let gate_id = object::id(gate);
     assert!(access::is_authorized(owner_cap, gate_id), EGateNotAuthorized);
+    let previous_extension = gate.extension;
     gate.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
+    event::emit(ExtensionAuthorizedEvent {
+        assembly_id: gate_id,
+        assembly_key: gate.key,
+        extension_type: type_name::with_defining_ids<Auth>(),
+        previous_extension,
+    });
 }
 
 public fun online(
