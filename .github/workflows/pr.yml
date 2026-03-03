@@ -84,21 +84,3 @@ jobs:
             -w /app \
             mysten/sui-tools:testnet \
             sui move test --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
-
-  integration:
-    name: Integration tests (localnet)
-    runs-on: ubuntu-latest
-    needs: [build, test]
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Build integration image
-        run: docker build -f docker/Dockerfile.integration -t world-integration .
-
-      - name: Run integration tests
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/app" \
-            -w /app \
-            -e CI=true \
-            world-integration

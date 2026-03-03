@@ -1,0 +1,24 @@
+name: Integration tests (localnet)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  integration:
+    name: Integration tests (localnet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build integration image
+        run: docker build -f docker/Dockerfile.integration -t world-integration .
+
+      - name: Run integration tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/app" \
+            -w /app \
+            -e CI=true \
+            world-integration
