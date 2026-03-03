@@ -25,8 +25,8 @@
 ///    - Requires OwnerCap + sender == character address
 ///
 /// 4. **Warehouse inventory** (fully immutable, receipt-gated):
-///    - `deposit_for_receipt`: deposits an Item and mints a transferable WarehouseReceipt (no extension required)
-///    - `warehouse_receiptosit_receipt`: anyone holding a receipt can redeem it for the underlying Item.
+///    - `deposit_for_receipt`: deposits an Item and mints a transferable WarehouseReceipt (using Item hot potato)
+///    - `redeem_warehouse_receipt`: anyone holding a `WarehouseReceipt` can redeem it for the underlying Item.
 ///    - WarehouseReceipts are Coin-like warehouse instruments: split, join, transfer. They are runtime enforced,
 ///      not type-enforced like Coins.
 ///    - This means the WarehouseReceipt is a transferrable owned object that can used for trade (escrow), payments, etc
