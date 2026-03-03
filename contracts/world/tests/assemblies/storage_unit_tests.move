@@ -2270,11 +2270,11 @@ fun test_deposit_to_owned_fail_parent_id_mismatch() {
 // === Bearer Inventory / DepositReceipt Tests
 // ==========================================
 
-/// Test: deposit_item_and_mint mints a DepositReceipt backed by the bearer inventory
+/// Test: deposit_for_receipt mints a DepositReceipt backed by the bearer inventory
 /// Scenario: Extension withdraws ammo from main inventory, deposits into bearer,
 ///           receives a DepositReceipt with correct metadata
 #[test]
-fun test_deposit_item_and_mint() {
+fun test_deposit_for_receipt() {
     let mut ts = ts::begin(governor());
     setup_nwn(&mut ts);
     let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
@@ -2321,7 +2321,7 @@ fun test_deposit_item_and_mint() {
         );
 
         // Deposit into bearer inventory and get receipt
-        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+        let deposit_receipt = storage_unit.deposit_for_receipt<SwapAuth>(
             &character,
             item,
             SwapAuth {},
@@ -2347,7 +2347,7 @@ fun test_deposit_item_and_mint() {
     ts::end(ts);
 }
 
-/// Test: redeem_deposit_receipt_and_withdraw returns the Item
+/// Test: redeem_deposit_receipt returns the Item
 /// Scenario: Full round-trip — mint ammo, withdraw, deposit into bearer,
 ///           get receipt, redeem receipt, get Item back
 #[test]
@@ -2395,7 +2395,7 @@ fun test_redeem_deposit_receipt() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+        let deposit_receipt = storage_unit.deposit_for_receipt<SwapAuth>(
             &character,
             item,
             SwapAuth {},
@@ -2413,7 +2413,7 @@ fun test_redeem_deposit_receipt() {
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
 
-        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+        let item = storage_unit.redeem_deposit_receipt(
             &character,
             deposit_receipt,
             ts.ctx(),
@@ -2490,7 +2490,7 @@ fun test_split_receipt_and_partial_redeem() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+        let deposit_receipt = storage_unit.deposit_for_receipt<SwapAuth>(
             &character,
             item,
             SwapAuth {},
@@ -2514,7 +2514,7 @@ fun test_split_receipt_and_partial_redeem() {
         assert_eq!(partial_receipt.quantity(), partial_amount);
 
         // Redeem partial receipt
-        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+        let item = storage_unit.redeem_deposit_receipt(
             &character,
             partial_receipt,
             ts.ctx(),
@@ -2618,7 +2618,7 @@ fun test_receipt_transfer_and_redeem_by_different_user() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+        let deposit_receipt = storage_unit.deposit_for_receipt<SwapAuth>(
             &character,
             item,
             SwapAuth {},
@@ -2638,7 +2638,7 @@ fun test_receipt_transfer_and_redeem_by_different_user() {
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
         let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
 
-        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+        let item = storage_unit.redeem_deposit_receipt(
             &character_b,
             deposit_receipt,
             ts.ctx(),
@@ -2661,10 +2661,10 @@ fun test_receipt_transfer_and_redeem_by_different_user() {
     ts::end(ts);
 }
 
-/// Test: deposit_item_and_mint fails without extension authorization
+/// Test: deposit_for_receipt fails without extension authorization
 #[test]
 #[expected_failure(abort_code = storage_unit::EExtensionNotAuthorized)]
-fun test_deposit_item_and_mint_no_extension() {
+fun test_deposit_for_receipt_no_extension() {
     let mut ts = ts::begin(governor());
     setup_nwn(&mut ts);
     let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
@@ -2681,7 +2681,7 @@ fun test_deposit_item_and_mint_no_extension() {
     // Mint some items via test helper (into main inventory using storage owner cap)
     mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
-    // Authorize extension so we can withdraw, but use a DIFFERENT witness for deposit_item_and_mint
+    // Authorize extension so we can withdraw, but use a DIFFERENT witness for deposit_for_receipt
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -2711,7 +2711,7 @@ fun test_deposit_item_and_mint_no_extension() {
         );
 
         // This should fail — UnauthorizedAuth is not the registered extension
-        let receipt = storage_unit.deposit_item_and_mint<UnauthorizedAuth>(
+        let receipt = storage_unit.deposit_for_receipt<UnauthorizedAuth>(
             &character,
             item,
             UnauthorizedAuth {},
@@ -2759,7 +2759,7 @@ fun test_redeem_receipt_wrong_storage_unit() {
         );
 
         // This should fail — receipt references a different storage unit
-        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+        let item = storage_unit.redeem_deposit_receipt(
             &character,
             fake_receipt,
             ts.ctx(),
@@ -2777,7 +2777,7 @@ fun test_redeem_receipt_wrong_storage_unit() {
     ts::end(ts);
 }
 
-/// Test: redeem_deposit_receipt_and_withdraw fails when storage unit is offline
+/// Test: redeem_deposit_receipt fails when storage unit is offline
 #[test]
 #[expected_failure(abort_code = storage_unit::ENotOnline)]
 fun test_redeem_receipt_offline() {
@@ -2822,7 +2822,7 @@ fun test_redeem_receipt_offline() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+        let deposit_receipt = storage_unit.deposit_for_receipt<SwapAuth>(
             &character,
             item,
             SwapAuth {},
@@ -2859,7 +2859,7 @@ fun test_redeem_receipt_offline() {
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let deposit_receipt = ts::take_from_sender<deposit_receipt::DepositReceipt>(&ts);
 
-        let item = storage_unit.redeem_deposit_receipt_and_withdraw(
+        let item = storage_unit.redeem_deposit_receipt(
             &character,
             deposit_receipt,
             ts.ctx(),
@@ -2877,12 +2877,12 @@ fun test_redeem_receipt_offline() {
     ts::end(ts);
 }
 
-/// Test: deposit_item_and_mint fails when item parent_id doesn't match this storage unit
-/// Scenario: Withdraw item from storage A, try to deposit_item_and_mint at storage B
+/// Test: deposit_for_receipt fails when item parent_id doesn't match this storage unit
+/// Scenario: Withdraw item from storage A, try to deposit_for_receipt at storage B
 /// Expected: Transaction aborts with EItemParentMismatch
 #[test]
 #[expected_failure(abort_code = storage_unit::EItemParentMismatch)]
-fun test_deposit_item_and_mint_fail_parent_id_mismatch() {
+fun test_deposit_for_receipt_fail_parent_id_mismatch() {
     let mut ts = ts::begin(governor());
     setup_nwn(&mut ts);
     let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
@@ -2958,13 +2958,13 @@ fun test_deposit_item_and_mint_fail_parent_id_mismatch() {
         ts::return_shared(character);
     };
 
-    // Try to deposit_item_and_mint at storage B with item from storage A — parent_id mismatch
+    // Try to deposit_for_receipt at storage B with item from storage A — parent_id mismatch
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_b = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
 
-        let deposit_receipt = storage_b.deposit_item_and_mint<SwapAuth>(
+        let deposit_receipt = storage_b.deposit_for_receipt<SwapAuth>(
             &character,
             item,
             SwapAuth {},
@@ -3030,7 +3030,7 @@ fun test_cannot_withdraw_bearer_items_via_storage_owner_cap() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+        let deposit_receipt = storage_unit.deposit_for_receipt<SwapAuth>(
             &character,
             item,
             SwapAuth {},
@@ -3125,7 +3125,7 @@ fun test_cannot_withdraw_bearer_items_via_character_owner_cap() {
             AMMO_QUANTITY,
             ts.ctx(),
         );
-        let deposit_receipt = storage_unit.deposit_item_and_mint<SwapAuth>(
+        let deposit_receipt = storage_unit.deposit_for_receipt<SwapAuth>(
             &character,
             item,
             SwapAuth {},

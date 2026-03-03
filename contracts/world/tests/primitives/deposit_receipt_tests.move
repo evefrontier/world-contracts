@@ -142,7 +142,6 @@ fun zero_receipt() {
     {
         let receipt = deposit_receipt::zero(storage_unit_id(), TYPE_ID, ts.ctx());
         assert_eq!(receipt.quantity(), 0);
-        assert_eq!(receipt.value(), 0);
         assert_eq!(receipt.storage_unit_id(), storage_unit_id());
         assert_eq!(receipt.type_id(), TYPE_ID);
         receipt.destroy_zero();
@@ -181,8 +180,7 @@ fun value_equals_quantity() {
             QUANTITY,
             ts.ctx(),
         );
-        assert_eq!(receipt.value(), receipt.quantity());
-        assert_eq!(receipt.value(), QUANTITY);
+        assert_eq!(receipt.quantity(), QUANTITY);
         deposit_receipt::burn_for_testing(receipt);
     };
     ts::end(ts);

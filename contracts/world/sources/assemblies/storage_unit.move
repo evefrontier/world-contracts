@@ -25,8 +25,8 @@
 ///    - Requires OwnerCap + sender == character address
 ///
 /// 4. **Bearer inventory** (fully immutable, receipt-gated):
-///    - `deposit_item_and_mint<Auth>`: extension deposits an Item and mints a transferable DepositReceipt
-///    - `redeem_deposit_receipt_and_withdraw`: anyone holding a receipt can redeem it for the underlying Item
+///    - `deposit_for_receipt<Auth>`: extension deposits an Item and mints a transferable DepositReceipt
+///    - `redeem_deposit_receipt`: anyone holding a receipt can redeem it for the underlying Item
 ///    - DepositReceipts are Coin-like bearer instruments: split, join, transfer
 ///
 /// Future pattern: Storage Units (extension-controlled), Ships (owner-controlled)
@@ -375,8 +375,8 @@ public fun withdraw_by_owner<T: key>(
 /// storage unit's bearer inventory. Returns a transferable `DepositReceipt`
 /// that acts as a bearer claim on the deposited items.
 ///
-/// Flow: withdraw from main inventory → `deposit_item_and_mint` → receipt
-public fun deposit_item_and_mint<Auth: drop>(
+/// Flow: withdraw from main inventory → `deposit_for_receipt` → receipt
+public fun deposit_for_receipt<Auth: drop>(
     storage_unit: &mut StorageUnit,
     character: &Character,
     item: Item,
@@ -424,7 +424,7 @@ public fun deposit_item_and_mint<Auth: drop>(
 /// Anyone holding a valid `DepositReceipt` can call this — no `OwnerCap` or
 /// extension authorization required. The receipt is burned and the
 /// corresponding `Item` is returned in transit form.
-public fun redeem_deposit_receipt_and_withdraw(
+public fun redeem_deposit_receipt(
     storage_unit: &mut StorageUnit,
     character: &Character,
     receipt: DepositReceipt,
