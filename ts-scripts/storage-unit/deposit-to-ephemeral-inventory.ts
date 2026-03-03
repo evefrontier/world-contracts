@@ -10,17 +10,15 @@ import {
     handleError,
     getEnvConfig,
     shareHydratedConfig,
+    requireEnv,
 } from "../utils/helper";
 import { executeSponsoredTransaction } from "../utils/transaction";
 import {
-    GAME_CHARACTER_ID,
     GAME_CHARACTER_B_ID,
-    GAME_CHARACTER_C_ID,
     STORAGE_A_ITEM_ID,
     ITEM_A_TYPE_ID,
     ITEM_A_ITEM_ID,
 } from "../utils/constants";
-import { delay, getDelayMs } from "../utils/delay";
 import { getCharacterOwnerCap } from "../character/helper";
 
 async function gameItemToChain(
@@ -85,83 +83,57 @@ async function gameItemToChain(
     console.log("Item Id:", itemId);
 }
 
-async function depositForPlayer(
-    envKeyName: string,
-    gameCharacterId: number,
-    label: string,
-    ctx: ReturnType<typeof initializeContext>,
-    env: ReturnType<typeof getEnvConfig>
-) {
-    const playerKey = process.env[envKeyName];
-    if (!playerKey) {
-        console.log(`Skipping ${label} — ${envKeyName} not set`);
-        return;
-    }
-
-    const playerCtx = initializeContext(env.network, playerKey);
-    shareHydratedConfig(ctx, playerCtx);
-    const { client, keypair, config } = ctx;
-
-    const playerAddress = playerCtx.address;
-    const adminAddress = keypair.getPublicKey().toSuiAddress();
-
-    const characterObject = deriveObjectId(
-        config.objectRegistry,
-        gameCharacterId,
-        config.packageId
-    );
-
-    const storageUnit = deriveObjectId(
-        config.objectRegistry,
-        STORAGE_A_ITEM_ID,
-        config.packageId
-    );
-
-    const characterOwnerCap = await getCharacterOwnerCap(
-        characterObject,
-        client,
-        config,
-        playerAddress
-    );
-    if (!characterOwnerCap) {
-        throw new Error(`OwnerCap not found for ${label} (${characterObject})`);
-    }
-
-    console.log(`\n---- ${label} ----`);
-    await gameItemToChain(
-        storageUnit,
-        characterObject,
-        characterOwnerCap,
-        playerAddress,
-        ITEM_A_TYPE_ID,
-        ITEM_A_ITEM_ID,
-        10n,
-        10,
-        adminAddress,
-        client,
-        playerCtx.keypair,
-        keypair,
-        config
-    );
-}
-
 async function main() {
     try {
         const env = getEnvConfig();
         const ctx = initializeContext(env.network, env.adminExportedKey);
         await hydrateWorldConfig(ctx);
+        const playerKey = requireEnv("PLAYER_B_PRIVATE_KEY");
+        const playerCtx = initializeContext(env.network, playerKey);
+        shareHydratedConfig(ctx, playerCtx);
+        const { client, keypair, config } = ctx;
 
-        const players: { envKey: string; gameCharacterId: number; label: string }[] = [
-            { envKey: "PLAYER_A_PRIVATE_KEY", gameCharacterId: GAME_CHARACTER_ID, label: "Player A" },
-            { envKey: "PLAYER_B_PRIVATE_KEY", gameCharacterId: GAME_CHARACTER_B_ID, label: "Player B" },
-            { envKey: "PLAYER_C_PRIVATE_KEY", gameCharacterId: GAME_CHARACTER_C_ID, label: "Player C" },
-        ];
+        const playerAddress = playerCtx.address;
+        const adminAddress = keypair.getPublicKey().toSuiAddress();
 
-        for (let i = 0; i < players.length; i++) {
-            const p = players[i];
-            await depositForPlayer(p.envKey, p.gameCharacterId, p.label, ctx, env);
-            if (i < players.length - 1) await delay(getDelayMs());
+        const characterObject = deriveObjectId(
+            config.objectRegistry,
+            GAME_CHARACTER_B_ID,
+            config.packageId
+        );
+
+        const storageUnit = deriveObjectId(
+            config.objectRegistry,
+            STORAGE_A_ITEM_ID,
+            config.packageId
+        );
+
+        // Ephemeral inventory is owned by the character
+        const characterOwnerCap = await getCharacterOwnerCap(
+            characterObject,
+            client,
+            config,
+            playerAddress
+        );
+        if (!characterOwnerCap) {
+            throw new Error(`OwnerCap not found for ${characterObject}`);
         }
+
+        await gameItemToChain(
+            storageUnit,
+            characterObject,
+            characterOwnerCap,
+            playerAddress,
+            ITEM_A_TYPE_ID,
+            ITEM_A_ITEM_ID,
+            10n,
+            10,
+            adminAddress,
+            client,
+            playerCtx.keypair,
+            keypair,
+            config
+        );
     } catch (error) {
         handleError(error);
     }

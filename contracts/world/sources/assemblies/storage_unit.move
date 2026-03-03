@@ -254,9 +254,9 @@ public fun deposit_to_owned<Auth: drop>(
         EExtensionNotAuthorized,
     );
     assert!(storage_unit.status.is_online(), ENotOnline);
-    assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
+    assert!(item.tenant() == storage_unit.key.tenant(), ETenantMismatch);
     assert!(character.tenant() == storage_unit.key.tenant(), ETenantMismatch);
-    assert!(inventory::parent_id(&item) == storage_unit_id, EItemParentMismatch);
+    assert!(item.parent_id() == storage_unit_id, EItemParentMismatch);
 
     let owner_cap_id = character.owner_cap_id();
 
