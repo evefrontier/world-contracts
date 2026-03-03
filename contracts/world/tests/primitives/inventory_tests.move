@@ -719,7 +719,7 @@ fun round_trip_split_join_df_quantities() {
             ts.ctx(),
         );
 
-        assert_eq!(inventory::quantity(&item), 3);
+        assert_eq!(item.quantity(), 3);
         let inv_ref = df::borrow<ID, Inventory>(&storage_unit.id, character_id);
         assert_eq!(inv_ref.item_quantity(AMMO_TYPE_ID), 7);
         assert_eq!(inv_ref.used_capacity(), 700);
