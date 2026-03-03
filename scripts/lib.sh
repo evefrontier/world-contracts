@@ -45,8 +45,9 @@ publish() {
 
     if [[ "$env" == "localnet" ]]; then
         if [[ -n "$localnet_pubfile" ]]; then
-            if [[ ! -f "$localnet_pubfile" || ! -r "$localnet_pubfile" ]]; then
-                echo "Error: localnet pubfile not found or not readable: $localnet_pubfile" >&2
+            # Path is relative to contracts/$pkg (same as test-publish cwd); check from there.
+            if ! (cd "contracts/$pkg" && [[ -f "$localnet_pubfile" && -r "$localnet_pubfile" ]]); then
+                echo "Error: localnet pubfile not found or not readable: $localnet_pubfile (from contracts/$pkg)" >&2
                 exit 1
             fi
             (cd "contracts/$pkg" && sui client test-publish --build-env testnet --pubfile-path "$localnet_pubfile" --json) > "$tmp" 2>&1 || true
