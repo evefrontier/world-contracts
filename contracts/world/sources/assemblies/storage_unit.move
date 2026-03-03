@@ -27,9 +27,12 @@
 /// 4. **Warehouse inventory** (fully immutable, receipt-gated):
 ///    - `deposit_for_receipt`: deposits an Item and mints a transferable WarehouseReceipt (no extension required)
 ///    - `redeem_deposit_receipt`: anyone holding a receipt can redeem it for the underlying Item.
-///    - WarehouseReceipts are Coin-like warehouse instruments: split, join, transfer
-///    - This means the Warehouse Receipt is a transferrable owned object that can used for payments, trade (escrow), etc
-///      without worrying about the underlying items until redemption time.
+///    - WarehouseReceipts are Coin-like warehouse instruments: split, join, transfer. They are runtime enforced,
+///      not type-enforced like Coins.
+///    - This means the WarehouseReceipt is a transferrable owned object that can used for trade (escrow), payments, etc
+///      without worrying about the underlying items until redemption time. The exception to this is if the
+///      storage unit hosting the receipt's Item(s) goes offline or is unanchored, in which case the receipt
+///      becomes invalid and cannot be redeemed. At that point - it's just a record of past events.
 ///
 /// Future pattern: Storage Units (extension-controlled), Ships (owner-controlled)
 module world::storage_unit;
@@ -423,7 +426,8 @@ public fun deposit_for_receipt(
 ///
 /// Anyone holding a valid `WarehouseReceipt` can call this — no `OwnerCap` or
 /// extension authorization required. The receipt is burned and the
-/// corresponding `Item` is returned in transit form.
+/// corresponding `Item` is returned in the form of a hot potato that can be
+/// moved to other inventories in the same storage unit.
 public fun redeem_deposit_receipt(
     storage_unit: &mut StorageUnit,
     character: &Character,
