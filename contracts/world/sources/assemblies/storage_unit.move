@@ -25,7 +25,7 @@
 ///    - Requires OwnerCap + sender == character address
 ///
 /// 4. **Bearer inventory** (fully immutable, receipt-gated):
-///    - `deposit_for_receipt<Auth>`: extension deposits an Item and mints a transferable DepositReceipt
+///    - `deposit_for_receipt`: deposits an Item and mints a transferable DepositReceipt (no extension required)
 ///    - `redeem_deposit_receipt`: anyone holding a receipt can redeem it for the underlying Item
 ///    - DepositReceipts are Coin-like bearer instruments: split, join, transfer
 ///
@@ -369,25 +369,23 @@ public fun withdraw_by_owner<T: key>(
     )
 }
 
-/// Extension-authorized deposit into the bearer inventory.
+/// Deposit into the bearer inventory and mint a receipt.
 ///
 /// Consumes a transit `Item` (the hot potato) and deposits it into the
 /// storage unit's bearer inventory. Returns a transferable `DepositReceipt`
 /// that acts as a bearer claim on the deposited items.
 ///
+/// No extension authorization required — the `Item` itself is the proof of
+/// legitimate withdrawal (it carries a checked `parent_id`).
+///
 /// Flow: withdraw from main inventory → `deposit_for_receipt` → receipt
-public fun deposit_for_receipt<Auth: drop>(
+public fun deposit_for_receipt(
     storage_unit: &mut StorageUnit,
     character: &Character,
     item: Item,
-    _: Auth,
     ctx: &mut TxContext,
 ): DepositReceipt {
     let storage_unit_id = object::id(storage_unit);
-    assert!(
-        storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
-        EExtensionNotAuthorized,
-    );
     assert!(storage_unit.status.is_online(), ENotOnline);
     assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
     assert!(inventory::parent_id(&item) == storage_unit_id, EItemParentMismatch);
