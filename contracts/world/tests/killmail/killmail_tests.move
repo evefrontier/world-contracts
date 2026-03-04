@@ -5,10 +5,10 @@ use std::string::utf8;
 use sui::test_scenario as ts;
 use world::{
     access::AdminACL,
-    character::{Character},
+    character::Character,
     killmail,
     object_registry::ObjectRegistry,
-    test_helpers::{Self, admin, tenant, user_a},
+    test_helpers::{Self, admin, tenant, user_a}
 };
 
 // Test constants
