@@ -8,6 +8,7 @@ use world::{
     energy::{Self, EnergyConfig},
     fuel::{Self, FuelConfig},
     in_game_id::{Self, TenantItemId},
+    killmail_registry,
     location::{Self, LocationProof},
     object_registry,
     world::{Self, GovernorCap}
@@ -100,6 +101,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
         world::init_for_testing(ts.ctx());
         access::init_for_testing(ts.ctx());
         object_registry::init_for_testing(ts.ctx());
+        killmail_registry::init_for_testing(ts.ctx());
         fuel::init_for_testing(ts.ctx());
         energy::init_for_testing(ts.ctx());
     };
