@@ -777,6 +777,218 @@ fun unlink_gates_by_admin_succeeds() {
 }
 
 #[test]
+fun unlink_and_unanchor_succeeds() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 612);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let source_gate = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+
+        gate::unlink_and_unanchor(
+            source_gate,
+            &mut gate_b,
+            &mut nwn,
+            &energy_config,
+            &admin_acl,
+            ts.ctx(),
+        );
+
+        assert!(option::is_none(&gate_b.linked_gate_id()), 0);
+        ts::return_shared(gate_b);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(admin_acl);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+fun unlink_and_unanchor_orphan_succeeds() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 614);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+
+    // Make both gates orphans (off nwn, no energy source) while still linked
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let orphaned_assemblies = nwn.unanchor(&admin_acl, ts.ctx());
+        let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let updated_orphaned_assemblies = gate_a.offline_orphaned_gate(
+            orphaned_assemblies,
+            &mut nwn,
+            &energy_config,
+        );
+        let updated_orphaned_assemblies = gate_b.offline_orphaned_gate(
+            updated_orphaned_assemblies,
+            &mut nwn,
+            &energy_config,
+        );
+        nwn.destroy_network_node(updated_orphaned_assemblies, &admin_acl, ts.ctx());
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(energy_config);
+        ts::return_shared(admin_acl);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let source_gate = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+
+        gate::unlink_and_unanchor_orphan(source_gate, &mut gate_b, &admin_acl, ts.ctx());
+
+        assert!(option::is_none(&gate_b.linked_gate_id()), 0);
+        ts::return_shared(gate_b);
+        ts::return_shared(admin_acl);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = gate::EGatesNotLinked)]
+fun unlink_and_unanchor_fails_when_gates_not_linked() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 613);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    // Do not link gates
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let source_gate = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+
+        gate::unlink_and_unanchor(
+            source_gate,
+            &mut gate_b,
+            &mut nwn,
+            &energy_config,
+            &admin_acl,
+            ts.ctx(),
+        );
+        ts::return_shared(gate_b);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(admin_acl);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = gate::EGatesNotLinked)]
+fun unlink_and_unanchor_orphan_fails_when_gates_not_linked() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 615);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    // Make gates orphans without linking
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let orphaned_assemblies = nwn.unanchor(&admin_acl, ts.ctx());
+        let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let updated_orphaned_assemblies = gate_a.offline_orphaned_gate(
+            orphaned_assemblies,
+            &mut nwn,
+            &energy_config,
+        );
+        let updated_orphaned_assemblies = gate_b.offline_orphaned_gate(
+            updated_orphaned_assemblies,
+            &mut nwn,
+            &energy_config,
+        );
+        nwn.destroy_network_node(updated_orphaned_assemblies, &admin_acl, ts.ctx());
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(energy_config);
+        ts::return_shared(admin_acl);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let source_gate = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+
+        gate::unlink_and_unanchor_orphan(source_gate, &mut gate_b, &admin_acl, ts.ctx());
+        ts::return_shared(gate_b);
+        ts::return_shared(admin_acl);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = gate::EGateHasEnergySource)]
+fun unlink_and_unanchor_orphan_fails_when_source_has_energy_source() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 616);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+
+    // Source gate still has energy source; unanchor_orphan will abort
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let mut gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let source_gate = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+
+        gate::unlink_and_unanchor_orphan(source_gate, &mut gate_b, &admin_acl, ts.ctx());
+        ts::return_shared(gate_b);
+        ts::return_shared(admin_acl);
+    };
+    ts::end(ts);
+}
+
+#[test]
 #[expected_failure(abort_code = gate::EGatesAlreadyLinked)]
 fun link_fails_when_gates_already_linked() {
     let mut ts = ts::begin(governor());

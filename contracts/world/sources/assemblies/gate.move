@@ -578,6 +578,30 @@ public fun unanchor_orphan(gate: Gate, admin_acl: &AdminACL, ctx: &TxContext) {
     id.delete();
 }
 
+public fun unlink_and_unanchor(
+    mut source_gate: Gate,
+    destination_gate: &mut Gate,
+    network_node: &mut NetworkNode,
+    energy_config: &EnergyConfig,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
+) {
+    unlink_gates_by_admin(&mut source_gate, destination_gate, admin_acl, ctx);
+    unanchor(source_gate, network_node, energy_config, admin_acl, ctx);
+}
+
+/// Unlink source from destination, then unanchor the source gate as an orphan (no energy source).
+/// Use when the source gate is not connected to a network node.
+public fun unlink_and_unanchor_orphan(
+    mut source_gate: Gate,
+    destination_gate: &mut Gate,
+    admin_acl: &AdminACL,
+    ctx: &TxContext,
+) {
+    unlink_gates_by_admin(&mut source_gate, destination_gate, admin_acl, ctx);
+    unanchor_orphan(source_gate, admin_acl, ctx);
+}
+
 public fun set_max_distance(
     gate_config: &mut GateConfig,
     admin_acl: &AdminACL,
