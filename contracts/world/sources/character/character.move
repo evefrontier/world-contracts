@@ -32,7 +32,9 @@ const EAddressEmpty: vector<u8> = b"Address cannot be empty";
 #[error(code = 5)]
 const ESenderCannotAccessCharacter: vector<u8> = b"Sender cannot access Character";
 #[error(code = 6)]
-const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
+const EMetadataNotSet: vector<u8> = b"Metadata not set on character";
+#[error(code = 7)]
+const ECharacterNotAuthorized: vector<u8> = b"Character access not authorized";
 
 public struct Character has key {
     id: UID,
@@ -76,14 +78,16 @@ public fun owner_cap_id(character: &Character): ID {
     character.owner_cap_id
 }
 
+// === Public Functions ===
 public fun update_metadata_name(
     character: &mut Character,
     owner_cap: &OwnerCap<Character>,
     name: String,
 ) {
+    assert!(access::is_authorized(owner_cap, object::id(character)), ECharacterNotAuthorized);
     assert!(std::option::is_some(&character.metadata), EMetadataNotSet);
     let metadata = std::option::borrow_mut(&mut character.metadata);
-    metadata::update_name(metadata, character.key, owner_cap, name);
+    metadata.update_name(character.key, name);
 }
 
 public fun update_metadata_description(
@@ -91,9 +95,10 @@ public fun update_metadata_description(
     owner_cap: &OwnerCap<Character>,
     description: String,
 ) {
+    assert!(access::is_authorized(owner_cap, object::id(character)), ECharacterNotAuthorized);
     assert!(std::option::is_some(&character.metadata), EMetadataNotSet);
     let metadata = std::option::borrow_mut(&mut character.metadata);
-    metadata::update_description(metadata, character.key, owner_cap, description);
+    metadata.update_description(character.key, description);
 }
 
 public fun update_metadata_url(
@@ -101,9 +106,10 @@ public fun update_metadata_url(
     owner_cap: &OwnerCap<Character>,
     url: String,
 ) {
+    assert!(access::is_authorized(owner_cap, object::id(character)), ECharacterNotAuthorized);
     assert!(std::option::is_some(&character.metadata), EMetadataNotSet);
     let metadata = std::option::borrow_mut(&mut character.metadata);
-    metadata::update_url(metadata, character.key, owner_cap, url);
+    metadata.update_url(character.key, url);
 }
 
 // === Admin Functions ===

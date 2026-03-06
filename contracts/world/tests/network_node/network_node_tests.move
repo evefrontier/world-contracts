@@ -1200,3 +1200,52 @@ fun update_energy_source_when_assembly_online() {
     clock.destroy_for_testing();
     ts::end(ts);
 }
+
+#[test]
+fun test_update_metadata_network_node_success() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), 1);
+    let nwn_id = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_id);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
+            ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
+            ts.ctx(),
+        );
+        nwn.update_metadata_name(&owner_cap, utf8(b"New Name"));
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+        ts::return_shared(nwn);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = network_node::ENetworkNodeNotAuthorized)]
+fun test_update_metadata_network_node_wrong_cap() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+    let character_a_id = create_character(&mut ts, user_a(), 1);
+    let character_b_id = create_character(&mut ts, user_b(), 2);
+    let nwn_id_a = create_network_node(&mut ts, NWN_ITEM_ID, FUEL_BURN_RATE_IN_MS, character_a_id);
+    let _ = create_network_node(&mut ts, NWN_ITEM_ID + 1, FUEL_BURN_RATE_IN_MS, character_b_id);
+
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut nwn_a = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id_a);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let (owner_cap_b, receipt) = character_b.borrow_owner_cap<NetworkNode>(
+            ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_b_id),
+            ts.ctx(),
+        );
+        nwn_a.update_metadata_name(&owner_cap_b, utf8(b"X"));
+        character_b.return_owner_cap(owner_cap_b, receipt);
+        ts::return_shared(character_b);
+        ts::return_shared(nwn_a);
+    };
+    ts::end(ts);
+}

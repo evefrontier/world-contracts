@@ -388,6 +388,31 @@ public fun offline_orphaned_gate(
     orphaned_assemblies
 }
 
+public fun update_metadata_name(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, name: String) {
+    assert!(access::is_authorized(owner_cap, object::id(gate)), EGateNotAuthorized);
+    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut gate.metadata);
+    metadata.update_name(gate.key, name);
+}
+
+public fun update_metadata_description(
+    gate: &mut Gate,
+    owner_cap: &OwnerCap<Gate>,
+    description: String,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(gate)), EGateNotAuthorized);
+    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut gate.metadata);
+    metadata.update_description(gate.key, description);
+}
+
+public fun update_metadata_url(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, url: String) {
+    assert!(access::is_authorized(owner_cap, object::id(gate)), EGateNotAuthorized);
+    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut gate.metadata);
+    metadata.update_url(gate.key, url);
+}
+
 // === View Functions ===
 public fun status(gate: &Gate): &AssemblyStatus {
     &gate.status
@@ -429,28 +454,6 @@ public fun extension_type(gate: &Gate): &Option<TypeName> {
 /// Returns true if the gate is configured with extension logic
 public fun is_extension_configured(gate: &Gate): bool {
     option::is_some(&gate.extension)
-}
-
-public fun update_metadata_name(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, name: String) {
-    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut gate.metadata);
-    metadata::update_name(metadata, gate.key, owner_cap, name);
-}
-
-public fun update_metadata_description(
-    gate: &mut Gate,
-    owner_cap: &OwnerCap<Gate>,
-    description: String,
-) {
-    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut gate.metadata);
-    metadata::update_description(metadata, gate.key, owner_cap, description);
-}
-
-public fun update_metadata_url(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, url: String) {
-    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut gate.metadata);
-    metadata::update_url(metadata, gate.key, owner_cap, url);
 }
 
 // === Admin Functions ===

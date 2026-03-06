@@ -11,7 +11,7 @@ use world::{
     metadata,
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
-    test_helpers::{Self, admin, governor, user_a, user_b, tenant}
+    test_helpers::{Self, admin, governor, user_a, tenant}
 };
 
 const ITEM_ID: u64 = 1001;
@@ -26,8 +26,6 @@ const URL: vector<u8> = b"https://example.com/item.png";
 const NEW_NAME: vector<u8> = b"Christmas Cookies";
 const NEW_DESC: vector<u8> = b"cookies for kindness";
 const NEW_URL: vector<u8> = b"https://example.com/updated.png";
-
-const USER_B_ITEM_ID: u64 = 1002;
 
 const NWN_ITEM_ID: u64 = 5000;
 const NWN_TYPE_ID: u64 = 111000;
@@ -154,7 +152,7 @@ fun test_metadata_lifecycle() {
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
         let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
-        metadata.update_name(assembly_key, &owner_cap, NEW_NAME.to_string());
+        metadata.update_name(assembly_key, NEW_NAME.to_string());
         assert_eq!(metadata.name(), NEW_NAME.to_string());
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
@@ -165,7 +163,7 @@ fun test_metadata_lifecycle() {
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
         let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
-        metadata.update_description(assembly_key, &owner_cap, NEW_DESC.to_string());
+        metadata.update_description(assembly_key, NEW_DESC.to_string());
         assert_eq!(metadata.description(), NEW_DESC.to_string());
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
@@ -176,114 +174,13 @@ fun test_metadata_lifecycle() {
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
         let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
-        metadata.update_url(assembly_key, &owner_cap, NEW_URL.to_string());
+        metadata.update_url(assembly_key, NEW_URL.to_string());
         assert_eq!(metadata.url(), NEW_URL.to_string());
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
     };
 
     // Delete : Ideally the calling function is admin capped
-    metadata.delete();
-    ts::end(ts);
-}
-
-#[test]
-#[expected_failure(abort_code = metadata::ENotAuthorized)]
-fun test_update_name_unauthorized() {
-    let mut ts = ts::begin(governor());
-    test_helpers::setup_world(&mut ts);
-
-    let nwn_id = create_network_node(&mut ts);
-    let (assembly_id, _) = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
-    let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
-
-    let mut metadata = metadata::create_metadata(
-        assembly_id,
-        assembly_key,
-        NAME.to_string(),
-        DESCRIPTION.to_string(),
-        URL.to_string(),
-    );
-
-    // Create a second assembly for user_b (their OwnerCap<Assembly> is on their character)
-    let (_, user_b_character_id) = create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
-
-    // Try to update with wrong owner cap (user_b's cap is for a different assembly)
-    ts::next_tx(&mut ts, user_b());
-    {
-        let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
-        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
-        metadata.update_name(assembly_key, &owner_cap, NEW_NAME.to_string());
-        character.return_owner_cap(owner_cap, receipt);
-        ts::return_shared(character);
-    };
-
-    metadata.delete();
-    ts::end(ts);
-}
-
-#[test]
-#[expected_failure(abort_code = metadata::ENotAuthorized)]
-fun test_update_description_unauthorized() {
-    let mut ts = ts::begin(governor());
-    test_helpers::setup_world(&mut ts);
-
-    let nwn_id = create_network_node(&mut ts);
-    let (assembly_id, _) = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
-    let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
-
-    let mut metadata = metadata::create_metadata(
-        assembly_id,
-        assembly_key,
-        NAME.to_string(),
-        DESCRIPTION.to_string(),
-        URL.to_string(),
-    );
-
-    let (_, user_b_character_id) = create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
-
-    ts::next_tx(&mut ts, user_b());
-    {
-        let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
-        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
-        metadata.update_description(assembly_key, &owner_cap, NEW_DESC.to_string());
-        character.return_owner_cap(owner_cap, receipt);
-        ts::return_shared(character);
-    };
-
-    metadata.delete();
-    ts::end(ts);
-}
-
-#[test]
-#[expected_failure(abort_code = metadata::ENotAuthorized)]
-fun test_update_url_unauthorized() {
-    let mut ts = ts::begin(governor());
-    test_helpers::setup_world(&mut ts);
-
-    let nwn_id = create_network_node(&mut ts);
-    let (assembly_id, _) = create_assembly(&mut ts, nwn_id, user_a(), ITEM_ID);
-    let assembly_key = in_game_id::create_key(ITEM_ID, tenant());
-
-    let mut metadata = metadata::create_metadata(
-        assembly_id,
-        assembly_key,
-        NAME.to_string(),
-        DESCRIPTION.to_string(),
-        URL.to_string(),
-    );
-
-    let (_, user_b_character_id) = create_assembly(&mut ts, nwn_id, user_b(), USER_B_ITEM_ID);
-
-    ts::next_tx(&mut ts, user_b());
-    {
-        let mut character = ts::take_shared_by_id<Character>(&ts, user_b_character_id);
-        let (owner_cap, receipt) = borrow_assembly_owner_cap(&mut character, &mut ts);
-        metadata.update_url(assembly_key, &owner_cap, NEW_URL.to_string());
-        character.return_owner_cap(owner_cap, receipt);
-        ts::return_shared(character);
-    };
-
     metadata.delete();
     ts::end(ts);
 }

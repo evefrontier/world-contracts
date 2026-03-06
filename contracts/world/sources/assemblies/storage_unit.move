@@ -359,6 +359,39 @@ public fun withdraw_by_owner<T: key>(
     )
 }
 
+public fun update_metadata_name(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap<StorageUnit>,
+    name: String,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut storage_unit.metadata);
+    metadata.update_name(storage_unit.key, name);
+}
+
+public fun update_metadata_description(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap<StorageUnit>,
+    description: String,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut storage_unit.metadata);
+    metadata.update_description(storage_unit.key, description);
+}
+
+public fun update_metadata_url(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap<StorageUnit>,
+    url: String,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
+    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut storage_unit.metadata);
+    metadata.update_url(storage_unit.key, url);
+}
+
 // === View Functions ===
 public fun status(storage_unit: &StorageUnit): &AssemblyStatus {
     &storage_unit.status
@@ -379,36 +412,6 @@ public fun owner_cap_id(storage_unit: &StorageUnit): ID {
 /// Returns the storage unit's energy source (network node) ID if set
 public fun energy_source_id(storage_unit: &StorageUnit): &Option<ID> {
     &storage_unit.energy_source_id
-}
-
-public fun update_metadata_name(
-    storage_unit: &mut StorageUnit,
-    owner_cap: &OwnerCap<StorageUnit>,
-    name: String,
-) {
-    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut storage_unit.metadata);
-    metadata::update_name(metadata, storage_unit.key, owner_cap, name);
-}
-
-public fun update_metadata_description(
-    storage_unit: &mut StorageUnit,
-    owner_cap: &OwnerCap<StorageUnit>,
-    description: String,
-) {
-    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut storage_unit.metadata);
-    metadata::update_description(metadata, storage_unit.key, owner_cap, description);
-}
-
-public fun update_metadata_url(
-    storage_unit: &mut StorageUnit,
-    owner_cap: &OwnerCap<StorageUnit>,
-    url: String,
-) {
-    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut storage_unit.metadata);
-    metadata::update_url(metadata, storage_unit.key, owner_cap, url);
 }
 
 // === Admin Functions ===

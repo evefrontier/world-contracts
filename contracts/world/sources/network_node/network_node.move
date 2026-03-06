@@ -158,6 +158,39 @@ public fun offline(
     }
 }
 
+public fun update_metadata_name(
+    nwn: &mut NetworkNode,
+    owner_cap: &OwnerCap<NetworkNode>,
+    name: String,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    assert!(option::is_some(&nwn.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut nwn.metadata);
+    metadata.update_name(nwn.key, name);
+}
+
+public fun update_metadata_description(
+    nwn: &mut NetworkNode,
+    owner_cap: &OwnerCap<NetworkNode>,
+    description: String,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    assert!(option::is_some(&nwn.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut nwn.metadata);
+    metadata.update_description(nwn.key, description);
+}
+
+public fun update_metadata_url(
+    nwn: &mut NetworkNode,
+    owner_cap: &OwnerCap<NetworkNode>,
+    url: String,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(nwn)), ENetworkNodeNotAuthorized);
+    assert!(option::is_some(&nwn.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut nwn.metadata);
+    metadata.update_url(nwn.key, url);
+}
+
 // === View Functions ===
 /// Returns the list of connected assembly IDs
 public fun connected_assemblies(nwn: &NetworkNode): vector<ID> {
@@ -209,36 +242,6 @@ public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySour
 
 public fun need_update(nwn: &NetworkNode, fuel_config: &FuelConfig, clock: &Clock): bool {
     nwn.fuel.need_update(fuel_config, clock)
-}
-
-public fun update_metadata_name(
-    nwn: &mut NetworkNode,
-    owner_cap: &OwnerCap<NetworkNode>,
-    name: String,
-) {
-    assert!(option::is_some(&nwn.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut nwn.metadata);
-    metadata::update_name(metadata, nwn.key, owner_cap, name);
-}
-
-public fun update_metadata_description(
-    nwn: &mut NetworkNode,
-    owner_cap: &OwnerCap<NetworkNode>,
-    description: String,
-) {
-    assert!(option::is_some(&nwn.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut nwn.metadata);
-    metadata::update_description(metadata, nwn.key, owner_cap, description);
-}
-
-public fun update_metadata_url(
-    nwn: &mut NetworkNode,
-    owner_cap: &OwnerCap<NetworkNode>,
-    url: String,
-) {
-    assert!(option::is_some(&nwn.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut nwn.metadata);
-    metadata::update_url(metadata, nwn.key, owner_cap, url);
 }
 
 // === Admin Functions ===

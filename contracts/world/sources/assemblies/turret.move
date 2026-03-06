@@ -24,7 +24,7 @@ use world::{
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
-    metadata::{Self, Metadata},
+    metadata::{Metadata},
     network_node::{NetworkNode, UpdateEnergySources, OfflineAssemblies, HandleOrphanedAssemblies},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
@@ -322,6 +322,31 @@ public fun peel_target_candidate(candidate_bytes: vector<u8>): TargetCandidate {
     peel_target_candidate_from_bcs(&mut bcs_data)
 }
 
+public fun update_metadata_name(turret: &mut Turret, owner_cap: &OwnerCap<Turret>, name: String) {
+    assert!(access::is_authorized(owner_cap, object::id(turret)), ETurretNotAuthorized);
+    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut turret.metadata);
+    metadata.update_name(turret.key, name);
+}
+
+public fun update_metadata_description(
+    turret: &mut Turret,
+    owner_cap: &OwnerCap<Turret>,
+    description: String,
+) {
+    assert!(access::is_authorized(owner_cap, object::id(turret)), ETurretNotAuthorized);
+    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut turret.metadata);
+    metadata.update_description(turret.key, description);
+}
+
+public fun update_metadata_url(turret: &mut Turret, owner_cap: &OwnerCap<Turret>, url: String) {
+    assert!(access::is_authorized(owner_cap, object::id(turret)), ETurretNotAuthorized);
+    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut turret.metadata);
+    metadata.update_url(turret.key, url);
+}
+
 // === View Functions ===
 public fun status(turret: &Turret): &AssemblyStatus {
     &turret.status
@@ -413,28 +438,6 @@ public fun new_return_target_priority_list(
 /// Returns the turret ID from an OnlineReceipt.
 public fun turret_id(receipt: &OnlineReceipt): ID {
     receipt.turret_id
-}
-
-public fun update_metadata_name(turret: &mut Turret, owner_cap: &OwnerCap<Turret>, name: String) {
-    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut turret.metadata);
-    metadata::update_name(metadata, turret.key, owner_cap, name);
-}
-
-public fun update_metadata_description(
-    turret: &mut Turret,
-    owner_cap: &OwnerCap<Turret>,
-    description: String,
-) {
-    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut turret.metadata);
-    metadata::update_description(metadata, turret.key, owner_cap, description);
-}
-
-public fun update_metadata_url(turret: &mut Turret, owner_cap: &OwnerCap<Turret>, url: String) {
-    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
-    let metadata = option::borrow_mut(&mut turret.metadata);
-    metadata::update_url(metadata, turret.key, owner_cap, url);
 }
 
 // === Admin Functions ===

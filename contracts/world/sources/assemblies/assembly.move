@@ -95,23 +95,15 @@ public fun offline(
     assembly.status.offline(assembly_id, assembly.key);
 }
 
-// === View Functions ===
-public fun status(assembly: &Assembly): &AssemblyStatus {
-    &assembly.status
-}
-
-public fun owner_cap_id(assembly: &Assembly): ID {
-    assembly.owner_cap_id
-}
-
 public fun update_metadata_name(
     assembly: &mut Assembly,
     owner_cap: &OwnerCap<Assembly>,
     name: String,
 ) {
+    assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
     assert!(option::is_some(&assembly.metadata), EMetadataNotSet);
     let metadata = option::borrow_mut(&mut assembly.metadata);
-    metadata::update_name(metadata, assembly.key, owner_cap, name);
+    metadata.update_name(assembly.key, name);
 }
 
 public fun update_metadata_description(
@@ -119,9 +111,10 @@ public fun update_metadata_description(
     owner_cap: &OwnerCap<Assembly>,
     description: String,
 ) {
+    assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
     assert!(option::is_some(&assembly.metadata), EMetadataNotSet);
     let metadata = option::borrow_mut(&mut assembly.metadata);
-    metadata::update_description(metadata, assembly.key, owner_cap, description);
+    metadata.update_description(assembly.key, description);
 }
 
 public fun update_metadata_url(
@@ -129,9 +122,19 @@ public fun update_metadata_url(
     owner_cap: &OwnerCap<Assembly>,
     url: String,
 ) {
+    assert!(access::is_authorized(owner_cap, object::id(assembly)), EAssemblyNotAuthorized);
     assert!(option::is_some(&assembly.metadata), EMetadataNotSet);
     let metadata = option::borrow_mut(&mut assembly.metadata);
-    metadata::update_url(metadata, assembly.key, owner_cap, url);
+    metadata.update_url(assembly.key, url);
+}
+
+// === View Functions ===
+public fun status(assembly: &Assembly): &AssemblyStatus {
+    &assembly.status
+}
+
+public fun owner_cap_id(assembly: &Assembly): ID {
+    assembly.owner_cap_id
 }
 
 /// Returns the assembly's energy source (network node) ID if set

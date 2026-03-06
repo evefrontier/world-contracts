@@ -3,11 +3,7 @@ module world::metadata;
 
 use std::string::String;
 use sui::event;
-use world::{access::{Self, OwnerCap}, in_game_id::TenantItemId};
-
-// === Errors ===
-#[error(code = 0)]
-const ENotAuthorized: vector<u8> = b"Not authorized to update metadata";
+use world::in_game_id::TenantItemId;
 
 // === Structs ===
 public struct Metadata has store {
@@ -24,40 +20,6 @@ public struct MetadataChangedEvent has copy, drop {
     name: String,
     description: String,
     url: String,
-}
-
-// === Public Functions ===
-public fun update_name<T: key>(
-    metadata: &mut Metadata,
-    assembly_key: TenantItemId,
-    owner_cap: &OwnerCap<T>,
-    name: String,
-) {
-    assert!(access::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
-    metadata.name = name;
-    metadata.emit_metadata_changed(assembly_key);
-}
-
-public fun update_description<T: key>(
-    metadata: &mut Metadata,
-    assembly_key: TenantItemId,
-    owner_cap: &OwnerCap<T>,
-    description: String,
-) {
-    assert!(access::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
-    metadata.description = description;
-    metadata.emit_metadata_changed(assembly_key);
-}
-
-public fun update_url<T: key>(
-    metadata: &mut Metadata,
-    assembly_key: TenantItemId,
-    owner_cap: &OwnerCap<T>,
-    url: String,
-) {
-    assert!(access::is_authorized(owner_cap, metadata.assembly_id), ENotAuthorized);
-    metadata.url = url;
-    metadata.emit_metadata_changed(assembly_key);
 }
 
 // === Package Functions ===
@@ -81,6 +43,25 @@ public(package) fun create_metadata(
 
 public(package) fun delete(metadata: Metadata) {
     let Metadata { .. } = metadata;
+}
+
+public(package) fun update_name(metadata: &mut Metadata, assembly_key: TenantItemId, name: String) {
+    metadata.name = name;
+    metadata.emit_metadata_changed(assembly_key);
+}
+
+public(package) fun update_description(
+    metadata: &mut Metadata,
+    assembly_key: TenantItemId,
+    description: String,
+) {
+    metadata.description = description;
+    metadata.emit_metadata_changed(assembly_key);
+}
+
+public(package) fun update_url(metadata: &mut Metadata, assembly_key: TenantItemId, url: String) {
+    metadata.url = url;
+    metadata.emit_metadata_changed(assembly_key);
 }
 
 // === Private Functions ===

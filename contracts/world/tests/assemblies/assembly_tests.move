@@ -12,7 +12,7 @@ use world::{
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
     status,
-    test_helpers::{Self, governor, admin, user_a, tenant, in_game_id}
+    test_helpers::{Self, governor, admin, user_a, user_b, tenant, in_game_id}
 };
 
 const CHARACTER_ITEM_ID: u32 = 2001;
@@ -38,6 +38,9 @@ const FUEL_VOLUME: u64 = 10;
 
 // Energy constants (ASSEMBLY_TYPE_1 = 8888 requires 50 energy)
 const ASSEMBLY_ENERGY_REQUIRED: u64 = 50;
+
+const ASSEMBLY_B_ITEM_ID: u64 = 1002;
+const CHARACTER_B_ITEM_ID: u32 = 2002;
 
 // Helper to setup test environment
 fun setup(ts: &mut ts::Scenario) {
@@ -100,8 +103,17 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
     id
 }
 
-// Helper to create assembly. Returns (assembly_id, character_id).
+// Helper to create assembly. Returns assembly_id.
 fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, character_id: ID): ID {
+    create_assembly_with_item_id(ts, nwn_id, character_id, ITEM_ID)
+}
+
+fun create_assembly_with_item_id(
+    ts: &mut ts::Scenario,
+    nwn_id: ID,
+    character_id: ID,
+    item_id: u64,
+): ID {
     ts::next_tx(ts, admin());
     let character = ts::take_shared_by_id<Character>(ts, character_id);
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
@@ -113,7 +125,7 @@ fun create_assembly(ts: &mut ts::Scenario, nwn_id: ID, character_id: ID): ID {
         &mut nwn,
         &character,
         &admin_acl,
-        ITEM_ID,
+        item_id,
         TYPE_ID,
         LOCATION_HASH,
         ts.ctx(),
@@ -421,5 +433,65 @@ fun test_unanchor_orphan_fails_when_energy_source_set() {
         ts::return_shared(admin_acl);
     };
 
+    ts::end(ts);
+}
+
+#[test]
+fun test_update_metadata_assembly_success() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), (CHARACTER_ITEM_ID as u32));
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<Assembly>(
+            ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id),
+            ts.ctx(),
+        );
+        assembly.update_metadata_name(&owner_cap, utf8(b"New Name"));
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+        ts::return_shared(assembly);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = assembly::EAssemblyNotAuthorized)]
+fun test_update_metadata_assembly_wrong_cap() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_a_id = create_character(&mut ts, user_a(), (CHARACTER_ITEM_ID as u32));
+    let nwn_id = create_network_node(&mut ts, character_a_id);
+    let assembly_a_id = create_assembly(&mut ts, nwn_id, character_a_id);
+
+    let character_b_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
+    let _assembly_b_id = create_assembly_with_item_id(
+        &mut ts,
+        nwn_id,
+        character_b_id,
+        ASSEMBLY_B_ITEM_ID,
+    );
+
+    // user_b tries to update user_a's assembly using user_b's OwnerCap<Assembly>
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut assembly_a = ts::take_shared_by_id<Assembly>(&ts, assembly_a_id);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let (owner_cap_b, receipt) = character_b.borrow_owner_cap<Assembly>(
+            ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_b_id),
+            ts.ctx(),
+        );
+        assembly_a.update_metadata_name(&owner_cap_b, utf8(b"X"));
+        character_b.return_owner_cap(owner_cap_b, receipt);
+        ts::return_shared(character_b);
+        ts::return_shared(assembly_a);
+    };
     ts::end(ts);
 }

@@ -266,7 +266,7 @@ fun rename_character() {
 
         let character_key = character.key();
         let metadata = character.mutable_metadata();
-        metadata.update_name(character_key, &owner_cap, utf8(b"new_name"));
+        metadata.update_name(character_key, utf8(b"new_name"));
         assert_eq!(metadata.name(), utf8(b"new_name"));
 
         character.return_owner_cap(owner_cap, receipt);
@@ -572,14 +572,14 @@ fun test_rename_character_without_owner_cap() {
         let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
             &character_id,
         );
-        let (owner_cap, _receipt) = character.borrow_owner_cap<Character>(
+        let (_owner_cap, _receipt) = character.borrow_owner_cap<Character>(
             access_cap_ticket,
             ts.ctx(),
         );
 
         let character_key = character.key();
         let metadata = character.mutable_metadata();
-        metadata.update_name(character_key, &owner_cap, utf8(b"new_name"));
+        metadata.update_name(character_key, utf8(b"new_name"));
         abort
     }
 }
