@@ -214,11 +214,45 @@ fun character_owner_cap_transfer_fail() {
         ts::return_shared(admin_acl);
     };
 
-    // Character OwnerCap is wallet-owned (user_a); transferring it to an address must fail
+    // transfer_owner_cap_to_address: Character OwnerCap cannot be transferred
     ts::next_tx(&mut ts, user_a());
     {
         let owner_cap = ts::take_from_address<OwnerCap<Character>>(&ts, user_a());
         access::transfer_owner_cap_to_address<Character>(owner_cap, user_b(), ts.ctx());
+    };
+    abort
+}
+
+/// Direct transfer_owner_cap also rejects OwnerCap<Character> (non-transferable on all paths).
+#[test]
+#[expected_failure(abort_code = access::ECharacterTransfer)]
+fun character_owner_cap_direct_transfer_fail() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
+        let character = character::create_character(
+            &mut registry,
+            &admin_acl,
+            1006,
+            b"TEST".to_string(),
+            100,
+            user_a(),
+            b"name".to_string(),
+            ts.ctx(),
+        );
+        character.share_character(&admin_acl, ts.ctx());
+        ts::return_shared(registry);
+        ts::return_shared(admin_acl);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let owner_cap = ts::take_from_address<OwnerCap<Character>>(&ts, user_a());
+        access::transfer_owner_cap<Character>(owner_cap, user_b());
     };
     abort
 }

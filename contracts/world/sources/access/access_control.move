@@ -97,7 +97,9 @@ fun init(ctx: &mut TxContext) {
 /// Security: Ownership is enforced by the Sui runtime. Only the current owner of the OwnerCap
 /// can call this function - if a non-owner attempts to move the object, the transaction will
 /// be rejected by the runtime before this function is even called.
+/// OwnerCap<Character> is non-transferable (wallet-owned, cannot be sold or moved).
 public fun transfer_owner_cap<T: key>(owner_cap: OwnerCap<T>, owner: address) {
+    assert!(!is_character_cap<T>(), ECharacterTransfer);
     transfer::transfer(owner_cap, owner);
 }
 
@@ -106,12 +108,7 @@ public fun transfer_owner_cap_to_address<T: key>(
     new_owner: address,
     ctx: &mut TxContext,
 ) {
-    // Only OwnerCap<Character> cannot be transferred to an address.
-    let cap_type = type_name::with_defining_ids<T>();
-    let is_character =
-        cap_type.module_string() == std::ascii::string(b"character")
-        && cap_type.datatype_string() == std::ascii::string(b"Character");
-    assert!(!is_character, ECharacterTransfer);
+    assert!(!is_character_cap<T>(), ECharacterTransfer);
     transfer<T>(owner_cap, ctx.sender(), new_owner);
 }
 
@@ -265,6 +262,12 @@ public fun delete_owner_cap<T: key>(owner_cap: OwnerCap<T>, admin_acl: &AdminACL
 }
 
 // === Private Functions ===
+fun is_character_cap<T: key>(): bool {
+    let cap_type = type_name::with_defining_ids<T>();
+    cap_type.module_string() == std::ascii::string(b"character")
+        && cap_type.datatype_string() == std::ascii::string(b"Character")
+}
+
 fun transfer<T: key>(owner_cap: OwnerCap<T>, previous_owner: address, new_owner: address) {
     event::emit(OwnerCapTransferred {
         owner_cap_id: object::id(&owner_cap),

@@ -546,23 +546,46 @@ fun create_character_without_admin_cap() {
 
 /// Tests that renaming a character without proper owner capability fails
 /// Scenario: User B attempts to rename User A's character using wrong OwnerCap
-/// Expected: Transaction aborts because user_b doesn't have the Character OwnerCap (it's with user_a).
+/// User B tries to rename User A's character using User B's own OwnerCap (wrong cap).
+/// Expected: Transaction aborts with ECharacterNotAuthorized (cap authorizes B's character, not A's).
 #[test]
-#[expected_failure]
+#[expected_failure(abort_code = character::ECharacterNotAuthorized)]
 fun test_rename_character_without_owner_cap() {
     let mut ts = ts::begin(governor());
     setup_world(&mut ts);
-    setup_character(&mut ts, 1, 100, b"test");
+    setup_character(&mut ts, 1, 100, b"char_a");
+
+    let character_a_id: ID;
+    ts::next_tx(&mut ts, admin());
+    {
+        let character_a = ts::take_shared<Character>(&ts);
+        character_a_id = character::id(&character_a);
+        ts::return_shared(character_a);
+
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
+        let character_b = character::create_character(
+            &mut registry,
+            &admin_acl,
+            2u32,
+            tenant(),
+            100,
+            user_b(),
+            utf8(b"char_b"),
+            ts::ctx(&mut ts),
+        );
+        character_b.share_character(&admin_acl, ts::ctx(&mut ts));
+        ts::return_shared(registry);
+        ts::return_shared(admin_acl);
+    };
 
     ts::next_tx(&mut ts, user_b());
     {
-        let mut character = ts::take_shared<Character>(&ts);
-        let _owner_cap = ts::take_from_address<OwnerCap<Character>>(&ts, user_b());
-        let character_key = character.key();
-        let metadata = character.mutable_metadata();
-        metadata.update_name(character_key, utf8(b"new_name"));
-        abort
-    }
+        let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let owner_cap_b = ts::take_from_address<OwnerCap<Character>>(&ts, user_b());
+        character_a.update_metadata_name(&owner_cap_b, utf8(b"new_name"));
+    };
+    abort
 }
 
 /// Tests that updating tribe_id to 0 is not allowed (validation in update_tribe)

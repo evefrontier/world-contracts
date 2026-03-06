@@ -136,8 +136,14 @@ public fun create_character(
     let character_uid = derived_object::claim(registry.borrow_registry_id(), character_key);
     let character_id = object::uid_to_inner(&character_uid);
 
-    let owner_cap = access::create_owner_cap_by_id<Character>(character_id, admin_acl, ctx);
-    let owner_cap_id = object::id(&owner_cap);
+    // Character OwnerCap is held by the wallet (character_address) for easy query-by-wallet.
+    // Non-transferability is enforced in the access layer;
+    let owner_cap_id = access::create_and_transfer_owner_cap<Character>(
+        character_id,
+        admin_acl,
+        character_address,
+        ctx,
+    );
 
     let character = Character {
         id: character_uid,
@@ -155,9 +161,6 @@ public fun create_character(
         ),
         owner_cap_id,
     };
-
-    // Character OwnerCap is held by the wallet (character_address) for easy query-by-wallet.
-    access::transfer_owner_cap(owner_cap, character_address);
 
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),
