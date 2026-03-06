@@ -330,6 +330,50 @@ fun mint_lens<T: key>(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, u
     };
 }
 
+/// Mint lens to character's owned inventory (Character OwnerCap is wallet-owned).
+fun mint_lens_character(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, user: address) {
+    ts::next_tx(ts, user);
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(ts, character_id);
+        let owner_cap = ts::take_from_address<OwnerCap<Character>>(ts, user);
+        storage_unit.game_item_to_chain_inventory_test<Character>(
+            &character,
+            &owner_cap,
+            LENS_ITEM_ID,
+            LENS_TYPE_ID,
+            LENS_VOLUME,
+            LENS_QUANTITY,
+            ts.ctx(),
+        );
+        ts::return_to_sender(ts, owner_cap);
+        ts::return_shared(character);
+        ts::return_shared(storage_unit);
+    };
+}
+
+/// Mint ammo to character's owned inventory (Character OwnerCap is wallet-owned).
+fun mint_ammo_character(ts: &mut ts::Scenario, storage_id: ID, character_id: ID, user: address) {
+    ts::next_tx(ts, user);
+    {
+        let character = ts::take_shared_by_id<Character>(ts, character_id);
+        let owner_cap = ts::take_from_address<OwnerCap<Character>>(ts, user);
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(ts, storage_id);
+        storage_unit.game_item_to_chain_inventory_test<Character>(
+            &character,
+            &owner_cap,
+            AMMO_ITEM_ID,
+            AMMO_TYPE_ID,
+            AMMO_VOLUME,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        ts::return_to_sender(ts, owner_cap);
+        ts::return_shared(character);
+        ts::return_shared(storage_unit);
+    };
+}
+
 fun create_character(ts: &mut ts::Scenario, user: address, item_id: u32): ID {
     create_character_with_tenant(ts, user, item_id, tenant())
 }
@@ -562,7 +606,7 @@ fun test_mint_multiple_items_in_owned_inventory() {
     let character_owner_cap_id = character_owner_cap_id(&mut ts, character_b_id);
 
     // Mint lens for user B
-    mint_lens<Character>(&mut ts, storage_id, character_b_id, user_b());
+    mint_lens_character(&mut ts, storage_id, character_b_id, user_b());
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -574,7 +618,7 @@ fun test_mint_multiple_items_in_owned_inventory() {
     };
 
     // Mint Ammo for user B
-    mint_ammo<Character>(&mut ts, storage_id, character_b_id, user_b());
+    mint_ammo_character(&mut ts, storage_id, character_b_id, user_b());
     ts::next_tx(&mut ts, admin());
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
@@ -782,7 +826,7 @@ fun test_swap_ammo_for_lens() {
 
     // Mint Ammo for user A
     // minting ammo automatically creates a epehemeral inventory for user A
-    mint_ammo<Character>(&mut ts, storage_id, character_a_id, user_a());
+    mint_ammo_character(&mut ts, storage_id, character_a_id, user_a());
 
     // User B authorizes the swap extension for their storage to swap lens for ammo
     ts::next_tx(&mut ts, user_b());
@@ -826,11 +870,8 @@ fun test_swap_ammo_for_lens() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
-        let (owner_cap_a, receipt_a) = character_a.borrow_owner_cap<Character>(
-            ts::most_recent_receiving_ticket<OwnerCap<Character>>(&character_a_id),
-            ts.ctx(),
-        );
+        let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let owner_cap_a = ts::take_from_address<OwnerCap<Character>>(&ts, user_a());
 
         swap_ammo_for_lens_extension(
             &mut storage_unit,
@@ -839,7 +880,7 @@ fun test_swap_ammo_for_lens() {
             ts.ctx(),
         );
 
-        character_a.return_owner_cap(owner_cap_a, receipt_a);
+        ts::return_to_sender(&ts, owner_cap_a);
         ts::return_shared(character_a);
         ts::return_shared(storage_unit);
     };
@@ -1252,7 +1293,7 @@ fun test_swap_fail_extension_not_authorized() {
     mint_lens<StorageUnit>(&mut ts, storage_id, character_id, user_a());
 
     let _character_owner_cap_id = character_owner_cap_id(&mut ts, character_b_id);
-    mint_ammo<Character>(&mut ts, storage_id, character_b_id, user_b());
+    mint_ammo_character(&mut ts, storage_id, character_b_id, user_b());
 
     //Skipped authorisation
 
@@ -1260,11 +1301,8 @@ fun test_swap_fail_extension_not_authorized() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let (owner_cap_b, receipt_b) = character_b.borrow_owner_cap<Character>(
-            ts::most_recent_receiving_ticket<OwnerCap<Character>>(&character_b_id),
-            ts.ctx(),
-        );
+        let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let owner_cap_b = ts::take_from_address<OwnerCap<Character>>(&ts, user_b());
 
         swap_ammo_for_lens_extension(
             &mut storage_unit,
@@ -1273,8 +1311,8 @@ fun test_swap_fail_extension_not_authorized() {
             ts.ctx(),
         );
 
+        ts::return_to_sender(&ts, owner_cap_b);
         ts::return_shared(storage_unit);
-        character_b.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character_b);
     };
     ts::end(ts);
@@ -1949,7 +1987,7 @@ fun test_swap_via_extension_to_owned() {
     mint_lens<StorageUnit>(&mut ts, storage_id, character_b_id, user_b());
 
     let character_owner_cap_id = character_owner_cap_id(&mut ts, character_a_id);
-    mint_ammo<Character>(&mut ts, storage_id, character_a_id, user_a());
+    mint_ammo_character(&mut ts, storage_id, character_a_id, user_a());
 
     // User B authorizes extension
     ts::next_tx(&mut ts, user_b());
@@ -1977,15 +2015,12 @@ fun test_swap_via_extension_to_owned() {
         ts::return_shared(storage_unit);
     };
 
-    // User A performs swap via extension-to-owned (no admin_acl needed)
+    // User A performs swap via extension-to-owned
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
-        let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
-        let (owner_cap_a, receipt_a) = character_a.borrow_owner_cap<Character>(
-            ts::most_recent_receiving_ticket<OwnerCap<Character>>(&character_a_id),
-            ts.ctx(),
-        );
+        let character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let owner_cap_a = ts::take_from_address<OwnerCap<Character>>(&ts, user_a());
 
         swap_ammo_for_lens_via_extension(
             &mut storage_unit,
@@ -1994,7 +2029,7 @@ fun test_swap_via_extension_to_owned() {
             ts.ctx(),
         );
 
-        character_a.return_owner_cap(owner_cap_a, receipt_a);
+        ts::return_to_sender(&ts, owner_cap_a);
         ts::return_shared(character_a);
         ts::return_shared(storage_unit);
     };

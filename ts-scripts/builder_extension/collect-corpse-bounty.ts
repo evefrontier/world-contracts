@@ -61,12 +61,7 @@ async function collectCorpseBounty(
     tx.setSender(address);
     tx.setGasOwner(adminAddress);
 
-    const [ownerCap, receipt] = tx.moveCall({
-        target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
-        typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
-        arguments: [tx.object(characterId), tx.object(playerOwnerCapId)],
-    });
-
+    // Character OwnerCap is wallet-owned; pass it directly (no borrow/return)
     tx.moveCall({
         target: `${builderPackageId}::${extensionModule.CORPSE_GATE_BOUNTY}::collect_corpse_bounty`,
         typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
@@ -76,16 +71,10 @@ async function collectCorpseBounty(
             tx.object(sourceGateId!),
             tx.object(destinationGateId!),
             tx.object(characterId!),
-            ownerCap,
+            tx.object(playerOwnerCapId),
             tx.pure.u64(ITEM_A_TYPE_ID),
             tx.object(CLOCK_OBJECT_ID),
         ],
-    });
-
-    tx.moveCall({
-        target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
-        typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
-        arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
     const result = await executeSponsoredTransaction(

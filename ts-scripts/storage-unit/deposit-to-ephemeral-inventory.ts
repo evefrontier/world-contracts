@@ -42,12 +42,7 @@ async function gameItemToChain(
     tx.setSender(playerAddress);
     tx.setGasOwner(adminAddress);
 
-    const [ownerCap, receipt] = tx.moveCall({
-        target: `${config.packageId}::${MODULES.CHARACTER}::borrow_owner_cap`,
-        typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
-        arguments: [tx.object(characterId), tx.object(ownerCapId)],
-    });
-
+    // Character OwnerCap is wallet-owned; pass it directly (no borrow/return)
     tx.moveCall({
         target: `${config.packageId}::${MODULES.STORAGE_UNIT}::game_item_to_chain_inventory`,
         typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
@@ -55,18 +50,12 @@ async function gameItemToChain(
             tx.object(storageUnit),
             tx.object(config.adminAcl),
             tx.object(characterId),
-            ownerCap,
+            tx.object(ownerCapId),
             tx.pure.u64(itemId),
             tx.pure.u64(typeId),
             tx.pure.u64(volume),
             tx.pure.u32(quantity),
         ],
-    });
-
-    tx.moveCall({
-        target: `${config.packageId}::${MODULES.CHARACTER}::return_owner_cap`,
-        typeArguments: [`${config.packageId}::${MODULES.CHARACTER}::Character`],
-        arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
     const result = await executeSponsoredTransaction(

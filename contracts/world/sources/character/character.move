@@ -156,7 +156,8 @@ public fun create_character(
         owner_cap_id,
     };
 
-    access::transfer_owner_cap(owner_cap, object::id_address(&character));
+    // Character OwnerCap is held by the wallet (character_address) for easy query-by-wallet.
+    access::transfer_owner_cap(owner_cap, character_address);
 
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),

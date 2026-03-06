@@ -5,7 +5,7 @@ module world::character_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::{derived_object, test_scenario as ts};
 use world::{
-    access::{Self, AdminACL, OwnerCap},
+    access::{AdminACL, OwnerCap},
     character::{Self, Character},
     in_game_id as character_id,
     object_registry::ObjectRegistry,
@@ -255,21 +255,10 @@ fun rename_character() {
     ts::next_tx(&mut ts, user_a());
     {
         let mut character = ts::take_shared<Character>(&ts);
-        let character_id = object::id(&character);
-        let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
-            &character_id,
-        );
-        let (owner_cap, receipt) = character.borrow_owner_cap<Character>(
-            access_cap_ticket,
-            ts.ctx(),
-        );
-
-        let character_key = character.key();
-        let metadata = character.mutable_metadata();
-        metadata.update_name(character_key, utf8(b"new_name"));
-        assert_eq!(metadata.name(), utf8(b"new_name"));
-
-        character.return_owner_cap(owner_cap, receipt);
+        let owner_cap = ts::take_from_address<OwnerCap<Character>>(&ts, user_a());
+        character.update_metadata_name(&owner_cap, utf8(b"new_name"));
+        assert_eq!(character::name(&character), utf8(b"new_name"));
+        ts::return_to_sender(&ts, owner_cap);
         ts::return_shared(character);
     };
 
@@ -557,7 +546,7 @@ fun create_character_without_admin_cap() {
 
 /// Tests that renaming a character without proper owner capability fails
 /// Scenario: User B attempts to rename User A's character using wrong OwnerCap
-/// Expected: Transaction aborts because OwnerCap doesn't authorize access to the character
+/// Expected: Transaction aborts because user_b doesn't have the Character OwnerCap (it's with user_a).
 #[test]
 #[expected_failure]
 fun test_rename_character_without_owner_cap() {
@@ -568,15 +557,7 @@ fun test_rename_character_without_owner_cap() {
     ts::next_tx(&mut ts, user_b());
     {
         let mut character = ts::take_shared<Character>(&ts);
-        let character_id = object::id(&character);
-        let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
-            &character_id,
-        );
-        let (_owner_cap, _receipt) = character.borrow_owner_cap<Character>(
-            access_cap_ticket,
-            ts.ctx(),
-        );
-
+        let _owner_cap = ts::take_from_address<OwnerCap<Character>>(&ts, user_b());
         let character_key = character.key();
         let metadata = character.mutable_metadata();
         metadata.update_name(character_key, utf8(b"new_name"));
@@ -628,58 +609,4 @@ fun update_tribe_without_admin_cap() {
     }
 }
 
-/// Tests that returning an owner cap to a different character than it was borrowed from fails.
-/// Scenario: Borrow from character A, then try to return to character B using the same receipt.
-/// Expected: Transaction aborts with EOwnerIdMismatch.
-#[test]
-#[expected_failure(abort_code = access::EOwnerIdMismatch)]
-fun return_owner_cap_to_different_character_fails() {
-    let mut ts = ts::begin(governor());
-    setup_world(&mut ts);
-    setup_character(&mut ts, 1, 100, b"char_a");
-
-    let character_a_id: ID;
-    let character_b_id: ID;
-
-    ts::next_tx(&mut ts, admin());
-    {
-        let character_from_setup = ts::take_shared<Character>(&ts);
-        character_a_id = character::id(&character_from_setup);
-        ts::return_shared(character_from_setup);
-
-        let admin_acl = ts::take_shared<AdminACL>(&ts);
-        let mut registry = ts::take_shared<ObjectRegistry>(&ts);
-        let character_b = character::create_character(
-            &mut registry,
-            &admin_acl,
-            2u32,
-            tenant(),
-            100,
-            user_a(),
-            utf8(b"char_b"),
-            ts::ctx(&mut ts),
-        );
-        character_b_id = character::id(&character_b);
-        character_b.share_character(&admin_acl, ts::ctx(&mut ts));
-        ts::return_shared(registry);
-        ts::return_shared(admin_acl);
-    };
-
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut character_a = ts::take_shared_by_id<Character>(&ts, character_a_id);
-        let access_cap_ticket = ts::most_recent_receiving_ticket<OwnerCap<Character>>(
-            &character_a_id,
-        );
-        let (owner_cap, receipt) = character_a.borrow_owner_cap<Character>(
-            access_cap_ticket,
-            ts.ctx(),
-        );
-        ts::return_shared(character_a);
-
-        let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        character::return_owner_cap(&character_b, owner_cap, receipt);
-        ts::return_shared(character_b);
-    };
-    ts.end();
-}
+// Receipt validation (return to wrong owner) is covered by access_tests::return_owner_cap_to_object_mismatched_owner_id_fails.
