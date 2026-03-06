@@ -53,9 +53,9 @@ fun set_and_get_assembly_energy_configs() {
         let energy_2 = energy_config.assembly_energy(assembly_type_2());
         let energy_3 = energy_config.assembly_energy(assembly_type_3());
 
-        assert_eq!(energy_1, assembly_type_1_energy());
-        assert_eq!(energy_2, assembly_type_2_energy());
-        assert_eq!(energy_3, assembly_type_3_energy());
+        assert_eq!(energy_1, option::some(assembly_type_1_energy()));
+        assert_eq!(energy_2, option::some(assembly_type_2_energy()));
+        assert_eq!(energy_3, option::some(assembly_type_3_energy()));
 
         ts::return_shared(energy_config);
     };
@@ -82,7 +82,7 @@ fun set_energy_config_updates_existing() {
     {
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let energy = energy_config.assembly_energy(assembly_type_1());
-        assert_eq!(energy, 75);
+        assert_eq!(energy, option::some(75));
 
         ts::return_shared(energy_config);
     };
@@ -110,8 +110,8 @@ fun remove_energy_config() {
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let energy_1 = energy_config.assembly_energy(assembly_type_1());
         let energy_3 = energy_config.assembly_energy(assembly_type_3());
-        assert_eq!(energy_1, assembly_type_1_energy());
-        assert_eq!(energy_3, assembly_type_3_energy());
+        assert_eq!(energy_1, option::some(assembly_type_1_energy()));
+        assert_eq!(energy_3, option::some(assembly_type_3_energy()));
 
         ts::return_shared(energy_config);
     };
@@ -464,6 +464,22 @@ fun reserve_energy_with_empty_type_id() {
 }
 
 #[test]
+#[expected_failure(abort_code = energy::EIncorrectAssemblyType)]
+fun reserve_energy_with_unconfigured_type() {
+    let mut ts = ts::begin(user_a());
+    test_helpers::setup_world(&mut ts);
+    let nwn_id = create_network_node(&mut ts, MAX_PRODUCTION);
+
+    ts::next_tx(&mut ts, admin());
+    let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+    nwn.energy.start_energy_production(nwn_id);
+    let energy_config = ts::take_shared<EnergyConfig>(&ts);
+    nwn.energy.reserve_energy(nwn_id, &energy_config, 9999);
+
+    abort
+}
+
+#[test]
 #[expected_failure(abort_code = energy::ETypeIdEmpty)]
 fun set_energy_config_with_empty_type_id() {
     let mut ts = ts::begin(user_a());
@@ -555,6 +571,32 @@ fun release_energy_with_empty_type_id() {
         let energy_config = ts::take_shared<EnergyConfig>(&ts);
         nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
         nwn.energy.release_energy(nwn_id, &energy_config, 0);
+
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+fun release_energy_with_unconfigured_type() {
+    let mut ts = ts::begin(user_a());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::configure_assembly_energy(&mut ts);
+    let nwn_id = create_network_node(&mut ts, MAX_PRODUCTION);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        nwn.energy.start_energy_production(nwn_id);
+        nwn.energy.reserve_energy(nwn_id, &energy_config, assembly_type_1());
+        let reserved_before = nwn.energy.total_reserved_energy();
+
+        // Unconfigured type should be a no-op and not abort.
+        nwn.energy.release_energy(nwn_id, &energy_config, 9999);
+        assert_eq!(nwn.energy.total_reserved_energy(), reserved_before);
 
         ts::return_shared(nwn);
         ts::return_shared(energy_config);

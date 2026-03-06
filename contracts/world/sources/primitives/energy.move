@@ -58,12 +58,12 @@ public struct EnergyReleasedEvent has copy, drop {
 
 // === View Functions ===
 /// Returns the energy required for an assembly type id
-public fun assembly_energy(energy_config: &EnergyConfig, type_id: u64): u64 {
+public fun assembly_energy(energy_config: &EnergyConfig, type_id: u64): Option<u64> {
     assert!(type_id != 0, ETypeIdEmpty);
     if (energy_config.assembly_energy.contains(type_id)) {
-        *energy_config.assembly_energy.borrow(type_id)
+        option::some(*energy_config.assembly_energy.borrow(type_id))
     } else {
-        0
+        option::none()
     }
 }
 
@@ -167,7 +167,9 @@ public(package) fun reserve_energy(
     assert!(type_id != 0, ETypeIdEmpty);
     assert!(energy_source.current_energy_production > 0, ENotProducingEnergy);
 
-    let energy_required = assembly_energy(energy_config, type_id);
+    let energy_required = energy_config
+        .assembly_energy(type_id)
+        .extract_or!(abort EIncorrectAssemblyType);
     let available = available_energy(energy_source);
     assert!(available >= energy_required, EInsufficientAvailableEnergy);
 
@@ -191,7 +193,7 @@ public(package) fun release_energy(
     assert!(type_id != 0, ETypeIdEmpty);
 
     // If no energy is reserved, nothing to release (may have been released by stop_energy_production)
-    let energy_required = assembly_energy(energy_config, type_id);
+    let energy_required = energy_config.assembly_energy(type_id).extract_or!(0u64);
     if (
         energy_source.total_reserved_energy == 0 || energy_source.total_reserved_energy < energy_required
     ) {
