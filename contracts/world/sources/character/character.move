@@ -45,7 +45,8 @@ public struct Character has key {
     owner_cap_id: ID,
 }
 
-// Temporary struct to store player profile data
+/// Temporary struct for wallet-owned query: one per character, transferred to character_address.
+/// Points at the character so clients can query "objects by wallet" and get character_id.
 public struct PlayerProfile has key {
     id: UID,
     character_id: ID,
@@ -164,8 +165,8 @@ public fun create_character(
 
     access::transfer_owner_cap(owner_cap, object::id_address(&character));
 
-    // Create a temp player profile object and transfer it to the character address
-    // this will be replaced by transferring character ownercap to wallet address later
+    // Create a temporary PlayerProfile and transfer it to the player's wallet address (character_address)
+    // so clients can query characters by wallet. TODO: Replace with Character OwnerCap-to-wallet flow.
     let player_profile = PlayerProfile {
         id: object::new(ctx),
         character_id: object::id(&character),
@@ -223,6 +224,9 @@ public fun update_tribe(
     character.tribe_id = tribe_id;
 }
 
+/// Updates the character's wallet address. Note: any existing PlayerProfile remains at the old
+/// wallet; clients querying by the new address will not see it until a new profile is issued.
+/// TODO: Replace with transferring character ownercap to wallet address later
 public fun update_address(
     character: &mut Character,
     admin_acl: &AdminACL,
@@ -247,6 +251,8 @@ public fun update_tenant_id(
     character.key = in_game_id::create_key(current_id, tenant);
 }
 
+/// Deletes the character and its metadata. PlayerProfile (if any) is wallet-owned and not
+/// cleaned up here; it will be obsolete once replaced by the OwnerCap-to-wallet flow.
 public fun delete_character(character: Character, admin_acl: &AdminACL, ctx: &TxContext) {
     admin_acl.verify_sponsor(ctx);
     let Character { id, metadata, .. } = character;
