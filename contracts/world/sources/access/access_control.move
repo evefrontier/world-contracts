@@ -14,7 +14,7 @@
 module world::access;
 
 use std::type_name;
-use sui::{event, table::{Self, Table}, transfer::Receiving};
+use sui::{event, party, table::{Self, Table}, transfer::Receiving};
 use world::world::GovernorCap;
 
 #[error(code = 0)]
@@ -98,7 +98,7 @@ fun init(ctx: &mut TxContext) {
 /// can call this function - if a non-owner attempts to move the object, the transaction will
 /// be rejected by the runtime before this function is even called.
 public fun transfer_owner_cap<T: key>(owner_cap: OwnerCap<T>, owner: address) {
-    transfer::transfer(owner_cap, owner);
+    transfer::party_transfer(owner_cap, party::single_owner(owner));
 }
 
 public fun transfer_owner_cap_to_address<T: key>(
@@ -272,7 +272,7 @@ fun transfer<T: key>(owner_cap: OwnerCap<T>, previous_owner: address, new_owner:
         previous_owner: previous_owner,
         owner: new_owner,
     });
-    transfer::transfer(owner_cap, new_owner);
+    transfer::party_transfer(owner_cap, party::single_owner(new_owner));
 }
 
 fun validate_return_receipt(receipt: ReturnOwnerCapReceipt, owner_cap_id: ID, owner_id: address) {

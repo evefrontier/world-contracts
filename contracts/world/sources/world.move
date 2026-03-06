@@ -1,5 +1,7 @@
 module world::world;
 
+use sui::party;
+
 public struct GovernorCap has key {
     id: UID,
     governor: address,
@@ -12,7 +14,7 @@ fun init(ctx: &mut TxContext) {
         governor: ctx.sender(),
     };
 
-    transfer::transfer(gov_cap, ctx.sender());
+    transfer::party_transfer(gov_cap, party::single_owner(ctx.sender()));
 }
 
 #[test_only]

@@ -80,6 +80,37 @@ fun owner_cap_authorization_after_transfer() {
     ts::end(ts);
 }
 
+#[test]
+fun owner_can_take_owner_cap_from_sender_inventory() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::create_test_object(&mut ts, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = ts::EEmptyInventory)]
+fun non_owner_cannot_take_owner_cap_from_sender_inventory() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    test_helpers::create_test_object(&mut ts, user_a());
+
+    ts::next_tx(&mut ts, user_b());
+    {
+        let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
+        ts::return_to_sender(&ts, owner_cap);
+    };
+
+    abort
+}
+
 /// Tests that owner cap authorization works correctly after transfer
 /// Scenario: Admin creates owner cap, transfers it, then verifies authorization
 /// The owner then transfers the OwnerCap
