@@ -3,7 +3,8 @@
 FROM docker.io/library/ubuntu:24.04
 ARG PNPM_VERSION=9
 # Sui version/network: testnet, devnet, mainnet, or a version tag.
-ARG SUI_VERSION=testnet
+# Must match Move.toml/Move.lock rev (e.g. testnet-v1.66.2) so the CLI can parse the lockfile.
+ARG SUI_VERSION=testnet-v1.66.2
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
