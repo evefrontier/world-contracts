@@ -12,7 +12,7 @@ use world::{
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
     status,
-    test_helpers::{Self, governor, admin, user_a, tenant, in_game_id}
+    test_helpers::{Self, governor, admin, user_a, user_b, tenant, in_game_id}
 };
 
 const CHARACTER_ITEM_ID: u32 = 2001;
@@ -255,7 +255,7 @@ fun test_borrow_owner_cap_and_transfer_to_address() {
     let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
     let clock = clock::create_for_testing(ts.ctx());
 
-    // OwnerCap<Assembly> is on Character; borrow from character, transfer to user_a, then use in next tx
+    // OwnerCap<Assembly> is on Character; borrow from character, transfer to user_b, then use as user_b in next tx
     ts::next_tx(&mut ts, user_a());
     {
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
@@ -267,7 +267,7 @@ fun test_borrow_owner_cap_and_transfer_to_address() {
         access::transfer_owner_cap_with_receipt<Assembly>(
             owner_cap,
             receipt,
-            user_a(),
+            user_b(),
             ts.ctx(),
         );
         ts::return_shared(character);
@@ -289,7 +289,8 @@ fun test_borrow_owner_cap_and_transfer_to_address() {
         ts::return_shared(nwn);
     };
 
-    ts::next_tx(&mut ts, user_a());
+    // user_b (new owner of the cap) brings assembly online to validate cross-account transfer
+    ts::next_tx(&mut ts, user_b());
     {
         let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
         let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
