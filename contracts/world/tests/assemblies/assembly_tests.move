@@ -4,7 +4,7 @@ module world::assembly_tests;
 use std::{string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
-    access::{AdminACL, OwnerCap},
+    access::{Self, AdminACL, OwnerCap},
     assembly::{Self, Assembly},
     character::{Self, Character},
     energy::{Self, EnergyConfig},
@@ -241,6 +241,66 @@ fun test_online_offline() {
     ts::return_shared(nwn);
     ts::return_shared(energy_config);
     ts::return_shared(character);
+    clock.destroy_for_testing();
+    ts::end(ts);
+}
+
+#[test]
+fun test_borrow_owner_cap_and_transfer_to_address() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), (CHARACTER_ITEM_ID as u32));
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
+    let clock = clock::create_for_testing(ts.ctx());
+
+    // OwnerCap<Assembly> is on Character; borrow from character, transfer to user_a, then use in next tx
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<Assembly>(
+            ts::most_recent_receiving_ticket<OwnerCap<Assembly>>(&character_id),
+            ts.ctx(),
+        );
+
+        access::transfer_owner_cap_with_receipt<Assembly>(
+            owner_cap,
+            receipt,
+            user_a(),
+            ts.ctx(),
+        );
+        ts::return_shared(character);
+    };
+
+    // Bring network node online so assembly can reserve energy
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<NetworkNode>(
+            ts::most_recent_receiving_ticket<OwnerCap<NetworkNode>>(&character_id),
+            ts.ctx(),
+        );
+        nwn.deposit_fuel_test(&owner_cap, FUEL_TYPE_ID, FUEL_VOLUME, 10, &clock);
+        nwn.online(&owner_cap, &clock);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+        ts::return_shared(nwn);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let owner_cap = ts::take_from_sender<OwnerCap<Assembly>>(&ts);
+        assembly.online(&mut nwn, &energy_config, &owner_cap);
+        ts::return_to_sender(&ts, owner_cap);
+        ts::return_shared(assembly);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+    };
     clock.destroy_for_testing();
     ts::end(ts);
 }

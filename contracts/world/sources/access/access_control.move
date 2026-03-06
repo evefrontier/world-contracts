@@ -13,7 +13,7 @@
 
 module world::access;
 
-use std::{ascii::String, type_name::{Self, TypeName}};
+use std::type_name;
 use sui::{event, table::{Self, Table}, transfer::Receiving};
 use world::world::GovernorCap;
 
@@ -106,9 +106,12 @@ public fun transfer_owner_cap_to_address<T: key>(
     new_owner: address,
     ctx: &mut TxContext,
 ) {
-    let type_name: TypeName = type_name::with_defining_ids<T>();
-    let str: &String = type_name.as_string();
-    assert!(str == &std::ascii::string(b"Character"), ECharacterTransfer);
+    // Only OwnerCap<Character> cannot be transferred to an address.
+    let cap_type = type_name::with_defining_ids<T>();
+    let is_character =
+        cap_type.module_string() == std::ascii::string(b"character")
+        && cap_type.datatype_string() == std::ascii::string(b"Character");
+    assert!(!is_character, ECharacterTransfer);
     transfer<T>(owner_cap, ctx.sender(), new_owner);
 }
 
