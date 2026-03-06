@@ -86,27 +86,21 @@ fun owner_can_take_owner_cap_from_sender_inventory() {
     test_helpers::setup_world(&mut ts);
     test_helpers::create_test_object(&mut ts, user_a());
 
-    ts::next_tx(&mut ts, user_a());
-    {
-        let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
-        ts::return_to_sender(&ts, owner_cap);
-    };
+    ts.next_tx(user_a());
+    let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
+    ts::return_to_sender(&ts, owner_cap);
 
-    ts::end(ts);
+    ts.end();
 }
 
-#[test]
-#[expected_failure(abort_code = ts::EEmptyInventory)]
+#[test, expected_failure(abort_code = ts::EEmptyInventory)]
 fun non_owner_cannot_take_owner_cap_from_sender_inventory() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
     test_helpers::create_test_object(&mut ts, user_a());
 
-    ts::next_tx(&mut ts, user_b());
-    {
-        let owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
-        ts::return_to_sender(&ts, owner_cap);
-    };
+    ts.next_tx(user_b());
+    let _owner_cap = ts::take_from_sender<OwnerCap<TestObject>>(&ts);
 
     abort
 }
