@@ -45,6 +45,12 @@ public struct Character has key {
     owner_cap_id: ID,
 }
 
+// Temporary struct to store player profile data
+public struct PlayerProfile has key {
+    id: UID,
+    character_id: ID,
+}
+
 // Events
 public struct CharacterCreatedEvent has copy, drop {
     character_id: ID,
@@ -157,6 +163,14 @@ public fun create_character(
     };
 
     access::transfer_owner_cap(owner_cap, object::id_address(&character));
+
+    // Create a temp player profile object and transfer it to the character address
+    // this will be replaced transferring character ownercap to wallet address later
+    let player_profile = PlayerProfile {
+        id: object::new(ctx),
+        character_id: object::id(&character),
+    };
+    transfer::transfer(player_profile, character_address);
 
     event::emit(CharacterCreatedEvent {
         character_id: object::id(&character),
