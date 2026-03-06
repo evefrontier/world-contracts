@@ -24,7 +24,7 @@ use world::{
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
-    metadata::{Metadata},
+    metadata::Metadata,
     network_node::{NetworkNode, UpdateEnergySources, OfflineAssemblies, HandleOrphanedAssemblies},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
