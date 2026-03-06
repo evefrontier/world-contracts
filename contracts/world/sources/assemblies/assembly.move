@@ -45,7 +45,7 @@ public struct Assembly has key {
     status: AssemblyStatus,
     location: Location,
     energy_source_id: Option<ID>,
-    metadata: Option<Metadata>,
+    metadata: Option<Metadata>, // TODO: make it non-optional
 }
 
 // === Events ===
