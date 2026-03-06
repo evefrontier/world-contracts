@@ -165,7 +165,7 @@ public fun create_character(
     access::transfer_owner_cap(owner_cap, object::id_address(&character));
 
     // Create a temp player profile object and transfer it to the character address
-    // this will be replaced transferring character ownercap to wallet address later
+    // this will be replaced by transferring character ownercap to wallet address later
     let player_profile = PlayerProfile {
         id: object::new(ctx),
         character_id: object::id(&character),
