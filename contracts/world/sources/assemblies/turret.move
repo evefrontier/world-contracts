@@ -16,7 +16,7 @@
 /// `get_target_priority_list` function in the extension package where that auth type is defined.
 module world::turret;
 
-use std::type_name::{Self, TypeName};
+use std::{string::String, type_name::{Self, TypeName}};
 use sui::{bcs, derived_object, event};
 use world::{
     access::{Self, OwnerCap, AdminACL},
@@ -24,7 +24,7 @@ use world::{
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
-    metadata::Metadata,
+    metadata::{Self, Metadata},
     network_node::{NetworkNode, UpdateEnergySources, OfflineAssemblies, HandleOrphanedAssemblies},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
@@ -49,6 +49,8 @@ const ETurretHasEnergySource: vector<u8> = b"Turret has an energy source";
 const EExtensionConfigured: vector<u8> = b"Extension is configured";
 #[error(code = 8)]
 const EInvalidOnlineReceipt: vector<u8> = b"Invalid online receipt";
+#[error(code = 9)]
+const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
 
 // Priority weight increments applied by default rules (effective_weight_and_excluded)
 const STARTED_ATTACK_WEIGHT_INCREMENT: u64 = 10000;
@@ -411,6 +413,28 @@ public fun new_return_target_priority_list(
 /// Returns the turret ID from an OnlineReceipt.
 public fun turret_id(receipt: &OnlineReceipt): ID {
     receipt.turret_id
+}
+
+public fun update_metadata_name(turret: &mut Turret, owner_cap: &OwnerCap<Turret>, name: String) {
+    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut turret.metadata);
+    metadata::update_name(metadata, turret.key, owner_cap, name);
+}
+
+public fun update_metadata_description(
+    turret: &mut Turret,
+    owner_cap: &OwnerCap<Turret>,
+    description: String,
+) {
+    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut turret.metadata);
+    metadata::update_description(metadata, turret.key, owner_cap, description);
+}
+
+public fun update_metadata_url(turret: &mut Turret, owner_cap: &OwnerCap<Turret>, url: String) {
+    assert!(option::is_some(&turret.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut turret.metadata);
+    metadata::update_url(metadata, turret.key, owner_cap, url);
 }
 
 // === Admin Functions ===

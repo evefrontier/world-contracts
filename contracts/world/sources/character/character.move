@@ -31,6 +31,8 @@ const EAddressEmpty: vector<u8> = b"Address cannot be empty";
 
 #[error(code = 5)]
 const ESenderCannotAccessCharacter: vector<u8> = b"Sender cannot access Character";
+#[error(code = 6)]
+const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
 
 public struct Character has key {
     id: UID,
@@ -72,6 +74,36 @@ public fun tribe(character: &Character): u32 {
 
 public fun owner_cap_id(character: &Character): ID {
     character.owner_cap_id
+}
+
+public fun update_metadata_name(
+    character: &mut Character,
+    owner_cap: &OwnerCap<Character>,
+    name: String,
+) {
+    assert!(std::option::is_some(&character.metadata), EMetadataNotSet);
+    let metadata = std::option::borrow_mut(&mut character.metadata);
+    metadata::update_name(metadata, character.key, owner_cap, name);
+}
+
+public fun update_metadata_description(
+    character: &mut Character,
+    owner_cap: &OwnerCap<Character>,
+    description: String,
+) {
+    assert!(std::option::is_some(&character.metadata), EMetadataNotSet);
+    let metadata = std::option::borrow_mut(&mut character.metadata);
+    metadata::update_description(metadata, character.key, owner_cap, description);
+}
+
+public fun update_metadata_url(
+    character: &mut Character,
+    owner_cap: &OwnerCap<Character>,
+    url: String,
+) {
+    assert!(std::option::is_some(&character.metadata), EMetadataNotSet);
+    let metadata = std::option::borrow_mut(&mut character.metadata);
+    metadata::update_url(metadata, character.key, owner_cap, url);
 }
 
 // === Admin Functions ===

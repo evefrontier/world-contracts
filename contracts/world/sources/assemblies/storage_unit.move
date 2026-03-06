@@ -27,7 +27,7 @@
 /// Future pattern: Storage Units (extension-controlled), Ships (owner-controlled)
 module world::storage_unit;
 
-use std::type_name::{Self, TypeName};
+use std::{string::String, type_name::{Self, TypeName}};
 use sui::{clock::Clock, derived_object, dynamic_field as df, event};
 use world::{
     access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
@@ -69,6 +69,8 @@ const EStorageUnitInvalidState: vector<u8> = b"Storage Unit should be offline";
 const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Character";
 #[error(code = 11)]
 const EItemParentMismatch: vector<u8> = b"Item was not withdrawn from this storage unit";
+#[error(code = 12)]
+const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -377,6 +379,36 @@ public fun owner_cap_id(storage_unit: &StorageUnit): ID {
 /// Returns the storage unit's energy source (network node) ID if set
 public fun energy_source_id(storage_unit: &StorageUnit): &Option<ID> {
     &storage_unit.energy_source_id
+}
+
+public fun update_metadata_name(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap<StorageUnit>,
+    name: String,
+) {
+    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut storage_unit.metadata);
+    metadata::update_name(metadata, storage_unit.key, owner_cap, name);
+}
+
+public fun update_metadata_description(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap<StorageUnit>,
+    description: String,
+) {
+    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut storage_unit.metadata);
+    metadata::update_description(metadata, storage_unit.key, owner_cap, description);
+}
+
+public fun update_metadata_url(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap<StorageUnit>,
+    url: String,
+) {
+    assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut storage_unit.metadata);
+    metadata::update_url(metadata, storage_unit.key, owner_cap, url);
 }
 
 // === Admin Functions ===

@@ -2,6 +2,7 @@
 /// Basic operations are anchor, unanchor, online, offline and destroy
 module world::assembly;
 
+use std::string::String;
 use sui::{derived_object, event};
 use world::{
     access::{Self, AdminACL, OwnerCap},
@@ -31,6 +32,8 @@ const ENetworkNodeDoesNotExist: vector<u8> =
 const EAssemblyOnline: vector<u8> = b"Assembly should be offline";
 #[error(code = 6)]
 const EAssemblyHasEnergySource: vector<u8> = b"Assembly has an energy source";
+#[error(code = 7)]
+const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
 
 // === Structs ===
 // TODO: find an elegant way to decouple the common fields across all structs
@@ -99,6 +102,36 @@ public fun status(assembly: &Assembly): &AssemblyStatus {
 
 public fun owner_cap_id(assembly: &Assembly): ID {
     assembly.owner_cap_id
+}
+
+public fun update_metadata_name(
+    assembly: &mut Assembly,
+    owner_cap: &OwnerCap<Assembly>,
+    name: String,
+) {
+    assert!(option::is_some(&assembly.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut assembly.metadata);
+    metadata::update_name(metadata, assembly.key, owner_cap, name);
+}
+
+public fun update_metadata_description(
+    assembly: &mut Assembly,
+    owner_cap: &OwnerCap<Assembly>,
+    description: String,
+) {
+    assert!(option::is_some(&assembly.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut assembly.metadata);
+    metadata::update_description(metadata, assembly.key, owner_cap, description);
+}
+
+public fun update_metadata_url(
+    assembly: &mut Assembly,
+    owner_cap: &OwnerCap<Assembly>,
+    url: String,
+) {
+    assert!(option::is_some(&assembly.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut assembly.metadata);
+    metadata::update_url(metadata, assembly.key, owner_cap, url);
 }
 
 /// Returns the assembly's energy source (network node) ID if set

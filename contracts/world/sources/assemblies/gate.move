@@ -14,7 +14,7 @@
 /// Extension pattern: https://github.com/evefrontier/world-contracts/blob/main/docs/architechture.md#layer-3-player-extensions-moddability
 module world::gate;
 
-use std::{bcs, type_name::{Self, TypeName}};
+use std::{bcs, string::String, type_name::{Self, TypeName}};
 use sui::{clock::Clock, derived_object, event, hash, table::{Self, Table}};
 use world::{
     access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
@@ -61,6 +61,8 @@ const EGateHasEnergySource: vector<u8> = b"Gate has an energy source";
 const EGateOnline: vector<u8> = b"Gate should be offline";
 #[error(code = 14)]
 const EGatesLinked: vector<u8> = b"Gates are linked";
+#[error(code = 15)]
+const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -427,6 +429,28 @@ public fun extension_type(gate: &Gate): &Option<TypeName> {
 /// Returns true if the gate is configured with extension logic
 public fun is_extension_configured(gate: &Gate): bool {
     option::is_some(&gate.extension)
+}
+
+public fun update_metadata_name(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, name: String) {
+    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut gate.metadata);
+    metadata::update_name(metadata, gate.key, owner_cap, name);
+}
+
+public fun update_metadata_description(
+    gate: &mut Gate,
+    owner_cap: &OwnerCap<Gate>,
+    description: String,
+) {
+    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut gate.metadata);
+    metadata::update_description(metadata, gate.key, owner_cap, description);
+}
+
+public fun update_metadata_url(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, url: String) {
+    assert!(option::is_some(&gate.metadata), EMetadataNotSet);
+    let metadata = option::borrow_mut(&mut gate.metadata);
+    metadata::update_url(metadata, gate.key, owner_cap, url);
 }
 
 // === Admin Functions ===
