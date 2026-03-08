@@ -645,6 +645,7 @@ fun peel_return_target_priority_list_from_bcs(bcs_data: &mut bcs::BCS): ReturnTa
 }
 
 /// Default rules for turret to shoot:
+/// - Owner (matching character_id): always exclude from the return list
 /// - Same tribe as owner and not aggressor: exclude from the return list
 /// - STOPPED_ATTACK (candidate's behaviour_change): exclude from the return list
 /// - STARTED_ATTACK: add STARTED_ATTACK_WEIGHT_INCREMENT to priority weight
@@ -655,8 +656,10 @@ fun effective_weight_and_excluded(
     owner_character: &Character,
 ): (u64, bool) {
     let mut weight = candidate.priority_weight;
+    let owner_character_id = character::game_character_id(owner_character);
+    let is_owner = candidate.character_id != 0 && candidate.character_id == owner_character_id;
     let same_tribe = candidate.character_tribe == character::tribe(owner_character);
-    let mut excluded = same_tribe && !candidate.is_aggressor;
+    let mut excluded = is_owner || (same_tribe && !candidate.is_aggressor);
     let reason = candidate.behaviour_change;
     if (reason == BehaviourChangeReason::STOPPED_ATTACK) {
         excluded = true;
