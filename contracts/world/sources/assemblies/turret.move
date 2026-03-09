@@ -656,7 +656,7 @@ fun effective_weight_and_excluded(
     owner_character: &Character,
 ): (u64, bool) {
     let mut weight = candidate.priority_weight;
-    let owner_character_id = character::game_character_id(owner_character);
+    let owner_character_id = owner_character.key().item_id() as u32;
     let is_owner = candidate.character_id != 0 && candidate.character_id == owner_character_id;
     let same_tribe = candidate.character_tribe == character::tribe(owner_character);
     let mut excluded = is_owner || (same_tribe && !candidate.is_aggressor);
