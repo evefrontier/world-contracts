@@ -730,6 +730,7 @@ public fun destroy_online_receipt_test(receipt: OnlineReceipt) {
     let OnlineReceipt { .. } = receipt;
 }
 
+#[test_only]
 public fun metadata(turret: &Turret): &Option<Metadata> {
     &turret.metadata
 }
