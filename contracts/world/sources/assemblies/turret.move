@@ -24,7 +24,7 @@ use world::{
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location},
-    metadata::Metadata,
+    metadata::{Self, Metadata},
     network_node::{NetworkNode, UpdateEnergySources, OfflineAssemblies, HandleOrphanedAssemblies},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
@@ -473,7 +473,15 @@ public fun anchor(
         status: status::anchor(turret_id, turret_key),
         location: location::attach(location_hash),
         energy_source_id: option::some(network_node_id),
-        metadata: option::none(),
+        metadata: std::option::some(
+            metadata::create_metadata(
+                turret_id,
+                turret_key,
+                b"".to_string(),
+                b"".to_string(),
+                b"".to_string(),
+            ),
+        ),
         extension: option::none(),
     };
 
@@ -720,4 +728,8 @@ fun return_list_contains_id(list: &vector<ReturnTargetPriorityList>, search_key:
 #[test_only]
 public fun destroy_online_receipt_test(receipt: OnlineReceipt) {
     let OnlineReceipt { .. } = receipt;
+}
+
+public fun metadata(turret: &Turret): &Option<Metadata> {
+    &turret.metadata
 }

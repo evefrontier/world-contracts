@@ -295,6 +295,7 @@ fun anchor_turret_succeeds() {
         assert_eq!(turret.type_id(), TURRET_TYPE_ID);
         assert_eq!(turret.is_online(), false);
         assert_eq!(turret.is_extension_configured(), false);
+        assert_eq!(turret.metadata().is_some(), true);
         ts::return_shared(turret);
     };
     ts::end(ts);
@@ -1138,31 +1139,6 @@ fun unanchor_orphan_fails_when_has_energy_source() {
         let turret = ts::take_shared_by_id<Turret>(&ts, turret_id);
         turret.unanchor_orphan(&admin_acl, ts.ctx());
         ts::return_shared(admin_acl);
-    };
-    ts::end(ts);
-}
-
-#[test]
-#[expected_failure(abort_code = turret::EMetadataNotSet)]
-fun update_metadata_turret_fails_when_not_set() {
-    let mut ts = ts::begin(governor());
-    setup(&mut ts);
-    let character_id = create_character(&mut ts, user_a(), 116, 100);
-    let nwn_id = create_network_node(&mut ts, character_id);
-    let turret_id = create_turret(&mut ts, character_id, nwn_id, TURRET_ITEM_ID_1);
-
-    ts::next_tx(&mut ts, user_a());
-    {
-        let mut turret = ts::take_shared_by_id<Turret>(&ts, turret_id);
-        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
-        let (owner_cap, receipt) = character.borrow_owner_cap<Turret>(
-            ts::receiving_ticket_by_id<OwnerCap<Turret>>(turret.owner_cap_id()),
-            ts.ctx(),
-        );
-        turret.update_metadata_name(&owner_cap, utf8(b"New Name"));
-        character.return_owner_cap(owner_cap, receipt);
-        ts::return_shared(character);
-        ts::return_shared(turret);
     };
     ts::end(ts);
 }
