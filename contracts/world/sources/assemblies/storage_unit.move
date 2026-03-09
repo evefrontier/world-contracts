@@ -239,6 +239,8 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
         EExtensionNotAuthorized,
     );
+    assert!(storage_unit.status.is_online(), ENotOnline);
+
     let inventory = df::borrow_mut<ID, Inventory>(
         &mut storage_unit.id,
         storage_unit.owner_cap_id,

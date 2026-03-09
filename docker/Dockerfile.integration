@@ -7,16 +7,20 @@ ARG PNPM_VERSION=9
 ARG SUI_VERSION=testnet-v1.66.2
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Retry apt fetches; --fix-missing for archive 404s on rotated packages (e.g. python3.12).
+# Sanity check ensures required tools are present so CI fails fast if anything was skipped.
+RUN apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing \
     ca-certificates \
     curl \
     git \
     jq \
     dos2unix \
     && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends nodejs \
     && npm install -g "pnpm@${PNPM_VERSION}" \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && command -v curl >/dev/null && command -v git >/dev/null && command -v jq >/dev/null && command -v dos2unix >/dev/null && command -v node >/dev/null
 
 ENV PATH="/root/.local/bin:/root/.suiup/bin:${PATH}"
 RUN curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh \

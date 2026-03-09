@@ -15,7 +15,8 @@ use world::{
 };
 
 // Gate constants
-const GATE_TYPE_ID: u64 = 8888;
+const GATE_TYPE_ID_1: u64 = 8888;
+const GATE_TYPE_ID_2: u64 = 8889;
 const GATE_ITEM_ID_1: u64 = 7001;
 const GATE_ITEM_ID_2: u64 = 7002;
 
@@ -68,7 +69,13 @@ fun setup(ts: &mut ts::Scenario) {
     {
         let admin_acl = ts::take_shared<AdminACL>(ts);
         let mut gate_config = ts::take_shared<GateConfig>(ts);
-        gate::set_max_distance(&mut gate_config, &admin_acl, GATE_TYPE_ID, 1_000_000_000, ts.ctx());
+        gate::set_max_distance(
+            &mut gate_config,
+            &admin_acl,
+            GATE_TYPE_ID_1,
+            1_000_000_000,
+            ts.ctx(),
+        );
         ts::return_shared(gate_config);
         ts::return_shared(admin_acl);
     };
@@ -120,7 +127,13 @@ fun create_network_node(ts: &mut ts::Scenario, character_id: ID): ID {
     nwn_id
 }
 
-fun create_gate(ts: &mut ts::Scenario, character_id: ID, nwn_id: ID, item_id: u64): ID {
+fun create_gate(
+    ts: &mut ts::Scenario,
+    character_id: ID,
+    nwn_id: ID,
+    type_id: u64,
+    item_id: u64,
+): ID {
     ts::next_tx(ts, admin());
     let mut registry = ts::take_shared<ObjectRegistry>(ts);
     let mut nwn = ts::take_shared_by_id<NetworkNode>(ts, nwn_id);
@@ -132,7 +145,7 @@ fun create_gate(ts: &mut ts::Scenario, character_id: ID, nwn_id: ID, item_id: u6
         &character,
         &admin_acl,
         item_id,
-        GATE_TYPE_ID,
+        type_id,
         test_helpers::get_verified_location_hash(),
         ts.ctx(),
     );
@@ -268,8 +281,8 @@ fun default_jump_no_extension() {
 
     let character_id = create_character(&mut ts, user_a(), 101);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -296,8 +309,8 @@ fun test_jump_with_permit_succeeds() {
 
     let character_id = create_character(&mut ts, user_a(), 103);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -349,8 +362,8 @@ fun unanchor_orphan_gate() {
 
     let character_id = create_character(&mut ts, user_a(), 101);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
 
@@ -398,8 +411,8 @@ fun default_jump_fails_when_extension_configured() {
 
     let character_id = create_character(&mut ts, user_a(), 102);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -427,8 +440,8 @@ fun issue_jump_permit_fails_without_extension() {
 
     let character_id = create_character(&mut ts, user_a(), 200);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -455,8 +468,8 @@ fun issue_jump_permit_fails_wrong_auth() {
 
     let character_id = create_character(&mut ts, user_a(), 201);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -489,8 +502,8 @@ fun test_jump_with_permit_consumes_permit() {
 
     let character_id = create_character(&mut ts, user_a(), 105);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -540,8 +553,8 @@ fun test_jump_with_permit_fails_expired_permit() {
 
     let character_id = create_character(&mut ts, user_a(), 106);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -580,8 +593,8 @@ fun authorize_extension_fails_unauthorized_owner_cap() {
     let character_a_id = create_character(&mut ts, user_a(), 601);
     let character_b_id = create_character(&mut ts, user_b(), 602);
     let nwn_id = create_network_node(&mut ts, character_a_id);
-    let gate_a_id = create_gate(&mut ts, character_a_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_b_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_a_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_b_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     ts::next_tx(&mut ts, user_b());
     {
@@ -609,8 +622,8 @@ fun jump_fails_when_gate_is_offline() {
 
     let character_id = create_character(&mut ts, user_a(), 603);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     // Link, but don't online
     ts::next_tx(&mut ts, user_a());
@@ -667,8 +680,8 @@ fun jump_fails_after_gate_offlined() {
 
     let character_id = create_character(&mut ts, user_a(), 609);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -714,8 +727,8 @@ fun unlink_fails_when_gates_not_linked() {
 
     let character_id = create_character(&mut ts, user_a(), 604);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     ts::next_tx(&mut ts, user_a());
     {
@@ -748,8 +761,8 @@ fun unlink_gates_by_admin_succeeds() {
 
     let character_id = create_character(&mut ts, user_a(), 611);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -783,8 +796,8 @@ fun unlink_and_unanchor_succeeds() {
 
     let character_id = create_character(&mut ts, user_a(), 612);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -823,8 +836,8 @@ fun unlink_and_unanchor_orphan_succeeds() {
 
     let character_id = create_character(&mut ts, user_a(), 614);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -879,8 +892,8 @@ fun unlink_and_unanchor_fails_when_gates_not_linked() {
 
     let character_id = create_character(&mut ts, user_a(), 613);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     // Do not link gates
@@ -917,8 +930,8 @@ fun unlink_and_unanchor_orphan_fails_when_gates_not_linked() {
 
     let character_id = create_character(&mut ts, user_a(), 615);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     // Make gates orphans without linking
@@ -968,8 +981,8 @@ fun unlink_and_unanchor_orphan_fails_when_source_has_energy_source() {
 
     let character_id = create_character(&mut ts, user_a(), 616);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -989,6 +1002,22 @@ fun unlink_and_unanchor_orphan_fails_when_source_has_energy_source() {
 }
 
 #[test]
+#[expected_failure(abort_code = gate::EGateTypeMismatch)]
+fun link_fails_when_gate_types_mismatch() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 617);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_2, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+    ts::end(ts);
+}
+
+#[test]
 #[expected_failure(abort_code = gate::EGatesAlreadyLinked)]
 fun link_fails_when_gates_already_linked() {
     let mut ts = ts::begin(governor());
@@ -996,8 +1025,8 @@ fun link_fails_when_gates_already_linked() {
 
     let character_id = create_character(&mut ts, user_a(), 610);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -1015,15 +1044,15 @@ fun link_fails_when_distance_exceeds_max() {
 
     let character_id = create_character(&mut ts, user_a(), 605);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     // Set max distance to 1 for our type
     ts::next_tx(&mut ts, admin());
     {
         let admin_acl = ts::take_shared<AdminACL>(&ts);
         let mut gate_config = ts::take_shared<GateConfig>(&ts);
-        gate::set_max_distance(&mut gate_config, &admin_acl, GATE_TYPE_ID, 1, ts.ctx());
+        gate::set_max_distance(&mut gate_config, &admin_acl, GATE_TYPE_ID_1, 1, ts.ctx());
         ts::return_shared(gate_config);
         ts::return_shared(admin_acl);
     };
@@ -1083,8 +1112,8 @@ fun jump_fails_when_ticket_issued_for_user_a_used_by_user_b() {
     let character_a_id = create_character(&mut ts, user_a(), 606);
     let character_b_id = create_character(&mut ts, user_b(), 607);
     let nwn_id = create_network_node(&mut ts, character_a_id);
-    let gate_a_id = create_gate(&mut ts, character_a_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_a_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_a_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_a_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_a_id, nwn_id);
     link_and_online_gates(&mut ts, character_a_id, nwn_id, gate_a_id, gate_b_id);
@@ -1138,8 +1167,8 @@ fun cannot_jump_after_unanchor() {
 
     let character_id = create_character(&mut ts, user_a(), 608);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
@@ -1214,8 +1243,8 @@ fun unanchor_orphan_gate_fails_when_energy_source_set() {
 
     let character_id = create_character(&mut ts, user_a(), 101);
     let nwn_id = create_network_node(&mut ts, character_id);
-    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_1);
-    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_ITEM_ID_2);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
 
     bring_network_node_online(&mut ts, character_id, nwn_id);
     link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);

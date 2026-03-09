@@ -1090,6 +1090,41 @@ fun test_deposit_via_extension_fail_not_authorized() {
     ts::end(ts);
 }
 
+#[test, expected_failure(abort_code = storage_unit::ENotOnline)]
+fun test_withdraw_via_extension_fail_offline() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, _nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+    let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+    let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+        ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+        ts.ctx(),
+    );
+    storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+    character.return_owner_cap(owner_cap, receipt);
+
+    ts::next_tx(&mut ts, user_a());
+    let _item = storage_unit.withdraw_item<SwapAuth>(
+        &character,
+        SwapAuth {},
+        AMMO_TYPE_ID,
+        AMMO_QUANTITY,
+        ts.ctx(),
+    );
+    abort
+}
+
 /// Test that withdrawing by owner without proper owner capability fails
 /// Scenario: User B attempts to withdraw items from User A's storage unit using wrong OwnerCap
 /// Expected: Transaction aborts with EInventoryNotAuthorized error

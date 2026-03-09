@@ -63,6 +63,8 @@ const EGateOnline: vector<u8> = b"Gate should be offline";
 const EGatesLinked: vector<u8> = b"Gates are linked";
 #[error(code = 15)]
 const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
+#[error(code = 16)]
+const EGateTypeMismatch: vector<u8> = b"Gates have different TypeId values";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -213,6 +215,9 @@ public fun link_gates(
         option::is_none(&source_gate.linked_gate_id) && option::is_none(&destination_gate.linked_gate_id),
         EGatesAlreadyLinked,
     );
+
+    // Verify gates are the same type
+    assert!(source_gate.type_id == destination_gate.type_id, EGateTypeMismatch);
 
     // Verify distance using location proof
     verify_gates_within_range(
