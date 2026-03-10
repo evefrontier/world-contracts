@@ -249,7 +249,6 @@ public fun update(
     location.location_hash = location_hash;
 }
 
-
 /// Low-level: records coordinates without admin check. Prefer record_revealed_location.
 public fun reveal_location(
     registry: &mut LocationRegistry,

@@ -4,7 +4,8 @@ use std::{bcs, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     access::{AdminACL, ServerAddressRegistry},
-    location::{Self, Location},
+    in_game_id,
+    location::{Self, Location, LocationRegistry},
     test_helpers::{Self, governor, admin, server_admin, user_a, user_b}
 };
 
@@ -204,6 +205,53 @@ fun verify_proximity_proof_with_bytes() {
         ts::return_shared(server_registry);
     };
 
+    ts::end(ts);
+}
+
+#[test]
+fun test_reveal_location_and_get() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+
+    let assembly_id = object::id_from_address(@0x0);
+    let assembly_key = in_game_id::create_key(1001, test_helpers::tenant());
+    let type_id: u64 = 8888;
+    let owner_cap_id = object::id_from_address(@0x0);
+    let solarsystem: u64 = 42;
+    let x: u64 = 100;
+    let y: u64 = 200;
+    let z: u64 = 300;
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let mut registry = ts::take_shared<LocationRegistry>(&ts);
+        location::reveal_location(
+            &mut registry,
+            assembly_id,
+            assembly_key,
+            type_id,
+            owner_cap_id,
+            LOCATION_HASH_PLANET_B_SYSTEM_2,
+            solarsystem,
+            x,
+            y,
+            z,
+        );
+        ts::return_shared(registry);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let registry = ts::take_shared<LocationRegistry>(&ts);
+        let coords = location::get_location(&registry, assembly_id);
+        assert!(option::is_some(&coords), 0);
+        let coords_ref = option::borrow(&coords);
+        assert_eq!(location::solarsystem(coords_ref), solarsystem);
+        assert_eq!(location::x(coords_ref), x);
+        assert_eq!(location::y(coords_ref), y);
+        assert_eq!(location::z(coords_ref), z);
+        ts::return_shared(registry);
+    };
     ts::end(ts);
 }
 
@@ -411,3 +459,4 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
 
     ts::end(ts);
 }
+

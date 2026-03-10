@@ -8,7 +8,7 @@ use world::{
     assembly::{Self, Assembly},
     character::{Self, Character},
     energy::{Self, EnergyConfig},
-    location,
+    location::{Self, LocationRegistry},
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
     status,
@@ -363,6 +363,44 @@ fun test_unanchor() {
 }
 
 #[test]
+fun test_reveal_assembly_location() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), (CHARACTER_ITEM_ID as u32));
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
+
+    let solarsystem: u64 = 42;
+    let x: u64 = 100;
+    let y: u64 = 200;
+    let z: u64 = 300;
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        let mut registry = ts::take_shared<LocationRegistry>(&ts);
+        assembly.reveal_location(&mut registry, solarsystem, x, y, z);
+        ts::return_shared(registry);
+        ts::return_shared(assembly);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let registry = ts::take_shared<LocationRegistry>(&ts);
+        let coords = location::get_location(&registry, assembly_id);
+        assert!(option::is_some(&coords), 0);
+        let coords_ref = option::borrow(&coords);
+        assert_eq!(location::solarsystem(coords_ref), solarsystem);
+        assert_eq!(location::x(coords_ref), x);
+        assert_eq!(location::y(coords_ref), y);
+        assert_eq!(location::z(coords_ref), z);
+        ts::return_shared(registry);
+    };
+    ts::end(ts);
+}
+
+#[test]
 #[expected_failure(abort_code = assembly::EAssemblyAlreadyExists)]
 fun test_anchor_duplicate_item_id() {
     let mut ts = ts::begin(governor());
@@ -556,3 +594,4 @@ fun test_update_metadata_assembly_wrong_cap() {
     };
     ts::end(ts);
 }
+

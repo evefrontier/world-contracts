@@ -347,21 +347,18 @@ public fun update_metadata_url(turret: &mut Turret, owner_cap: &OwnerCap<Turret>
     metadata.update_url(turret.key, url);
 }
 
-/// Reveals plain-text location (solarsystem, x, y, z) for this turret. Admin ACL only.
+/// Reveals plain-text location (solarsystem, x, y, z) for this turret. Optional; enables dapps (e.g. route maps).
 /// Temporary: use until the offchain location reveal service is ready.
 public fun reveal_location(
     turret: &Turret,
     registry: &mut LocationRegistry,
-    admin_acl: &AdminACL,
     solarsystem: u64,
     x: u64,
     y: u64,
     z: u64,
-    ctx: &TxContext,
 ) {
-    location::record_revealed_location(
+    location::reveal_location(
         registry,
-        admin_acl,
         object::id(turret),
         turret.key,
         turret.type_id,
@@ -371,7 +368,6 @@ public fun reveal_location(
         x,
         y,
         z,
-        ctx,
     );
 }
 
