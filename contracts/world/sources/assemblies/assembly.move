@@ -9,7 +9,7 @@ use world::{
     character::Character,
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
-    location::{Self, Location},
+    location::{Self, Location, LocationRegistry},
     metadata::{Self, Metadata},
     network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
@@ -126,6 +126,34 @@ public fun update_metadata_url(
     assert!(option::is_some(&assembly.metadata), EMetadataNotSet);
     let metadata = option::borrow_mut(&mut assembly.metadata);
     metadata.update_url(assembly.key, url);
+}
+
+/// Reveals plain-text location (solarsystem, x, y, z) for this assembly. Admin ACL only.
+/// Temporary: use until the offchain location reveal service is ready.
+public fun reveal_location(
+    assembly: &Assembly,
+    registry: &mut LocationRegistry,
+    admin_acl: &AdminACL,
+    solarsystem: u64,
+    x: u64,
+    y: u64,
+    z: u64,
+    ctx: &TxContext,
+) {
+    location::record_revealed_location(
+        registry,
+        admin_acl,
+        object::id(assembly),
+        assembly.key,
+        assembly.type_id,
+        assembly.owner_cap_id,
+        location::hash(&assembly.location),
+        solarsystem,
+        x,
+        y,
+        z,
+        ctx,
+    );
 }
 
 // === View Functions ===

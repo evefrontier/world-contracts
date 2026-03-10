@@ -35,7 +35,7 @@ use world::{
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
     inventory::{Self, Inventory, Item},
-    location::{Self, Location},
+    location::{Self, Location, LocationRegistry},
     metadata::{Self, Metadata},
     network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
@@ -392,6 +392,34 @@ public fun update_metadata_url(
     assert!(option::is_some(&storage_unit.metadata), EMetadataNotSet);
     let metadata = option::borrow_mut(&mut storage_unit.metadata);
     metadata.update_url(storage_unit.key, url);
+}
+
+/// Reveals plain-text location (solarsystem, x, y, z) for this storage unit. Admin ACL only.
+/// Temporary: use until the offchain location reveal service is ready.
+public fun reveal_location(
+    storage_unit: &StorageUnit,
+    registry: &mut LocationRegistry,
+    admin_acl: &AdminACL,
+    solarsystem: u64,
+    x: u64,
+    y: u64,
+    z: u64,
+    ctx: &TxContext,
+) {
+    location::record_revealed_location(
+        registry,
+        admin_acl,
+        object::id(storage_unit),
+        storage_unit.key,
+        storage_unit.type_id,
+        storage_unit.owner_cap_id,
+        location::hash(&storage_unit.location),
+        solarsystem,
+        x,
+        y,
+        z,
+        ctx,
+    );
 }
 
 // === View Functions ===

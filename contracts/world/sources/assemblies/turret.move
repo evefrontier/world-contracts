@@ -23,7 +23,7 @@ use world::{
     character::{Self, Character},
     energy::EnergyConfig,
     in_game_id::{Self, TenantItemId},
-    location::{Self, Location},
+    location::{Self, Location, LocationRegistry},
     metadata::{Self, Metadata},
     network_node::{NetworkNode, UpdateEnergySources, OfflineAssemblies, HandleOrphanedAssemblies},
     object_registry::ObjectRegistry,
@@ -345,6 +345,34 @@ public fun update_metadata_url(turret: &mut Turret, owner_cap: &OwnerCap<Turret>
     assert!(option::is_some(&turret.metadata), EMetadataNotSet);
     let metadata = option::borrow_mut(&mut turret.metadata);
     metadata.update_url(turret.key, url);
+}
+
+/// Reveals plain-text location (solarsystem, x, y, z) for this turret. Admin ACL only.
+/// Temporary: use until the offchain location reveal service is ready.
+public fun reveal_location(
+    turret: &Turret,
+    registry: &mut LocationRegistry,
+    admin_acl: &AdminACL,
+    solarsystem: u64,
+    x: u64,
+    y: u64,
+    z: u64,
+    ctx: &TxContext,
+) {
+    location::record_revealed_location(
+        registry,
+        admin_acl,
+        object::id(turret),
+        turret.key,
+        turret.type_id,
+        turret.owner_cap_id,
+        location::hash(&turret.location),
+        solarsystem,
+        x,
+        y,
+        z,
+        ctx,
+    );
 }
 
 // === View Functions ===

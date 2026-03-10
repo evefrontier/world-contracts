@@ -6,8 +6,8 @@
 /// to a structure before allowing interactions.
 module world::location;
 
-use sui::{bcs, clock::Clock};
-use world::{access::{Self, AdminACL, ServerAddressRegistry}, sig_verify};
+use sui::{bcs, clock::Clock, event, table::{Self, Table}};
+use world::{access::{Self, AdminACL, ServerAddressRegistry}, in_game_id::TenantItemId, sig_verify};
 
 // === Errors ===
 #[error(code = 0)]
@@ -66,6 +66,31 @@ public struct LocationProofMessage has drop {
 public struct LocationProof has drop {
     message: LocationProofMessage,
     signature: vector<u8>,
+}
+
+public struct LocationRegistry has key {
+    id: UID,
+    locations: Table<ID, Coordinates>,
+}
+
+// Revealed location data for one assembly. Queryable on-chain.
+public struct Coordinates has copy, drop, store {
+    solarsystem: u64,
+    x: u64,
+    y: u64,
+    z: u64,
+}
+
+public struct LocationRevealedEvent has copy, drop {
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    type_id: u64,
+    owner_cap_id: ID,
+    location_hash: vector<u8>,
+    solarsystem: u64,
+    x: u64,
+    y: u64,
+    z: u64,
 }
 
 // === Public Functions ===
@@ -187,6 +212,30 @@ public fun hash(location: &Location): vector<u8> {
     location.location_hash
 }
 
+public fun get_location(registry: &LocationRegistry, assembly_id: ID): Option<Coordinates> {
+    if (registry.locations.contains(assembly_id)) {
+        option::some(*registry.locations.borrow(assembly_id))
+    } else {
+        option::none()
+    }
+}
+
+public fun solarsystem(data: &Coordinates): u64 {
+    data.solarsystem
+}
+
+public fun x(data: &Coordinates): u64 {
+    data.x
+}
+
+public fun y(data: &Coordinates): u64 {
+    data.y
+}
+
+public fun z(data: &Coordinates): u64 {
+    data.z
+}
+
 // === Admin Functions ===
 
 public fun update(
@@ -198,6 +247,36 @@ public fun update(
     admin_acl.verify_sponsor(ctx);
     assert!(location_hash.length() == 32, EInvalidHashLength);
     location.location_hash = location_hash;
+}
+
+/// Records revealed coordinates for an assembly and emits LocationRevealedEvent.
+/// Admin ACL only. Call from assembly/gate modules with details extracted from the assembly object.
+///
+/// Temporary: use until the offchain location reveal service is ready.
+public fun reveal_location(
+    registry: &mut LocationRegistry,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    type_id: u64,
+    owner_cap_id: ID,
+    location_hash: vector<u8>,
+    solarsystem: u64,
+    x: u64,
+    y: u64,
+    z: u64,
+) {
+    set_location_internal(
+        registry,
+        assembly_id,
+        assembly_key,
+        type_id,
+        owner_cap_id,
+        location_hash,
+        solarsystem,
+        x,
+        y,
+        z,
+    );
 }
 
 // === Package Functions ===
@@ -271,6 +350,48 @@ fun is_deadline_valid(deadline_ms: u64, clock: &Clock): bool {
     deadline_ms > current_time_ms
 }
 
+fun set_location_internal(
+    registry: &mut LocationRegistry,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    type_id: u64,
+    owner_cap_id: ID,
+    location_hash: vector<u8>,
+    solarsystem: u64,
+    x: u64,
+    y: u64,
+    z: u64,
+) {
+    let data = Coordinates {
+        solarsystem,
+        x,
+        y,
+        z,
+    };
+    if (registry.locations.contains(assembly_id)) {
+        registry.locations.remove(assembly_id);
+    };
+    registry.locations.add(assembly_id, data);
+    event::emit(LocationRevealedEvent {
+        assembly_id,
+        assembly_key,
+        type_id,
+        owner_cap_id,
+        location_hash,
+        solarsystem,
+        x,
+        y,
+        z,
+    });
+}
+
+fun init(ctx: &mut TxContext) {
+    transfer::share_object(LocationRegistry {
+        id: object::new(ctx),
+        locations: table::new(ctx),
+    });
+}
+
 // === Test Functions ===
 
 /// Verifies a location proof without deadline validation (test-only).
@@ -317,4 +438,9 @@ public fun verify_proximity_proof_from_bytes_without_deadline(
         ),
         ESignatureVerificationFailed,
     );
+}
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(ctx);
 }
