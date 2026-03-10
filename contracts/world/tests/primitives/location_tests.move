@@ -459,4 +459,3 @@ fun verify_proximity_proof_with_bytes_fail_by_deadline() {
 
     ts::end(ts);
 }
-

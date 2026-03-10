@@ -594,4 +594,3 @@ fun test_update_metadata_assembly_wrong_cap() {
     };
     ts::end(ts);
 }
-
