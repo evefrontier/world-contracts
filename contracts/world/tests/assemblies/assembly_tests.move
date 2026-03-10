@@ -363,7 +363,7 @@ fun test_unanchor() {
 }
 
 #[test]
-fun test_reveal_assembly_location() {
+fun reveal_assembly_location() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
