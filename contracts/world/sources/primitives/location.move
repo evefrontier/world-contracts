@@ -75,11 +75,12 @@ public struct LocationRegistry has key {
 }
 
 // Revealed location data for one assembly. Queryable on-chain. solarsystem is u64; x,y,z as String allow negative/float.
+// x,y,z are stored as strings to support negative values, dapps can parse to number.
 public struct Coordinates has copy, drop, store {
     solarsystem: u64,
-    x: String,
-    y: String,
-    z: String,
+    x: String, // to support negative values
+    y: String, // to support negative values
+    z: String, // to support negative values
 }
 
 public struct LocationRevealedEvent has copy, drop {
