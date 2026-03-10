@@ -249,10 +249,8 @@ public fun update(
     location.location_hash = location_hash;
 }
 
-/// Records revealed coordinates for an assembly and emits LocationRevealedEvent.
-/// Admin ACL only. Call from assembly/gate modules with details extracted from the assembly object.
-///
-/// Temporary: use until the offchain location reveal service is ready.
+
+/// Low-level: records coordinates without admin check. Prefer record_revealed_location.
 public fun reveal_location(
     registry: &mut LocationRegistry,
     assembly_id: ID,
