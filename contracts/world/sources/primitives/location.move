@@ -74,9 +74,9 @@ public struct LocationRegistry has key {
     locations: Table<ID, Coordinates>,
 }
 
-// Revealed location data for one assembly. Queryable on-chain. solarsystem is u256; x,y,z as String allow negative/float.
+// Revealed location data for one assembly. Queryable on-chain. solarsystem is u64; x,y,z as String allow negative/float.
 public struct Coordinates has copy, drop, store {
-    solarsystem: u256,
+    solarsystem: u64,
     x: String,
     y: String,
     z: String,
@@ -88,7 +88,7 @@ public struct LocationRevealedEvent has copy, drop {
     type_id: u64,
     owner_cap_id: ID,
     location_hash: vector<u8>,
-    solarsystem: u256,
+    solarsystem: u64,
     x: String,
     y: String,
     z: String,
@@ -221,7 +221,7 @@ public fun get_location(registry: &LocationRegistry, assembly_id: ID): Option<Co
     }
 }
 
-public fun solarsystem(data: &Coordinates): u256 {
+public fun solarsystem(data: &Coordinates): u64 {
     data.solarsystem
 }
 
@@ -250,7 +250,7 @@ public fun update(
     location.location_hash = location_hash;
 }
 
-/// Low-level: records coordinates (solarsystem u256; x,y,z strings for negative/float). No admin check.
+/// Low-level: records coordinates (solarsystem u64; x,y,z strings for negative/float). No admin check.
 public(package) fun reveal_location(
     registry: &mut LocationRegistry,
     assembly_id: ID,
@@ -258,7 +258,7 @@ public(package) fun reveal_location(
     type_id: u64,
     owner_cap_id: ID,
     location_hash: vector<u8>,
-    solarsystem: u256,
+    solarsystem: u64,
     x: String,
     y: String,
     z: String,
@@ -355,7 +355,7 @@ fun set_location_internal(
     type_id: u64,
     owner_cap_id: ID,
     location_hash: vector<u8>,
-    solarsystem: u256,
+    solarsystem: u64,
     x: String,
     y: String,
     z: String,

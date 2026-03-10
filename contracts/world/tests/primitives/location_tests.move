@@ -217,7 +217,7 @@ fun reveal_location_and_get() {
     let assembly_key = in_game_id::create_key(1001, test_helpers::tenant());
     let type_id: u64 = 8888;
     let owner_cap_id = object::id_from_address(@0x0);
-    let solarsystem: u256 = 42u256;
+    let solarsystem: u64 = 42;
     let x = utf8(b"100");
     let y = utf8(b"200");
     let z = utf8(b"300");
@@ -246,7 +246,7 @@ fun reveal_location_and_get() {
         let coords = location::get_location(&registry, assembly_id);
         assert!(option::is_some(&coords), 0);
         let coords_ref = option::borrow(&coords);
-        let expected_solarsystem: u256 = 42u256;
+        let expected_solarsystem: u64 = 42;
         let expected_x = utf8(b"100");
         let expected_y = utf8(b"200");
         let expected_z = utf8(b"300");

@@ -371,7 +371,7 @@ fun reveal_assembly_location() {
     let nwn_id = create_network_node(&mut ts, character_id);
     let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
 
-    let solarsystem: u256 = 42u256;
+    let solarsystem: u64 = 42;
     let x = utf8(b"100");
     let y = utf8(b"200");
     let z = utf8(b"300");
@@ -402,7 +402,7 @@ fun reveal_assembly_location() {
         let coords = location::get_location(&registry, assembly_id);
         assert!(option::is_some(&coords), 0);
         let coords_ref = option::borrow(&coords);
-        let expected_solarsystem: u256 = 42u256;
+        let expected_solarsystem: u64 = 42;
         let expected_x = utf8(b"100");
         let expected_y = utf8(b"200");
         let expected_z = utf8(b"300");

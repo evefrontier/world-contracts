@@ -424,7 +424,7 @@ public fun reveal_location(
     gate: &Gate,
     registry: &mut LocationRegistry,
     admin_acl: &AdminACL,
-    solarsystem: u256,
+    solarsystem: u64,
     x: String,
     y: String,
     z: String,
