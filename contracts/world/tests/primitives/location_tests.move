@@ -209,7 +209,7 @@ fun verify_proximity_proof_with_bytes() {
 }
 
 #[test]
-fun test_reveal_location_and_get() {
+fun reveal_location_and_get() {
     let mut ts = ts::begin(governor());
     test_helpers::setup_world(&mut ts);
 
