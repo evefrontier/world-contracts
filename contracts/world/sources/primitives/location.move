@@ -249,8 +249,8 @@ public fun update(
     location.location_hash = location_hash;
 }
 
-/// Low-level: records coordinates without admin check. Prefer record_revealed_location.
-public fun reveal_location(
+/// Low-level: records coordinates. No admin check here; assembly/gate/turret/storage_unit enforce admin_acl.
+public(package) fun reveal_location(
     registry: &mut LocationRegistry,
     assembly_id: ID,
     assembly_key: TenantItemId,

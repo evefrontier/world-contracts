@@ -133,11 +133,14 @@ public fun update_metadata_url(
 public fun reveal_location(
     assembly: &Assembly,
     registry: &mut LocationRegistry,
+    admin_acl: &AdminACL,
     solarsystem: u64,
     x: u64,
     y: u64,
     z: u64,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     location::reveal_location(
         registry,
         object::id(assembly),

@@ -423,11 +423,14 @@ public fun update_metadata_url(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, url:
 public fun reveal_location(
     gate: &Gate,
     registry: &mut LocationRegistry,
+    admin_acl: &AdminACL,
     solarsystem: u64,
     x: u64,
     y: u64,
     z: u64,
+    ctx: &TxContext,
 ) {
+    admin_acl.verify_sponsor(ctx);
     location::reveal_location(
         registry,
         object::id(gate),

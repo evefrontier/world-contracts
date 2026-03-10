@@ -378,11 +378,13 @@ fun test_reveal_assembly_location() {
 
     ts::next_tx(&mut ts, admin());
     {
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
         let assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
         let mut registry = ts::take_shared<LocationRegistry>(&ts);
-        assembly.reveal_location(&mut registry, solarsystem, x, y, z);
+        assembly.reveal_location(&mut registry, &admin_acl, solarsystem, x, y, z, ts.ctx());
         ts::return_shared(registry);
         ts::return_shared(assembly);
+        ts::return_shared(admin_acl);
     };
 
     ts::next_tx(&mut ts, admin());
