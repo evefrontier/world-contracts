@@ -6,6 +6,7 @@
 /// to a structure before allowing interactions.
 module world::location;
 
+use std::string::String;
 use sui::{bcs, clock::Clock, event, table::{Self, Table}};
 use world::{access::{Self, AdminACL, ServerAddressRegistry}, in_game_id::TenantItemId, sig_verify};
 
@@ -73,12 +74,12 @@ public struct LocationRegistry has key {
     locations: Table<ID, Coordinates>,
 }
 
-// Revealed location data for one assembly. Queryable on-chain.
+// Revealed location data for one assembly. Queryable on-chain. solarsystem is u256; x,y,z as String allow negative/float.
 public struct Coordinates has copy, drop, store {
-    solarsystem: u64,
-    x: u64,
-    y: u64,
-    z: u64,
+    solarsystem: u256,
+    x: String,
+    y: String,
+    z: String,
 }
 
 public struct LocationRevealedEvent has copy, drop {
@@ -87,10 +88,10 @@ public struct LocationRevealedEvent has copy, drop {
     type_id: u64,
     owner_cap_id: ID,
     location_hash: vector<u8>,
-    solarsystem: u64,
-    x: u64,
-    y: u64,
-    z: u64,
+    solarsystem: u256,
+    x: String,
+    y: String,
+    z: String,
 }
 
 // === Public Functions ===
@@ -220,19 +221,19 @@ public fun get_location(registry: &LocationRegistry, assembly_id: ID): Option<Co
     }
 }
 
-public fun solarsystem(data: &Coordinates): u64 {
+public fun solarsystem(data: &Coordinates): u256 {
     data.solarsystem
 }
 
-public fun x(data: &Coordinates): u64 {
+public fun x(data: &Coordinates): String {
     data.x
 }
 
-public fun y(data: &Coordinates): u64 {
+public fun y(data: &Coordinates): String {
     data.y
 }
 
-public fun z(data: &Coordinates): u64 {
+public fun z(data: &Coordinates): String {
     data.z
 }
 
@@ -249,7 +250,7 @@ public fun update(
     location.location_hash = location_hash;
 }
 
-/// Low-level: records coordinates. No admin check here; assembly/gate/turret/storage_unit enforce admin_acl.
+/// Low-level: records coordinates (solarsystem u256; x,y,z strings for negative/float). No admin check.
 public(package) fun reveal_location(
     registry: &mut LocationRegistry,
     assembly_id: ID,
@@ -257,10 +258,10 @@ public(package) fun reveal_location(
     type_id: u64,
     owner_cap_id: ID,
     location_hash: vector<u8>,
-    solarsystem: u64,
-    x: u64,
-    y: u64,
-    z: u64,
+    solarsystem: u256,
+    x: String,
+    y: String,
+    z: String,
 ) {
     set_location_internal(
         registry,
@@ -354,10 +355,10 @@ fun set_location_internal(
     type_id: u64,
     owner_cap_id: ID,
     location_hash: vector<u8>,
-    solarsystem: u64,
-    x: u64,
-    y: u64,
-    z: u64,
+    solarsystem: u256,
+    x: String,
+    y: String,
+    z: String,
 ) {
     let data = Coordinates {
         solarsystem,

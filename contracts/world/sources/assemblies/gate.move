@@ -418,16 +418,16 @@ public fun update_metadata_url(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, url:
     metadata.update_url(gate.key, url);
 }
 
-/// Reveals plain-text location (solarsystem, x, y, z) for this gate. Optional; enables dapps (e.g. route maps).
+/// Reveals plain-text location (solarsystem, x, y, z) for this gate. Admin ACL only. Optional; enables dapps (e.g. route maps).
 /// Temporary: use until the offchain location reveal service is ready.
 public fun reveal_location(
     gate: &Gate,
     registry: &mut LocationRegistry,
     admin_acl: &AdminACL,
-    solarsystem: u64,
-    x: u64,
-    y: u64,
-    z: u64,
+    solarsystem: u256,
+    x: String,
+    y: String,
+    z: String,
     ctx: &TxContext,
 ) {
     admin_acl.verify_sponsor(ctx);

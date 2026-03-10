@@ -1,6 +1,6 @@
 module world::location_tests;
 
-use std::{bcs, unit_test::assert_eq};
+use std::{bcs, string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     access::{AdminACL, ServerAddressRegistry},
@@ -217,10 +217,10 @@ fun reveal_location_and_get() {
     let assembly_key = in_game_id::create_key(1001, test_helpers::tenant());
     let type_id: u64 = 8888;
     let owner_cap_id = object::id_from_address(@0x0);
-    let solarsystem: u64 = 42;
-    let x: u64 = 100;
-    let y: u64 = 200;
-    let z: u64 = 300;
+    let solarsystem: u256 = 42u256;
+    let x = utf8(b"100");
+    let y = utf8(b"200");
+    let z = utf8(b"300");
 
     ts::next_tx(&mut ts, admin());
     {
@@ -246,10 +246,14 @@ fun reveal_location_and_get() {
         let coords = location::get_location(&registry, assembly_id);
         assert!(option::is_some(&coords), 0);
         let coords_ref = option::borrow(&coords);
-        assert_eq!(location::solarsystem(coords_ref), solarsystem);
-        assert_eq!(location::x(coords_ref), x);
-        assert_eq!(location::y(coords_ref), y);
-        assert_eq!(location::z(coords_ref), z);
+        let expected_solarsystem: u256 = 42u256;
+        let expected_x = utf8(b"100");
+        let expected_y = utf8(b"200");
+        let expected_z = utf8(b"300");
+        assert_eq!(coords_ref.solarsystem(), expected_solarsystem);
+        assert_eq!(coords_ref.x(), expected_x);
+        assert_eq!(coords_ref.y(), expected_y);
+        assert_eq!(coords_ref.z(), expected_z);
         ts::return_shared(registry);
     };
     ts::end(ts);

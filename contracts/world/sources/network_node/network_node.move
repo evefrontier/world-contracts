@@ -248,10 +248,10 @@ public fun reveal_location(
     nwn: &NetworkNode,
     registry: &mut LocationRegistry,
     admin_acl: &AdminACL,
-    solarsystem: u64,
-    x: u64,
-    y: u64,
-    z: u64,
+    solarsystem: u256,
+    x: String,
+    y: String,
+    z: String,
     ctx: &TxContext,
 ) {
     admin_acl.verify_sponsor(ctx);

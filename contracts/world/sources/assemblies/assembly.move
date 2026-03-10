@@ -128,16 +128,16 @@ public fun update_metadata_url(
     metadata.update_url(assembly.key, url);
 }
 
-/// Reveals plain-text location (solarsystem, x, y, z) for this assembly. Optional; enables dapps (e.g. route maps).
+/// Reveals plain-text location (solarsystem, x, y, z) for this assembly. Admin ACL only. Optional; enables dapps (e.g. route maps).
 /// Temporary: use until the offchain location reveal service is ready.
 public fun reveal_location(
     assembly: &Assembly,
     registry: &mut LocationRegistry,
     admin_acl: &AdminACL,
-    solarsystem: u64,
-    x: u64,
-    y: u64,
-    z: u64,
+    solarsystem: u256,
+    x: String,
+    y: String,
+    z: String,
     ctx: &TxContext,
 ) {
     admin_acl.verify_sponsor(ctx);
