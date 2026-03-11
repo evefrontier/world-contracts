@@ -279,7 +279,8 @@ public fun withdraw_item<Auth: drop>(
     )
 }
 
-/// Extension-only deposit into open storage (contract-controlled; no owner or player can withdraw).
+/// Extension-only deposit into open storage (contract-controlled).
+/// Owners and players can withdraw only via `withdraw_from_open_inventory`, i.e. through extension logic, not directly.
 /// Creates the open inventory on first use. Only the registered extension can call this.
 public fun deposit_to_open_inventory<Auth: drop>(
     storage_unit: &mut StorageUnit,
@@ -597,6 +598,8 @@ public fun anchor(
     storage_unit.inventory_keys.push_back(owner_cap_id);
     df::add(&mut storage_unit.id, owner_cap_id, inventory);
 
+    // Future: we could set open-inventory max_capacity separately from owner ephemeral/owned (EVM version had different limits).
+    // If we do, we must change how we bootstrap max_capacity in ensure_open_inventory for existing SSUs (currently uses owner ephemeral capacity, same as deposit_to_owned).
     let open_inv_key = open_storage_key_from_id(assembly_id);
     let open_inventory = inventory::create(max_capacity);
     storage_unit.inventory_keys.push_back(open_inv_key);
@@ -844,6 +847,8 @@ fun open_storage_key_from_id(storage_unit_id: ID): ID {
 }
 
 /// Creates the open inventory if it does not exist (backward compat for SSUs anchored before open storage existed).
+/// Bootstraps max_capacity from owner ephemeral (same as deposit_to_owned). 
+/// TODO: If we later decouple native vs ephemeral capacity, this bootstrap must be updated.
 fun ensure_open_inventory(storage_unit: &mut StorageUnit) {
     let key = open_storage_key(storage_unit);
     if (!df::exists_(&storage_unit.id, key)) {
