@@ -8,7 +8,7 @@ use world::{
     assembly::{Self, Assembly},
     character::{Self, Character},
     energy::{Self, EnergyConfig},
-    location,
+    location::{Self, LocationRegistry},
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
     status,
@@ -359,6 +359,59 @@ fun test_unanchor() {
     ts::return_shared(energy_config);
     ts::return_shared(admin_acl);
     ts::return_shared(registry);
+    ts::end(ts);
+}
+
+#[test]
+fun reveal_assembly_location() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), (CHARACTER_ITEM_ID as u32));
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let assembly_id = create_assembly(&mut ts, nwn_id, character_id);
+
+    let solarsystem: u64 = 42;
+    let x = utf8(b"100");
+    let y = utf8(b"200");
+    let z = utf8(b"300");
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let assembly = ts::take_shared_by_id<Assembly>(&ts, assembly_id);
+        let mut registry = ts::take_shared<LocationRegistry>(&ts);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        assembly::reveal_location(
+            &assembly,
+            &mut registry,
+            &admin_acl,
+            solarsystem,
+            x,
+            y,
+            z,
+            ts.ctx(),
+        );
+        ts::return_shared(admin_acl);
+        ts::return_shared(registry);
+        ts::return_shared(assembly);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let registry = ts::take_shared<LocationRegistry>(&ts);
+        let coords = location::get_location(&registry, assembly_id);
+        assert!(option::is_some(&coords), 0);
+        let coords_ref = option::borrow(&coords);
+        let expected_solarsystem: u64 = 42;
+        let expected_x = utf8(b"100");
+        let expected_y = utf8(b"200");
+        let expected_z = utf8(b"300");
+        assert_eq!(location::solarsystem(coords_ref), expected_solarsystem);
+        assert_eq!(location::x(coords_ref), expected_x);
+        assert_eq!(location::y(coords_ref), expected_y);
+        assert_eq!(location::z(coords_ref), expected_z);
+        ts::return_shared(registry);
+    };
     ts::end(ts);
 }
 

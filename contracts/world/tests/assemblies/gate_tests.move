@@ -1,7 +1,7 @@
 #[test_only]
 module world::gate_tests;
 
-use std::{bcs, string::utf8};
+use std::{bcs, string::utf8, unit_test::assert_eq};
 use sui::{clock, test_scenario as ts};
 use world::{
     access::{AdminACL, OwnerCap, ServerAddressRegistry},
@@ -356,6 +356,39 @@ fun test_jump_with_permit_succeeds() {
 }
 
 #[test]
+fun freeze_extension_config_succeeds() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 701);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+
+    authorize_gate_extension(&mut ts, character_id, gate_id);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut gate_obj = ts::take_shared_by_id<Gate>(&ts, gate_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let owner_cap_id = gate_obj.owner_cap_id();
+        let gate_ticket = ts::receiving_ticket_by_id<OwnerCap<Gate>>(owner_cap_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<Gate>(gate_ticket, ts.ctx());
+        gate_obj.freeze_extension_config(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+        ts::return_shared(gate_obj);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let gate_obj = ts::take_shared_by_id<Gate>(&ts, gate_id);
+        assert_eq!(gate_obj.is_extension_frozen(), true);
+        ts::return_shared(gate_obj);
+    };
+    ts::end(ts);
+}
+
+#[test]
 fun unanchor_orphan_gate() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
@@ -606,6 +639,94 @@ fun authorize_extension_fails_unauthorized_owner_cap() {
             ts.ctx(),
         );
         gate_a.authorize_extension<GateAuth>(&owner_cap_b);
+        character_b.return_owner_cap(owner_cap_b, receipt_b);
+        ts::return_shared(character_b);
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = gate::EExtensionConfigFrozen)]
+fun authorize_extension_fails_after_freeze() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 702);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+
+    authorize_gate_extension(&mut ts, character_id, gate_id);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut gate_obj = ts::take_shared_by_id<Gate>(&ts, gate_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<Gate>(
+            ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_obj.owner_cap_id()),
+            ts.ctx(),
+        );
+        gate_obj.freeze_extension_config(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+        ts::return_shared(gate_obj);
+    };
+
+    authorize_gate_extension(&mut ts, character_id, gate_id);
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = gate::EExtensionNotConfigured)]
+fun freeze_extension_config_fails_when_no_extension() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 703);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut gate_obj = ts::take_shared_by_id<Gate>(&ts, gate_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<Gate>(
+            ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_obj.owner_cap_id()),
+            ts.ctx(),
+        );
+        gate_obj.freeze_extension_config(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+        ts::return_shared(gate_obj);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = gate::EGateNotAuthorized)]
+fun freeze_extension_config_fails_unauthorized() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_a_id = create_character(&mut ts, user_a(), 704);
+    let character_b_id = create_character(&mut ts, user_b(), 705);
+    let nwn_id = create_network_node(&mut ts, character_a_id);
+    let gate_a_id = create_gate(&mut ts, character_a_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_b_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
+
+    authorize_gate_extension(&mut ts, character_a_id, gate_a_id);
+
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let (owner_cap_b, receipt_b) = character_b.borrow_owner_cap<Gate>(
+            ts::receiving_ticket_by_id<OwnerCap<Gate>>(gate_b.owner_cap_id()),
+            ts.ctx(),
+        );
+        gate_a.freeze_extension_config(&owner_cap_b);
         character_b.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character_b);
         ts::return_shared(gate_a);

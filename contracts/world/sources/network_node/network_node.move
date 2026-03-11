@@ -16,7 +16,7 @@ use world::{
     energy::{Self, EnergySource},
     fuel::{Self, FuelConfig, Fuel},
     in_game_id::{Self, TenantItemId},
-    location::{Self, Location},
+    location::{Self, Location, LocationRegistry},
     metadata::{Self, Metadata},
     object_registry::ObjectRegistry,
     status::{Self, AssemblyStatus}
@@ -242,6 +242,31 @@ public(package) fun borrow_energy_source(nwn: &mut NetworkNode): &mut EnergySour
 
 public fun need_update(nwn: &NetworkNode, fuel_config: &FuelConfig, clock: &Clock): bool {
     nwn.fuel.need_update(fuel_config, clock)
+}
+
+public fun reveal_location(
+    nwn: &NetworkNode,
+    registry: &mut LocationRegistry,
+    admin_acl: &AdminACL,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
+    location::reveal_location(
+        registry,
+        object::id(nwn),
+        nwn.key,
+        nwn.type_id,
+        nwn.owner_cap_id,
+        location::hash(&nwn.location),
+        solarsystem,
+        x,
+        y,
+        z,
+    );
 }
 
 // === Admin Functions ===

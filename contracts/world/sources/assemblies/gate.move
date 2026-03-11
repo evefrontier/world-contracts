@@ -20,8 +20,9 @@ use world::{
     access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
     character::{Self, Character},
     energy::EnergyConfig,
+    extension_freeze,
     in_game_id::{Self, TenantItemId},
-    location::{Self, Location},
+    location::{Self, Location, LocationRegistry},
     metadata::{Self, Metadata},
     network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
@@ -65,6 +66,10 @@ const EGatesLinked: vector<u8> = b"Gates are linked";
 const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
 #[error(code = 16)]
 const EGateTypeMismatch: vector<u8> = b"Gates have different TypeId values";
+#[error(code = 17)]
+const EExtensionConfigFrozen: vector<u8> = b"Extension configuration is frozen";
+#[error(code = 18)]
+const EExtensionNotConfigured: vector<u8> = b"Extension must be configured before freezing";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -140,6 +145,7 @@ public struct ExtensionAuthorizedEvent has copy, drop {
 public fun authorize_extension<Auth: drop>(gate: &mut Gate, owner_cap: &OwnerCap<Gate>) {
     let gate_id = object::id(gate);
     assert!(access::is_authorized(owner_cap, gate_id), EGateNotAuthorized);
+    assert!(!extension_freeze::is_extension_frozen(&gate.id), EExtensionConfigFrozen);
     let previous_extension = gate.extension;
     gate.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
     event::emit(ExtensionAuthorizedEvent {
@@ -149,6 +155,16 @@ public fun authorize_extension<Auth: drop>(gate: &mut Gate, owner_cap: &OwnerCap
         previous_extension,
         owner_cap_id: object::id(owner_cap),
     });
+}
+
+/// Freezes the gate's extension configuration so the owner can no longer change it (builds user trust).
+/// Requires an extension to be configured. One-time; cannot be undone.
+public fun freeze_extension_config(gate: &mut Gate, owner_cap: &OwnerCap<Gate>) {
+    let gate_id = object::id(gate);
+    assert!(access::is_authorized(owner_cap, gate_id), EGateNotAuthorized);
+    assert!(option::is_some(&gate.extension), EExtensionNotConfigured);
+    assert!(!extension_freeze::is_extension_frozen(&gate.id), EExtensionConfigFrozen);
+    extension_freeze::freeze_extension_config(&mut gate.id, gate_id);
 }
 
 public fun online(
@@ -418,6 +434,33 @@ public fun update_metadata_url(gate: &mut Gate, owner_cap: &OwnerCap<Gate>, url:
     metadata.update_url(gate.key, url);
 }
 
+/// Reveals plain-text location (solarsystem, x, y, z) for this gate. Admin ACL only. Optional; enables dapps (e.g. route maps).
+/// Temporary: use until the offchain location reveal service is ready.
+public fun reveal_location(
+    gate: &Gate,
+    registry: &mut LocationRegistry,
+    admin_acl: &AdminACL,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
+    location::reveal_location(
+        registry,
+        object::id(gate),
+        gate.key,
+        gate.type_id,
+        gate.owner_cap_id,
+        location::hash(&gate.location),
+        solarsystem,
+        x,
+        y,
+        z,
+    );
+}
+
 // === View Functions ===
 public fun status(gate: &Gate): &AssemblyStatus {
     &gate.status
@@ -459,6 +502,11 @@ public fun extension_type(gate: &Gate): &Option<TypeName> {
 /// Returns true if the gate is configured with extension logic
 public fun is_extension_configured(gate: &Gate): bool {
     option::is_some(&gate.extension)
+}
+
+/// Returns true if the gate's extension configuration is frozen (owner cannot change extension).
+public fun is_extension_frozen(gate: &Gate): bool {
+    extension_freeze::is_extension_frozen(&gate.id)
 }
 
 // === Admin Functions ===
@@ -551,7 +599,7 @@ public fun unanchor(
 ) {
     admin_acl.verify_sponsor(ctx);
     let Gate {
-        id,
+        mut id,
         key,
         status,
         location,
@@ -579,6 +627,7 @@ public fun unanchor(
     status.unanchor(gate_id, key);
 
     // TODO: drop everything
+    extension_freeze::remove_frozen_marker_if_present(&mut id);
     location.remove();
     metadata.do!(|metadata| metadata.delete());
     let _ = option::destroy_with_default(energy_source_id, nwn_id);
@@ -588,7 +637,7 @@ public fun unanchor(
 public fun unanchor_orphan(gate: Gate, admin_acl: &AdminACL, ctx: &TxContext) {
     admin_acl.verify_sponsor(ctx);
     let Gate {
-        id,
+        mut id,
         key,
         status,
         location,
@@ -605,6 +654,7 @@ public fun unanchor_orphan(gate: Gate, admin_acl: &AdminACL, ctx: &TxContext) {
 
     let gate_id = object::uid_to_inner(&id);
     status.unanchor(gate_id, key);
+    extension_freeze::remove_frozen_marker_if_present(&mut id);
     location.remove();
     metadata.do!(|metadata| metadata.delete());
     id.delete();

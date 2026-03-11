@@ -104,6 +104,7 @@ public fun setup_world(ts: &mut ts::Scenario) {
         killmail_registry::init_for_testing(ts.ctx());
         fuel::init_for_testing(ts.ctx());
         energy::init_for_testing(ts.ctx());
+        location::init_for_testing(ts.ctx());
     };
 
     ts::next_tx(ts, governor());

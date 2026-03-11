@@ -27,15 +27,16 @@
 /// Future pattern: Storage Units (extension-controlled), Ships (owner-controlled)
 module world::storage_unit;
 
-use std::{string::String, type_name::{Self, TypeName}};
-use sui::{clock::Clock, derived_object, dynamic_field as df, event};
+use std::{bcs, string::String, type_name::{Self, TypeName}};
+use sui::{address, clock::Clock, derived_object, dynamic_field as df, event, hash};
 use world::{
     access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
     character::Character,
     energy::EnergyConfig,
+    extension_freeze,
     in_game_id::{Self, TenantItemId},
     inventory::{Self, Inventory, Item},
-    location::{Self, Location},
+    location::{Self, Location, LocationRegistry},
     metadata::{Self, Metadata},
     network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
     object_registry::ObjectRegistry,
@@ -71,6 +72,13 @@ const ESenderCannotAccessCharacter: vector<u8> = b"Address cannot access Charact
 const EItemParentMismatch: vector<u8> = b"Item was not withdrawn from this storage unit";
 #[error(code = 12)]
 const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
+#[error(code = 13)]
+const EExtensionConfigFrozen: vector<u8> = b"Extension configuration is frozen";
+#[error(code = 14)]
+const EExtensionNotConfigured: vector<u8> = b"Extension must be configured before freezing";
+#[error(code = 15)]
+const EOpenStorageNotInitialized: vector<u8> =
+    b"Open storage has not been initialized (deposit first)";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -113,6 +121,7 @@ public fun authorize_extension<Auth: drop>(
 ) {
     let storage_unit_id = object::id(storage_unit);
     assert!(access::is_authorized(owner_cap, storage_unit_id), EAssemblyNotAuthorized);
+    assert!(!extension_freeze::is_extension_frozen(&storage_unit.id), EExtensionConfigFrozen);
     let previous_extension = storage_unit.extension;
     storage_unit.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
     event::emit(ExtensionAuthorizedEvent {
@@ -122,6 +131,19 @@ public fun authorize_extension<Auth: drop>(
         previous_extension,
         owner_cap_id: object::id(owner_cap),
     });
+}
+
+/// Freezes the storage unit's extension configuration so the owner can no longer change it (builds user trust).
+/// Requires an extension to be configured. One-time; cannot be undone.
+public fun freeze_extension_config(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap<StorageUnit>,
+) {
+    let storage_unit_id = object::id(storage_unit);
+    assert!(access::is_authorized(owner_cap, storage_unit_id), EAssemblyNotAuthorized);
+    assert!(option::is_some(&storage_unit.extension), EExtensionNotConfigured);
+    assert!(!extension_freeze::is_extension_frozen(&storage_unit.id), EExtensionConfigFrozen);
+    extension_freeze::freeze_extension_config(&mut storage_unit.id, storage_unit_id);
 }
 
 public fun online(
@@ -246,6 +268,68 @@ public fun withdraw_item<Auth: drop>(
         storage_unit.owner_cap_id,
     );
 
+    inventory.withdraw_item(
+        storage_unit_id,
+        storage_unit.key,
+        character,
+        type_id,
+        quantity,
+        storage_unit.location.hash(),
+        ctx,
+    )
+}
+
+/// Extension-only deposit into open storage (contract-controlled).
+/// Owners and players can withdraw only via `withdraw_from_open_inventory`, i.e. through extension logic, not directly.
+/// Creates the open inventory on first use. Only the registered extension can call this.
+public fun deposit_to_open_inventory<Auth: drop>(
+    storage_unit: &mut StorageUnit,
+    character: &Character,
+    item: Item,
+    _: Auth,
+    _: &mut TxContext,
+) {
+    let storage_unit_id = object::id(storage_unit);
+    assert!(
+        storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
+        EExtensionNotAuthorized,
+    );
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
+    assert!(inventory::parent_id(&item) == storage_unit_id, EItemParentMismatch);
+
+    ensure_open_inventory(storage_unit);
+
+    let key = open_storage_key(storage_unit);
+    let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, key);
+    inventory.deposit_item(
+        storage_unit_id,
+        storage_unit.key,
+        character,
+        item,
+    );
+}
+
+/// Extension-only withdraw from open storage. Only the registered extension can call this.
+/// Aborts with EOpenStorageNotInitialized if open storage has never been used (no prior deposit_to_open_inventory).
+public fun withdraw_from_open_inventory<Auth: drop>(
+    storage_unit: &mut StorageUnit,
+    character: &Character,
+    _: Auth,
+    type_id: u64,
+    quantity: u32,
+    ctx: &mut TxContext,
+): Item {
+    let storage_unit_id = object::id(storage_unit);
+    assert!(
+        storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
+        EExtensionNotAuthorized,
+    );
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    let key = open_storage_key(storage_unit);
+    assert!(df::exists_(&storage_unit.id, key), EOpenStorageNotInitialized);
+
+    let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, key);
     inventory.withdraw_item(
         storage_unit_id,
         storage_unit.key,
@@ -394,6 +478,33 @@ public fun update_metadata_url(
     metadata.update_url(storage_unit.key, url);
 }
 
+/// Reveals plain-text location (solarsystem, x, y, z) for this storage unit. Admin ACL only. Optional; enables dapps (e.g. route maps).
+/// Temporary: use until the offchain location reveal service is ready.
+public fun reveal_location(
+    storage_unit: &StorageUnit,
+    registry: &mut LocationRegistry,
+    admin_acl: &AdminACL,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
+    location::reveal_location(
+        registry,
+        object::id(storage_unit),
+        storage_unit.key,
+        storage_unit.type_id,
+        storage_unit.owner_cap_id,
+        location::hash(&storage_unit.location),
+        solarsystem,
+        x,
+        y,
+        z,
+    );
+}
+
 // === View Functions ===
 public fun status(storage_unit: &StorageUnit): &AssemblyStatus {
     &storage_unit.status
@@ -414,6 +525,22 @@ public fun owner_cap_id(storage_unit: &StorageUnit): ID {
 /// Returns the storage unit's energy source (network node) ID if set
 public fun energy_source_id(storage_unit: &StorageUnit): &Option<ID> {
     &storage_unit.energy_source_id
+}
+
+/// Returns true if the storage unit's extension configuration is frozen (owner cannot change extension).
+public fun is_extension_frozen(storage_unit: &StorageUnit): bool {
+    extension_freeze::is_extension_frozen(&storage_unit.id)
+}
+
+/// Returns the dynamic field key for open storage (contract-only; no owner or player control).
+/// Clients can use this to identify the open slot in inventory_keys and display it separately.
+public fun open_storage_key(storage_unit: &StorageUnit): ID {
+    open_storage_key_from_id(object::id(storage_unit))
+}
+
+/// Returns true if this storage unit has open storage (always true for SSUs anchored with open storage).
+public fun has_open_storage(storage_unit: &StorageUnit): bool {
+    df::exists_(&storage_unit.id, open_storage_key(storage_unit))
 }
 
 // === Admin Functions ===
@@ -467,12 +594,16 @@ public fun anchor(
 
     network_node.connect_assembly(assembly_id);
 
-    let inventory = inventory::create(
-        max_capacity,
-    );
-
+    let inventory = inventory::create(max_capacity);
     storage_unit.inventory_keys.push_back(owner_cap_id);
     df::add(&mut storage_unit.id, owner_cap_id, inventory);
+
+    // Future: we could set open-inventory max_capacity separately from owner ephemeral/owned (EVM version had different limits).
+    // If we do, we must change how we bootstrap max_capacity in ensure_open_inventory for existing SSUs (currently uses owner ephemeral capacity, same as deposit_to_owned).
+    let open_inv_key = open_storage_key_from_id(assembly_id);
+    let open_inventory = inventory::create(max_capacity);
+    storage_unit.inventory_keys.push_back(open_inv_key);
+    df::add(&mut storage_unit.id, open_inv_key, open_inventory);
 
     event::emit(StorageUnitCreatedEvent {
         storage_unit_id: assembly_id,
@@ -623,6 +754,7 @@ public fun unanchor(
             key,
         ),
     );
+    extension_freeze::remove_frozen_marker_if_present(&mut id);
     metadata.do!(|metadata| metadata.delete());
     let _ = option::destroy_with_default(energy_source_id, object::id(network_node));
     id.delete();
@@ -650,6 +782,7 @@ public fun unanchor_orphan(storage_unit: StorageUnit, admin_acl: &AdminACL, ctx:
         ),
     );
     status.unanchor(storage_unit_id, key);
+    extension_freeze::remove_frozen_marker_if_present(&mut id);
     metadata.do!(|metadata| metadata.delete());
     option::destroy_none(energy_source_id);
 
@@ -704,6 +837,31 @@ public fun game_item_to_chain_inventory<T: key>(
 }
 
 // === Private Functions ===
+/// Deterministic key for open inventory derived from storage unit id (no collision with owner_cap_id).
+fun open_storage_key_from_id(storage_unit_id: ID): ID {
+    let mut storage_unit_id_bytes = bcs::to_bytes(&storage_unit_id);
+    vector::append(&mut storage_unit_id_bytes, b"open_inventory");
+    let digest = hash::blake2b256(&storage_unit_id_bytes);
+    let addr = address::from_bytes(digest);
+    object::id_from_address(addr)
+}
+
+/// Creates the open inventory if it does not exist (backward compat for SSUs anchored before open storage existed).
+/// Bootstraps max_capacity from owner ephemeral (same as deposit_to_owned).
+/// TODO: If we later decouple native vs ephemeral capacity, this bootstrap must be updated.
+fun ensure_open_inventory(storage_unit: &mut StorageUnit) {
+    let key = open_storage_key(storage_unit);
+    if (!df::exists_(&storage_unit.id, key)) {
+        let owner_inv = df::borrow<ID, Inventory>(
+            &storage_unit.id,
+            storage_unit.owner_cap_id,
+        );
+        let open_inventory = inventory::create(owner_inv.max_capacity());
+        storage_unit.inventory_keys.push_back(key);
+        df::add(&mut storage_unit.id, key, open_inventory);
+    };
+}
+
 fun bring_offline_and_release_energy(
     storage_unit: &mut StorageUnit,
     storage_unit_id: ID,

@@ -403,7 +403,7 @@ fun test_anchor_storage_unit() {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
         assert!(storage_unit.has_inventory(owner_cap_id));
-        assert_eq!(inventory_keys.length(), 1);
+        assert_eq!(inventory_keys.length(), 2); // main + open (created at anchor)
         assert_eq!(*inventory_keys.borrow(0), owner_cap_id);
 
         let inv_ref = storage_unit.inventory(owner_cap_id);
@@ -553,7 +553,7 @@ fun test_mint_multiple_items_in_owned_inventory() {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
         assert!(storage_unit.has_inventory(owner_cap_id));
-        assert_eq!(inventory_keys.length(), 1);
+        assert_eq!(inventory_keys.length(), 2); // main + open
         assert_eq!(*inventory_keys.borrow(0), owner_cap_id);
         ts::return_shared(storage_unit);
     };
@@ -568,8 +568,8 @@ fun test_mint_multiple_items_in_owned_inventory() {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
         assert!(storage_unit.has_inventory(character_owner_cap_id));
-        assert_eq!(inventory_keys.length(), 2);
-        assert_eq!(*inventory_keys.borrow(1), character_owner_cap_id);
+        assert_eq!(inventory_keys.length(), 3); // main + open + owned
+        assert_eq!(*inventory_keys.borrow(2), character_owner_cap_id);
         ts::return_shared(storage_unit);
     };
 
@@ -580,8 +580,8 @@ fun test_mint_multiple_items_in_owned_inventory() {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
         assert!(storage_unit.has_inventory(character_owner_cap_id));
-        assert_eq!(inventory_keys.length(), 2);
-        assert_eq!(*inventory_keys.borrow(1), character_owner_cap_id);
+        assert_eq!(inventory_keys.length(), 3); // main + open + owned
+        assert_eq!(*inventory_keys.borrow(2), character_owner_cap_id);
         ts::return_shared(storage_unit);
     };
 
@@ -619,6 +619,44 @@ fun test_authorize_extension() {
         ts::return_shared(storage_unit);
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+#[test]
+fun freeze_extension_config_succeeds() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, _) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        storage_unit.freeze_extension_config(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        assert_eq!(storage_unit.is_extension_frozen(), true);
+        ts::return_shared(storage_unit);
     };
     ts::end(ts);
 }
@@ -887,7 +925,7 @@ fun test_unachor_storage_unit() {
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         let inventory_keys = storage_unit.inventory_keys();
-        assert_eq!(inventory_keys.length(), 1);
+        assert_eq!(inventory_keys.length(), 2); // main + open
         ts::return_shared(storage_unit);
     };
 
@@ -2052,7 +2090,7 @@ fun test_swap_via_extension_to_owned() {
 /// Scenario: Extension deposits item to a player who has no owned inventory yet
 /// Expected: Owned inventory is auto-created, item deposited successfully
 #[test]
-fun test_deposit_to_owned_creates_owned_inventory() {
+fun deposit_to_owned_creates_owned_inventory() {
     let mut ts = ts::begin(governor());
     setup_nwn(&mut ts);
     let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
@@ -2090,7 +2128,7 @@ fun test_deposit_to_owned_creates_owned_inventory() {
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         assert!(!storage_unit.has_inventory(character_b_owner_cap_id));
-        assert_eq!(storage_unit.inventory_keys().length(), 1);
+        assert_eq!(storage_unit.inventory_keys().length(), 2); // main + open
         ts::return_shared(storage_unit);
     };
 
@@ -2123,12 +2161,107 @@ fun test_deposit_to_owned_creates_owned_inventory() {
     {
         let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
         assert!(storage_unit.has_inventory(character_b_owner_cap_id));
-        assert_eq!(storage_unit.inventory_keys().length(), 2);
+        assert_eq!(storage_unit.inventory_keys().length(), 3); // main + open + owned
         assert_eq!(
             storage_unit.item_quantity(character_b_owner_cap_id, AMMO_TYPE_ID),
             AMMO_QUANTITY,
         );
         ts::return_shared(storage_unit);
+    };
+
+    ts::end(ts);
+}
+
+/// Test open storage: only extension can deposit/withdraw; open inventory is created during anchor.
+#[test]
+fun deposit_to_open_and_withdraw_from_open() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, nwn_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_id, nwn_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_id, character_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        assert!(storage_unit.has_open_storage());
+        ts::return_shared(storage_unit);
+    };
+
+    // Extension: withdraw from main, deposit to open
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let item = storage_unit.withdraw_item<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        storage_unit.deposit_to_open_inventory<SwapAuth>(&character, item, SwapAuth {}, ts.ctx());
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        assert!(storage_unit.has_open_storage());
+        assert!(storage_unit.has_inventory(storage_unit.open_storage_key()));
+        assert_eq!(
+            storage_unit::item_quantity(
+                &storage_unit,
+                storage_unit.open_storage_key(),
+                AMMO_TYPE_ID,
+            ),
+            AMMO_QUANTITY,
+        );
+        ts::return_shared(storage_unit);
+    };
+
+    // Extension: withdraw from open, deposit back to main
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let item = storage_unit.withdraw_from_open_inventory<SwapAuth>(
+            &character,
+            SwapAuth {},
+            AMMO_TYPE_ID,
+            AMMO_QUANTITY,
+            ts.ctx(),
+        );
+        storage_unit.deposit_item<SwapAuth>(&character, item, SwapAuth {}, ts.ctx());
+        assert_eq!(
+            storage_unit.item_quantity(storage_unit.owner_cap_id(), AMMO_TYPE_ID),
+            AMMO_QUANTITY,
+        );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
     };
 
     ts::end(ts);
@@ -2292,6 +2425,138 @@ fun test_deposit_to_owned_fail_parent_id_mismatch() {
             ts.ctx(),
         );
         ts::return_shared(storage_unit);
+        ts::return_shared(character_b);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = storage_unit::EExtensionConfigFrozen)]
+fun test_authorize_extension_fails_after_freeze() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, _) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        storage_unit.freeze_extension_config(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = storage_unit::EExtensionNotConfigured)]
+fun test_freeze_extension_config_fails_when_no_extension() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_id, _) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.freeze_extension_config(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = storage_unit::EAssemblyNotAuthorized)]
+fun test_freeze_extension_config_fails_unauthorized() {
+    let mut ts = ts::begin(governor());
+    test_helpers::setup_world(&mut ts);
+    let character_a_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+    let character_b_id = create_character(&mut ts, user_b(), CHARACTER_B_ITEM_ID);
+
+    let (storage_a_id, _) = create_storage_unit(
+        &mut ts,
+        character_a_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    let (storage_b_id, _) = create_storage_unit(
+        &mut ts,
+        character_b_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_a_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_a_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_b());
+    {
+        let mut storage_a = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let storage_b = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let mut character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
+        let (owner_cap_b, receipt_b) = character_b.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_b_id),
+            ts.ctx(),
+        );
+        storage_a.freeze_extension_config(&owner_cap_b);
+        ts::return_shared(storage_a);
+        ts::return_shared(storage_b);
+        character_b.return_owner_cap(owner_cap_b, receipt_b);
         ts::return_shared(character_b);
     };
     ts::end(ts);
