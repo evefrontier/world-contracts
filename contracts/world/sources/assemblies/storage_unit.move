@@ -847,7 +847,7 @@ fun open_storage_key_from_id(storage_unit_id: ID): ID {
 }
 
 /// Creates the open inventory if it does not exist (backward compat for SSUs anchored before open storage existed).
-/// Bootstraps max_capacity from owner ephemeral (same as deposit_to_owned). 
+/// Bootstraps max_capacity from owner ephemeral (same as deposit_to_owned).
 /// TODO: If we later decouple native vs ephemeral capacity, this bootstrap must be updated.
 fun ensure_open_inventory(storage_unit: &mut StorageUnit) {
     let key = open_storage_key(storage_unit);
