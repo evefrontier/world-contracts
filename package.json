@@ -47,6 +47,8 @@
     "issue-tribe-jump-permit": "tsx ts-scripts/builder_extension/issue-tribe-jump-permit.ts",
     "collect-corpse-bounty": "tsx ts-scripts/builder_extension/collect-corpse-bounty.ts",
     "jump-with-permit": "tsx ts-scripts/builder_extension/jump-with-permit.ts",
+    "delete-jump-permit": "tsx ts-scripts/builder_extension/delete-jump-permit.ts",
+    "delete-jump-permit-extension": "tsx ts-scripts/builder_extension/delete-jump-permit-extension.ts",
     "anchor-turret": "tsx ts-scripts/turret/anchor.ts",
     "online-turret": "tsx ts-scripts/turret/online.ts",
     "authorize-turret-extension": "tsx ts-scripts/builder_extension/authorize-turret.ts",
