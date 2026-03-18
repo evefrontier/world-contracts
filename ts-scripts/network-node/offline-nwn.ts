@@ -101,14 +101,11 @@ async function offline(
         currentHotPotato = updatedHotPotato;
     }
 
-    // Destroy the hot potato after all assemblies are processed
-    // This validates that the list is empty (all assemblies processed)
-    if (assemblyIds.length > 0) {
-        tx.moveCall({
-            target: `${config.packageId}::${MODULES.NETWORK_NODE}::destroy_offline_assemblies`,
-            arguments: [currentHotPotato],
-        });
-    }
+    // Always destroy the hot potato (required even when 0 assemblies - consumes the value)
+    tx.moveCall({
+        target: `${config.packageId}::${MODULES.NETWORK_NODE}::destroy_offline_assemblies`,
+        arguments: [currentHotPotato],
+    });
 
     const result = await client.signAndExecuteTransaction({
         transaction: tx,
