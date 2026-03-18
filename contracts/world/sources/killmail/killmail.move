@@ -64,7 +64,7 @@ public struct KillmailCreatedEvent has copy, drop {
     solar_system_id: TenantItemId,
 }
 
-// === Public Functions ===
+// === View Functions ===
 /// Returns the SHIP variant of LossType
 public fun ship(): LossType {
     LossType::SHIP
@@ -73,6 +73,51 @@ public fun ship(): LossType {
 /// Returns the STRUCTURE variant of LossType
 public fun structure(): LossType {
     LossType::STRUCTURE
+}
+
+/// Unique key for this killmail (used for dedupe and derivation).
+public fun key(killmail: &Killmail): TenantItemId {
+    killmail.key
+}
+
+/// In-game ID of the killer character.
+public fun killer_id(killmail: &Killmail): TenantItemId {
+    killmail.killer_id
+}
+
+/// In-game ID of the victim (ship or structure).
+public fun victim_id(killmail: &Killmail): TenantItemId {
+    killmail.victim_id
+}
+
+/// Character who reported the kill.
+public fun reported_by_character_id(killmail: &Killmail): TenantItemId {
+    killmail.reported_by_character_id
+}
+
+/// Unix timestamp (seconds) of the kill.
+public fun kill_timestamp(killmail: &Killmail): u64 {
+    killmail.kill_timestamp
+}
+
+/// Whether the loss was a ship or structure.
+public fun loss_type(killmail: &Killmail): LossType {
+    killmail.loss_type
+}
+
+/// Solar system where the kill occurred.
+public fun solar_system_id(killmail: &Killmail): TenantItemId {
+    killmail.solar_system_id
+}
+
+/// Returns true if the loss was a structure
+public fun is_structure_loss(killmail: &Killmail): bool {
+    killmail.loss_type == LossType::STRUCTURE
+}
+
+/// Returns true if the loss was a ship
+public fun is_ship_loss(killmail: &Killmail): bool {
+    killmail.loss_type == LossType::SHIP
 }
 
 // === Admin Functions ===
