@@ -3,13 +3,18 @@ import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
-import { getEnvConfig, handleError, hydrateWorldConfig, initializeContext, requireEnv } from "../utils/helper";
+import {
+    getEnvConfig,
+    handleError,
+    hydrateWorldConfig,
+    initializeContext,
+    requireEnv,
+} from "../utils/helper";
 import { GATE_ITEM_ID_1 } from "../utils/constants";
 import { MODULE as extensionModule } from "./modules";
 
 // Upgraded builder package ID (published-at from Move.toml)
-const BUILDER_PACKAGE_LATEST =
-    process.env.UPGRADED_BUILDER_PACKAGE_ID || "";
+const BUILDER_PACKAGE_LATEST = process.env.UPGRADED_BUILDER_PACKAGE_ID || "";
 
 async function getOwnedJumpPermitId(
     client: SuiJsonRpcClient,

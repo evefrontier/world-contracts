@@ -2,11 +2,16 @@ import "dotenv/config";
 import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
-import { getEnvConfig, handleError, hydrateWorldConfig, initializeContext, requireEnv } from "../utils/helper";
+import {
+    getEnvConfig,
+    handleError,
+    hydrateWorldConfig,
+    initializeContext,
+    requireEnv,
+} from "../utils/helper";
 
 // Upgraded world package ID (published-at from Move.toml)
-const WORLD_PACKAGE_LATEST =
-    process.env.UPGRADED_WORLD_PACKAGE_ID || "";
+const WORLD_PACKAGE_LATEST = process.env.UPGRADED_WORLD_PACKAGE_ID || "";
 
 async function getOwnedJumpPermitId(
     client: SuiJsonRpcClient,
