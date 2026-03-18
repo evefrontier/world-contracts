@@ -422,7 +422,7 @@ public fun extension(turret: &Turret): &Option<TypeName> {
     &turret.extension
 }
 
-/// If authorized, returns the configured extension type (aborts if none).
+/// If configured, returns the extension type (aborts if no extension is configured).
 public fun extension_type(turret: &Turret): TypeName {
     *option::borrow(&turret.extension)
 }
