@@ -16,7 +16,7 @@ module extension_examples::tribe_permit;
 
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
 use sui::clock::Clock;
-use world::{character::Character, gate::{Self, Gate}};
+use world::{character::Character, gate::{Self, Gate, JumpPermit}};
 
 // === Errors ===
 #[error(code = 0)]
@@ -64,6 +64,11 @@ public fun issue_jump_permit(
         expires_at_timestamp_ms,
         ctx,
     );
+}
+
+/// Voids a jump permit via the extension. Caller must own the permit.
+public fun delete_jump_permit(source_gate: &Gate, jump_permit: JumpPermit) {
+    gate::delete_jump_permit_with_auth<XAuth>(source_gate, jump_permit, config::x_auth());
 }
 
 public fun set_tribe_config(

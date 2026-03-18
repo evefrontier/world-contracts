@@ -314,6 +314,26 @@ public fun issue_jump_permit<Auth: drop>(
     transfer::transfer(jump_permit, character.character_address());
 }
 
+/// Deletes a jump permit by destroying it. Only the owner can call this (by passing their permit).
+public fun delete_jump_permit(jump_permit: JumpPermit) {
+    let JumpPermit { id, .. } = jump_permit;
+    id.delete();
+}
+
+/// Deletes a jump permit using the same extension Auth that can issue permits. The caller must have
+/// the permit (e.g. passed in by the owner, or held in extension logic).
+public fun delete_jump_permit_with_auth<Auth: drop>(
+    source_gate: &Gate,
+    jump_permit: JumpPermit,
+    _: Auth,
+) {
+    assert!(option::is_some(&source_gate.extension), EExtensionNotAuthorized);
+    let extension_type = option::borrow(&source_gate.extension);
+    assert!(extension_type == &type_name::with_defining_ids<Auth>(), EExtensionNotAuthorized);
+    let JumpPermit { id, .. } = jump_permit;
+    id.delete();
+}
+
 /// Default jump from one gate to another (no permit required).
 /// Only allowed when no extension logic is configured.
 public fun jump(
