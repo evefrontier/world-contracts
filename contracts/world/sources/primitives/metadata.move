@@ -22,6 +22,19 @@ public struct MetadataChangedEvent has copy, drop {
     url: String,
 }
 
+// === View Functions ===
+public fun name(metadata: &Metadata): String {
+    metadata.name
+}
+
+public fun description(metadata: &Metadata): String {
+    metadata.description
+}
+
+public fun url(metadata: &Metadata): String {
+    metadata.url
+}
+
 // === Package Functions ===
 public(package) fun create_metadata(
     assembly_id: ID,
@@ -73,19 +86,4 @@ fun emit_metadata_changed(metadata: &Metadata, assembly_key: TenantItemId) {
         description: metadata.description,
         url: metadata.url,
     });
-}
-
-#[test_only]
-public fun name(metadata: &Metadata): String {
-    metadata.name
-}
-
-#[test_only]
-public fun description(metadata: &Metadata): String {
-    metadata.description
-}
-
-#[test_only]
-public fun url(metadata: &Metadata): String {
-    metadata.url
 }

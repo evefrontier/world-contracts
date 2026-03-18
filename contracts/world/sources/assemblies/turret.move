@@ -391,6 +391,11 @@ public fun reveal_location(
 }
 
 // === View Functions ===
+/// Unique key for this turret (used for dedupe and derivation).
+public fun key(turret: &Turret): TenantItemId {
+    turret.key
+}
+
 public fun status(turret: &Turret): &AssemblyStatus {
     &turret.status
 }
@@ -412,7 +417,12 @@ public fun energy_source_id(turret: &Turret): &Option<ID> {
     &turret.energy_source_id
 }
 
-/// if its authorized, return the configured extension type (if any)
+/// Configured extension type name, if any. Use extension_type() when extension is guaranteed configured.
+public fun extension(turret: &Turret): &Option<TypeName> {
+    &turret.extension
+}
+
+/// If authorized, returns the configured extension type (aborts if none).
 public fun extension_type(turret: &Turret): TypeName {
     *option::borrow(&turret.extension)
 }
@@ -429,6 +439,11 @@ public fun is_extension_frozen(turret: &Turret): bool {
 
 public fun type_id(turret: &Turret): u64 {
     turret.type_id
+}
+
+/// Turret metadata (name, description, url) if set.
+public fun metadata(turret: &Turret): &Option<Metadata> {
+    &turret.metadata
 }
 
 /// Returns whether the target is an aggressor.
@@ -455,6 +470,21 @@ public fun character_id(candidate: &TargetCandidate): u32 {
 
 public fun character_tribe(candidate: &TargetCandidate): u32 {
     candidate.character_tribe
+}
+
+/// Percentage of structure hit points remaining (0-100).
+public fun hp_ratio(candidate: &TargetCandidate): u64 {
+    candidate.hp_ratio
+}
+
+/// Percentage of shield hit points remaining (0-100).
+public fun shield_ratio(candidate: &TargetCandidate): u64 {
+    candidate.shield_ratio
+}
+
+/// Percentage of armor hit points remaining (0-100).
+public fun armor_ratio(candidate: &TargetCandidate): u64 {
+    candidate.armor_ratio
 }
 
 public fun priority_weight(candidate: &TargetCandidate): u64 {
@@ -778,9 +808,4 @@ fun return_list_contains_id(list: &vector<ReturnTargetPriorityList>, search_key:
 #[test_only]
 public fun destroy_online_receipt_test(receipt: OnlineReceipt) {
     let OnlineReceipt { .. } = receipt;
-}
-
-#[test_only]
-public fun metadata(turret: &Turret): &Option<Metadata> {
-    &turret.metadata
 }
