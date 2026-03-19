@@ -70,6 +70,8 @@ const EGateTypeMismatch: vector<u8> = b"Gates have different TypeId values";
 const EExtensionConfigFrozen: vector<u8> = b"Extension configuration is frozen";
 #[error(code = 18)]
 const EExtensionNotConfigured: vector<u8> = b"Extension must be configured before freezing";
+#[error(code = 19)]
+const ENoExtensionToRevoke: vector<u8> = b"No extension authorization to revoke";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -141,6 +143,13 @@ public struct ExtensionAuthorizedEvent has copy, drop {
     owner_cap_id: ID,
 }
 
+public struct ExtensionRevokedEvent has copy, drop {
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    revoked_extension: TypeName,
+    owner_cap_id: ID,
+}
+
 // === Public Functions ===
 public fun authorize_extension<Auth: drop>(gate: &mut Gate, owner_cap: &OwnerCap<Gate>) {
     let gate_id = object::id(gate);
@@ -165,6 +174,24 @@ public fun freeze_extension_config(gate: &mut Gate, owner_cap: &OwnerCap<Gate>) 
     assert!(option::is_some(&gate.extension), EExtensionNotConfigured);
     assert!(!extension_freeze::is_extension_frozen(&gate.id), EExtensionConfigFrozen);
     extension_freeze::freeze_extension_config(&mut gate.id, gate_id);
+}
+
+/// Clears extension authorization and restores default gate behaviour (e.g. `jump` without extension permits).
+/// Only the `OwnerCap` holder may call; **not allowed after** `freeze_extension_config`.
+public fun revoke_extension_authorization(gate: &mut Gate, owner_cap: &OwnerCap<Gate>) {
+    let gate_id = object::id(gate);
+    assert!(access::is_authorized(owner_cap, gate_id), EGateNotAuthorized);
+    assert!(!extension_freeze::is_extension_frozen(&gate.id), EExtensionConfigFrozen);
+    assert!(option::is_some(&gate.extension), ENoExtensionToRevoke);
+    let ext = gate.extension;
+    gate.extension = option::none();
+    let revoked_extension = option::destroy_some(ext);
+    event::emit(ExtensionRevokedEvent {
+        assembly_id: gate_id,
+        assembly_key: gate.key,
+        revoked_extension,
+        owner_cap_id: object::id(owner_cap),
+    });
 }
 
 public fun online(

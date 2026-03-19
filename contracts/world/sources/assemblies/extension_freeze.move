@@ -1,10 +1,12 @@
 /// Shared types and event for freezing assembly extension configuration.
 /// Used by Gate, Turret, and StorageUnit so the owner cannot change the extension after freeze (no rugpull).
 ///
-/// **Tradeoff:** Once frozen, the assembly cannot be re-authorised to a different or fixed extension package.
-/// If a bug is found in the extension code, the owner cannot point this assembly at a fixed version; they would
-/// need to use a new assembly (e.g. anchor a new gate) and authorise the fixed extension there. Freeze only
-/// after the extension is audited/tested and you are comfortable with this permanence.
+/// **Before freeze:** The owner may call `authorize_extension` (set or replace) or `revoke_extension_authorization`
+/// (clear back to default world behaviour). Indexers and users should treat unfrozen assemblies as mutable.
+///
+/// **After freeze:** Extension config is immutable until the assembly is destroyed (unanchor cleans the marker).
+/// If a bug is found in the extension code, the owner cannot point this assembly at a different package; they would
+/// need a new assembly. Freeze only after the extension is audited/tested and you are comfortable with this permanence.
 module world::extension_freeze;
 
 use sui::{dynamic_field as df, event};

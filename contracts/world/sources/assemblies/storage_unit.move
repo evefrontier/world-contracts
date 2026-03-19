@@ -79,6 +79,8 @@ const EExtensionNotConfigured: vector<u8> = b"Extension must be configured befor
 #[error(code = 15)]
 const EOpenStorageNotInitialized: vector<u8> =
     b"Open storage has not been initialized (deposit first)";
+#[error(code = 16)]
+const ENoExtensionToRevoke: vector<u8> = b"No extension authorization to revoke";
 
 // Future thought: Can we make the behaviour attached dynamically using dof
 // === Structs ===
@@ -114,6 +116,13 @@ public struct ExtensionAuthorizedEvent has copy, drop {
     owner_cap_id: ID,
 }
 
+public struct ExtensionRevokedEvent has copy, drop {
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    revoked_extension: TypeName,
+    owner_cap_id: ID,
+}
+
 // === Public Functions ===
 public fun authorize_extension<Auth: drop>(
     storage_unit: &mut StorageUnit,
@@ -144,6 +153,27 @@ public fun freeze_extension_config(
     assert!(option::is_some(&storage_unit.extension), EExtensionNotConfigured);
     assert!(!extension_freeze::is_extension_frozen(&storage_unit.id), EExtensionConfigFrozen);
     extension_freeze::freeze_extension_config(&mut storage_unit.id, storage_unit_id);
+}
+
+/// Clears extension authorization and restores default storage unit behaviour.
+/// Only the `OwnerCap` holder may call; **not allowed after** `freeze_extension_config`.
+public fun revoke_extension_authorization(
+    storage_unit: &mut StorageUnit,
+    owner_cap: &OwnerCap<StorageUnit>,
+) {
+    let storage_unit_id = object::id(storage_unit);
+    assert!(access::is_authorized(owner_cap, storage_unit_id), EAssemblyNotAuthorized);
+    assert!(!extension_freeze::is_extension_frozen(&storage_unit.id), EExtensionConfigFrozen);
+    assert!(option::is_some(&storage_unit.extension), ENoExtensionToRevoke);
+    let ext = storage_unit.extension;
+    storage_unit.extension = option::none();
+    let revoked_extension = option::destroy_some(ext);
+    event::emit(ExtensionRevokedEvent {
+        assembly_id: storage_unit_id,
+        assembly_key: storage_unit.key,
+        revoked_extension,
+        owner_cap_id: object::id(owner_cap),
+    });
 }
 
 public fun online(

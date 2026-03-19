@@ -56,6 +56,8 @@ const EMetadataNotSet: vector<u8> = b"Metadata not set on assembly";
 const EExtensionConfigFrozen: vector<u8> = b"Extension configuration is frozen";
 #[error(code = 11)]
 const EExtensionNotConfigured: vector<u8> = b"Extension must be configured before freezing";
+#[error(code = 12)]
+const ENoExtensionToRevoke: vector<u8> = b"No extension authorization to revoke";
 
 // Priority weight increments applied by default rules (effective_weight_and_excluded)
 const STARTED_ATTACK_WEIGHT_INCREMENT: u64 = 10000;
@@ -145,6 +147,13 @@ public struct ExtensionAuthorizedEvent has copy, drop {
     owner_cap_id: ID,
 }
 
+public struct ExtensionRevokedEvent has copy, drop {
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    revoked_extension: TypeName,
+    owner_cap_id: ID,
+}
+
 // === Public Functions ===
 public fun authorize_extension<Auth: drop>(turret: &mut Turret, owner_cap: &OwnerCap<Turret>) {
     let turret_id = object::id(turret);
@@ -169,6 +178,24 @@ public fun freeze_extension_config(turret: &mut Turret, owner_cap: &OwnerCap<Tur
     assert!(option::is_some(&turret.extension), EExtensionNotConfigured);
     assert!(!extension_freeze::is_extension_frozen(&turret.id), EExtensionConfigFrozen);
     extension_freeze::freeze_extension_config(&mut turret.id, turret_id);
+}
+
+/// Clears extension authorization and restores default turret behaviour.
+/// Only the `OwnerCap` holder may call; **not allowed after** `freeze_extension_config`.
+public fun revoke_extension_authorization(turret: &mut Turret, owner_cap: &OwnerCap<Turret>) {
+    let turret_id = object::id(turret);
+    assert!(access::is_authorized(owner_cap, turret_id), ETurretNotAuthorized);
+    assert!(!extension_freeze::is_extension_frozen(&turret.id), EExtensionConfigFrozen);
+    assert!(option::is_some(&turret.extension), ENoExtensionToRevoke);
+    let ext = turret.extension;
+    turret.extension = option::none();
+    let revoked_extension = option::destroy_some(ext);
+    event::emit(ExtensionRevokedEvent {
+        assembly_id: turret_id,
+        assembly_key: turret.key,
+        revoked_extension,
+        owner_cap_id: object::id(owner_cap),
+    });
 }
 
 public fun online(

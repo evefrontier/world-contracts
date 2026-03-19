@@ -155,8 +155,9 @@ public struct ItemDestroyedEvent has copy, drop {
 }
 
 // === View Functions ===
-public fun id(inventory: &Inventory): ID {
-    object::id(inventory)
+/// Sui object ID of this transit `Item` (`Item` is `key`; `Inventory` is not an object).
+public fun id(item: &Item): ID {
+    object::id(item)
 }
 
 public fun tenant(item: &Item): String {
