@@ -5,6 +5,11 @@ public struct GovernorCap has key {
     governor: address,
 }
 
+// === View Functions ===
+public fun id(cap: &GovernorCap): ID {
+    object::id(cap)
+}
+
 // TODO: mint initial supply of eve tokens
 fun init(ctx: &mut TxContext) {
     let gov_cap = GovernorCap {

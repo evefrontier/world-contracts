@@ -391,6 +391,10 @@ public fun reveal_location(
 }
 
 // === View Functions ===
+public fun id(turret: &Turret): ID {
+    object::id(turret)
+}
+
 /// Unique key for this turret (used for dedupe and derivation).
 public fun key(turret: &Turret): TenantItemId {
     turret.key

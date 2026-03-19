@@ -65,6 +65,10 @@ public struct KillmailCreatedEvent has copy, drop {
 }
 
 // === View Functions ===
+public fun id(killmail: &Killmail): ID {
+    object::id(killmail)
+}
+
 /// Returns the SHIP variant of LossType
 public fun ship(): LossType {
     LossType::SHIP

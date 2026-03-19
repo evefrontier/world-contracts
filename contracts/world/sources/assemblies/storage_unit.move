@@ -506,6 +506,10 @@ public fun reveal_location(
 }
 
 // === View Functions ===
+public fun id(storage_unit: &StorageUnit): ID {
+    object::id(storage_unit)
+}
+
 public fun status(storage_unit: &StorageUnit): &AssemblyStatus {
     &storage_unit.status
 }

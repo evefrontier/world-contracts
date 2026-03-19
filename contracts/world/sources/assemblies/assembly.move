@@ -169,6 +169,11 @@ public fun energy_source_id(assembly: &Assembly): &Option<ID> {
     &assembly.energy_source_id
 }
 
+// === View Functions ===
+public fun id(assembly: &Assembly): ID {
+    object::id(assembly)
+}
+
 // === Admin Functions ===
 public fun anchor(
     registry: &mut ObjectRegistry,

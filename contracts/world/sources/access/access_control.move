@@ -152,6 +152,15 @@ public fun is_authorized<T: key>(owner_cap: &OwnerCap<T>, object_id: ID): bool {
     owner_cap.authorized_object_id == object_id
 }
 
+// === View Functions (shared objects) ===
+public fun admin_acl_id(admin_acl: &AdminACL): ID {
+    object::id(admin_acl)
+}
+
+public fun server_address_registry_id(registry: &ServerAddressRegistry): ID {
+    object::id(registry)
+}
+
 /// Verifies that the transaction is from an authorized address.
 /// Checks the sponsor if the transaction is sponsored, otherwise falls back to the sender.
 public fun verify_sponsor(admin_acl: &AdminACL, ctx: &TxContext) {

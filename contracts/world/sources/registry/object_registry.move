@@ -14,6 +14,10 @@ public struct ObjectRegistry has key {
 }
 
 // === View Functions ===
+public fun id(registry: &ObjectRegistry): ID {
+    object::id(registry)
+}
+
 public fun object_exists(registry: &ObjectRegistry, key: TenantItemId): bool {
     derived_object::exists(&registry.id, key)
 }

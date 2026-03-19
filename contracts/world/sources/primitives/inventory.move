@@ -155,6 +155,10 @@ public struct ItemDestroyedEvent has copy, drop {
 }
 
 // === View Functions ===
+public fun id(inventory: &Inventory): ID {
+    object::id(inventory)
+}
+
 public fun tenant(item: &Item): String {
     item.tenant
 }

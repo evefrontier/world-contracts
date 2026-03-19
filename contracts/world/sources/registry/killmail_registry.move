@@ -12,6 +12,10 @@ public struct KillmailRegistry has key {
 }
 
 // === View Functions ===
+public fun id(registry: &KillmailRegistry): ID {
+    object::id(registry)
+}
+
 public fun object_exists(registry: &KillmailRegistry, key: TenantItemId): bool {
     derived_object::exists(&registry.id, key)
 }

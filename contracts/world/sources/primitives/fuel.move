@@ -91,6 +91,10 @@ public struct FuelEfficiencyRemovedEvent has copy, drop {
 }
 
 // === View Functions ===
+public fun id(fuel_config: &FuelConfig): ID {
+    object::id(fuel_config)
+}
+
 public fun fuel_efficiency(fuel_config: &FuelConfig, fuel_type_id: u64): u64 {
     if (fuel_config.fuel_efficiency.contains(fuel_type_id)) {
         *fuel_config.fuel_efficiency.borrow(fuel_type_id)

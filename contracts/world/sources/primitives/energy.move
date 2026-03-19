@@ -57,6 +57,10 @@ public struct EnergyReleasedEvent has copy, drop {
 }
 
 // === View Functions ===
+public fun id(energy_config: &EnergyConfig): ID {
+    object::id(energy_config)
+}
+
 /// Returns the energy required for an assembly type id
 public fun assembly_energy(energy_config: &EnergyConfig, type_id: u64): u64 {
     assert!(type_id != 0, ETypeIdEmpty);

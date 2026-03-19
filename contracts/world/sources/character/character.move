@@ -65,6 +65,10 @@ public fun id(character: &Character): ID {
     object::id(character)
 }
 
+public fun player_profile_id(profile: &PlayerProfile): ID {
+    object::id(profile)
+}
+
 public fun key(character: &Character): TenantItemId {
     character.key
 }

@@ -192,6 +192,10 @@ public fun update_metadata_url(
 }
 
 // === View Functions ===
+public fun id(nwn: &NetworkNode): ID {
+    object::id(nwn)
+}
+
 /// Returns the list of connected assembly IDs
 public fun connected_assemblies(nwn: &NetworkNode): vector<ID> {
     nwn.connected_assembly_ids

@@ -482,6 +482,18 @@ public fun reveal_location(
 }
 
 // === View Functions ===
+public fun gate_config_id(config: &GateConfig): ID {
+    object::id(config)
+}
+
+public fun id(gate: &Gate): ID {
+    object::id(gate)
+}
+
+public fun jump_permit_id(permit: &JumpPermit): ID {
+    object::id(permit)
+}
+
 public fun status(gate: &Gate): &AssemblyStatus {
     &gate.status
 }
