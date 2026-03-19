@@ -517,6 +517,13 @@ public fun linked_gate_id(gate: &Gate): Option<ID> {
     gate.linked_gate_id
 }
 
+/// Route hash for a jump permit: `blake2b256(bcs(source_id) || bcs(destination_id))`.
+/// Same encoding as `issue_jump_permit(source_gate, destination_gate, ...)` stores in `JumpPermit.route_hash`.
+/// `jump` accepts either argument order; swap the gates if you need the reversed hash.
+public fun route_hash(source_gate: &Gate, destination_gate: &Gate): vector<u8> {
+    compute_route_hash(object::id(source_gate), object::id(destination_gate))
+}
+
 public fun owner_cap_id(gate: &Gate): ID {
     gate.owner_cap_id
 }
