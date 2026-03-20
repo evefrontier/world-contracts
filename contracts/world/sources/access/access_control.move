@@ -192,7 +192,7 @@ public(package) fun create_and_transfer_owner_cap<T: key>(
 ///   `Receiving<OwnerCap<T>>` ticket for the duration of a transaction.
 /// - **Return**: the `OwnerCap<T>` is put back under the `Character`’s control at
 ///   the end of the flow.
-public(package) fun receive_owner_cap<T: key>(
+public fun receive_owner_cap<T: key>(
     receiving_id: &mut UID,
     ticket: Receiving<OwnerCap<T>>,
 ): OwnerCap<T> {
