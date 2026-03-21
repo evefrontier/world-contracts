@@ -135,6 +135,19 @@ public struct JumpEvent has copy, drop {
     character_key: TenantItemId,
 }
 
+public struct JumpPermitIssuedEvent has copy, drop {
+    jump_permit_id: ID,
+    source_gate_id: ID,
+    source_gate_key: TenantItemId,
+    destination_gate_id: ID,
+    destination_gate_key: TenantItemId,
+    character_id: ID,
+    character_key: TenantItemId,
+    route_hash: vector<u8>,
+    expires_at_timestamp_ms: u64,
+    extension_type: TypeName,
+}
+
 public struct ExtensionAuthorizedEvent has copy, drop {
     assembly_id: ID,
     assembly_key: TenantItemId,
@@ -303,42 +316,42 @@ public fun unlink_gates(
     unlink(source_gate, destination_gate);
 }
 
+/// Issues a jump permit to the character's address. Emits `JumpPermitIssuedEvent` (for indexers and clients).
 public fun issue_jump_permit<Auth: drop>(
     source_gate: &Gate,
     destination_gate: &Gate,
     character: &Character,
-    _: Auth,
+    auth: Auth,
     expires_at_timestamp_ms: u64,
     ctx: &mut TxContext,
 ) {
-    assert!(option::is_some(&destination_gate.extension), EExtensionNotAuthorized);
-    assert!(option::is_some(&source_gate.extension), EExtensionNotAuthorized);
-
-    let extension_type = option::borrow(&source_gate.extension);
-    assert!(extension_type == &type_name::with_defining_ids<Auth>(), EExtensionNotAuthorized);
-    // Require destination gate to be configured with the same extension witness type as well,
-    // so the resulting permit is valid for jumping both directions between the two gates.
-    // TODO: Should we make this optional ?
-    let destination_extension_type = option::borrow(&destination_gate.extension);
-    assert!(
-        destination_extension_type == &type_name::with_defining_ids<Auth>(),
-        EExtensionNotAuthorized,
-    );
-
-    let source_gate_id = object::id(source_gate);
-    let destination_gate_id = object::id(destination_gate);
-
-    // Bind the permit to the (source, destination) gate pair in a direction-agnostic way
-    // so that the holder can jump both ways between the two linked gates.
-    let route_hash = compute_route_hash(source_gate_id, destination_gate_id);
-
-    let jump_permit = JumpPermit {
-        id: object::new(ctx),
-        route_hash,
-        character_id: object::id(character),
+    let _ = issue_jump_permit_internal<Auth>(
+        source_gate,
+        destination_gate,
+        character,
+        auth,
         expires_at_timestamp_ms,
-    };
-    transfer::transfer(jump_permit, character.character_address());
+        ctx,
+    );
+}
+
+/// Same as `issue_jump_permit` but returns the new permit's object id (additive API for new callers).
+public fun issue_jump_permit_with_id<Auth: drop>(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    auth: Auth,
+    expires_at_timestamp_ms: u64,
+    ctx: &mut TxContext,
+): ID {
+    issue_jump_permit_internal<Auth>(
+        source_gate,
+        destination_gate,
+        character,
+        auth,
+        expires_at_timestamp_ms,
+        ctx,
+    )
 }
 
 /// Deletes a jump permit by destroying it. Only the owner can call this (by passing their permit).
@@ -354,9 +367,7 @@ public fun delete_jump_permit_with_auth<Auth: drop>(
     jump_permit: JumpPermit,
     _: Auth,
 ) {
-    assert!(option::is_some(&source_gate.extension), EExtensionNotAuthorized);
-    let extension_type = option::borrow(&source_gate.extension);
-    assert!(extension_type == &type_name::with_defining_ids<Auth>(), EExtensionNotAuthorized);
+    assert_gate_extension_matches<Auth>(source_gate);
     let JumpPermit { id, .. } = jump_permit;
     id.delete();
 }
@@ -916,6 +927,69 @@ fun unlink(source_gate: &mut Gate, destination_gate: &mut Gate) {
         destination_gate_id,
         destination_gate_key: destination_gate.key,
     });
+}
+
+fun assert_gate_extension_matches<Auth: drop>(gate: &Gate) {
+    assert!(option::is_some(&gate.extension), EExtensionNotAuthorized);
+    let extension_type = option::borrow(&gate.extension);
+    assert!(extension_type == &type_name::with_defining_ids<Auth>(), EExtensionNotAuthorized);
+}
+
+/// Abort unless both gates are configured with extension type `Auth` (same witness on each).
+fun assert_jump_permit_extension_authorization<Auth: drop>(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+) {
+    assert_gate_extension_matches<Auth>(source_gate);
+    // Require destination gate to use the same extension witness so the permit works both ways.
+    // TODO: Should we make this optional ?
+    assert_gate_extension_matches<Auth>(destination_gate);
+}
+
+fun issue_jump_permit_internal<Auth: drop>(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    _: Auth,
+    expires_at_timestamp_ms: u64,
+    ctx: &mut TxContext,
+): ID {
+    assert_jump_permit_extension_authorization<Auth>(source_gate, destination_gate);
+
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+
+    // Bind the permit to the (source, destination) gate pair in a direction-agnostic way
+    // so that the holder can jump both ways between the two linked gates.
+    let route_hash = compute_route_hash(source_gate_id, destination_gate_id);
+    let character_id = object::id(character);
+
+    let permit_uid = object::new(ctx);
+    let jump_permit_id = object::uid_to_inner(&permit_uid);
+
+    let jump_permit = JumpPermit {
+        id: permit_uid,
+        route_hash,
+        character_id,
+        expires_at_timestamp_ms,
+    };
+    transfer::transfer(jump_permit, character.character_address());
+
+    let extension_type = type_name::with_defining_ids<Auth>();
+    event::emit(JumpPermitIssuedEvent {
+        jump_permit_id,
+        source_gate_id,
+        source_gate_key: source_gate.key,
+        destination_gate_id,
+        destination_gate_key: destination_gate.key,
+        character_id,
+        character_key: character::key(character),
+        route_hash,
+        expires_at_timestamp_ms,
+        extension_type,
+    });
+
+    jump_permit_id
 }
 
 // === Package Functions (Init) ===

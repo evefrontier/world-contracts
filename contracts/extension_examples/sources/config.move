@@ -15,7 +15,7 @@ public struct AdminCap has key, store {
     id: UID,
 }
 
-// This can be any type that is authorized to call the `issue_jump_permit` function.
+// This can be any type that is authorized to call `issue_jump_permit` / `issue_jump_permit_with_id`.
 // eg: AlgorithimicWarfareAuth, TribalAuth, GoonCorpAuth, etc.
 public struct XAuth has drop {}
 

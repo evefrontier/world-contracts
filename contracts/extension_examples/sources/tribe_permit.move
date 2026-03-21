@@ -5,17 +5,17 @@
 /// - Gate owners configure a gate to use this extension by authorizing the witness type `XAuth`
 ///   on the gate (via `world::gate::authorize_extension<XAuth>`).
 /// - Once configured, travelers must use `world::gate::jump_with_permit`; default `jump` is not allowed.
-/// - This extension issues permits through `issue_jump_permit`, which:
+/// - This extension's `issue_jump_permit` entry point:
 ///   - checks a simple rule (character must belong to the configured starter `tribe`)
 ///   - sets an expiry window (currently 5 days from `Clock`)
-///   - calls `world::gate::issue_jump_permit<XAuth>` to mint a single-use permit to the character.
+///   - calls `world::gate::issue_jump_permit_with_id<XAuth>` to mint a permit and return its object id.
 ///
 /// `GateRules` is a shared object holding configurable parameters,
 #[allow(unused_use)]
 module extension_examples::tribe_permit;
 
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
-use sui::clock::Clock;
+use sui::{clock::Clock, object::ID};
 use world::{character::Character, gate::{Self, Gate, JumpPermit}};
 
 // === Errors ===
@@ -38,7 +38,7 @@ public fun tribe(extension_config: &ExtensionConfig): u32 {
 }
 
 // === Admin Functions ===
-/// Issue a `JumpPermit` to only starter tribes
+/// Issue a `JumpPermit` to only starter tribes. Returns the new permit's object id.
 public fun issue_jump_permit(
     extension_config: &ExtensionConfig,
     source_gate: &Gate,
@@ -47,7 +47,7 @@ public fun issue_jump_permit(
     _: &AdminCap,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): ID {
     assert!(extension_config.has_rule<TribeConfigKey>(TribeConfigKey {}), ENoTribeConfig);
     let tribe_cfg = extension_config.borrow_rule<TribeConfigKey, TribeConfig>(TribeConfigKey {});
 
@@ -56,14 +56,14 @@ public fun issue_jump_permit(
 
     // 5 days in milliseconds. Please make this configurable.
     let expires_at_timestamp_ms = clock.timestamp_ms() + 5 * 24 * 60 * 60 * 1000;
-    gate::issue_jump_permit<XAuth>(
+    gate::issue_jump_permit_with_id<XAuth>(
         source_gate,
         destination_gate,
         character,
         config::x_auth(),
         expires_at_timestamp_ms,
         ctx,
-    );
+    )
 }
 
 /// Voids a jump permit via the extension. Caller must own the permit.

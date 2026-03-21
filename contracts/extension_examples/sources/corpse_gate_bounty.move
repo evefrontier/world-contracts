@@ -8,7 +8,7 @@
 module extension_examples::corpse_gate_bounty;
 
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
-use sui::clock::Clock;
+use sui::{clock::Clock, object::ID};
 use world::{access::OwnerCap, character::Character, gate::{Self, Gate}, storage_unit::StorageUnit};
 
 // === Errors ===
@@ -27,7 +27,7 @@ public struct BountyConfig has drop, store {
 /// Dynamic-field key for `BountyConfig`.
 public struct BountyConfigKey has copy, drop, store {}
 
-/// Submit a corpse to get a `JumpPermit` for using the gate.
+/// Submit a corpse to get a `JumpPermit` for using the gate. Returns the new permit's object id.
 public fun collect_corpse_bounty<T: key>(
     extension_config: &ExtensionConfig,
     storage_unit: &mut StorageUnit,
@@ -38,7 +38,7 @@ public fun collect_corpse_bounty<T: key>(
     corpe_item_id: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): ID {
     assert!(extension_config.has_rule<BountyConfigKey>(BountyConfigKey {}), ENoBountyConfig);
     let bounty_cfg = extension_config.borrow_rule<
         BountyConfigKey,
@@ -66,14 +66,14 @@ public fun collect_corpse_bounty<T: key>(
 
     // 5 days in milliseconds.
     let expires_at_timestamp_ms = clock.timestamp_ms() + 5 * 24 * 60 * 60 * 1000;
-    gate::issue_jump_permit<XAuth>(
+    gate::issue_jump_permit_with_id<XAuth>(
         source_gate,
         destination_gate,
         character,
         config::x_auth(),
         expires_at_timestamp_ms,
         ctx,
-    );
+    )
 }
 
 // === View Functions ===
