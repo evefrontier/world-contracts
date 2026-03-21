@@ -356,6 +356,57 @@ fun test_jump_with_permit_succeeds() {
 }
 
 #[test]
+fun issue_jump_permit_with_id_matches_minted_object() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 10_402);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+    authorize_gate_extension(&mut ts, character_id, gate_a_id);
+    authorize_gate_extension(&mut ts, character_id, gate_b_id);
+
+    ts::next_tx(&mut ts, user_a());
+    let clock = clock::create_for_testing(ts.ctx());
+    let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+    let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+    ts::next_tx(&mut ts, user_a());
+    let permit_id = {
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        gate::issue_jump_permit_with_id<GateAuth>(
+            &gate_a,
+            &gate_b,
+            &character,
+            GateAuth {},
+            expires_at_timestamp_ms,
+            ts.ctx(),
+        )
+    };
+
+    let effects = ts::next_tx(&mut ts, user_a());
+    assert_eq!(ts::num_user_events(&effects), 1);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        assert_eq!(gate::jump_permit_id(&permit), permit_id);
+        gate::delete_jump_permit(permit);
+    };
+
+    ts::return_shared(character);
+    ts::return_shared(gate_a);
+    ts::return_shared(gate_b);
+    clock.destroy_for_testing();
+    ts::end(ts);
+}
+
+#[test]
 fun freeze_extension_config_succeeds() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
