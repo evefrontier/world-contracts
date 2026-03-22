@@ -15,7 +15,7 @@
 module extension_examples::tribe_permit;
 
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
-use sui::clock::Clock;
+use sui::{clock::Clock, object::ID};
 use world::{character::Character, gate::{Self, Gate, JumpPermit}};
 
 // === Errors ===
