@@ -8,7 +8,7 @@
 module extension_examples::corpse_gate_bounty;
 
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
-use sui::{clock::Clock, object::ID};
+use sui::clock::Clock;
 use world::{access::OwnerCap, character::Character, gate::{Self, Gate}, storage_unit::StorageUnit};
 
 // === Errors ===
