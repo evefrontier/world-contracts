@@ -69,6 +69,13 @@ function extractWorldIds(
                 typeName(packageId, "object_registry", "ObjectRegistry")
             )
         ),
+        locationRegistry: requireId(
+            "LocationRegistry",
+            findCreatedObjectId(
+                objectChanges,
+                typeName(packageId, "location", "LocationRegistry")
+            )
+        ),
         energyConfig: requireId(
             "EnergyConfig",
             findCreatedObjectId(objectChanges, typeName(packageId, MODULES.ENERGY, "EnergyConfig"))

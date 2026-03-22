@@ -82,6 +82,13 @@ export async function resolveWorldObjectIds(
                     typeName(publishedWorldPackageId, "object_registry", "ObjectRegistry")
                 )
             ),
+            locationRegistry: requireId(
+                "LocationRegistry",
+                findCreatedObjectId(
+                    worldObjectChanges,
+                    typeName(publishedWorldPackageId, "location", "LocationRegistry")
+                )
+            ),
             energyConfig: requireId(
                 "EnergyConfig",
                 findCreatedObjectId(
