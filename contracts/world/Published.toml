@@ -31,9 +31,9 @@ upgrade-capability = "0x678a2aa04da281218a692f082f0f7b2c6eb5d0baf51698d9733b660e
 
 [published.testnet_utopia]
 chain-id = "4c78adac"
-published-at = "0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75"
+published-at = "0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1"
 original-id = "0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75"
-version = 1
-toolchain-version = "1.67.1"
+version = 2
+toolchain-version = "1.68.0"
 build-config = { flavor = "sui", edition = "2024" }
 upgrade-capability = "0xa17419f1da4bc32c1d8949e743a2ed53138aed2c38d4fc811130e47f2beb99ab"
