@@ -3,18 +3,22 @@
 module world::assembly;
 
 use std::string::String;
-use sui::{derived_object, event};
-use world::{
-    access::{Self, AdminACL, OwnerCap},
-    character::Character,
-    energy::EnergyConfig,
-    in_game_id::{Self, TenantItemId},
-    location::{Self, Location, LocationRegistry},
-    metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
-    object_registry::ObjectRegistry,
-    status::{Self, AssemblyStatus}
+use sui::derived_object;
+use sui::event;
+use world::access::{Self, AdminACL, OwnerCap};
+use world::character::Character;
+use world::energy::EnergyConfig;
+use world::in_game_id::{Self, TenantItemId};
+use world::location::{Self, Location, LocationRegistry};
+use world::metadata::{Self, Metadata};
+use world::network_node::{
+    NetworkNode,
+    OfflineAssemblies,
+    HandleOrphanedAssemblies,
+    UpdateEnergySources
 };
+use world::object_registry::ObjectRegistry;
+use world::status::{Self, AssemblyStatus};
 
 // === Errors ===
 #[error(code = 0)]
@@ -156,6 +160,10 @@ public fun reveal_location(
 }
 
 // === View Functions ===
+public fun key(assembly: &Assembly): TenantItemId {
+    assembly.key
+}
+
 public fun status(assembly: &Assembly): &AssemblyStatus {
     &assembly.status
 }

@@ -14,20 +14,29 @@
 /// Extension pattern: https://github.com/evefrontier/world-contracts/blob/main/docs/architechture.md#layer-3-player-extensions-moddability
 module world::gate;
 
-use std::{bcs, string::String, type_name::{Self, TypeName}};
-use sui::{clock::Clock, derived_object, event, hash, table::{Self, Table}};
-use world::{
-    access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
-    character::{Self, Character},
-    energy::EnergyConfig,
-    extension_freeze,
-    in_game_id::{Self, TenantItemId},
-    location::{Self, Location, LocationRegistry},
-    metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
-    object_registry::ObjectRegistry,
-    status::{Self, AssemblyStatus}
+use std::bcs;
+use std::string::String;
+use std::type_name::{Self, TypeName};
+use sui::clock::Clock;
+use sui::derived_object;
+use sui::event;
+use sui::hash;
+use sui::table::{Self, Table};
+use world::access::{Self, OwnerCap, ServerAddressRegistry, AdminACL};
+use world::character::{Self, Character};
+use world::energy::EnergyConfig;
+use world::extension_freeze;
+use world::in_game_id::{Self, TenantItemId};
+use world::location::{Self, Location, LocationRegistry};
+use world::metadata::{Self, Metadata};
+use world::network_node::{
+    NetworkNode,
+    OfflineAssemblies,
+    HandleOrphanedAssemblies,
+    UpdateEnergySources
 };
+use world::object_registry::ObjectRegistry;
+use world::status::{Self, AssemblyStatus};
 
 // === Errors ===
 #[error(code = 0)]
@@ -534,6 +543,10 @@ public fun jump_permit_id(permit: &JumpPermit): ID {
 
 public fun status(gate: &Gate): &AssemblyStatus {
     &gate.status
+}
+
+public fun key(gate: &Gate): TenantItemId {
+    gate.key
 }
 
 public fun location(gate: &Gate): &Location {

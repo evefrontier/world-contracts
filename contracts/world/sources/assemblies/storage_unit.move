@@ -27,21 +27,31 @@
 /// Future pattern: Storage Units (extension-controlled), Ships (owner-controlled)
 module world::storage_unit;
 
-use std::{bcs, string::String, type_name::{Self, TypeName}};
-use sui::{address, clock::Clock, derived_object, dynamic_field as df, event, hash};
-use world::{
-    access::{Self, OwnerCap, ServerAddressRegistry, AdminACL},
-    character::Character,
-    energy::EnergyConfig,
-    extension_freeze,
-    in_game_id::{Self, TenantItemId},
-    inventory::{Self, Inventory, Item},
-    location::{Self, Location, LocationRegistry},
-    metadata::{Self, Metadata},
-    network_node::{NetworkNode, OfflineAssemblies, HandleOrphanedAssemblies, UpdateEnergySources},
-    object_registry::ObjectRegistry,
-    status::{Self, AssemblyStatus, Status}
+use std::bcs;
+use std::string::String;
+use std::type_name::{Self, TypeName};
+use sui::address;
+use sui::clock::Clock;
+use sui::derived_object;
+use sui::dynamic_field as df;
+use sui::event;
+use sui::hash;
+use world::access::{Self, OwnerCap, ServerAddressRegistry, AdminACL};
+use world::character::Character;
+use world::energy::EnergyConfig;
+use world::extension_freeze;
+use world::in_game_id::{Self, TenantItemId};
+use world::inventory::{Self, Inventory, Item};
+use world::location::{Self, Location, LocationRegistry};
+use world::metadata::{Self, Metadata};
+use world::network_node::{
+    NetworkNode,
+    OfflineAssemblies,
+    HandleOrphanedAssemblies,
+    UpdateEnergySources
 };
+use world::object_registry::ObjectRegistry;
+use world::status::{Self, AssemblyStatus, Status};
 
 // === Errors ===
 #[error(code = 0)]
@@ -538,6 +548,10 @@ public fun reveal_location(
 // === View Functions ===
 public fun id(storage_unit: &StorageUnit): ID {
     object::id(storage_unit)
+}
+
+public fun key(storage_unit: &StorageUnit): TenantItemId {
+    storage_unit.key
 }
 
 public fun status(storage_unit: &StorageUnit): &AssemblyStatus {
