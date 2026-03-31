@@ -1,6 +1,7 @@
 # Localnet + Node + pnpm for CI integration tests. Run with -v $(pwd):/app.
 # Pin versions for reproducible CI. Override with build-args if needed.
 FROM docker.io/library/ubuntu:24.04
+
 ARG PNPM_VERSION=9
 # Sui version/network: testnet, devnet, mainnet, or a version tag.
 # Must match Move.toml/Move.lock rev (e.g. testnet-v1.66.2) so the CLI can parse the lockfile.
@@ -32,5 +33,10 @@ ENV SUI_CONFIG_DIR=/root/.sui
 
 COPY docker/entrypoint-integration.sh /entrypoint.sh
 RUN dos2unix /entrypoint.sh && chmod +x /entrypoint.sh
+
+COPY docker/entrypoint-snapshot-image.sh /entrypoint-snapshot-image.sh
+RUN dos2unix /entrypoint-snapshot-image.sh && chmod +x /entrypoint-snapshot-image.sh
+
+COPY docker/fullnode.yaml /fullnode.yaml
 
 ENTRYPOINT ["/entrypoint.sh"]

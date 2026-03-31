@@ -54,6 +54,10 @@ docker run --rm \
 
 On failure, check `deployments/<env>/deploy.log` for details.
 
+## Localnet snapshot image
+
+For a **pre-baked Sui localnet** Docker image (deployed contracts, Postgres-backed indexer, and object IDs for downstream integration tests), see **[`docker/README.md`](docker/README.md)**. It covers how to run the stack with [`docker/docker-compose-snapshot-image.yml`](docker/docker-compose-snapshot-image.yml) and where the image is published on GitHub Container Registry.
+
 ## Local Development
 
 ### Install Dependencies

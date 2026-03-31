@@ -8,6 +8,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: world-contracts
+  SNAPSHOT_IMAGE_NAME: world-contracts-localnet-snapshot
   REPO_OWNER: ${{ github.repository_owner }}
 
 jobs:
@@ -66,6 +67,18 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
             type=raw,value=latest
+
+      - name: Extract snapshot image metadata (tags, labels)
+        id: meta-snapshot
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.REPO_OWNER }}/${{ env.SNAPSHOT_IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest
       
       - name: Build and push release image
         uses: docker/build-push-action@v5
@@ -77,3 +90,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Bake and push snapshot image (pre-baked container state)
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          OWNER: ${{ env.REPO_OWNER }}
+          IMAGE_NAME: ${{ env.SNAPSHOT_IMAGE_NAME }}
+          METADATA_TAGS: ${{ steps.meta-snapshot.outputs.tags }}
+          METADATA_LABELS: ${{ steps.meta-snapshot.outputs.labels }}
+        run: ./scripts/bake-snapshot-image.sh

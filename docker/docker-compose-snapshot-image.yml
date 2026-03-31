@@ -1,0 +1,43 @@
+# This is an example of how to use the snapshot image to start a localnet with indexer and graphql.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sui:
+    image: world-contracts-localnet-snapshot:local
+    ports:
+      - 9000:9000
+      - 9123:9123
+      - 9125:9125
+    volumes:
+      # Host folder for object IDs. On first start the container copies the baked JSON from the
+      # image into this mount (see entrypoint-snapshot-image.sh), so the file appears on the host
+      # at ../deployments/localnet-snapshot/extracted-object-ids.json. Needs :rw for that seed step.
+      - ../deployments/localnet-snapshot:/data/deployment:rw
+    environment:
+      POSTGRES_CONNECTION_STRING: "postgres://postgres:postgres@postgres:5432/postgres"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/rpc.discover > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

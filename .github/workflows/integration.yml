@@ -21,4 +21,4 @@ jobs:
             -v "${{ github.workspace }}:/app" \
             -w /app \
             -e CI=true \
-            world-integration
+            world-integration test

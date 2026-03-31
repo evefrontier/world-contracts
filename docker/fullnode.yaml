@@ -1,0 +1,13 @@
+db-path: /data/sui-localnet/full_node_db
+
+network-address: /dns/localhost/tcp/8080/http
+metrics-address: 0.0.0.0:9184
+json-rpc-address: 0.0.0.0:9000
+
+enable-event-processing: true
+
+p2p-config:
+  listen-address: 0.0.0.0:8084
+
+genesis:
+  genesis-file-location: /data/sui-localnet/genesis.blob

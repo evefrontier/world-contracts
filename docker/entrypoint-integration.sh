@@ -39,8 +39,17 @@ EOF
 fi
 
 # ---------- start local node ----------
+echo "[ci] Creating data directory..."
+mkdir -p /data/sui-localnet
+
+echo "[ci] Running sui genesis..."
+sui genesis --working-dir /data/sui-localnet --with-faucet
+
+echo "[ci] Copying fullnode.yaml to data directory..."
+cp /fullnode.yaml /data/sui-localnet/fullnode.yaml
+
 echo "[ci] Starting local Sui node..."
-sui start --with-faucet --force-regenesis &
+sui start --network.config /data/sui-localnet --with-faucet &
 NODE_PID=$!
 trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
 
@@ -113,17 +122,60 @@ else
   echo "[ci] WARN: env.example not found, skipping .env generation" >&2
 fi
 
-# ---------- default: deploy + integration test (when no CMD) ----------
-if [ $# -eq 0 ]; then
-  echo "[ci] Localnet ready. Running deploy + integration tests..."
+if [ $# -eq 1 ]; then
+  echo "[ci] Localnet ready. Deploying and configuring world..."
+
   cd /app
   export CI="${CI:-true}"
+
   pnpm install --frozen-lockfile
   pnpm deploy-world localnet
   pnpm run configure-world localnet
   pnpm deploy-builder-ext localnet
-  chmod +x ./scripts/run-integration-test.sh
-  DELAY_SECONDS="${DELAY_SECONDS:-3}" ./scripts/run-integration-test.sh
+
+  if [ "$1" = "test" ]; then
+    echo "[ci] Running integration tests..."
+
+    chmod +x ./scripts/run-integration-test.sh
+    DELAY_SECONDS="${DELAY_SECONDS:-3}" ./scripts/run-integration-test.sh
+  elif [ "$1" = "snapshot" ]; then
+    echo "[ci] Building snapshot image..."
+
+    echo "[ci] Shutting down node..."
+    if kill -0 "$NODE_PID" 2>/dev/null; then
+      # Try graceful shutdown first (SIGTERM), with a bounded wait.
+      echo "[ci] Node process signaled for shutdown..."
+      kill "$NODE_PID" 2>/dev/null || true
+
+      SHUTDOWN_TIMEOUT="${SHUTDOWN_TIMEOUT:-60}"
+      while kill -0 "$NODE_PID" 2>/dev/null && [ "$SHUTDOWN_TIMEOUT" -gt 0 ]; do
+        echo "[ci] Waiting for node to shutdown... $SHUTDOWN_TIMEOUT seconds remaining"
+
+        sleep 1
+        SHUTDOWN_TIMEOUT=$((SHUTDOWN_TIMEOUT - 1))
+      done
+
+      if kill -0 "$NODE_PID" 2>/dev/null; then
+        echo "[ci] Node did not exit gracefully, forcing termination..."
+        kill -9 "$NODE_PID" 2>/dev/null || true
+      fi
+
+      # Ensure the process is fully reaped before proceeding.
+      echo "[ci] Making sure the node process is fully reaped..."
+      wait "$NODE_PID" 2>/dev/null || true
+    else
+      echo "[ci] Node process not running; skipping shutdown wait."
+    fi
+
+    echo "[ci] Replacing entrypoint with snapshot image entrypoint..."
+    mv /entrypoint-snapshot-image.sh /entrypoint.sh
+    chmod a+x /entrypoint.sh
+
+    # Unmounted copy used at runtime to seed an empty host bind mount at /data/deployment.
+    echo "[ci] Copying extracted object ids to /opt/world-contracts/extracted-object-ids.json..."
+    mkdir -p /opt/world-contracts
+    cp deployments/localnet/extracted-object-ids.json /opt/world-contracts/extracted-object-ids.json
+  fi
 else
   echo "[ci] Localnet ready. Running command..."
   exec "$@"

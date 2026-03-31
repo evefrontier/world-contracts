@@ -37,12 +37,14 @@ publish() {
     local out_file=$2
     local env=$3
     local localnet_pubfile=${4:-}
-    local tmp
+    local tmp tmp_err
     tmp=$(mktemp)
-    trap "rm -f $tmp" RETURN
+    tmp_err=$(mktemp)
+    trap 'rm -f -- "$tmp" "$tmp_err"' RETURN
 
     sui client switch --env "$env"
 
+    # JSON goes to stdout; build progress often goes to stderr. Do not merge (2>&1) or extract-json breaks.
     if [[ "$env" == "localnet" ]]; then
         if [[ -n "$localnet_pubfile" ]]; then
             # Path is relative to contracts/$pkg (same as test-publish cwd); check from there.
@@ -50,12 +52,12 @@ publish() {
                 echo "Error: localnet pubfile not found or not readable: $localnet_pubfile (from contracts/$pkg)" >&2
                 exit 1
             fi
-            (cd "contracts/$pkg" && sui client test-publish --build-env testnet --pubfile-path "$localnet_pubfile" --json) > "$tmp" 2>&1 || true
+            (cd "contracts/$pkg" && sui client test-publish --build-env testnet --pubfile-path "$localnet_pubfile" --json) > "$tmp" 2> "$tmp_err" || true
         else
-            (cd "contracts/$pkg" && sui client test-publish --build-env testnet --json) > "$tmp" 2>&1 || true
+            (cd "contracts/$pkg" && sui client test-publish --build-env testnet --json) > "$tmp" 2> "$tmp_err" || true
         fi
     else
-        (cd "contracts/$pkg" && sui client publish --json) > "$tmp" 2>&1 || true
+        (cd "contracts/$pkg" && sui client publish --json) > "$tmp" 2> "$tmp_err" || true
     fi
 
     pnpm exec tsx ts-scripts/utils/extract-json.ts "$tmp" > "$out_file" || true
@@ -65,12 +67,17 @@ publish() {
         echo ""
         echo "--- Publish output ---"
         cat "$tmp"
+        if [[ -s "$tmp_err" ]]; then
+            echo ""
+            echo "--- Publish stderr ---"
+            cat "$tmp_err"
+        fi
     } >> "$log"
 
     if [[ ! -s "$out_file" ]]; then
         echo "" >&2
         echo "=== Publish failed. Raw output ===" >&2
-        cat "$tmp" >&2
+        cat "$tmp" "$tmp_err" >&2
         exit 1
     fi
 }
