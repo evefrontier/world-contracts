@@ -22,10 +22,10 @@ upgrade-capability = "0x17b0dd46c4babd4527bc046c71cfa771c1443604b68e978578e045d8
 
 [published.testnet_stillness]
 chain-id = "4c78adac"
-published-at = "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c"
+published-at = "0xd2fd1224f881e7a705dbc211888af11655c315f2ee0f03fe680fc3176e6e4780"
 original-id = "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c"
-version = 1
-toolchain-version = "1.67.1"
+version = 2
+toolchain-version = "1.69.1"
 build-config = { flavor = "sui", edition = "2024" }
 upgrade-capability = "0x678a2aa04da281218a692f082f0f7b2c6eb5d0baf51698d9733b660e036f0610"
 
