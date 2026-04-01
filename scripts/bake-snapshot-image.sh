@@ -4,10 +4,10 @@ set -euo pipefail
 
 REGISTRY="${REGISTRY:-ghcr.io}"
 OWNER="${OWNER:-${GITHUB_REPOSITORY_OWNER:-}}"
-IMAGE_NAME="${IMAGE_NAME:-world-contracts-localnet-snapshot}"
+IMAGE_NAME="${IMAGE_NAME:-world-contracts}"
 TAG="${TAG:-${GITHUB_REF_NAME:-local}}"
 
-BAKER_IMAGE="${BAKER_IMAGE:-world-contracts-localnet-snapshot:baker}"
+BAKER_IMAGE="${BAKER_IMAGE:-world-contracts-snapshot:baker}"
 OUT_IMAGE="${REGISTRY}/${OWNER}/${IMAGE_NAME}:${TAG}"
 
 if [ -z "$OWNER" ]; then
@@ -79,10 +79,10 @@ IMAGE_ID="$(docker commit "${commit_args[@]}" "$CID")"
 if [ -n "$METADATA_TAGS" ]; then
     while IFS= read -r ref; do
         [ -z "$ref" ] && continue
-        docker tag "$IMAGE_ID" "$ref"
-        docker push "$ref"
+        docker tag "$IMAGE_ID" "${ref}-snapshot"
+        docker push "${ref}-snapshot"
     done <<<"$METADATA_TAGS"
 else
-    docker tag "$IMAGE_ID" "$OUT_IMAGE"
-    docker push "$OUT_IMAGE"
+    docker tag "$IMAGE_ID" "${OUT_IMAGE}-snapshot"
+    docker push "${OUT_IMAGE}-snapshot"
 fi

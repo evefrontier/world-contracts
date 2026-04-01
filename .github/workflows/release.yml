@@ -8,7 +8,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: world-contracts
-  SNAPSHOT_IMAGE_NAME: world-contracts-localnet-snapshot
+  SNAPSHOT_IMAGE_NAME: world-contracts
   REPO_OWNER: ${{ github.repository_owner }}
 
 jobs:

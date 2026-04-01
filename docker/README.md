@@ -18,7 +18,7 @@ The compose file uses a **local** image tag (`world-contracts-localnet-snapshot:
 
 Images are on **GitHub Container Registry**:
 
-`ghcr.io/evefrontier/world-contracts-localnet-snapshot:<tag>`
+`ghcr.io/evefrontier/world-contracts:<tag>-snapshot`
 
 Tags line up with releases (e.g. version numbers, `latest`). Check this repo’s **Packages** on GitHub for what’s available. Private packages need `docker login ghcr.io` first.
 
