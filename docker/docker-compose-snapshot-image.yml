@@ -18,7 +18,7 @@ services:
       retries: 5
 
   sui:
-    image: world-contracts-localnet-snapshot:local
+    image: ghcr.io/evefrontier/world-contracts:latest-snapshot
     ports:
       - 9000:9000
       - 9123:9123

@@ -12,7 +12,7 @@ From the repo root:
 docker compose -f docker/docker-compose-snapshot-image.yml up
 ```
 
-The compose file uses a **local** image tag (`world-contracts-localnet-snapshot:local`). To use a published build instead, change `image:` to the GHCR address below and add a tag.
+The compose file defaults to the published **`latest-snapshot`** tag (`ghcr.io/evefrontier/world-contracts:latest-snapshot`). Change `image:` if you want another tag from GHCR (see below).
 
 ## Where to get the image
 
@@ -20,7 +20,7 @@ Images are on **GitHub Container Registry**:
 
 `ghcr.io/evefrontier/world-contracts:<tag>-snapshot`
 
-Tags line up with releases (e.g. version numbers, `latest`). Check this repo’s **Packages** on GitHub for what’s available. Private packages need `docker login ghcr.io` first.
+Tags line up with releases (e.g. version numbers, `latest`). Check this repo’s **Packages** on GitHub for what’s available.
 
 ## Object IDs on your machine (`extracted-object-ids.json`)
 

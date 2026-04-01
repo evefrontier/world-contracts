@@ -7,7 +7,7 @@ OWNER="${OWNER:-${GITHUB_REPOSITORY_OWNER:-}}"
 IMAGE_NAME="${IMAGE_NAME:-world-contracts}"
 TAG="${TAG:-${GITHUB_REF_NAME:-local}}"
 
-BAKER_IMAGE="${BAKER_IMAGE:-world-contracts-snapshot:baker}"
+BAKER_IMAGE="${BAKER_IMAGE:-${IMAGE_NAME}-snapshot:baker}"
 OUT_IMAGE="${REGISTRY}/${OWNER}/${IMAGE_NAME}:${TAG}"
 
 if [ -z "$OWNER" ]; then
