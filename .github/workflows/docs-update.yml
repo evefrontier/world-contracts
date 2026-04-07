@@ -46,23 +46,30 @@ jobs:
           repo      = os.environ['GITHUB_REPOSITORY']
           token     = os.environ['GITHUB_TOKEN']
 
-          # ── Fetch changed files via GitHub REST API ────────────────────────────
-          api_url = (
-              f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files"
-              "?per_page=100"
-          )
-          req = urllib.request.Request(
-              api_url,
-              headers={
-                  'Authorization': f'Bearer {token}',
-                  'Accept': 'application/vnd.github+json',
-                  'X-GitHub-Api-Version': '2022-11-28',
-              },
-          )
-          with urllib.request.urlopen(req) as resp:
-              files_data = json.loads(resp.read())
-
-          changed_files = [f['filename'] for f in files_data]
+          # ── Fetch changed files via GitHub REST API (paginated) ───────────────
+          changed_files = []
+          page = 1
+          while True:
+              api_url = (
+                  f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files"
+                  f"?per_page=100&page={page}"
+              )
+              req = urllib.request.Request(
+                  api_url,
+                  headers={
+                      'Authorization': f'Bearer {token}',
+                      'Accept': 'application/vnd.github+json',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                  },
+              )
+              with urllib.request.urlopen(req) as resp:
+                  page_data = json.loads(resp.read())
+              if not page_data:
+                  break
+              changed_files.extend(f['filename'] for f in page_data)
+              if len(page_data) < 100:
+                  break
+              page += 1
           print(f"Changed files ({len(changed_files)}): {changed_files}", flush=True)
 
           # ── Load path→docs mapping ─────────────────────────────────────────────
@@ -221,7 +228,7 @@ Copilot will replace this file with actual documentation changes.
 
           if [ -z "${GH_TOKEN:-}" ]; then
             echo "::error::DOCS_REPO_PAT secret is not configured. \
-          Please add a PAT with 'contents:write' and 'pull-requests:write' permissions \
+          Please add a PAT with 'Contents: Read and write' and 'Pull requests: Read and write' permissions \
           for the evefrontier/builder-documentation repository."
             exit 1
           fi
