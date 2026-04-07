@@ -1,0 +1,279 @@
+name: Trigger Documentation Update
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+# Minimal permissions for the world-contracts side.
+# Cross-repo write access is provided by the DOCS_REPO_PAT secret.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  update-docs:
+    name: Create Documentation Update Draft PR
+    # Only run when the PR was actually merged (not just closed/abandoned)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout world-contracts
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------------------------------
+      # Step 1: Collect PR metadata and changed files, then resolve target docs
+      # --------------------------------------------------------------------------
+      - name: Resolve target documentation
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import os, json, urllib.request, sys
+
+          pr_number = os.environ['PR_NUMBER']
+          pr_title  = os.environ['PR_TITLE']
+          pr_url    = os.environ['PR_URL']
+          pr_body   = os.environ.get('PR_BODY', '')
+          repo      = os.environ['GITHUB_REPOSITORY']
+          token     = os.environ['GITHUB_TOKEN']
+
+          # ── Fetch changed files via GitHub REST API ────────────────────────────
+          api_url = (
+              f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files"
+              "?per_page=100"
+          )
+          req = urllib.request.Request(
+              api_url,
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+              },
+          )
+          with urllib.request.urlopen(req) as resp:
+              files_data = json.loads(resp.read())
+
+          changed_files = [f['filename'] for f in files_data]
+          print(f"Changed files ({len(changed_files)}): {changed_files}", flush=True)
+
+          # ── Load path→docs mapping ─────────────────────────────────────────────
+          with open('.github/docs-mapping.json') as f:
+              mapping = json.load(f)
+
+          matched_docs     = []
+          matched_sections = []
+
+          for entry in mapping.get('mappings', []):
+              hit = False
+              for pattern in entry.get('paths', []):
+                  for changed in changed_files:
+                      if changed.startswith(pattern) or changed == pattern:
+                          hit = True
+                          break
+                  if hit:
+                      break
+              if hit:
+                  for doc in entry.get('docs', []):
+                      if doc not in matched_docs:
+                          matched_docs.append(doc)
+                  section = entry.get('section', '')
+                  if section and section not in matched_sections:
+                      matched_sections.append(section)
+
+          # ── Fallback if nothing matched ────────────────────────────────────────
+          if not matched_docs:
+              fb = mapping.get('fallback', {})
+              matched_docs     = fb.get('docs', ['smart-contracts/eve-frontier-world-explainer.md'])
+              matched_sections = [fb.get('section', 'Smart Contracts - World Overview')]
+
+          sections_str    = ', '.join(matched_sections)
+          docs_list_md    = '\n'.join(f'- `{d}`' for d in matched_docs)
+          changed_list_md = '\n'.join(f'- `{f}`' for f in changed_files[:30])
+          if len(changed_files) > 30:
+              changed_list_md += f'\n- _...and {len(changed_files) - 30} more_'
+
+          print(f"Target docs:     {matched_docs}",  flush=True)
+          print(f"Target sections: {sections_str}",  flush=True)
+
+          # ── Write draft PR body ────────────────────────────────────────────────
+          pr_body_content = f"""\
+## \U0001f4da Documentation Update Request
+
+This is an automated draft PR requesting documentation updates in response \
+to a merged change in the \
+[`world-contracts`](https://github.com/evefrontier/world-contracts) repository.
+
+---
+
+### Source
+
+| Field | Value |
+|-------|-------|
+| **Merged PR** | [#{pr_number} — {pr_title}]({pr_url}) |
+| **Target sections** | {sections_str} |
+
+### Changed Files in `world-contracts`
+
+{changed_list_md}
+
+### Identified Docs to Update
+
+{docs_list_md}
+
+---
+
+## \U0001f916 Instructions for @copilot
+
+@copilot Please review the merged pull request and update the relevant \
+documentation in this repository.
+
+**Steps:**
+
+1. **Read the source PR** at {pr_url} — review the diff, title, and description \
+to understand what changed.
+
+2. **Update the docs listed above** under "Identified Docs to Update". \
+These were automatically mapped from the changed source file paths using \
+[`.github/docs-mapping.json`](https://github.com/evefrontier/world-contracts/blob/main/.github/docs-mapping.json) \
+in the `world-contracts` repo.
+
+3. **Delete the scaffold file** `world-contracts-updates/pending-pr-{pr_number}.md` \
+once the real documentation changes are in place.
+
+4. **What to document:**
+   - New modules, contracts, or entry points introduced by the PR
+   - Changes to existing assembly behaviour, interfaces, or capabilities
+   - New error codes, events, or struct fields that builders should know about
+   - Breaking changes to the API or object model
+   - New TypeScript / client integration examples
+
+5. **Style:** Follow the conventions in \
+[CONTRIBUTING.md](https://github.com/evefrontier/builder-documentation/blob/main/CONTRIBUTING.md) \
+and match the format of existing pages in this repo (Markdown `.md`).
+
+6. **Fallback:** If none of the identified docs are the right place, update \
+`smart-contracts/eve-frontier-world-explainer.md` or create a new page in \
+the most relevant section and add it to `SUMMARY.md`.
+
+<details>
+<summary>\U0001f4c4 Original PR description (click to expand)</summary>
+
+{pr_body}
+
+</details>
+"""
+
+          with open('/tmp/pr-body.md', 'w') as f:
+              f.write(pr_body_content)
+
+          # ── Write scaffold placeholder content ─────────────────────────────────
+          placeholder = f"""\
+---
+title: "Pending Documentation Update (world-contracts PR #{pr_number})"
+draft: true
+---
+
+# Pending Documentation Update
+
+> **Note:** This is an auto-generated scaffold created by the \
+[docs-update workflow](https://github.com/evefrontier/world-contracts/blob/main/.github/workflows/docs-update.yml). \
+Copilot will replace this file with actual documentation changes.
+
+**Source PR:** [{pr_title}]({pr_url})
+**Target sections:** {sections_str}
+
+## Changed Files
+
+{changed_list_md}
+"""
+          with open('/tmp/scaffold.md', 'w') as f:
+              f.write(placeholder)
+
+          # ── Write step outputs ─────────────────────────────────────────────────
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as gh_out:
+              gh_out.write(f'pr_number={pr_number}\n')
+              gh_out.write(f'pr_title={pr_title}\n')
+              gh_out.write(f'sections={sections_str}\n')
+
+          PYEOF
+
+      # --------------------------------------------------------------------------
+      # Step 2: Clone builder-documentation, create branch + scaffold commit,
+      #         open draft PR, and post a @copilot comment
+      # --------------------------------------------------------------------------
+      - name: Create branch and draft PR in builder-documentation
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_REPO_PAT }}
+          DOCS_REPO: evefrontier/builder-documentation
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          PR_TITLE: ${{ steps.resolve.outputs.pr_title }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::DOCS_REPO_PAT secret is not configured. \
+          Please add a PAT with 'contents:write' and 'pull-requests:write' permissions \
+          for the evefrontier/builder-documentation repository."
+            exit 1
+          fi
+
+          # Configure git identity
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          # Clone builder-documentation using the PAT
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${DOCS_REPO}.git" \
+            /tmp/docs-repo
+          cd /tmp/docs-repo
+
+          BRANCH="docs/world-contracts-pr-${PR_NUMBER}"
+
+          # Guard against duplicate runs for the same PR
+          if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
+            echo "::warning::Branch ${BRANCH} already exists in ${DOCS_REPO}. Skipping."
+            exit 0
+          fi
+
+          git checkout -b "${BRANCH}"
+
+          # Place the scaffold placeholder so there is at least one commit to PR
+          mkdir -p world-contracts-updates
+          cp /tmp/scaffold.md "world-contracts-updates/pending-pr-${PR_NUMBER}.md"
+
+          git add .
+          git commit -m "docs: scaffold placeholder for world-contracts PR #${PR_NUMBER}"
+          git push origin "${BRANCH}"
+
+          # Sanitise title for use as the PR title (trim to 200 chars)
+          SAFE_TITLE=$(echo "${PR_TITLE}" | cut -c1-200)
+
+          # Create the draft PR in builder-documentation
+          DOCS_PR_URL=$(gh pr create \
+            --repo "${DOCS_REPO}" \
+            --base main \
+            --head "${BRANCH}" \
+            --title "docs: update for world-contracts PR #${PR_NUMBER} — ${SAFE_TITLE}" \
+            --body-file /tmp/pr-body.md \
+            --draft)
+
+          echo "✅ Draft PR created: ${DOCS_PR_URL}"
+
+          # Post a follow-up comment to ensure @copilot is notified even if the
+          # PR body mention is not picked up automatically
+          gh pr comment "${DOCS_PR_URL}" \
+            --repo "${DOCS_REPO}" \
+            --body "@copilot The PR description above contains full instructions. \
+          Please update the identified documentation files based on the changes in \
+          world-contracts PR #${PR_NUMBER}."
+
+          echo "✅ @copilot comment posted on ${DOCS_PR_URL}"
