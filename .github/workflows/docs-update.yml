@@ -14,8 +14,6 @@ permissions:
 jobs:
   update-docs:
     name: Create Documentation Update Draft PR
-    # Only run when the PR was actually merged (not just closed/abandoned)
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
@@ -23,16 +21,69 @@ jobs:
         uses: actions/checkout@v6
 
       # --------------------------------------------------------------------------
-      # Step 1: Collect PR metadata and changed files, then resolve target docs
+      # Step 1: Resolve merged PR metadata from the push commit
+      # --------------------------------------------------------------------------
+      - name: Resolve merged PR from push
+        id: pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          python3 << 'PYEOF'
+          import os, json, urllib.request, sys
+
+          token = os.environ['GITHUB_TOKEN']
+          repo = os.environ['GITHUB_REPOSITORY']
+          sha = os.environ['MERGE_SHA']
+
+          api_url = f"https://api.github.com/repos/{repo}/commits/{sha}/pulls"
+          req = urllib.request.Request(
+              api_url,
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+              },
+          )
+
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  prs = json.loads(resp.read())
+          except Exception as exc:
+              print(f"::error::Failed to resolve PRs for commit {sha}: {exc}")
+              sys.exit(1)
+
+          merged_pr = next((pr for pr in prs if pr.get('merged_at')), None)
+          if not merged_pr:
+              print(f"::notice::No merged PR found for commit {sha}. Skipping docs update.")
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as gh_out:
+                  gh_out.write('pr_found=false\n')
+              sys.exit(0)
+
+          pr_body = merged_pr.get('body') or ''
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as gh_out:
+              gh_out.write('pr_found=true\n')
+              gh_out.write(f"pr_number={merged_pr['number']}\n")
+              gh_out.write(f"pr_title={merged_pr['title']}\n")
+              gh_out.write(f"pr_url={merged_pr['html_url']}\n")
+              gh_out.write("pr_body<<PRBODY\n")
+              gh_out.write(pr_body)
+              gh_out.write("\nPRBODY\n")
+          PYEOF
+
+      # --------------------------------------------------------------------------
+      # Step 2: Collect PR metadata and changed files, then resolve target docs
       # --------------------------------------------------------------------------
       - name: Resolve target documentation
         id: resolve
+        if: steps.pr.outputs.pr_found == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          PR_TITLE: ${{ steps.pr.outputs.pr_title }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          PR_BODY: ${{ steps.pr.outputs.pr_body }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python3 << 'PYEOF'
@@ -112,11 +163,11 @@ jobs:
 
           # ── Write draft PR body ────────────────────────────────────────────────
           pr_body_content = f"""\
-## \U0001f4da Documentation Update Request
+          ## \U0001f4da Documentation Update Request
 
-This is an automated draft PR requesting documentation updates in response \
-to a merged change in the \
-[`world-contracts`](https://github.com/evefrontier/world-contracts) repository.
+          This is an automated draft PR requesting documentation updates in response \
+          to a change merged into `main` in the \
+          [`world-contracts`](https://github.com/evefrontier/world-contracts) repository.
 
 ---
 
@@ -188,11 +239,12 @@ title: "Pending Documentation Update (world-contracts PR #{pr_number})"
 draft: true
 ---
 
-# Pending Documentation Update
+          # Pending Documentation Update
 
-> **Note:** This is an auto-generated scaffold created by the \
-[docs-update workflow](https://github.com/evefrontier/world-contracts/blob/main/.github/workflows/docs-update.yml). \
-Copilot will replace this file with actual documentation changes.
+          > **Note:** This is an auto-generated scaffold created by the \
+          [docs-update workflow](https://github.com/evefrontier/world-contracts/blob/main/.github/workflows/docs-update.yml). \
+          Copilot will replace this file with actual documentation changes once \
+          the push to `main` is processed.
 
 **Source PR:** [{pr_title}]({pr_url})
 **Target sections:** {sections_str}
@@ -213,10 +265,11 @@ Copilot will replace this file with actual documentation changes.
           PYEOF
 
       # --------------------------------------------------------------------------
-      # Step 2: Clone builder-documentation, create branch + scaffold commit,
+      # Step 3: Clone builder-documentation, create branch + scaffold commit,
       #         open draft PR, and post a @copilot comment
       # --------------------------------------------------------------------------
       - name: Create branch and draft PR in builder-documentation
+        if: steps.pr.outputs.pr_found == 'true'
         env:
           GH_TOKEN: ${{ secrets.DOCS_REPO_PAT }}
           DOCS_REPO: evefrontier/builder-documentation

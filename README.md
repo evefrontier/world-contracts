@@ -83,7 +83,7 @@ pnpm deploy-world
 
 ## Documentation Automation
 
-Whenever a pull request is **merged into `main`**, the workflow at
+Whenever changes are **pushed to `main`**, the workflow at
 [`.github/workflows/docs-update.yml`](.github/workflows/docs-update.yml)
 automatically creates a **draft pull request** in
 [`evefrontier/builder-documentation`](https://github.com/evefrontier/builder-documentation)
@@ -91,18 +91,20 @@ with a `@copilot` comment that instructs Copilot to update the relevant docs.
 
 ### How it works
 
-1. The workflow triggers on `pull_request` → `closed` (gated on `merged == true`).
-2. It fetches the list of changed files from the merged PR via the GitHub API.
-3. It consults [`.github/docs-mapping.json`](.github/docs-mapping.json) to map
+1. The workflow triggers on `push` to `main`.
+2. It resolves the merged PR associated with the push’s merge commit via
+   `GET /repos/{owner}/{repo}/commits/{sha}/pulls` (skipping if none is found).
+3. It fetches the list of changed files from the merged PR via the GitHub API.
+4. It consults [`.github/docs-mapping.json`](.github/docs-mapping.json) to map
    changed source paths to documentation files in `builder-documentation`.
    - If no mapping matches, the fallback targets `smart-contracts/eve-frontier-world-explainer.md`.
-4. A new branch (`docs/world-contracts-pr-<number>`) is created in
+5. A new branch (`docs/world-contracts-pr-<number>`) is created in
    `evefrontier/builder-documentation` with a scaffold placeholder commit.
-5. A **draft PR** is opened in `builder-documentation` whose body contains:
+6. A **draft PR** is opened in `builder-documentation` whose body contains:
    - A link to the merged `world-contracts` PR
    - A summary of changed files
    - Explicit `@copilot` instructions to update the identified docs
-6. A follow-up PR comment is posted to ensure `@copilot` is notified.
+7. A follow-up PR comment is posted to ensure `@copilot` is notified.
 
 ### Required secret
 
