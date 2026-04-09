@@ -239,12 +239,12 @@ title: "Pending Documentation Update (world-contracts PR #{pr_number})"
 draft: true
 ---
 
-          # Pending Documentation Update
+# Pending Documentation Update
 
-          > **Note:** This is an auto-generated scaffold created by the \
-          [docs-update workflow](https://github.com/evefrontier/world-contracts/blob/main/.github/workflows/docs-update.yml). \
-          Copilot will replace this file with actual documentation changes once \
-          the push to `main` is processed.
+> **Note:** This is an auto-generated scaffold created by the \
+[docs-update workflow](https://github.com/evefrontier/world-contracts/blob/main/.github/workflows/docs-update.yml). \
+Copilot will replace this file with actual documentation changes after it \
+processes the draft PR instructions.
 
 **Source PR:** [{pr_title}]({pr_url})
 **Target sections:** {sections_str}
