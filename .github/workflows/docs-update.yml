@@ -1,10 +1,9 @@
 name: Trigger Documentation Update
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches:
-      - main
+      - 'main'
 
 # Minimal permissions for the world-contracts side.
 # Cross-repo write access is provided by the DOCS_REPO_PAT secret.
@@ -21,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout world-contracts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # --------------------------------------------------------------------------
       # Step 1: Collect PR metadata and changed files, then resolve target docs
