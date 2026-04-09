@@ -51,7 +51,10 @@ jobs:
               with urllib.request.urlopen(req) as resp:
                   prs = json.loads(resp.read())
           except Exception as exc:
-              print(f"::error::Failed to resolve PRs for commit {sha}: {exc}")
+              print(
+                  f"::error::Failed to resolve PRs for commit {sha}: {exc}. "
+                  "Check the GitHub Actions logs, network connectivity, and API rate limits or token permissions."
+              )
               sys.exit(1)
 
           merged_pr = next((pr for pr in prs if pr.get('merged_at')), None)
@@ -279,9 +282,7 @@ processes the draft PR instructions.
           set -euo pipefail
 
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::DOCS_REPO_PAT secret is not configured. \
-          Please add a PAT with 'Contents: Read and write' and 'Pull requests: Read and write' permissions \
-          for the evefrontier/builder-documentation repository."
+            echo "::error::DOCS_REPO_PAT secret is not configured. Please add a PAT with 'Contents: Read and write' and 'Pull requests: Read and write' permissions for the evefrontier/builder-documentation repository."
             exit 1
           fi
 
@@ -299,7 +300,7 @@ processes the draft PR instructions.
 
           # Guard against duplicate runs for the same PR
           if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
-            echo "::warning::Branch ${BRANCH} already exists in ${DOCS_REPO}. Skipping."
+            echo "::warning::Branch ${BRANCH} already exists in ${DOCS_REPO}. A documentation update for this PR may already be in progress or completed. Delete the branch and re-run if this is unexpected."
             exit 0
           fi
 
