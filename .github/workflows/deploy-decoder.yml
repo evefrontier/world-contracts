@@ -73,7 +73,7 @@ jobs:
     permissions:
       pages: write
       id-token: write
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
