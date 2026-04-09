@@ -211,7 +211,7 @@ once the real documentation changes are in place.
 
 4. **What to document:**
    - New modules, contracts, or entry points introduced by the PR
-   - Changes to existing assembly behaviour, interfaces, or capabilities
+   - Changes to existing assembly behavior, interfaces, or capabilities
    - New error codes, events, or struct fields that builders should know about
    - Breaking changes to the API or object model
    - New TypeScript / client integration examples
@@ -314,7 +314,7 @@ processes the draft PR instructions.
           git commit -m "docs: scaffold placeholder for world-contracts PR #${PR_NUMBER}"
           git push origin "${BRANCH}"
 
-          # Sanitise title for use as the PR title (trim to 200 chars)
+          # Sanitize title for use as the PR title (trim to 200 chars)
           SAFE_TITLE=$(echo "${PR_TITLE}" | cut -c1-200)
 
           # Create the draft PR in builder-documentation

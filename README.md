@@ -121,7 +121,7 @@ Add the following secret to the `evefrontier/world-contracts` repository
 >
 > **Classic PAT scopes**: `repo` (full repository access).
 
-### Customising the path → docs mapping
+### Customizing the path → docs mapping
 
 Edit [`.github/docs-mapping.json`](.github/docs-mapping.json) to add or adjust
 mappings. Each entry has:
