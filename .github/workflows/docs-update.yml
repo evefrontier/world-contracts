@@ -212,9 +212,8 @@ once the real documentation changes are in place.
 4. **What to document:**
    - New modules, contracts, or entry points introduced by the PR
    - Changes to existing assembly behavior, interfaces, or capabilities
-   - New error codes, events, or struct fields that builders should know about
+   - New events or struct fields that builders should know about
    - Breaking changes to the API or object model
-   - New TypeScript / client integration examples
 
 5. **Style:** Follow the conventions in \
 [CONTRIBUTING.md](https://github.com/evefrontier/builder-documentation/blob/main/CONTRIBUTING.md) \
