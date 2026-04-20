@@ -34,7 +34,7 @@ async function issueJumpPermit(
 
     const tx = new Transaction();
     tx.moveCall({
-        target: `${builderPackageId}::${extensionModule.TRIBE_PERMIT}::issue_jump_permit`,
+        target: `${builderPackageId}::${extensionModule.TRIBE_PERMIT}::issue_jump_permit_v2`,
         arguments: [
             tx.object(extensionConfigId),
             tx.object(sourceGateId),

@@ -4,12 +4,17 @@
 /// - withdraw an item from a player's `StorageUnit` (with owner auth)
 /// - validate it against a bounty rule (stored under `ExtensionConfig`)
 /// - deposit it into an owner `StorageUnit`
-/// - issue a `world::gate::JumpPermit` so the player can use the gate
+/// - issue a `world::gate::JumpPermitV2` so the player can use the gate
 module extension_examples::corpse_gate_bounty;
 
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
 use sui::{clock::Clock, object::ID};
-use world::{access::OwnerCap, character::Character, gate::{Self, Gate}, storage_unit::StorageUnit};
+use world::{
+    access::OwnerCap,
+    character::Character,
+    gate::{Self, Gate, JumpPermit},
+    storage_unit::StorageUnit
+};
 
 // === Errors ===
 #[error(code = 0)]
@@ -27,7 +32,7 @@ public struct BountyConfig has drop, store {
 /// Dynamic-field key for `BountyConfig`.
 public struct BountyConfigKey has copy, drop, store {}
 
-/// Submit a corpse to get a `JumpPermit` for using the gate. Returns the new permit's object id.
+/// Submit a corpse to get a `JumpPermitV2` for using the gate. Returns the new permit's object id.
 public fun collect_corpse_bounty<T: key>(
     extension_config: &ExtensionConfig,
     storage_unit: &mut StorageUnit,
@@ -72,6 +77,27 @@ public fun collect_corpse_bounty<T: key>(
         character,
         config::x_auth(),
         expires_at_timestamp_ms,
+        ctx,
+    )
+}
+
+/// Migrates a legacy [`gate::JumpPermit`] into a [`gate::JumpPermitV2`] bound to this extension (`XAuth`).
+/// Both gates must be configured with `XAuth`.
+public fun migrate_jump_permit(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    legacy_permit: JumpPermit,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): ID {
+    gate::migrate_jump_permit_to_v2<XAuth>(
+        source_gate,
+        destination_gate,
+        character,
+        legacy_permit,
+        clock,
+        config::x_auth(),
         ctx,
     )
 }

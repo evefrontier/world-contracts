@@ -25,7 +25,7 @@ async function getOwnedJumpPermitId(
     owner: string,
     worldPackageId: string
 ): Promise<string | null> {
-    const type = `${worldPackageId}::${MODULES.GATE}::JumpPermit`;
+    const type = `${worldPackageId}::${MODULES.GATE}::JumpPermitV2`;
     const res = await client.getOwnedObjects({
         owner,
         filter: { StructType: type },
@@ -64,7 +64,7 @@ async function jumpWithPermit(
     tx.setGasOwner(adminAddress);
 
     tx.moveCall({
-        target: `${config.packageId}::${MODULES.GATE}::jump_with_permit`,
+        target: `${config.packageId}::${MODULES.GATE}::jump_with_permit_v2`,
         arguments: [
             tx.object(sourceGateId),
             tx.object(destinationGateId),

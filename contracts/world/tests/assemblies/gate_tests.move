@@ -7,7 +7,7 @@ use world::{
     access::{AdminACL, OwnerCap, ServerAddressRegistry},
     character::{Self, Character},
     energy::EnergyConfig,
-    gate::{Self, Gate, GateConfig, JumpPermit},
+    gate::{Self, Gate, GateConfig, JumpPermit, JumpPermitV2},
     location,
     network_node::{Self, NetworkNode},
     object_registry::ObjectRegistry,
@@ -332,7 +332,7 @@ fun test_jump_with_permit_succeeds() {
     // Jump A -> B (consume one ticket)
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
         gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
     };
 
@@ -345,9 +345,70 @@ fun test_jump_with_permit_succeeds() {
     // Jump B -> A (consume the second ticket)
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
         gate::test_jump_with_permit(&gate_b, &gate_a, &character, permit, &clock);
     };
+    ts::return_shared(character);
+    ts::return_shared(gate_a);
+    ts::return_shared(gate_b);
+    clock.destroy_for_testing();
+    ts::end(ts);
+}
+
+#[test]
+fun migrate_jump_permit_to_v2_succeeds() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 203);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+    authorize_gate_extension(&mut ts, character_id, gate_a_id);
+    authorize_gate_extension(&mut ts, character_id, gate_b_id);
+
+    ts::next_tx(&mut ts, user_a());
+    let clock = clock::create_for_testing(ts.ctx());
+    let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+    let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        gate::issue_jump_permit_legacy_for_testing<GateAuth>(
+            &gate_a,
+            &gate_b,
+            &character,
+            GateAuth {},
+            expires_at_timestamp_ms,
+            ts.ctx(),
+        );
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let legacy = ts::take_from_sender<JumpPermit>(&ts);
+        let _new_id = gate::migrate_jump_permit_to_v2<GateAuth>(
+            &gate_a,
+            &gate_b,
+            &character,
+            legacy,
+            &clock,
+            GateAuth {},
+            ts.ctx(),
+        );
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+    };
+
     ts::return_shared(character);
     ts::return_shared(gate_a);
     ts::return_shared(gate_b);
@@ -394,9 +455,9 @@ fun issue_jump_permit_with_id_matches_minted_object() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
-        assert_eq!(gate::jump_permit_id(&permit), permit_id);
-        gate::delete_jump_permit(permit);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
+        assert_eq!(gate::jump_permit_v2_id(&permit), permit_id);
+        gate::delete_jump_permit_v2(permit);
     };
 
     ts::return_shared(character);
@@ -516,8 +577,8 @@ fun delete_jump_permit_owner_succeeds() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::delete_jump_permit(permit);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
+        gate::delete_jump_permit_v2(permit);
     };
 
     ts::return_shared(character);
@@ -556,8 +617,8 @@ fun delete_jump_permit_with_auth_succeeds() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate_a.delete_jump_permit_with_auth<GateAuth>(permit, GateAuth {});
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
+        gate::delete_jump_permit_v2_with_auth<GateAuth>(&gate_a, permit, GateAuth {});
     };
 
     ts::return_shared(character);
@@ -692,13 +753,13 @@ fun test_jump_with_permit_consumes_permit() {
     };
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
 
         // First jump succeeds
         gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
 
         // Permit is deleted, taking another should fail.
-        let unexpected = ts::take_from_sender<JumpPermit>(&ts);
+        let unexpected = ts::take_from_sender<JumpPermitV2>(&ts);
         ts::return_to_sender(&ts, unexpected);
     };
 
@@ -738,7 +799,7 @@ fun test_jump_with_permit_fails_expired_permit() {
     };
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
         gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
     };
     ts::return_shared(character);
@@ -778,8 +839,8 @@ fun delete_jump_permit_with_auth_fails_wrong_auth() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate_a.delete_jump_permit_with_auth<WrongGateAuth>(permit, WrongGateAuth {});
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
+        gate::delete_jump_permit_v2_with_auth<WrongGateAuth>(&gate_a, permit, WrongGateAuth {});
     };
 
     ts::return_shared(character);
@@ -820,8 +881,8 @@ fun delete_jump_permit_fails_when_sender_does_not_own_permit() {
     // user_b does not own the permit (user_a does); take_from_sender aborts
     ts::next_tx(&mut ts, user_b());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
-        gate::delete_jump_permit(permit);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
+        gate::delete_jump_permit_v2(permit);
     };
 
     abort
@@ -1469,7 +1530,7 @@ fun jump_fails_when_ticket_issued_for_user_a_used_by_user_b() {
     // Move ticket to user_b
     ts::next_tx(&mut ts, user_a());
     {
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
         transfer::public_transfer(permit, user_b());
     };
 
@@ -1480,7 +1541,7 @@ fun jump_fails_when_ticket_issued_for_user_a_used_by_user_b() {
         let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
         let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
         let character_b = ts::take_shared_by_id<Character>(&ts, character_b_id);
-        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        let permit = ts::take_from_sender<JumpPermitV2>(&ts);
         gate::test_jump_with_permit(&gate_a, &gate_b, &character_b, permit, &clock);
         ts::return_shared(character_b);
         ts::return_shared(gate_a);

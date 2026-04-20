@@ -49,6 +49,7 @@
     "jump-with-permit": "tsx ts-scripts/builder_extension/jump-with-permit.ts",
     "delete-jump-permit": "tsx ts-scripts/builder_extension/delete-jump-permit.ts",
     "delete-jump-permit-extension": "tsx ts-scripts/builder_extension/delete-jump-permit-extension.ts",
+    "migrate-jump-permit": "tsx ts-scripts/builder_extension/migrate-jump-permit.ts",
     "anchor-turret": "tsx ts-scripts/turret/anchor.ts",
     "online-turret": "tsx ts-scripts/turret/online.ts",
     "authorize-turret-extension": "tsx ts-scripts/builder_extension/authorize-turret.ts",

@@ -72,6 +72,14 @@ const EExtensionConfigFrozen: vector<u8> = b"Extension configuration is frozen";
 const EExtensionNotConfigured: vector<u8> = b"Extension must be configured before freezing";
 #[error(code = 19)]
 const ENoExtensionToRevoke: vector<u8> = b"No extension authorization to revoke";
+#[error(code = 20)]
+const EJumpPermitExtensionMismatch: vector<u8> =
+    b"Jump permit extension does not match gate extension";
+#[error(code = 21)]
+const EGateExtensionMismatch: vector<u8> = b"Linked gates use different extension types";
+#[error(code = 22)]
+const ELegacyJumpPermitMustBeMigrated: vector<u8> =
+    b"Legacy JumpPermit must be migrated to JumpPermitV2 before jumping";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -92,7 +100,8 @@ public struct Gate has key {
     extension: Option<TypeName>,
 }
 
-// Note : Can add more fields later
+/// Legacy jump permit (pre–extension-binding). Still exists for old on-chain objects.
+/// New issuance produces [`JumpPermitV2`]. Migrate with [`migrate_jump_permit_to_v2`].
 public struct JumpPermit has key, store {
     id: UID,
     character_id: ID,
@@ -100,6 +109,15 @@ public struct JumpPermit has key, store {
     // Computed in a direction-agnostic way so the same permit works for A->B and B->A.
     route_hash: vector<u8>,
     expires_at_timestamp_ms: u64,
+}
+
+/// Jump permit bound to the extension type active on both gates at issuance.
+public struct JumpPermitV2 has key, store {
+    id: UID,
+    character_id: ID,
+    route_hash: vector<u8>,
+    expires_at_timestamp_ms: u64,
+    extension_type: TypeName,
 }
 
 // === Events ===
@@ -141,6 +159,18 @@ public struct JumpPermitIssuedEvent has copy, drop {
     source_gate_key: TenantItemId,
     destination_gate_id: ID,
     destination_gate_key: TenantItemId,
+    character_id: ID,
+    character_key: TenantItemId,
+    route_hash: vector<u8>,
+    expires_at_timestamp_ms: u64,
+    extension_type: TypeName,
+}
+
+public struct JumpPermitMigratedEvent has copy, drop {
+    legacy_jump_permit_id: ID,
+    new_jump_permit_id: ID,
+    source_gate_id: ID,
+    destination_gate_id: ID,
     character_id: ID,
     character_key: TenantItemId,
     route_hash: vector<u8>,
@@ -316,7 +346,7 @@ public fun unlink_gates(
     unlink(source_gate, destination_gate);
 }
 
-/// Issues a jump permit to the character's address. Emits `JumpPermitIssuedEvent` (for indexers and clients).
+/// Issues a [`JumpPermitV2`] to the character's address. Emits `JumpPermitIssuedEvent` (for indexers and clients).
 public fun issue_jump_permit<Auth: drop>(
     source_gate: &Gate,
     destination_gate: &Gate,
@@ -354,14 +384,19 @@ public fun issue_jump_permit_with_id<Auth: drop>(
     )
 }
 
-/// Deletes a jump permit by destroying it. Only the owner can call this (by passing their permit).
+/// Deletes a legacy jump permit by destroying it. Only the owner can call this (by passing their permit).
 public fun delete_jump_permit(jump_permit: JumpPermit) {
     let JumpPermit { id, .. } = jump_permit;
     id.delete();
 }
 
-/// Deletes a jump permit using the same extension Auth that can issue permits. The caller must have
-/// the permit (e.g. passed in by the owner, or held in extension logic).
+/// Deletes a [`JumpPermitV2`] by destroying it. Only the owner can call this.
+public fun delete_jump_permit_v2(jump_permit: JumpPermitV2) {
+    let JumpPermitV2 { id, .. } = jump_permit;
+    id.delete();
+}
+
+/// Deletes a legacy jump permit using the same extension Auth that can issue permits.
 public fun delete_jump_permit_with_auth<Auth: drop>(
     source_gate: &Gate,
     jump_permit: JumpPermit,
@@ -369,6 +404,21 @@ public fun delete_jump_permit_with_auth<Auth: drop>(
 ) {
     assert_gate_extension_matches<Auth>(source_gate);
     let JumpPermit { id, .. } = jump_permit;
+    id.delete();
+}
+
+/// Deletes a [`JumpPermitV2`] using extension auth; the permit must match the gate's extension.
+public fun delete_jump_permit_v2_with_auth<Auth: drop>(
+    source_gate: &Gate,
+    jump_permit: JumpPermitV2,
+    _: Auth,
+) {
+    assert_gate_extension_matches<Auth>(source_gate);
+    assert!(
+        jump_permit.extension_type == type_name::with_defining_ids<Auth>(),
+        EJumpPermitExtensionMismatch,
+    );
+    let JumpPermitV2 { id, .. } = jump_permit;
     id.delete();
 }
 
@@ -387,20 +437,93 @@ public fun jump(
     jump_internal(source_gate, destination_gate, character);
 }
 
-/// Jump from one gate to another using a jump permit.
-/// Requires extension logic to be configured and a valid Auth witness type from that extension.
+/// Legacy entrypoint kept for API compatibility only. Aborts unconditionally with
+/// `ELegacyJumpPermitMustBeMigrated`. Use [`migrate_jump_permit_to_v2`] + [`jump_with_permit_v2`].
 public fun jump_with_permit(
+    _source_gate: &Gate,
+    _destination_gate: &Gate,
+    _character: &Character,
+    _jump_permit: JumpPermit,
+    _admin_acl: &AdminACL,
+    _clock: &Clock,
+    _ctx: &mut TxContext,
+) {
+    abort ELegacyJumpPermitMustBeMigrated
+}
+
+/// Jump from one gate to another using a [`JumpPermitV2`].
+/// Requires extension logic to be configured and a permit bound to the current gate extension.
+public fun jump_with_permit_v2(
     source_gate: &Gate,
     destination_gate: &Gate,
     character: &Character,
-    jump_permit: JumpPermit,
+    jump_permit: JumpPermitV2,
     admin_acl: &AdminACL,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     admin_acl.verify_sponsor(ctx);
-    validate_jump_permit(source_gate, destination_gate, character, jump_permit, clock);
+    validate_jump_permit_v2(source_gate, destination_gate, character, jump_permit, clock);
     jump_internal(source_gate, destination_gate, character);
+}
+
+/// Converts a legacy [`JumpPermit`] into a [`JumpPermitV2`] bound to the **current** gate extension.
+/// The caller must supply the extension witness `Auth` matching the configured extension on both
+/// gates—this prevents upgrading shadow permits after the owner swaps to a different extension
+/// unless that new extension cooperates (witness is not forgeable across packages).
+public fun migrate_jump_permit_to_v2<Auth: drop>(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    jump_permit: JumpPermit,
+    clock: &Clock,
+    _: Auth,
+    ctx: &mut TxContext,
+): ID {
+    assert_jump_permit_extension_authorization<Auth>(source_gate, destination_gate);
+    validate_legacy_jump_permit(
+        source_gate,
+        destination_gate,
+        character,
+        &jump_permit,
+        clock,
+    );
+
+    let legacy_jump_permit_id = object::id(&jump_permit);
+    let JumpPermit {
+        id: legacy_id,
+        character_id,
+        route_hash,
+        expires_at_timestamp_ms,
+    } = jump_permit;
+    legacy_id.delete();
+
+    let extension_type = type_name::with_defining_ids<Auth>();
+    let permit_uid = object::new(ctx);
+    let new_jump_permit_id = object::uid_to_inner(&permit_uid);
+
+    let new_permit = JumpPermitV2 {
+        id: permit_uid,
+        character_id,
+        route_hash,
+        expires_at_timestamp_ms,
+        extension_type,
+    };
+    transfer::transfer(new_permit, character.character_address());
+
+    event::emit(JumpPermitMigratedEvent {
+        legacy_jump_permit_id,
+        new_jump_permit_id,
+        source_gate_id: object::id(source_gate),
+        destination_gate_id: object::id(destination_gate),
+        character_id,
+        character_key: character::key(character),
+        route_hash,
+        expires_at_timestamp_ms,
+        extension_type,
+    });
+
+    new_jump_permit_id
 }
 
 /// Updates the gate's energy source and removes it from the UpdateEnergySources hot potato.
@@ -532,6 +655,14 @@ public fun jump_permit_id(permit: &JumpPermit): ID {
     object::id(permit)
 }
 
+public fun jump_permit_v2_id(permit: &JumpPermitV2): ID {
+    object::id(permit)
+}
+
+public fun jump_permit_v2_extension(permit: &JumpPermitV2): TypeName {
+    permit.extension_type
+}
+
 public fun status(gate: &Gate): &AssemblyStatus {
     &gate.status
 }
@@ -556,7 +687,7 @@ public fun linked_gate_id(gate: &Gate): Option<ID> {
 }
 
 /// Route hash for a jump permit: `blake2b256(bcs(source_id) || bcs(destination_id))`.
-/// Same encoding as `issue_jump_permit(source_gate, destination_gate, ...)` stores in `JumpPermit.route_hash`.
+/// Same encoding as `issue_jump_permit(source_gate, destination_gate, ...)` stores in [`JumpPermitV2.route_hash`] (and legacy [`JumpPermit.route_hash`]).
 /// `jump` accepts either argument order; swap the gates if you need the reversed hash.
 public fun route_hash(source_gate: &Gate, destination_gate: &Gate): vector<u8> {
     compute_route_hash(object::id(source_gate), object::id(destination_gate))
@@ -881,17 +1012,42 @@ fun jump_internal(source_gate: &Gate, destination_gate: &Gate, character: &Chara
     });
 }
 
-fun validate_jump_permit(
+fun validate_legacy_jump_permit(
     source_gate: &Gate,
     destination_gate: &Gate,
     character: &Character,
-    jump_permit: JumpPermit,
+    jump_permit: &JumpPermit,
+    clock: &Clock,
+) {
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+    // Validate jump permit then invalidate it
+    assert!(jump_permit.expires_at_timestamp_ms > clock.timestamp_ms(), EJumpPermitExpired);
+    assert!(jump_permit.character_id == object::id(character), EInvalidJumpPermit);
+    assert!(
+        jump_permit.route_hash == compute_route_hash(source_gate_id, destination_gate_id)
+        || jump_permit.route_hash == compute_route_hash(destination_gate_id, source_gate_id),
+        EInvalidJumpPermit,
+    );
+}
+
+fun validate_jump_permit_v2(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    jump_permit: JumpPermitV2,
     clock: &Clock,
 ) {
     let source_gate_id = object::id(source_gate);
     let destination_gate_id = object::id(destination_gate);
 
-    // Validate jump permit then invalidate it
+    assert!(option::is_some(&source_gate.extension), EExtensionNotConfigured);
+    assert!(option::is_some(&destination_gate.extension), EExtensionNotConfigured);
+    let src_ext = option::borrow(&source_gate.extension);
+    let dst_ext = option::borrow(&destination_gate.extension);
+    assert!(src_ext == dst_ext, EGateExtensionMismatch);
+    assert!(jump_permit.extension_type == *src_ext, EJumpPermitExtensionMismatch);
+
     assert!(jump_permit.expires_at_timestamp_ms > clock.timestamp_ms(), EJumpPermitExpired);
     assert!(jump_permit.character_id == object::id(character), EInvalidJumpPermit);
     assert!(
@@ -902,7 +1058,7 @@ fun validate_jump_permit(
 
     // TODO: We can allow the permit to be used multiple times and make the invalidation action chosen by the builder extension logic later.
     // Invalidate the permit by deleting the object
-    let JumpPermit { id, .. } = jump_permit;
+    let JumpPermitV2 { id, .. } = jump_permit;
     id.delete();
 }
 
@@ -967,15 +1123,16 @@ fun issue_jump_permit_internal<Auth: drop>(
     let permit_uid = object::new(ctx);
     let jump_permit_id = object::uid_to_inner(&permit_uid);
 
-    let jump_permit = JumpPermit {
+    let extension_type = type_name::with_defining_ids<Auth>();
+    let jump_permit = JumpPermitV2 {
         id: permit_uid,
         route_hash,
         character_id,
         expires_at_timestamp_ms,
+        extension_type,
     };
     transfer::transfer(jump_permit, character.character_address());
 
-    let extension_type = type_name::with_defining_ids<Auth>();
     event::emit(JumpPermitIssuedEvent {
         jump_permit_id,
         source_gate_id,
@@ -1017,9 +1174,54 @@ public fun test_jump_with_permit(
     source_gate: &Gate,
     destination_gate: &Gate,
     character: &Character,
-    jump_permit: JumpPermit,
+    jump_permit: JumpPermitV2,
     clock: &Clock,
 ) {
-    validate_jump_permit(source_gate, destination_gate, character, jump_permit, clock);
+    validate_jump_permit_v2(source_gate, destination_gate, character, jump_permit, clock);
     jump_internal(source_gate, destination_gate, character);
+}
+
+#[test_only]
+public fun issue_jump_permit_legacy_for_testing<Auth: drop>(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    auth: Auth,
+    expires_at_timestamp_ms: u64,
+    ctx: &mut TxContext,
+): ID {
+    assert_jump_permit_extension_authorization<Auth>(source_gate, destination_gate);
+
+    let source_gate_id = object::id(source_gate);
+    let destination_gate_id = object::id(destination_gate);
+
+    let route_hash = compute_route_hash(source_gate_id, destination_gate_id);
+    let character_id = object::id(character);
+
+    let permit_uid = object::new(ctx);
+    let jump_permit_id = object::uid_to_inner(&permit_uid);
+
+    let jump_permit = JumpPermit {
+        id: permit_uid,
+        route_hash,
+        character_id,
+        expires_at_timestamp_ms,
+    };
+    transfer::transfer(jump_permit, character.character_address());
+
+    let extension_type = type_name::with_defining_ids<Auth>();
+    event::emit(JumpPermitIssuedEvent {
+        jump_permit_id,
+        source_gate_id,
+        source_gate_key: source_gate.key,
+        destination_gate_id,
+        destination_gate_key: destination_gate.key,
+        character_id,
+        character_key: character::key(character),
+        route_hash,
+        expires_at_timestamp_ms,
+        extension_type,
+    });
+
+    jump_permit_id
 }

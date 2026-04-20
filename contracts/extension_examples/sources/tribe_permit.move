@@ -1,10 +1,10 @@
 /// Example builder extension for `world::gate` using the typed-witness extension pattern.
 ///
 /// This module demonstrates how builders/players can enforce custom jump rules by issuing a
-/// `world::gate::JumpPermit` from extension logic:
+/// `world::gate::JumpPermitV2` from extension logic:
 /// - Gate owners configure a gate to use this extension by authorizing the witness type `XAuth`
 ///   on the gate (via `world::gate::authorize_extension<XAuth>`).
-/// - Once configured, travelers must use `world::gate::jump_with_permit`; default `jump` is not allowed.
+/// - Once configured, travelers must use `world::gate::jump_with_permit` (with a `JumpPermitV2`); default `jump` is not allowed.
 /// - This extension's `issue_jump_permit` entry point:
 ///   - checks a simple rule (character must belong to the configured starter `tribe`)
 ///   - sets an expiry window (currently 5 days from `Clock`)
@@ -16,7 +16,7 @@ module extension_examples::tribe_permit;
 
 use extension_examples::config::{Self, AdminCap, XAuth, ExtensionConfig};
 use sui::{clock::Clock, object::ID};
-use world::{character::Character, gate::{Self, Gate, JumpPermit}};
+use world::{character::Character, gate::{Self, Gate, JumpPermit, JumpPermitV2}};
 
 // === Errors ===
 #[error(code = 0)]
@@ -38,7 +38,7 @@ public fun tribe(extension_config: &ExtensionConfig): u32 {
 }
 
 // === Admin Functions ===
-/// Issue a `JumpPermit` to only starter tribes. Returns the new permit's object id.
+/// Issue a `JumpPermitV2` to only starter tribes. Returns the new permit's object id.
 public fun issue_jump_permit(
     extension_config: &ExtensionConfig,
     source_gate: &Gate,
@@ -66,9 +66,35 @@ public fun issue_jump_permit(
     )
 }
 
-/// Voids a jump permit via the extension. Caller must own the permit.
+/// Legacy entrypoint kept for API compatibility. Voids a legacy [`JumpPermit`] via the extension.
 public fun delete_jump_permit(source_gate: &Gate, jump_permit: JumpPermit) {
     gate::delete_jump_permit_with_auth<XAuth>(source_gate, jump_permit, config::x_auth());
+}
+
+/// Voids a [`JumpPermitV2`] via the extension. Caller must own the permit.
+public fun delete_jump_permit_v2(source_gate: &Gate, jump_permit: JumpPermitV2) {
+    gate::delete_jump_permit_v2_with_auth<XAuth>(source_gate, jump_permit, config::x_auth());
+}
+
+/// Migrates a legacy [`gate::JumpPermit`] owned by `character` into a [`JumpPermitV2`]
+/// bound to this extension. Both gates must be configured with same extension.
+public fun migrate_jump_permit(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    legacy_permit: JumpPermit,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): ID {
+    gate::migrate_jump_permit_to_v2<XAuth>(
+        source_gate,
+        destination_gate,
+        character,
+        legacy_permit,
+        clock,
+        config::x_auth(),
+        ctx,
+    )
 }
 
 public fun set_tribe_config(
