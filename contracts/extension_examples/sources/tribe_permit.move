@@ -4,7 +4,7 @@
 /// `world::gate::JumpPermitV2` from extension logic:
 /// - Gate owners configure a gate to use this extension by authorizing the witness type `XAuth`
 ///   on the gate (via `world::gate::authorize_extension<XAuth>`).
-/// - Once configured, travelers must use `world::gate::jump_with_permit` (with a `JumpPermitV2`); default `jump` is not allowed.
+/// - Once configured, travelers must use `world::gate::jump_with_permit_v2` (with a `JumpPermitV2`); default `jump` is not allowed.
 /// - This extension's `issue_jump_permit` entry point:
 ///   - checks a simple rule (character must belong to the configured starter `tribe`)
 ///   - sets an expiry window (currently 5 days from `Clock`)

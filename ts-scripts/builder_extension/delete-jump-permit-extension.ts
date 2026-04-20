@@ -36,7 +36,7 @@ async function voidJumpPermitViaExtension(ctx: ReturnType<typeof initializeConte
 
     const jumpPermitId = await getOwnedJumpPermitId(client, address, config.packageId);
     if (!jumpPermitId) {
-        throw new Error("You should own a JumpPermit object to void it via the extension");
+        throw new Error("You should own a JumpPermitV2 object to void it via the extension");
     }
 
     if (!BUILDER_PACKAGE_LATEST) {

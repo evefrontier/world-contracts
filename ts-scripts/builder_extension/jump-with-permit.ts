@@ -56,7 +56,7 @@ async function jumpWithPermit(
 
     const jumpPermitId = await getOwnedJumpPermitId(client, address, config.packageId);
     if (!jumpPermitId) {
-        throw new Error("You should own a JumpPermit object");
+        throw new Error("You should own a JumpPermitV2 object");
     }
 
     const tx = new Transaction();

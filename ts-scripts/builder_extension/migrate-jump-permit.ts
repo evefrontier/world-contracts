@@ -73,35 +73,49 @@ async function migrateJumpPermit(
         config.packageId
     );
 
+    let migrated = 0;
+    let skipped = 0;
     for (const legacyPermitId of legacyPermitIds) {
-        const tx = new Transaction();
-        tx.setGasBudget(100_000_000);
-        tx.moveCall({
-            target: `${BUILDER_PACKAGE_LATEST}::${extensionModule.TRIBE_PERMIT}::migrate_jump_permit`,
-            arguments: [
-                tx.object(sourceGateId),
-                tx.object(destinationGateId),
-                tx.object(characterId),
-                tx.object(legacyPermitId),
-                tx.object(CLOCK_OBJECT_ID),
-            ],
-        });
+        try {
+            const tx = new Transaction();
+            tx.setGasBudget(100_000_000);
+            tx.moveCall({
+                target: `${BUILDER_PACKAGE_LATEST}::${extensionModule.TRIBE_PERMIT}::migrate_jump_permit`,
+                arguments: [
+                    tx.object(sourceGateId),
+                    tx.object(destinationGateId),
+                    tx.object(characterId),
+                    tx.object(legacyPermitId),
+                    tx.object(CLOCK_OBJECT_ID),
+                ],
+            });
 
-        const result = await client.signAndExecuteTransaction({
-            transaction: tx,
-            signer: keypair,
-            options: { showEffects: true, showObjectChanges: true, showEvents: true },
-        });
+            const result = await client.signAndExecuteTransaction({
+                transaction: tx,
+                signer: keypair,
+                options: { showEffects: true, showObjectChanges: true, showEvents: true },
+            });
 
-        const migratedEvent = extractEvent<{
-            legacy_jump_permit_id: string;
-            new_jump_permit_id: string;
-            extension_type: { name: string };
-        }>(result, "::gate::JumpPermitMigratedEvent");
+            const migratedEvent = extractEvent<{
+                legacy_jump_permit_id: string;
+                new_jump_permit_id: string;
+                extension_type: { name: string };
+            }>(result, "::gate::JumpPermitMigratedEvent");
 
-        console.log(`Migrated ${legacyPermitId} -> ${migratedEvent?.new_jump_permit_id ?? "?"}`);
-        console.log("  digest:", result.digest);
+            console.log(
+                `Migrated ${legacyPermitId} -> ${migratedEvent?.new_jump_permit_id ?? "?"}`
+            );
+            console.log("  digest:", result.digest);
+            migrated++;
+        } catch (err) {
+            skipped++;
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(
+                `Skipping ${legacyPermitId}: ${message}. This permit likely belongs to a different route/character; re-run with the correct IDs.`
+            );
+        }
     }
+    console.log(`Done. Migrated ${migrated}, skipped ${skipped}.`);
 }
 
 async function main() {
