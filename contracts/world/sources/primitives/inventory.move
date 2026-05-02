@@ -393,6 +393,28 @@ public(package) fun withdraw_item(
     }
 }
 
+/// Rebases only `parent_id` on a transit `Item` to `new_parent_id`; UID, quantities, tenant,
+/// `type_id`, volume, and `location` are unchanged.
+///
+/// **Why this exists:** Withdrawal from pickup SSU A sets `parent_id == object::id(A)`. An
+/// authorized dropoff SSU extension can call this (via
+/// `storage_unit::reparent_transit_item_for_freight_dropoff`) so the item satisfies existing
+/// `deposit_*` checks (`parent_id ==` that SSU) without weakening them. Proving the reparent
+/// matches a freight job stays in downstream packages.
+public(package) fun reparent_transit_item(item: Item, new_parent_id: ID): Item {
+    let Item { id, parent_id: _, tenant, type_id, item_id, volume, quantity, location } = item;
+    Item {
+        id,
+        parent_id: new_parent_id,
+        tenant,
+        type_id,
+        item_id,
+        volume,
+        quantity,
+        location,
+    }
+}
+
 /// Destroys the inventory, emitting an `ItemDestroyedEvent` per entry.
 public(package) fun delete(inventory: Inventory, assembly_id: ID, assembly_key: TenantItemId) {
     let Inventory {

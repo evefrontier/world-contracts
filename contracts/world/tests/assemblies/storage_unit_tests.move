@@ -1998,6 +1998,484 @@ fun test_deposit_via_extension_fail_parent_id_mismatch() {
     ts::end(ts);
 }
 
+/// Cross-SSU freight happy path: withdraw from SSU A, reparent on SSU B with pickup id A,
+/// then deposit_item on B (parent_id checks unchanged).
+#[test]
+fun test_freight_dropoff_reparent_then_deposit_succeeds() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_a_id, nwn_a_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_a_id, nwn_a_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_a_id, character_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        item =
+            storage_unit.withdraw_item<SwapAuth>(
+                &character,
+                SwapAuth {},
+                AMMO_TYPE_ID,
+                AMMO_QUANTITY,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    let (storage_b_id, nwn_b_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_b_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.online(&mut nwn, &energy_config, &owner_cap);
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(character);
+    };
+
+    let storage_b_owner_cap_id = storage_owner_cap_id(&mut ts, storage_b_id);
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let reparented =
+            storage_unit::reparent_transit_item_for_freight_dropoff(
+                &storage_unit,
+                item,
+                storage_a_id,
+                SwapAuth {},
+            );
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            reparented,
+            SwapAuth {},
+            ts.ctx(),
+        );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        assert_eq!(
+            storage_unit.item_quantity(storage_b_owner_cap_id, AMMO_TYPE_ID),
+            AMMO_QUANTITY,
+        );
+        ts::return_shared(storage_unit);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = storage_unit::EItemParentMismatch)]
+fun test_reparent_transit_item_for_freight_dropoff_fail_wrong_expected_prior_parent() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_a_id, nwn_a_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_a_id, nwn_a_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_a_id, character_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        item =
+            storage_unit.withdraw_item<SwapAuth>(
+                &character,
+                SwapAuth {},
+                AMMO_TYPE_ID,
+                AMMO_QUANTITY,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    let (storage_b_id, nwn_b_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_b_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.online(&mut nwn, &energy_config, &owner_cap);
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let _reparented =
+            storage_unit::reparent_transit_item_for_freight_dropoff(
+                &storage_unit,
+                item,
+                storage_b_id,
+                SwapAuth {},
+            );
+        ts::return_shared(storage_unit);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = storage_unit::EExtensionNotAuthorized)]
+fun test_reparent_transit_item_for_freight_dropoff_fail_extension_not_authorized() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_a_id, nwn_a_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_a_id, nwn_a_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_a_id, character_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        item =
+            storage_unit.withdraw_item<SwapAuth>(
+                &character,
+                SwapAuth {},
+                AMMO_TYPE_ID,
+                AMMO_QUANTITY,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    let (storage_b_id, nwn_b_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_b_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.online(&mut nwn, &energy_config, &owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let _reparented =
+            storage_unit::reparent_transit_item_for_freight_dropoff(
+                &storage_unit,
+                item,
+                storage_a_id,
+                SwapAuth {},
+            );
+        ts::return_shared(storage_unit);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = storage_unit::ENotOnline)]
+fun test_reparent_transit_item_for_freight_dropoff_fail_not_online() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_a_id, nwn_a_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_a_id, nwn_a_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_a_id, character_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        item =
+            storage_unit.withdraw_item<SwapAuth>(
+                &character,
+                SwapAuth {},
+                AMMO_TYPE_ID,
+                AMMO_QUANTITY,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    let (storage_b_id, _nwn_b_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let _reparented =
+            storage_unit::reparent_transit_item_for_freight_dropoff(
+                &storage_unit,
+                item,
+                storage_a_id,
+                SwapAuth {},
+            );
+        ts::return_shared(storage_unit);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = storage_unit::ETenantMismatch)]
+fun test_reparent_transit_item_for_freight_dropoff_fail_tenant_mismatch() {
+    let mut ts = ts::begin(governor());
+    setup_nwn(&mut ts);
+    let character_id = create_character(&mut ts, user_a(), CHARACTER_A_ITEM_ID);
+
+    let (storage_a_id, nwn_a_id) = create_storage_unit(
+        &mut ts,
+        character_id,
+        LOCATION_A_HASH,
+        STORAGE_A_ITEM_ID,
+        STORAGE_A_TYPE_ID,
+    );
+    online_storage_unit(&mut ts, user_a(), character_id, storage_a_id, nwn_a_id);
+    mint_ammo<StorageUnit>(&mut ts, storage_a_id, character_id, user_a());
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id),
+            ts.ctx(),
+        );
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        ts::return_shared(storage_unit);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    let item: Item;
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_a_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        item =
+            storage_unit.withdraw_item<SwapAuth>(
+                &character,
+                SwapAuth {},
+                AMMO_TYPE_ID,
+                AMMO_QUANTITY,
+                ts.ctx(),
+            );
+        ts::return_shared(storage_unit);
+        ts::return_shared(character);
+    };
+
+    let different_tenant = DIFFERENT_TENANT.to_string();
+    let character_id_diff_tenant = create_character_with_tenant(
+        &mut ts,
+        user_a(),
+        CHARACTER_B_ITEM_ID,
+        different_tenant,
+    );
+
+    let (storage_b_id, nwn_b_id) = create_storage_unit(
+        &mut ts,
+        character_id_diff_tenant,
+        test_helpers::get_verified_location_hash(),
+        STORAGE_A_ITEM_ID + 1,
+        STORAGE_A_TYPE_ID,
+    );
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_b_id);
+        let energy_config = ts::take_shared<EnergyConfig>(&ts);
+        let mut character = ts::take_shared_by_id<Character>(&ts, character_id_diff_tenant);
+        let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
+            ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id_diff_tenant),
+            ts.ctx(),
+        );
+        storage_unit.online(&mut nwn, &energy_config, &owner_cap);
+        storage_unit.authorize_extension<SwapAuth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(storage_unit);
+        ts::return_shared(nwn);
+        ts::return_shared(energy_config);
+        ts::return_shared(character);
+    };
+
+    ts::next_tx(&mut ts, user_a());
+    {
+        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let _reparented =
+            storage_unit::reparent_transit_item_for_freight_dropoff(
+                &storage_unit,
+                item,
+                storage_a_id,
+                SwapAuth {},
+            );
+        ts::return_shared(storage_unit);
+    };
+
+    ts::end(ts);
+}
+
 /// Test full swap flow using extension-to-owned functions (no AdminACL needed)
 /// Scenario: User B owns SSU with lens, User A has ammo in owned inventory.
 ///           Extension swaps ammo for lens using deposit_to_owned and withdraw_by_owner.

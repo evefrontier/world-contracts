@@ -278,6 +278,29 @@ public fun deposit_item<Auth: drop>(
     );
 }
 
+/// Completes a pickup → dropoff freight leg by rebinding `Item.parent_id` to this storage unit.
+///
+/// Requires the same `Auth` authorization as `deposit_item`. Callers must pass the real pickup
+/// SSU id as `expected_prior_parent` so the item's current `parent_id` is bound to that origin.
+/// Returns an `Item` with `parent_id == object::id(storage_unit)`; use `deposit_item`,
+/// `deposit_to_owned`, `deposit_to_open_inventory`, etc. as usual (their parent checks unchanged).
+public fun reparent_transit_item_for_freight_dropoff<Auth: drop>(
+    storage_unit: &StorageUnit,
+    item: Item,
+    expected_prior_parent: ID,
+    _: Auth,
+): Item {
+    let storage_unit_id = object::id(storage_unit);
+    assert!(
+        storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
+        EExtensionNotAuthorized,
+    );
+    assert!(storage_unit.status.is_online(), ENotOnline);
+    assert!(inventory::parent_id(&item) == expected_prior_parent, EItemParentMismatch);
+    assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
+    inventory::reparent_transit_item(item, storage_unit_id)
+}
+
 public fun withdraw_item<Auth: drop>(
     storage_unit: &mut StorageUnit,
     character: &Character,
