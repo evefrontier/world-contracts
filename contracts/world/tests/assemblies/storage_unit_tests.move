@@ -2202,14 +2202,15 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_wrong_location_proof() {
     {
         let mut clock = clock::create_for_testing(ts.ctx());
         clock.set_for_testing(1763408644000);
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
         let proof =
             test_helpers::construct_location_proof(
                 LOCATION_A_HASH,
             );
         let proof_bytes = bcs::to_bytes(&proof);
-        let _reparented =
+        let reparented =
             storage_unit::reparent_transit_item_for_freight_dropoff(
                 &storage_unit,
                 item,
@@ -2220,9 +2221,16 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_wrong_location_proof() {
                 ts.ctx(),
                 SwapAuth {},
             );
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            reparented,
+            SwapAuth {},
+            ts.ctx(),
+        );
         clock.destroy_for_testing();
         ts::return_shared(server_registry);
         ts::return_shared(storage_unit);
+        ts::return_shared(character);
     };
 
     ts::end(ts);
@@ -2305,10 +2313,11 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_wrong_expected_prior_par
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut clock = clock::create_for_testing(ts.ctx());
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let clock = clock::create_for_testing(ts.ctx());
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let _reparented =
+        let reparented =
             storage_unit::reparent_transit_item_for_freight_dropoff(
                 &storage_unit,
                 item,
@@ -2319,9 +2328,16 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_wrong_expected_prior_par
                 ts.ctx(),
                 SwapAuth {},
             );
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            reparented,
+            SwapAuth {},
+            ts.ctx(),
+        );
         clock.destroy_for_testing();
         ts::return_shared(server_registry);
         ts::return_shared(storage_unit);
+        ts::return_shared(character);
     };
 
     ts::end(ts);
@@ -2403,10 +2419,11 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_extension_not_authorized
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut clock = clock::create_for_testing(ts.ctx());
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let clock = clock::create_for_testing(ts.ctx());
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let _reparented =
+        let reparented =
             storage_unit::reparent_transit_item_for_freight_dropoff(
                 &storage_unit,
                 item,
@@ -2417,9 +2434,16 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_extension_not_authorized
                 ts.ctx(),
                 SwapAuth {},
             );
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            reparented,
+            SwapAuth {},
+            ts.ctx(),
+        );
         clock.destroy_for_testing();
         ts::return_shared(server_registry);
         ts::return_shared(storage_unit);
+        ts::return_shared(character);
     };
 
     ts::end(ts);
@@ -2497,10 +2521,11 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_not_online() {
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut clock = clock::create_for_testing(ts.ctx());
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let clock = clock::create_for_testing(ts.ctx());
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let _reparented =
+        let reparented =
             storage_unit::reparent_transit_item_for_freight_dropoff(
                 &storage_unit,
                 item,
@@ -2511,9 +2536,16 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_not_online() {
                 ts.ctx(),
                 SwapAuth {},
             );
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            reparented,
+            SwapAuth {},
+            ts.ctx(),
+        );
         clock.destroy_for_testing();
         ts::return_shared(server_registry);
         ts::return_shared(storage_unit);
+        ts::return_shared(character);
     };
 
     ts::end(ts);
@@ -2583,31 +2615,35 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_tenant_mismatch() {
         STORAGE_A_TYPE_ID,
     );
 
+    online_storage_unit(
+        &mut ts,
+        user_a(),
+        character_id_diff_tenant,
+        storage_b_id,
+        nwn_b_id,
+    );
+
     ts::next_tx(&mut ts, user_a());
     {
         let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
-        let mut nwn = ts::take_shared_by_id<NetworkNode>(&ts, nwn_b_id);
-        let energy_config = ts::take_shared<EnergyConfig>(&ts);
         let mut character = ts::take_shared_by_id<Character>(&ts, character_id_diff_tenant);
         let (owner_cap, receipt) = character.borrow_owner_cap<StorageUnit>(
             ts::most_recent_receiving_ticket<OwnerCap<StorageUnit>>(&character_id_diff_tenant),
             ts.ctx(),
         );
-        storage_unit.online(&mut nwn, &energy_config, &owner_cap);
         storage_unit.authorize_extension<SwapAuth>(&owner_cap);
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(storage_unit);
-        ts::return_shared(nwn);
-        ts::return_shared(energy_config);
         ts::return_shared(character);
     };
 
     ts::next_tx(&mut ts, user_a());
     {
-        let mut clock = clock::create_for_testing(ts.ctx());
-        let storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let clock = clock::create_for_testing(ts.ctx());
+        let mut storage_unit = ts::take_shared_by_id<StorageUnit>(&ts, storage_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id_diff_tenant);
         let server_registry = ts::take_shared<ServerAddressRegistry>(&ts);
-        let _reparented =
+        let reparented =
             storage_unit::reparent_transit_item_for_freight_dropoff(
                 &storage_unit,
                 item,
@@ -2618,9 +2654,16 @@ fun test_reparent_transit_item_for_freight_dropoff_fail_tenant_mismatch() {
                 ts.ctx(),
                 SwapAuth {},
             );
+        storage_unit.deposit_item<SwapAuth>(
+            &character,
+            reparented,
+            SwapAuth {},
+            ts.ctx(),
+        );
         clock.destroy_for_testing();
         ts::return_shared(server_registry);
         ts::return_shared(storage_unit);
+        ts::return_shared(character);
     };
 
     ts::end(ts);

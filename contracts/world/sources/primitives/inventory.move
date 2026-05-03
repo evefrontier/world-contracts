@@ -402,18 +402,9 @@ public(package) fun withdraw_item(
 /// at dropoff) so the item satisfies existing `deposit_*` checks (`parent_id ==` that SSU) without
 /// weakening them. Stronger haul policies (e.g. distance-bounded proofs) can be layered in the
 /// extension that issues the proof.
-public(package) fun reparent_transit_item(item: Item, new_parent_id: ID): Item {
-    let Item { id, parent_id: _, tenant, type_id, item_id, volume, quantity, location } = item;
-    Item {
-        id,
-        parent_id: new_parent_id,
-        tenant,
-        type_id,
-        item_id,
-        volume,
-        quantity,
-        location,
-    }
+public(package) fun reparent_transit_item(mut item: Item, new_parent_id: ID): Item {
+    item.parent_id = new_parent_id;
+    item
 }
 
 /// Destroys the inventory, emitting an `ItemDestroyedEvent` per entry.
