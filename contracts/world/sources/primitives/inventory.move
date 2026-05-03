@@ -398,9 +398,10 @@ public(package) fun withdraw_item(
 ///
 /// **Why this exists:** Withdrawal from pickup SSU A sets `parent_id == object::id(A)`. An
 /// authorized dropoff SSU extension can call this (via
-/// `storage_unit::reparent_transit_item_for_freight_dropoff`) so the item satisfies existing
-/// `deposit_*` checks (`parent_id ==` that SSU) without weakening them. Proving the reparent
-/// matches a freight job stays in downstream packages.
+/// `storage_unit::reparent_transit_item_for_freight_dropoff`, after a server-signed location proof
+/// at dropoff) so the item satisfies existing `deposit_*` checks (`parent_id ==` that SSU) without
+/// weakening them. Stronger haul policies (e.g. distance-bounded proofs) can be layered in the
+/// extension that issues the proof.
 public(package) fun reparent_transit_item(item: Item, new_parent_id: ID): Item {
     let Item { id, parent_id: _, tenant, type_id, item_id, volume, quantity, location } = item;
     Item {

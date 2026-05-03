@@ -282,12 +282,21 @@ public fun deposit_item<Auth: drop>(
 ///
 /// Requires the same `Auth` authorization as `deposit_item`. Callers must pass the real pickup
 /// SSU id as `expected_prior_parent` so the item's current `parent_id` is bound to that origin.
+///
+/// A server-signed `location_proof` for **`target_location_hash ==` this SSU's location** (see
+/// `location::verify_proximity_proof_from_bytes`) is required so reparenting cannot move cargo to
+/// an arbitrary SSU without referee-backed locality — same policy class as `burn_items_with_proof`.
+///
 /// Returns an `Item` with `parent_id == object::id(storage_unit)`; use `deposit_item`,
 /// `deposit_to_owned`, `deposit_to_open_inventory`, etc. as usual (their parent checks unchanged).
 public fun reparent_transit_item_for_freight_dropoff<Auth: drop>(
     storage_unit: &StorageUnit,
     item: Item,
     expected_prior_parent: ID,
+    server_registry: &ServerAddressRegistry,
+    location_proof: vector<u8>,
+    clock: &Clock,
+    ctx: &mut TxContext,
     _: Auth,
 ): Item {
     let storage_unit_id = object::id(storage_unit);
@@ -298,6 +307,13 @@ public fun reparent_transit_item_for_freight_dropoff<Auth: drop>(
     assert!(storage_unit.status.is_online(), ENotOnline);
     assert!(inventory::parent_id(&item) == expected_prior_parent, EItemParentMismatch);
     assert!(inventory::tenant(&item) == storage_unit.key.tenant(), ETenantMismatch);
+    location::verify_proximity_proof_from_bytes(
+        server_registry,
+        &storage_unit.location,
+        location_proof,
+        clock,
+        ctx,
+    );
     inventory::reparent_transit_item(item, storage_unit_id)
 }
 
