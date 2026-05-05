@@ -10,20 +10,22 @@ It also aligns with the new Modular architechture for game play. A generic hardw
 
 ## Motivations
 
+Some of the major motivations behind the v1 design decisions are:
+
 ### 1. Modular
-Structures are not predefined. A "Gate", "Turret", or "Ship" is a generic structure plus a small firmware module that defines what it does. Behaviours live in services that any structure can attach.
+Structures are not predefined. Any in-game structure (gate, turret, ship) is built from a generic structure, a small firmware module that defines what it does and a list of rules attached at runtime. New structure kinds can be introduced without touching existing ones.
 
 ### 2. Composable
-Rules stack. A structure can require liveness *and* location *and* a custom permit *and* a tribe membership at the same time, instead of a predefined rule set. A structure can be composed with any combination of modules and rules; rules can be added or removed dynamically by the owner.
+Behaviour emerges from composition rather than predefined rule sets. A single structure can layer multiple independent modules and the owner can add or remove them dynamically. This enables building complex game entities from simple, well-tested rule modules.
 
 ### 3. Extensible
-A new rule = a new service module. No edits to `gate.move`, `turret.move`, or any core module. Existing structures opt in via `add_requirement`.
+Adding a new rule should never require editing core gameplay modules. New rules ship as their own modules and existing structures opt in to them. The shape and lifetime of core code is decoupled from the rate at which game design evolves.
 
 ### 4. Secure
-Each rule is enforced by `internal::Permit<T>`: only the module that declares a `Requirement` type can tick its slot or mint authorisation for it. The hot-potato `ApplicationRequest` makes "forgot to check" a compile-time error.
+Every rule is enforced at the type level: only the module that defines a rule can authorise it being satisfied, and an in-flight action cannot be silently dropped without every rule being checked. This preserves the v0 security guarantee that only authorised entities can mutate on-chain state, while extending it cleanly to authorised entities defined by third parties.
 
 ### 5. Moddable
-3rd-party services follow the same shape as first-party services. They self-announce via `discovery::announce_service`, and clients (frontends, indexers, the Frontier dispatcher) discover them generically without per-package code.
+As a core feature of Frontier, builders should be able to change how an owner's structure behaves : gate jump permissions, turret targeting, scanning logic, defence policies, auto-restock by publishing a custom Move package and letting the owner attach it.
 
 ### 6. Privacy Preserving
 Inherited from v0: locations are hashed; proximity is verified via signed proofs (ZK proofs later). v1 does not change this, `location_service` carries it forward. Locations can be revealed off-chain on a need-to-know basis with owner authorisation.
@@ -32,7 +34,7 @@ Inherited from v0: locations are hashed; proximity is verified via signed proofs
 
 Adopt the **Request / Requirement (punch-card) pattern** with on-chain self-describing PTB templates and event-based service discovery (proposed by Mysten Labs in [`damirka/ptb-templates-demo`](https://github.com/damirka/ptb-templates-demo)).
 
-Think of an in-game action as a **customs form**. When you initiate `gate::jump` you receive a paper form with several empty boxes, one per requirement the gate has ("must be online", "must be near the gate", "must hold a ticket"). You walk to each counter (a service module), the officer there inspects what they care about and stamps their box. The form has no "trash" outcome, you can only file it ("complete"), and filing is rejected if any box is unstamped. Different gate, different boxes; new rule tomorrow, just a new counter.
+Think of an in-game action as a **customs form**. When you initiate an action (`gate::jump`) you receive a paper form with several empty boxes, one per requirement the gate has ("must be online", "must be near the gate", "must hold a ticket"). You walk to each counter (a service module), the officer there inspects what they care about and stamps their box. The form has no "trash" outcome, you can only file it ("complete"), and filing is rejected if any box is unstamped. Different gate, different boxes; new rule tomorrow, just a new counter.
 
 ### The three on-chain primitives
 
@@ -59,17 +61,10 @@ Every public state-mutating function returns an `ApplicationRequest` carrying a 
 
 > Question: Should `Requirement` remain `copy`? Useful for folding lists; needs review.
 
-### Layer 1 — Core
 
-The design pattern itself, no game logic.
+### Layer 1 — Hardware
 
-- `request.move` — `ApplicationRequest`, builder, `complete_requirement<T>`, `complete`.
-- `requirement.move` — `Requirement(TypeName, bytes)` constructors and accessors.
-- `discovery.move` — `announce_service`, `ServiceAnnouncement<T>`, `NewServiceAnnounced` event.
-
-### Layer 2 — Hardware
-
-Generic structures the player owns.
+Generic structures the player owns. A piece of hardware tracks an `OwnerCap`, holds a `requirements` list, a `location`, optional `metadata`, and a typed inner field accessed via `internal::Permit<T>`.
 
 ```move
 public struct Assembly has key {
@@ -82,7 +77,7 @@ public struct Assembly has key {
 }
 ```
 
-A future `Ship` would live alongside:
+A future `Ship` would live alongside `Assembly` with the same shape (location, owner cap, requirements vector) plus ship-specific fields (crew, hull). Both share the requirements mechanism, so the same services (liveness, inventory, location, ticketing, …) attach to either. New hardware categories don't require new services.
 
 ```move
 public struct Ship has key {
@@ -92,25 +87,72 @@ public struct Ship has key {
     owner_cap_id: Option<ID>,
     requirements: vector<Requirement>,
     // ship-specific fields (crew, hull, …)
+```
+
+> Question: Can we add a non-removable `base_requirements` vector for invariants like `SystemAuthorization` and `ProximityToLocation`, in addition to `requirements`?
+> Can we include `network_node`, `character` as hardware modules ? 
+
+### Layer 2 — Firmware
+
+Base features defined by the game play what a piece of hardware does. Firmware is a thin shell that exposes action sites and folds the hardware's requirements into a request.
+
+```move
+module world::gate;
+
+public struct Gate has store {}
+
+public fun new(
+    location_hash: vector<u8>,
+    ctx: &mut TxContext,
+): (Assembly, OwnerCap, ApplicationRequest) {
+    assembly::new(
+        Gate {},
+        location_hash,
+        b"Gate".to_string(),
+        vector[location_service::requirement(location_hash)],   // seed requirements
+        ctx,
+    )
+}
+
+public fun jump(gate: &mut Assembly): ApplicationRequest {
+    gate.interact(b"gate:jump".to_string(), internal::permit<Gate>())
 }
 ```
 
-Both share the same `requirements` mechanism, so the same Layer 3 services (liveness, inventory, location, ticketing, …) attach to either. New hardware categories don't require new services.
+`assembly::interact<T>` checks that the hardware's `inner_type` is `T` (only `gate.move` can call `jump` because only it can mint `Permit<Gate>`), then folds `assembly.requirements` into a fresh `ApplicationRequest`.
 
-Inner state is held as a dynamic field, accessed via `internal::Permit<T>` so only the firmware that declares `T` can read/write it. Other hardware modules: `network_node`, `character`.
+Firmware modules: `gate` (jump, link), `storage_unit` (store, retrieve), `refinery` (refine), `turret` (fire).
 
-> Question: Can we add a non-removable `base_requirements` vector for invariants like `SystemAuthorization` and `ProximityToLocation`, in addition to `requirements`?
+### Layer 3 — Software
 
-### Layer 3 — Services
+3rd-party packages, user-facing applications built on top of firmware, and/or new requirements that owners can attach to their hardware. Indistinguishable in shape from first-party code. Two flavours:
 
-Game-defined digital physics and rules. One module per rule :
+- **Application software** — extends a firmware with custom logic. Reference: [`ticketing::ticketing`](https://github.com/damirka/ptb-templates-demo/blob/main/packages/ticketing/sources/ticketing.move) — a Ticket Kiosk built on top of `storage_unit`, exposing `buy_ticket`, `collect_proceeds`, `update_payment_type`.
+- **Custom requirements** — defines a new rule any owner can attach. Reference: [`ticketing::ticket_service`](https://github.com/damirka/ptb-templates-demo/blob/main/packages/ticketing/sources/ticket_service.move) — defines `RequiresTicket`, verifier, `ptb_template`, and announces.
+
+This is what makes "default vs extension" a non-distinction: the default rules and a builder's rules are both just services. Switching turret targeting policies = `remove_requirement` + `add_requirement`.
+
+---
+
+## Building blocks 
+
+Concerns shared across every layer above.
+
+### Requirements
+
+The requirements system is the design pattern that all hardware, firmware, and software share. A requirement is a `(TypeName, bytes)` pair on a hardware's `requirements` vector. There are two kinds:
+
+- **Standard system requirements** — first-party rules: `SystemAuthorization`, `ProximityToLocation`, `NodeIsOnline`, `HasFuel`, `HasEnergyReservation`, …
+- **Custom requirements** — defined by anyone: `NeedJumpPermit`, `DepositEVE`.
+
+Each requirement is implemented by a small **service module** with this shape:
 
 | Element | Purpose |
 |---|---|
-| `public struct Foo has drop {}` | Marker type — only this module can mint `Permit<Foo>` |
+| `public struct Foo has drop {}` | Marker type, only this module can mint `Permit<Foo>` |
 | `public fun requirement(...)` | Constructor, returns `Requirement` |
 | `public fun verify(req, ...)` | Performs the check, calls `complete_requirement<Foo>` |
-| `fun ptb_template(...)` | Describes the satisfying PTB — read via `devInspect` |
+| `fun ptb_template(...)` | Describes the satisfying PTB read via `devInspect` |
 | `fun init(ctx)` | Calls `discovery::announce_service` |
 
 Example: 
@@ -154,64 +196,37 @@ fun init(ctx: &mut TxContext) {
 }
 ```
 
-The same pattern can be used by `location_service`, `inventory_service`, `system_service`, `consumption_service`, etc.
+### Discovery
 
-### Layer 4 — Firmware
+Discovery is how generic clients find services and learn how to call them without hardcoding package IDs or function names.
 
-Game actions: what a piece of hardware does. Firmware is a thin shell over Layer 2 hardware that exposes action sites and folds the structure's requirements into a request.
+- **`discovery::announce_service<T>()`** — emits a `NewServiceAnnounced` event and creates a `ServiceAnnouncement<T>` object stored at the service's package address (so the announcement is guaranteed to come from the package that defines `T`, via `internal::Permit<T>`).
+- **`ptb_template()`** — each service publishes a Move function returning a structured PTB. Clients call it via `devInspect`, BCS-decode the result, and substitute placeholders (`request`, `assembly`, owned objects, proofs) to produce the real transaction.
 
-```move
-module world::gate;
-
-public struct Gate has store {}
-
-public fun new(
-    location_hash: vector<u8>,
-    ctx: &mut TxContext,
-): (Assembly, OwnerCap, ApplicationRequest) {
-    assembly::new(
-        Gate {},
-        location_hash,
-        b"Gate".to_string(),
-        vector[location_service::requirement(location_hash)],   // seed requirements
-        ctx,
-    )
-}
-
-public fun jump(gate: &mut Assembly): ApplicationRequest {
-    gate.interact(b"gate:jump".to_string(), internal::permit<Gate>())
-}
-```
-
-`assembly::interact<T>` checks that the assembly's `inner_type` is `T` (only `gate.move` can call `jump` because only it can mint `Permit<Gate>`), then folds `assembly.requirements` into a fresh `ApplicationRequest`.
-
-Firmware modules: `gate`, `storage_unit`, `refinery`, `turret`.
-
-### Layer 5 — Extensions (3rd-party)
-
-External packages defining their own Layer 3 services or Layer 4 firmware. Indistinguishable in shape from first-party modules. 
-
-Reference: [`ticketing::ticket_service`](https://github.com/damirka/ptb-templates-demo/blob/main/packages/ticketing/sources/ticket_service.move) (a Layer 3 service) and [`ticketing::ticketing`](https://github.com/damirka/ptb-templates-demo/blob/main/packages/ticketing/sources/ticketing.move) (a Layer 4 firmware that builds on top of `storage_unit`).
-
-This is what makes "default vs extension" a non-distinction: the default rules and a builder's rules are both just services. Switching turret targeting policies = `remove_requirement` + `add_requirement`.
+System services (liveness, location, inventory, etc.) are well-known and can be hardcoded by clients if desired. Custom requirements introduced by software always require a `dryRun` / `devInspect` round-trip to resolve their template before the PTB can be built.
 
 ### Access control
 
-Access control is a common module used by every layer above Core.
+Authorization primitives shared by every layer:
 
 - `admin_acl.move` — `AdminACL` and sponsor verification helpers, used by `system_service` to verify game-issued transactions.
 - `owner_cap.move` — generic `OwnerCap` definition + `cap_matches` helpers, used by hardware to gate owner-only actions like `add_requirement`, `remove_requirement`, `online`, `link`.
 - `character_cap.move` — soulbound (no `store`) capability for the in-game Character.
 
-These live under `access/` and are imported by hardware, services, and firmware as needed. They are deliberately *not* a separate layer because they have no game logic of their own, they only define the cap types and verification helpers other layers compose with.
+These have no game logic of their own — they only define cap types and verification helpers other layers compose with.
+
+---
 
 ### Folder Structure
+
+The design-pattern primitives live in `core/` (request, requirement, discovery) and have no game logic of their own. Everything else is layered on top:
+
 
 ```text
 world-contracts/
 ├── world/
 │   ├── sources/
-│   │   ├── core/                # request, requirement, discovery
+│   │   ├── core/                # request, requirement, discovery (foundations)
 │   │   ├── access/              # admin_acl, owner_cap, character_cap
 │   │   ├── hardware/            # assembly, ship (future), network_node, character
 │   │   ├── services/            # liveness, location, inventory, system, ...
@@ -219,7 +234,8 @@ world-contracts/
 │   │   └── base/                # item
 │   └── tests/
 │
-├── extensions/                  # 3rd-party services
+├── software/                    # 3rd-party packages — applications & custom requirements
+│   ├── ticketing/              
 │   ├── tribe_permit/
 │   └── turret_policies/
 ```
@@ -308,13 +324,13 @@ The transaction calls each verifier in order. `gate::jump` produces the request,
 - **Adding a rule** — publish a service module; existing structures opt in via `add_requirement`. No core change.
 - **Stacking rules** — `requirements: vector<Requirement>` replaces a single `Option<TypeName>` slot.
 - **Clients** — our services drops per-assembly-type code. One generic loop reads `assembly.requirements`, looks each up via discovery, runs `ptb_template` via `devInspect`, applies steps.
-- **3rd-party onboarding** — builders write a service the same way the core team does. Reference: `ticketing::ticket_service`.
+- **3rd-party onboarding** — builders write a service the same way the core team does.
 - **Indexer / SDK discovery** — one event type (`NewServiceAnnounced`) is the entire service catalogue.
 
 ### What becomes harder
 
 - **Per-call cost grows** — one extra Move call per rule. Bundle hot paths if profiling demands.
-- **PTB construction** — clients must dry-run `ptb_template` and resolve placeholders. Shipped as `ptb-sdk`.
+- **PTB construction** — clients must dry-run `ptb_template` and resolve placeholders. To mitigate we could ship them as `ptb-sdk`.
 
 ---
 
@@ -330,9 +346,7 @@ Sui framework's `TransferPolicy` lets a creator attach multiple typed `Rule<Rule
 
 ### Alternative 3: Typed `Assembly<T>` + `OwnerCap<T>`
 Phantom-typed assembly + cap (e.g. `Assembly<Gate>`) for compile-time per-kind safety.
-
-**Rejected:** every `T` becomes a separate object type, so indexers and "list my structures" UIs can't enumerate them with a single query, and foreign types like `TicketKiosk` fragment the surface. The isolation it provides is already given by `internal::Permit<T>` on inner-state access — the phantom param just duplicates it at the cost of complexity.
-
+**Rejected:** every `T` becomes a separate object type, so indexers and "list my structures" UIs can't enumerate them with a single query.
 ---
 
 ## Common Questions
@@ -341,7 +355,7 @@ Phantom-typed assembly + cap (e.g. `Assembly<Gate>`) for compile-time per-kind s
    They publish a Move package containing: a marker `struct Foo has drop {}`, a `requirement()` constructor, a `verify()` function gated by `internal::permit<Foo>()`, a `ptb_template()`, and an `init()` that calls `discovery::announce_service`. Owners attach the requirement to their structure via `add_requirement`.
 
 2. **How does this enable upgradeability without breaking immutability?**
-   Struct layouts and public APIs of core modules don't change when rules are added — the rules live in *new* packages with their own `TypeName`. Sui's package immutability is a feature here, not a problem: each service is independently versioned and discovered. Per-instance config travels in BCS-encoded `Requirement` bytes, so adding fields to a service's config is a service-local upgrade.
+   Struct layouts and public APIs of core modules don't change when rules are added. The rules live in *new* packages with their own `TypeName`. Sui's package immutability is a feature here, not a problem: each service is independently versioned and discovered. Per-instance config travels in BCS-encoded `Requirement` bytes, so adding fields to a service's config is a service-local upgrade.
 
 3. **What does the Frontier go-services dispatcher look like in v1?**
    Today (v0), `eve-frontier-go-services/service/assembly/internal/web3/` has one Go file per action per assembly type — `gate_jump.go`, `gate_jump_with_permit.go`, `turret_get_target_priority_list.go`, `storage_unit_inventory_deposit.go`, etc. — each hardcoding the Move target and arguments.
@@ -386,4 +400,4 @@ Phantom-typed assembly + cap (e.g. `Assembly<Gate>`) for compile-time per-kind s
 
 ---
 
-*Prototype reference: `ptb-templates-demo/packages/world/` (on-chain) and `ptb-templates-demo/libraries/ptb-sdk/` (client).*
+*Prototype reference: [request-requirement-prototype](https://github.com/damirka/fronteer-world-contracts/tree/main/contracts/world_2) and [ptb-templates-and-discovery-prototype](https://github.com/damirka/ptb-templates-demo).*
