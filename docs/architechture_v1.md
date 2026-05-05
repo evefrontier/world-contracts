@@ -64,17 +64,18 @@ Every public state-mutating function returns an `ApplicationRequest` carrying a 
 
 ### Layer 1 — Hardware
 
-Generic structures the player owns. A piece of hardware is intentionally minimal: an id, a pointer to its owner cap, and a list of requirements. Location, metadata, firmware kind, and any firmware-specific state live in **dynamic fields** keyed by the service that owns them.
+Generic structures the player owns. A piece of hardware is intentionally minimal: an id, a pointer to its owner cap, the firmware that defines its action sites, and a list of requirements. Location, metadata, and firmware-specific state live in **dynamic fields** keyed by the service that owns them.
 
 ```move
 public struct Structure has key {
     id: UID,
     owner_cap_id: Option<ID>,
+    inner_type: TypeName,
     requirements: vector<Requirement>,
 }
 ```
 
-A ship is just a `Structure` with `HostsFirmware<Hull>`, `HostsFirmware<Propulsion>`, `HostsFirmware<Turret>`, … and the corresponding firmware-owned dynamic fields.
+`inner_type` records the `TypeName` of the firmware (`Gate`, `Turret`, `Hull`) whose value is stashed as a dynamic field on the structure. It is set once at construction and is the dispatch key that lets `structure::interact<T>` verify the caller's `Permit<T>` matches the actual firmware, and lets off-chain clients discover *which module owns this hardware's action sites* without enumerating dynamic fields.
 
 Trade-off: "every structure has a location" is no longer a type-level guarantee. It's enforced by a non-removable **base requirement** seeded at anchor time, so unlocated structures abort at check-time.
 
@@ -102,7 +103,7 @@ public fun jump(gate: &mut Structure): ApplicationRequest {
 }
 ```
 
-`structure::interact<T>` checks that `requirements` contains `HostsFirmware<T>` (only the module declaring `T` can mint `Permit<T>`), then folds the requirements into a fresh `ApplicationRequest`. A ship with several `HostsFirmware<…>` entries supports any of those firmwares calling `interact`.
+`structure::interact<T>` checks that `inner_type == type_name<T>()` (only the module declaring `T` can mint `Permit<T>`), then folds the requirements into a fresh `ApplicationRequest`.
 
 Firmware modules: `gate` (jump, link), `storage_unit` (store, retrieve), `refinery` (refine), `turret` (fire).
 
