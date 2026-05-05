@@ -62,7 +62,7 @@ Every public state-mutating function returns an `ApplicationRequest` carrying a 
 > Question: Should `Requirement` remain `copy`? Useful for folding lists; needs review.
 
 
-### Layer 1 — Hardware
+### Layer 1 : Hardware
 
 Generic structures the player owns. A piece of hardware is intentionally minimal: an id, a pointer to its owner cap, the firmware that defines its action sites, and a list of requirements. Location, metadata, and firmware-specific state live in **dynamic fields** keyed by the service that owns them.
 
@@ -75,13 +75,13 @@ public struct Structure has key {
 }
 ```
 
-`inner_type` records the `TypeName` of the firmware (`Gate`, `Turret`, `Hull`) whose value is stashed as a dynamic field on the structure. It is set once at construction and is the dispatch key that lets `structure::interact<T>` verify the caller's `Permit<T>` matches the actual firmware, and lets off-chain clients discover *which module owns this hardware's action sites* without enumerating dynamic fields.
+`inner_type` is the `TypeName` of the firmware (`Gate`, `Turret`, `Hull`) set once at construction. It tells `structure::interact<T>` whether the caller's `Permit<T>` matches this hardware, and tells clients which module owns its action sites without enumerating dynamic fields.
 
 Trade-off: "every structure has a location" is no longer a type-level guarantee. It's enforced by a non-removable **base requirement** seeded at anchor time, so unlocated structures abort at check-time.
 
 > Open: Can we add a non-removable `base_requirements` vector for invariants like `SystemAuthorization` and `ProximityToLocation`, in addition to `requirements`?
 
-### Layer 2 — Firmware
+### Layer 2 : Firmware
 
 Base features defined by the game play what a piece of hardware does based on the modules composed. Firmware is a thin shell that exposes action sites and folds the hardware's requirements into a request.
 
@@ -107,7 +107,7 @@ public fun jump(gate: &mut Structure): ApplicationRequest {
 
 Firmware modules: `gate` (jump, link), `storage_unit` (store, retrieve), `refinery` (refine), `turret` (fire).
 
-### Layer 3 — Software
+### Layer 3 : Software
 
 3rd-party packages, user-facing applications built on top of firmware, and/or new requirements that owners can attach to their hardware. Indistinguishable in shape from first-party code. Two flavours:
 
@@ -128,14 +128,14 @@ In v0 these rules were the bulky middle of `gate.move`, `storage_unit.move`, `tu
 
 The requirements system is the design pattern that all hardware, firmware, and software share. A requirement is a `(TypeName, bytes)` pair on a hardware's `requirements` vector. There are two kinds:
 
-- **Standard system requirements** — game-team-authored rules: `SystemAuthorization`, `ProximityToLocation`, `NodeIsOnline`, `HasFuel`, `HasEnergyReservation`, …
+- **Standard system requirements** — game-team-authored rules: `SystemAuthorization`, `ProximityToLocation`, `NodeIsOnline`, `HasFuel`, `HasEnergyReservation`
 - **Custom Third-party requirements** — builder-authored rules: `NeedJumpPermit`, `DepositEVE`, `AggressionTargeting`, …
 
 The two are *shape-identical*. Nothing in the runtime distinguishes them; that uniformity is the point. Every service module looks like this:
 
 | Element | Purpose |
 |---|---|
-| `public struct Foo has drop {}` | Marker type, only this module can mint `Permit<Foo>` |
+| `public struct Ship has drop {}` | Marker type, only this module can mint `Permit<Ship>` |
 | `public fun requirement(...)` | Constructor, returns `Requirement` |
 | `public fun verify(req, ...)` | Performs the check, calls `complete_requirement<Foo>` |
 | `fun ptb_template(...)` | Describes the satisfying PTB read via `devInspect` |
@@ -236,7 +236,7 @@ The full flow, from structure setup to a player's transaction. Combines on-chain
 ### A. Owner sets up the gate (sponsored transactions)
 
 ```move
-// 1. Anchor the gate (admin sponsored). Mints HostsFirmware<Gate> + an OwnerCap.
+// 1. Anchor the gate (admin sponsored). Sets inner_type = Gate and mints an OwnerCap.
 let (mut gate, owner_cap, mut req) = gate::new(ctx);
 location_service::set_location(&mut gate, &admin_acl, loc_a);   // pins location dynamic field
 system_service::confirm_sponsor_is_system(&sa, &mut req, ctx);
@@ -333,7 +333,7 @@ Per-asset `extension: Option<TypeName>` with `authorize_extension<Auth>`.
 Sui framework's `TransferPolicy` lets a creator attach multiple typed `Rule<RuleKey>` to a shared policy.
 **Rejected:** rules are tied to a shared policy object, not the asset; mutation always goes through the creator. Doesn't fit "owner-programmable structures".
 
-### Alternative 3: Typed `Assembly<T>` + `OwnerCap<T>`
+### Alternative 3: `Typed Assembly<T>` + `OwnerCap<T>`
 Phantom-typed assembly + cap (e.g. `Assembly<Gate>`) for compile-time per-kind safety.
 **Rejected:** every `T` becomes a separate object type, so indexers and "list my structures" UIs can't enumerate them with a single query.
 ---
