@@ -134,18 +134,20 @@ This is what makes "default vs extension" a non-distinction: the default rules a
 
 ---
 
-## Building blocks 
+## Services
 
-Concerns shared across every layer above.
+Hardware, Firmware, and Software are the visible scaffold; **Services are where the rules actually live**. Every check that gates an action "is the node online?", "is the player close enough?", "do they hold a ticket?" is a service.
+
+In v0 these rules were the bulky middle of `gate.move`, `storage_unit.move`, `turret.move`. v1 pulls each one into its own small module, leaving the assemblies as thin shells. That's what makes rules independently shippable and shape-identical between first-party and 3rd-party authors.
 
 ### Requirements
 
 The requirements system is the design pattern that all hardware, firmware, and software share. A requirement is a `(TypeName, bytes)` pair on a hardware's `requirements` vector. There are two kinds:
 
-- **Standard system requirements** — first-party rules: `SystemAuthorization`, `ProximityToLocation`, `NodeIsOnline`, `HasFuel`, `HasEnergyReservation`, …
-- **Custom requirements** — defined by anyone: `NeedJumpPermit`, `DepositEVE`.
+- **Standard system requirements** — game-team-authored rules: `SystemAuthorization`, `ProximityToLocation`, `NodeIsOnline`, `HasFuel`, `HasEnergyReservation`, …
+- **Custom Third-party requirements** — builder-authored rules: `NeedJumpPermit`, `DepositEVE`, `AggressionTargeting`, …
 
-Each requirement is implemented by a small **service module** with this shape:
+The two are *shape-identical*. Nothing in the runtime distinguishes them; that uniformity is the point. Every service module looks like this:
 
 | Element | Purpose |
 |---|---|
@@ -212,12 +214,13 @@ Authorization primitives shared by every layer:
 - `admin_acl.move` — `AdminACL` and sponsor verification helpers, used by `system_service` to verify game-issued transactions.
 - `owner_cap.move` — generic `OwnerCap` definition + `cap_matches` helpers, used by hardware to gate owner-only actions like `add_requirement`, `remove_requirement`, `online`, `link`.
 - `character_cap.move` — soulbound (no `store`) capability for the in-game Character.
+- `internal::Permit<T>` — package-private witness; only the module declaring `T` can mint it. Forging a stamp on a requirement is a build error, not an exploit, so no central allowlist is needed.
 
-These have no game logic of their own — they only define cap types and verification helpers other layers compose with.
+These have no game logic of their own they only define cap types and verification helpers other layers compose with.
 
 ---
 
-### Folder Structure
+## Folder Structure
 
 The design-pattern primitives live in `core/` (request, requirement, discovery) and have no game logic of their own. Everything else is layered on top:
 
