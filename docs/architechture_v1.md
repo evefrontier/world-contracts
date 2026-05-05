@@ -44,7 +44,7 @@ public struct Requirement(TypeName, vector<u8>) has copy, drop, store;
 public struct ApplicationRequest { /* hot potato */
     action: String,
     requires: vector<Requirement>,
-    assembly_id: Option<ID>,
+    structure_id: Option<ID>,
     version: u64,
 }
 
@@ -64,62 +64,45 @@ Every public state-mutating function returns an `ApplicationRequest` carrying a 
 
 ### Layer 1 — Hardware
 
-Generic structures the player owns. A piece of hardware tracks an `OwnerCap`, holds a `requirements` list, a `location`, optional `metadata`, and a typed inner field accessed via `internal::Permit<T>`.
+Generic structures the player owns. A piece of hardware is intentionally minimal: an id, a pointer to its owner cap, and a list of requirements. Location, metadata, firmware kind, and any firmware-specific state live in **dynamic fields** keyed by the service that owns them.
 
 ```move
-public struct Assembly has key {
+public struct Structure has key {
     id: UID,
-    category: String,           // "Gate", "Turret", "StorageUnit" (informational)
-    inner_type: TypeName,       // identifies which firmware owns inner state
-    location: Location,
     owner_cap_id: Option<ID>,
     requirements: vector<Requirement>,
 }
 ```
 
-A future `Ship` would live alongside `Assembly` with the same shape (location, owner cap, requirements vector) plus ship-specific fields (crew, hull). Both share the requirements mechanism, so the same services (liveness, inventory, location, ticketing, …) attach to either. New hardware categories don't require new services.
+A ship is just a `Structure` with `HostsFirmware<Hull>`, `HostsFirmware<Propulsion>`, `HostsFirmware<Turret>`, … and the corresponding firmware-owned dynamic fields.
 
-```move
-public struct Ship has key {
-    id: UID,
-    inner_type: TypeName,       // which firmware owns the ship's inner state
-    location: Location,
-    owner_cap_id: Option<ID>,
-    requirements: vector<Requirement>,
-    // ship-specific fields (crew, hull, …)
-```
+Trade-off: "every structure has a location" is no longer a type-level guarantee. It's enforced by a non-removable **base requirement** seeded at anchor time, so unlocated structures abort at check-time.
 
-> Question: Can we add a non-removable `base_requirements` vector for invariants like `SystemAuthorization` and `ProximityToLocation`, in addition to `requirements`?
-> Can we include `network_node`, `character` as hardware modules ? 
+> Open: Can we add a non-removable `base_requirements` vector for invariants like `SystemAuthorization` and `ProximityToLocation`, in addition to `requirements`?
 
 ### Layer 2 — Firmware
 
-Base features defined by the game play what a piece of hardware does. Firmware is a thin shell that exposes action sites and folds the hardware's requirements into a request.
+Base features defined by the game play what a piece of hardware does based on the modules composed. Firmware is a thin shell that exposes action sites and folds the hardware's requirements into a request.
 
 ```move
 module world::gate;
 
-public struct Gate has store {}
+public struct Gate has store {}                 
 
-public fun new(
-    location_hash: vector<u8>,
-    ctx: &mut TxContext,
-): (Assembly, OwnerCap, ApplicationRequest) {
-    assembly::new(
-        Gate {},
-        location_hash,
-        b"Gate".to_string(),
-        vector[location_service::requirement(location_hash)],   // seed requirements
+public fun new(ctx: &mut TxContext): (Structure, OwnerCap, ApplicationRequest) {
+    structure::new(
+        internal::permit<Gate>(),                // declares this firmware as a host
         ctx,
     )
+    // Caller pairs this with location_service::set_location(...) before complete().
 }
 
-public fun jump(gate: &mut Assembly): ApplicationRequest {
+public fun jump(gate: &mut Structure): ApplicationRequest {
     gate.interact(b"gate:jump".to_string(), internal::permit<Gate>())
 }
 ```
 
-`assembly::interact<T>` checks that the hardware's `inner_type` is `T` (only `gate.move` can call `jump` because only it can mint `Permit<Gate>`), then folds `assembly.requirements` into a fresh `ApplicationRequest`.
+`structure::interact<T>` checks that `requirements` contains `HostsFirmware<T>` (only the module declaring `T` can mint `Permit<T>`), then folds the requirements into a fresh `ApplicationRequest`. A ship with several `HostsFirmware<…>` entries supports any of those firmwares calling `interact`.
 
 Firmware modules: `gate` (jump, link), `storage_unit` (store, retrieve), `refinery` (refine), `turret` (fire).
 
@@ -170,11 +153,11 @@ public fun requirement(): Requirement {
 
 public fun verify_liveness(request: &mut ApplicationRequest, node: &NetworkNode) {
     assert!(node.is_online());
-    assert!(request.assembly_id().is_some_and!(|id| node.connected_assemblies().contains(id)));
+    assert!(request.structure_id().is_some_and!(|id| node.connected_structures().contains(id)));
     request.complete_requirement<NodeIsOnline>(internal::permit());
 }
 
-fun ptb_template(assembly: &Assembly, mut ptb: ptb::Transaction): ptb::Transaction {
+fun ptb_template(structure: &Structure, mut ptb: ptb::Transaction): ptb::Transaction {
     ptb.command(ptb::move_call(
         type_name::defining_id<NodeIsOnline>().to_string(),
         "liveness_service", "verify_liveness",
@@ -191,7 +174,7 @@ fun init(ctx: &mut TxContext) {
     discovery::announce_service(
         internal::permit<NodeIsOnline>(),
         "Node Liveness",
-        "Assembly has to be online and connected to a network node",
+        "Structure has to be online and connected to a network node",
         "ptb_template",
         ctx,
     )
@@ -203,7 +186,7 @@ fun init(ctx: &mut TxContext) {
 Discovery is how generic clients find services and learn how to call them without hardcoding package IDs or function names.
 
 - **`discovery::announce_service<T>()`** — emits a `NewServiceAnnounced` event and creates a `ServiceAnnouncement<T>` object stored at the service's package address (so the announcement is guaranteed to come from the package that defines `T`, via `internal::Permit<T>`).
-- **`ptb_template()`** — each service publishes a Move function returning a structured PTB. Clients call it via `devInspect`, BCS-decode the result, and substitute placeholders (`request`, `assembly`, owned objects, proofs) to produce the real transaction.
+- **`ptb_template()`** — each service publishes a Move function returning a structured PTB. Clients call it via `devInspect`, BCS-decode the result, and substitute placeholders (`request`, `structure`, owned objects, proofs) to produce the real transaction.
 
 System services (liveness, location, inventory, etc.) are well-known and can be hardcoded by clients if desired. Custom requirements introduced by software always require a `dryRun` / `devInspect` round-trip to resolve their template before the PTB can be built.
 
@@ -231,7 +214,7 @@ world-contracts/
 │   ├── sources/
 │   │   ├── core/                # request, requirement, discovery (foundations)
 │   │   ├── access/              # admin_acl, owner_cap, character_cap
-│   │   ├── hardware/            # assembly, ship (future), network_node, character
+│   │   ├── hardware/            # structure, character
 │   │   ├── services/            # liveness, location, inventory, system, ...
 │   │   ├── firmware/            # gate, storage_unit, refinery, turret
 │   │   └── base/                # item
@@ -252,8 +235,9 @@ The full flow, from structure setup to a player's transaction. Combines on-chain
 ### A. Owner sets up the gate (sponsored transactions)
 
 ```move
-// 1. Anchor the gate (admin sponsored)
-let (mut gate, owner_cap, mut req) = gate::new(loc_a, ctx);
+// 1. Anchor the gate (admin sponsored). Mints HostsFirmware<Gate> + an OwnerCap.
+let (mut gate, owner_cap, mut req) = gate::new(ctx);
+location_service::set_location(&mut gate, &admin_acl, loc_a);   // pins location dynamic field
 system_service::confirm_sponsor_is_system(&sa, &mut req, ctx);
 req.complete();
 
@@ -290,7 +274,7 @@ const templates = await Promise.all(requirements.map(async (r) => {
         servicePackageId: svc.pkg,
         moduleName:       svc.module,
         templateFun:      svc.fn,
-        assemblyId:       gateId,
+        structureId:      gateId,
     });
 }));
 
@@ -326,7 +310,7 @@ The transaction calls each verifier in order. `gate::jump` produces the request,
 
 - **Adding a rule** — publish a service module; existing structures opt in via `add_requirement`. No core change.
 - **Stacking rules** — `requirements: vector<Requirement>` replaces a single `Option<TypeName>` slot.
-- **Clients** — our services drops per-assembly-type code. One generic loop reads `assembly.requirements`, looks each up via discovery, runs `ptb_template` via `devInspect`, applies steps.
+- **Clients** — our services drops per-structure-type code. One generic loop reads `structure.requirements`, looks each up via discovery, runs `ptb_template` via `devInspect`, applies steps.
 - **3rd-party onboarding** — builders write a service the same way the core team does.
 - **Indexer / SDK discovery** — one event type (`NewServiceAnnounced`) is the entire service catalogue.
 
@@ -334,6 +318,7 @@ The transaction calls each verifier in order. `gate::jump` produces the request,
 
 - **Per-call cost grows** — one extra Move call per rule. Bundle hot paths if profiling demands.
 - **PTB construction** — clients must dry-run `ptb_template` and resolve placeholders. To mitigate we could ship them as `ptb-sdk`.
+- **Extra fetch for reads** — location and metadata are dynamic fields, so indexers fetch the structure plus its children.
 
 ---
 
@@ -369,21 +354,21 @@ Phantom-typed assembly + cap (e.g. `Assembly<Gate>`) for compile-time per-kind s
    func (c *Client) BuildAction(
        ctx context.Context,
        action string,           // e.g. "gate::jump"
-       assemblyID string,
+       structureID string,
        userArgs map[string]any,
    ) (string, error) {
-       assembly, _ := c.GetAssembly(ctx, assemblyID)
+       structure, _ := c.GetStructure(ctx, structureID)
 
        tx := sui.NewProgrammableTransaction(...)
        req := tx.MoveCall(
            fmt.Sprintf("%s::%s", c.WorldContractsPackageID, action),
            []string{},
-           tx.SharedMutableObject(assemblyID),
+           tx.SharedMutableObject(structureID),
        )
 
-       for _, r := range assembly.Requirements {
+       for _, r := range structure.Requirements {
            svc      := c.Registry.Lookup(r.TypeName)              // built from announce events
-           template := c.DevInspectTemplate(svc, assemblyID)      // resolves ptb_template
+           template := c.DevInspectTemplate(svc, structureID)     // resolves ptb_template
            c.ApplySteps(tx, req, template, userArgs)              // generic placeholder resolution
        }
 
@@ -396,7 +381,7 @@ Phantom-typed assembly + cap (e.g. `Assembly<Gate>`) for compile-time per-kind s
        return tx.SimulateAndGetTransactionBytes(ctx)
    }
    ```
-    No per-assembly-type branches, no hardcoded function names.
+    No per-structure-type branches, no hardcoded function names.
 
 4. **Why not just hardcode services in the SDK?**
    For an open ecosystem where 3rd parties define rules the core team didn't anticipate, on-chain discovery is the only way new services reach already-deployed clients without a redeploy.
