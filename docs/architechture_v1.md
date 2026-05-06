@@ -25,7 +25,7 @@ Adding a new rule should never require editing core gameplay modules. New rules 
 Every rule is enforced at the type level: only the module that defines a rule can authorise it being satisfied, and an in-flight action cannot be silently dropped without every rule being checked. This preserves the v0 security guarantee that only authorised entities can mutate on-chain state, while extending it cleanly to authorised entities defined by third parties.
 
 ### 5. Moddable
-As a core feature of Frontier, builders should be able to change how an owner's structure behaves : gate jump permissions, turret targeting, scanning logic, defence policies, auto-restock by publishing a custom Move package and letting the owner attach it.
+As a core feature of Frontier, builders should be able to change how an owner's structure behaves : jump permissions, turret targeting, scanning logic, defence policies, auto-restock by publishing a custom Move package and letting the owner attach it.
 
 ### 6. Privacy Preserving
 Inherited from v0: locations are hashed; proximity is verified via signed proofs (ZK proofs later). v1 does not change this, `location_service` carries it forward. Locations can be revealed off-chain on a need-to-know basis with owner authorisation.
@@ -64,48 +64,122 @@ Every public state-mutating function returns an `ApplicationRequest` carrying a 
 
 ### Layer 1 : Hardware
 
-Generic structures the player owns. A piece of hardware is intentionally minimal: an id, a pointer to its owner cap, the firmware that defines its action sites, and a list of requirements. Location, metadata, and firmware-specific state live in **dynamic fields** keyed by the service that owns them.
+Generic structures the player owns. A piece of hardware is intentionally minimal: an id, a pointer to its owner cap, a non-removable set of base invariants, and a set of attached firmware modules. Location, metadata, and module state live in **dynamic fields** keyed by the firmware that owns them.
 
 ```move
 public struct Structure has key {
     id: UID,
     owner_cap_id: Option<ID>,
-    inner_type: TypeName,
-    requirements: vector<Requirement>,
+    base_requirements: vector<Requirement>,   // non-removable: SystemAuthorization, ProximityToLocation
+    modules: vector<TypeName>,                // index of attached firmware module TypeNames
+    // Per-module slots live as dynamic fields keyed by TypeName<F>.
+}
+
+public struct ModuleSlot<phantom F> has store {
+    state: ...,                                            // firmware-defined inner state
+    requirements: VecMap<String, vector<Requirement>>,     // action_key -> requirements
+                                                           // key b"*" applies to every action of F
 }
 ```
 
-`inner_type` is the `TypeName` of the firmware (`Gate`, `Turret`, `Hull`) set once at construction. It tells `structure::interact<T>` whether the caller's `Permit<T>` matches this hardware, and tells clients which module owns its action sites without enumerating dynamic fields.
+A Structure does **not** hard-bind to a single firmware. Anyone can `structure::new(ctx)` to mint a bare hull, then attach modules at runtime to give it behaviour:
+
+```move
+let (mut s, owner_cap, req) = structure::new(ctx);
+location_service::set_location(&mut s, &admin_acl, loc);
+req.complete();
+
+gate::attach(&mut s, &owner_cap, ctx);          // ship-as-gate? attach gate firmware
+thruster::attach(&mut s, &owner_cap, ctx);      // plus a thruster
+comm::attach(&mut s, &owner_cap, ctx);          // plus a comm module
+```
+
+`attach<F>` requires `internal::permit<F>()`, so only the package that defines firmware `F` can authorise that firmware being added. Detach is symmetric and gated by `OwnerCap`.
 
 Trade-off: "every structure has a location" is no longer a type-level guarantee. It's enforced by a non-removable **base requirement** seeded at anchor time, so unlocated structures abort at check-time.
 
-> Open: Can we add a non-removable `base_requirements` vector for invariants like `SystemAuthorization` and `ProximityToLocation`, in addition to `requirements`?
+> Open: should modules be hot-swappable while the structure is online (i.e. holds an energy reservation), or only while offline? Affects fuel/energy services that need to release reservations on detach.
 
 ### Layer 2 : Firmware
 
-Base features defined by the game play what a piece of hardware does based on the modules composed. Firmware is a thin shell that exposes action sites and folds the hardware's requirements into a request.
+Firmware is a kit-bashable module that defines a set of action sites for a Structure. Multiple firmwares can co-exist on one Structure; each attaches its own slot, owns its own requirements, and exposes its own actions.
 
 ```move
 module world::gate;
 
-public struct Gate has store {}                 
+public struct Gate has drop {}    // marker; only this module mints Permit<Gate>
 
-public fun new(ctx: &mut TxContext): (Structure, OwnerCap, ApplicationRequest) {
-    structure::new(
-        internal::permit<Gate>(),                // declares this firmware as a host
-        ctx,
-    )
-    // Caller pairs this with location_service::set_location(...) before complete().
+public fun attach(s: &mut Structure, cap: &OwnerCap, ctx: &mut TxContext) {
+    structure::attach_module<Gate>(s, cap, internal::permit<Gate>(), GateState { /* ... */ }, ctx);
 }
 
-public fun jump(gate: &mut Structure): ApplicationRequest {
-    gate.interact(b"gate:jump".to_string(), internal::permit<Gate>())
+public fun jump(s: &mut Structure): ApplicationRequest {
+    structure::interact_module<Gate>(
+        s,
+        b"gate:jump".to_string(),
+        internal::permit<Gate>(),
+    )
+}
+
+public fun add_requirement(
+    s: &mut Structure, cap: &OwnerCap, action: vector<u8>, r: Requirement,
+) {
+    structure::add_module_requirement<Gate>(s, cap, internal::permit<Gate>(), action.to_string(), r);
 }
 ```
 
-`structure::interact<T>` checks that `inner_type == type_name<T>()` (only the module declaring `T` can mint `Permit<T>`), then folds the requirements into a fresh `ApplicationRequest`.
+`structure::interact_module<F>(s, action, _)`:
 
-Firmware modules: `gate` (jump, link), `storage_unit` (store, retrieve), `refinery` (refine), `turret` (fire).
+1. asserts `F` is in `s.modules` (only the package owning `F` can mint the permit, so attachment is type-safe);
+2. opens a fresh `ApplicationRequest` tagged with `action` and `s.id`;
+3. folds in `s.base_requirements`;
+4. folds in `module_slot<F>.requirements[action]` plus the wildcard `module_slot<F>.requirements["*"]`;
+5. returns the hot-potato request.
+
+The firmware action then **appends action-intrinsic requirements inline** before returning. Three requirement sources collapse into the single returned request:
+
+| Source | Who supplies it | Example on `storage_unit::deposit` |
+|---|---|---|
+| Base | game core (anchor time, non-removable) | `SystemAuthorization`, `ProximityToLocation` |
+| Module-attached, per-action | owner via `add_requirement(action, r)` | `NodeIsOnline` on `*`, `RequiresTicket` on `withdraw` only |
+| Action-intrinsic | firmware code itself | `HasItem(type_id, qty)` declared inside `deposit(...)` |
+
+This is what lets a single firmware expose actions with very different shapes:
+
+```move
+module world::storage_unit;
+
+public fun deposit(s: &mut Structure, item: Item): ApplicationRequest {
+    let mut req = structure::interact_module<StorageUnit>(
+        s, b"storage_unit:deposit".to_string(), internal::permit<StorageUnit>(),
+    );
+    // intrinsic: deposit always needs the item to actually exist & match qty
+    req.add_intrinsic(inventory_service::has_item_requirement(item.type_id(), item.quantity()));
+    // ... move item into the slot's bag ...
+    req
+}
+
+public fun withdraw(
+    s: &mut Structure, type_id: u64, qty: u32, ctx: &mut TxContext,
+): (Item, ApplicationRequest) {
+    let item = /* split from slot bag */;
+    let req = structure::interact_module<StorageUnit>(
+        s, b"storage_unit:withdraw".to_string(), internal::permit<StorageUnit>(),
+    );
+    (item, req) // no HasItem requirement; withdraw doesn't need one
+}
+```
+
+Owners stack policies per action without touching firmware code:
+
+```move
+// "Every interaction with my storage unit requires the NWN online"
+storage_unit::add_requirement(&mut s, &cap, b"*", liveness_service::requirement());
+// "Withdrawals additionally require a paid ticket"
+storage_unit::add_requirement(&mut s, &cap, b"storage_unit:withdraw", ticketing::ticket_service::requirement());
+```
+
+Firmware modules (kit): `gate` (jump, link), `storage_unit` (deposit, withdraw), `refinery` (refine), `turret` (fire), `thruster` (burn), `scanner` (scan), `comm` (broadcast), `power` (reserve, release). A "ship" is a Structure with `[hull, thruster, comm, scanner]` attached; a "network node" is a Structure with `[inventory, power]` attached. The Structure object is identical in both cases.
 
 ### Layer 3 : Software
 
@@ -236,25 +310,28 @@ The full flow, from structure setup to a player's transaction. Combines on-chain
 ### A. Owner sets up the gate (sponsored transactions)
 
 ```move
-// 1. Anchor the gate (admin sponsored). Sets inner_type = Gate and mints an OwnerCap.
-let (mut gate, owner_cap, mut req) = gate::new(ctx);
-location_service::set_location(&mut gate, &admin_acl, loc_a);   // pins location dynamic field
+// 1. Anchor a bare Structure (admin sponsored) and seed base requirements.
+let (mut gate, owner_cap, mut req) = structure::new(ctx);
+location_service::set_location(&mut gate, &admin_acl, loc_a);
 system_service::confirm_sponsor_is_system(&sa, &mut req, ctx);
 req.complete();
 
-// 2. Connect to a NetworkNode
+// 2. Attach the gate firmware. Only the world::gate package can mint Permit<Gate>.
+gate::attach(&mut gate, &owner_cap, ctx);
+
+// 3. Connect to a NetworkNode
 let mut req = network_node::connect(&mut nwn, &nwn_cap, &mut gate, &owner_cap);
 req.complete();
 
-// 3. Online the gate (reserves energy on NWN)
+// 4. Online the gate (reserves energy on NWN)
 let mut req = gate::online(&mut gate, &owner_cap);
 liveness_service::verify_liveness(&mut req, &nwn);
 fuel_service::verify_has_fuel(&mut req, &nwn);
 energy_service::reserve(&mut req, &mut nwn, GATE_ENERGY);
 req.complete();
 
-// 4. Owner attaches a custom 3rd-party rule
-gate.add_requirement(&owner_cap, ticketing::ticket_service::requirement());
+// 5. Owner attaches a custom 3rd-party rule, only on the `jump` action.
+gate::add_requirement(&mut gate, &owner_cap, b"gate:jump", ticketing::ticket_service::requirement());
 ```
 
 ### B. Client SDK builds the player's jump PTB
@@ -262,10 +339,11 @@ gate.add_requirement(&owner_cap, ticketing::ticket_service::requirement());
 It uses discovery + templates.
 
 ```ts
-// 1. Read the gate's requirements (on-chain field).
+// 1. Read the structure's base + module requirements for the action being invoked.
+//    base_requirements + ModuleSlot<Gate>.requirements["*"] + ModuleSlot<Gate>.requirements["gate:jump"]
 const gate = await client.getObject({ id: gateId, options: { showContent: true } });
-const requirements = gate.content.fields.requirements;
-// e.g. [NodeIsOnline, ProximityToLocation, RequiresTicket]
+const requirements = collectRequirementsFor(gate, "Gate", "gate:jump");
+// e.g. [SystemAuthorization, ProximityToLocation, NodeIsOnline, RequiresTicket]
 
 // 2. Look up each requirement in the registry built from
 //    `NewServiceAnnounced` events at startup.
