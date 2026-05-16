@@ -471,6 +471,41 @@ public fun item_quantity(refinery: &Refinery, owner_cap_id: ID, type_id: u64): u
     inv.item_quantity(type_id)
 }
 
+#[test_only]
+public fun has_authorized_extension(refinery: &Refinery): bool {
+    refinery.extension.is_some()
+}
+
+#[test_only]
+public fun contains_item(refinery: &Refinery, owner_cap_id: ID, type_id: u64): bool {
+    let inv = df::borrow<ID, Inventory>(&refinery.id, owner_cap_id);
+    inv.contains_item(type_id)
+}
+
+/// Test-only mint of items directly into the refinery's main inventory.
+/// Mirrors `storage_unit::game_item_to_chain_inventory_test` — used by
+/// integration tests to seed input ore without going through the full
+/// off-chain item creation flow.
+#[test_only]
+public fun mint_input_for_testing<T: key>(
+    refinery: &mut Refinery,
+    character: &Character,
+    owner_cap: &OwnerCap<T>,
+    item_id: u64,
+    type_id: u64,
+    volume: u64,
+    quantity: u32,
+    ctx: &mut TxContext,
+) {
+    assert!(character.character_address() == ctx.sender(), ESenderCannotAccessCharacter);
+    check_owner_cap_generic(refinery, owner_cap);
+    let refinery_id = object::id(refinery);
+    let refinery_key = refinery.key;
+    let tenant = refinery_key.tenant();
+    let inv = df::borrow_mut<ID, Inventory>(&mut refinery.id, refinery.owner_cap_id);
+    inv.mint_items(refinery_id, refinery_key, character, tenant, item_id, type_id, volume, quantity);
+}
+
 // === Internal ===
 
 fun check_extension_authorized<Auth: drop>(refinery: &Refinery) {
