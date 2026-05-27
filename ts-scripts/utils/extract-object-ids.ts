@@ -81,6 +81,13 @@ function extractWorldIds(
             "GateConfig",
             findCreatedObjectId(objectChanges, typeName(packageId, MODULES.GATE, "GateConfig"))
         ),
+        packageRegistry: requireId(
+            "PackageRegistry",
+            findCreatedObjectId(
+                objectChanges,
+                typeName(packageId, "package_registry", "PackageRegistry")
+            )
+        ),
     };
 }
 

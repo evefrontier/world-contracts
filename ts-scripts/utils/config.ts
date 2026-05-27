@@ -6,6 +6,7 @@ export type WorldObjectIds = {
     energyConfig: string;
     fuelConfig: string;
     gateConfig: string;
+    packageRegistry: string;
 };
 
 /** Extracted object IDs written by extract-object-ids script (run once per deploy). */

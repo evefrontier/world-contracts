@@ -12,6 +12,9 @@ export SUI_NETWORK="$ENV"
 echo "--- setup-access ---"
 pnpm exec tsx ts-scripts/access/setup-access.ts
 
+echo "--- initialize package registry ---"
+pnpm exec tsx ts-scripts/registry/add-package.ts
+
 echo "--- configure-fuel-energy ---"
 pnpm exec tsx ts-scripts/network-node/configure-fuel-energy.ts
 
