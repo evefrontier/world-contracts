@@ -1,8 +1,4 @@
 # ADR: Modular Structures
-## Status
-
-Draft for review.
-
 ## Motivation
 
 The current production `world` design is assembly-first. Each structure type, such as a gate or storage unit, owns its object shape and exposes a fixed set of APIs.
