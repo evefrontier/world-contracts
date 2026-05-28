@@ -7,13 +7,13 @@ That model is simple to integrate, but it does not fit the next modular building
 
 1. **Upgrades are painful** because behavior is encoded in predefined object layouts. Once a Sui object type is published, changing stored fields usually means introducing a new type and migrating state.
 2. **New game behavior often requires core changes** because rules are attached to specific assembly functions instead of a shared programmable action model.
-3. **Composition is limited** Programmability is restrictive and not generalized across actions.
+3. **Composition is limited** because programmability is restrictive and not generalized across actions.
 
 The goal of the new architecture is to keep the base structure small, install behavior through modules, and make behavior programmable through on-chain requirements.
 
 ### Modular Building
 
-We want to support modular buildings in game:
+We want to support modular buildings in the game:
 
 1. Create a base structure.
 2. Install modules that provide behavior, such as storage, transport, fuel, power, or weapons.
@@ -36,17 +36,12 @@ Introduce a modular architecture built around five concepts:
 
 The key design shift is:
 
-```text
-Current model:
-  assembly type owns behavior
-  gate::jump(...)
-  storage_unit::deposit(...)
-
-New model:
-  entity owns installed modules and named actions
-  entity::interact("exchange tickets for fuel 1:1") -> Request
-  handlers satisfy each Requirement in the Request
-```
+| Current model | New model |
+| --- | --- |
+| A concrete assembly type owns behavior, such as `gate::jump` or `storage_unit::deposit`. | A base `Entity` owns installed modules and exposes named actions. |
+| Rules are encoded inside assembly functions. | Rules are represented as `Requirement` values attached to actions. |
+| Adding behavior often means changing core assembly code. | Adding behavior usually means installing a module, adding a handler, or exposing a new action. |
+| Clients integrate with assembly-specific APIs. | Clients inspect an action, satisfy its requirements, and complete the request. |
 
 ## Architecture Overview
 
@@ -186,19 +181,10 @@ Each requirement contains:
 Example requirement constructor:
 
 ```move
-public fun deposit_requirement(
-    module_name: String,
-    type_id: Option<u64>,
-    min_quantity: Option<u64>,
-    max_quantity: Option<u64>,
-): Requirement {
+public fun deposit_requirement(module_name: String, rule: ItemRequirement): Requirement {
     requirement::new(
         option::some(module_name),
-        Deposit(ItemRequirement {
-            type_id,
-            min_quantity,
-            max_quantity,
-        }),
+        Deposit(rule),
     )
 }
 ```
@@ -213,13 +199,13 @@ The important invariant is simple:
 An action can complete only when every requirement has been satisfied.
 ```
 
-The request API enforces that:
+The request API is:
 
 ```move
-public fun satisfy<T>(request: &mut Request, _: internal::Permit<T>): (Requirement, Frame) {
+public fun satisfy<T>(request: &mut Request, _: internal::Permit<T>): (Requirement) {
     let next = request.requires.pop_back();
     assert!(next.is<T>());
-    (next, Frame { pending: vector[] })
+    next
 }
 
 public(package) fun complete(request: Request) {
@@ -228,23 +214,7 @@ public(package) fun complete(request: Request) {
 }
 ```
 
-Handlers call `satisfy<T>` with the type they own. For example, inventory deposit satisfies `Deposit`:
-
-```move
-public fun deposit(e: &mut Entity, request: &mut Request, item: Item) {
-    // 1. Borrow the target Inventory module from the entity.
-
-    // 2. Mark the Deposit requirement as satisfied.
-    // 3. Decode the requirement data into an item rule.
-
-    // 4. Check that the item matches the rule:
-    //    - item type matches
-    //    - quantity is not too low
-    //    - quantity is not too high
-
-    // 5. Store the item in inventory.
-}
-```
+Handlers call `satisfy<T>` with the type they own.
 
 The handler does three things:
 
@@ -337,18 +307,16 @@ Example PTB template for client discovery:
 
 ```move
 public fun deposit_template(
+    req: &Requirement,
     ptb: &mut ptb::Transaction,
     mut args: vector<ptb::Argument>,
 ): vector<ptb::Argument> {
-    assert!(args.length() == 1);
-    let item = args.pop_back();
-
     ptb.command(
         ptb::move_call(
             "mvr:@frontier/inventory",
             "inventory",
             "deposit",
-            vector[request::request(), request::module_(), item],
+            vector[tx::entity(), tx::request(), item],
             vector[],
         ),
     );
@@ -391,15 +359,7 @@ entity::remove_action(&mut entity, &admin_acl, action_name, ctx);  // hard delet
 entity::deprecate_module(&mut entity, &admin_acl, module_name, ctx);
 ```
 
-## How This Solves The Initial Problems
-
-1. **Object layouts change less often** because the base entity stays small and extension state lives in installed modules.
-2. **Modules are composable** because storage, transport, fuel, access control, and other behavior can be installed independently.
-3. **Actions are programmable** because behavior is expressed as ordered requirements instead of fixed assembly functions.
-4. **Rules can evolve** because new requirements can be added to new actions without changing the base entity type.
-5. **Upgrade paths are clearer** because stale actions can be removed and old modules can be deprecated while replacement modules are installed.
-
-## Trade-offs
+## Consequences
 
 What becomes easier:
 
