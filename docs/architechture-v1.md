@@ -140,8 +140,14 @@ Conceptually:
 
 ```move
 public struct Action has drop, store {
+    /// Requirements are stored in reverse of declaration order.
     requirements: vector<Requirement>,
     version: u64,
+}
+
+public fun new(mut requirements: vector<Requirement>): Action {
+    requirements.reverse(); // store reversed so pop_back yields declaration order
+    Action { requirements, version: VERSION }
 }
 ```
 
@@ -202,11 +208,16 @@ An action can complete only when every requirement has been satisfied.
 The request API is:
 
 ```move
-public fun satisfy<T>(request: &mut Request, _: internal::Permit<T>): (Requirement) {
+// Pop the next requirement, proving the caller owns type `T` via a Permit.
+// Returns the requirement plus a Frame the handler can push follow-ups into.
+public fun take_next<T>(request: &mut Request, _: internal::Permit<T>): (Requirement, Frame) {
     let next = request.requires.pop_back();
     assert!(next.is<T>());
-    next
+    (next, Frame { pending: vector[] })
 }
+
+// Push any newly-spawned requirements back onto the request.
+public fun enqueue(request: &mut Request, frame: Frame) { /* ... */ }
 
 public(package) fun complete(request: Request) {
     let Request { requires, .. } = request;
@@ -214,13 +225,31 @@ public(package) fun complete(request: Request) {
 }
 ```
 
-Handlers call `satisfy<T>` with the type they own.
+Handlers call `take_next<T>` (aliased as `satisfy<T>`) with the type they own. The `Permit<T>` is package-private, so only the module that defines `T` can satisfy a requirement of that type.
 
 The handler does three things:
 
 1. Borrows the targeted module through the active request.
 2. Satisfies the next typed requirement.
 3. Enforces the requirement data before mutating state.
+
+The returned `Frame` lets a handler push **new** requirements onto the same request before continuing — this is how dynamic, in-transaction follow-ups are modeled (the handler `enqueue`s the frame when done).
+
+#### Module targeting (`name` enforcement)
+
+`take_next<T>` only checks the requirement *type*. Module *identity* is enforced when the handler borrows the module. `module_mut` reads the module name off the **next requirement**, not off the handler's own arguments:
+
+```move
+public fun module_mut<T: store>(e: &mut Entity, req: &Request, _: internal::Permit<T>): &mut Module<T> {
+    assert!(req.structure_id().is_some_and!(|id| id == e.id.to_inner()));
+    // name comes from the requirement, so the handler can't hit the wrong module
+    let name = req.next().module_name().destroy_or!(abort);
+    assert!(!e.exists(DeprecatedModuleKey(name)));
+    &mut e[ModuleKey(name)]
+}
+```
+
+So a requirement scoped to `some("storage unit (02)")` forces the handler onto module `(02)`; it can never accidentally mutate `(01)`. The `name` field is `Option` only for requirements that don't target a module (e.g. an admin/sponsor approval); module handlers `abort` when it is `None`.
 
 ## Use Case: Exchange Tickets For Fuel
 
