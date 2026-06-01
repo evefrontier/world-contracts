@@ -35,7 +35,7 @@ jobs:
   lint-contracts:
     strategy:
       matrix:
-        package: [world]
+        package: [core, character]
     name: Lint ${{ matrix.package }}
     runs-on: ubuntu-latest
     needs: lint
@@ -48,12 +48,12 @@ jobs:
             -v $(pwd):/app \
             -w /app \
             mysten/sui-tools:testnet \
-            sui move build --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }} --lint
+            sui move build --build-env testnet --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }} --lint
 
   build:
     strategy:
       matrix:
-        package: [world]
+        package: [core, character]
     name: Build ${{ matrix.package }}
     runs-on: ubuntu-latest
     needs: lint-contracts
@@ -66,12 +66,12 @@ jobs:
             -v $(pwd):/app \
             -w /app \
             mysten/sui-tools:testnet \
-            sui move build --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
+            sui move build --build-env testnet --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
 
   test:
     strategy:
       matrix:
-        package: [world]
+        package: [core, character]
     name: Test ${{ matrix.package }}
     runs-on: ubuntu-latest
     needs: lint-contracts
@@ -84,4 +84,4 @@ jobs:
             -v $(pwd):/app \
             -w /app \
             mysten/sui-tools:testnet \
-            sui move test --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
+            sui move test --build-env testnet --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
