@@ -24,10 +24,6 @@ docs/features/
 prd.md
 
 # contracts
-contracts/world/sources/primitives/template.move
-contracts/world/.replay/
-contracts/verify/
-contracts/extension_examples/Published.toml
 contracts/**/Pub.*.toml
 
 # Error decoder build artifacts

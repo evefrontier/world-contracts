@@ -5,42 +5,158 @@ alwaysApply: false
 ---
 
 # Move Conventions (world-contracts)
-This guide covers Move-specific conventions, patterns, and best practices for this repository.
 
-## Official Conventions
+Conventions for the modular Entity/Module/Action/Request/Requirement architecture.
 
-Follow the official Move conventions:
+## References
 
-- [Sui Move Concepts - Conventions](https://docs.sui.io/concepts/sui-move-concepts/conventions)
-- [Move Book - Code Quality Checklist](https://move-book.com/guides/code-quality-checklist)
+- Official: [Sui Move Conventions](https://docs.sui.io/concepts/sui-move-concepts/conventions),
+  [Move Book code-quality checklist](https://move-book.com/guides/code-quality-checklist).
 
-## Function Organization Order
+## Production guardrails (non-negotiable)
 
-Organize functions in this order within each module:
+- No bare `abort` and no `/* TODO: Code */`. Every `assert!` takes a named error
+  constant: `assert!(e.version == VERSION, EWrongVersion);`
+- Error constants: `E` + PascalCase (`EWrongVersion`, `ENotAuthorized`). Pick this
+  one style; do not use `E_SCREAMING_SNAKE`.
+- Keep modules small and single-purpose — compose behavior, don't grow god-modules.
+
+## Naming
+
+- Modules: `snake_case` (`owner_service`, `power_service`).
+- Structs: `PascalCase` (`Entity`, `Inventory`, `OwnerCap`).
+- Functions / variables: `snake_case`. Constants: `SCREAMING_SNAKE_CASE` (`VERSION`).
+- Error constants: `E` + PascalCase (see above).
+
+## Function organization order
 
 ```move
 // === Errors ===
+// === Constants ===
 // === Structs ===
 // === Events ===
-
 // === Public Functions ===
 // === View Functions ===
 // === Admin Functions ===
-// === Package Functions ===
+// === Package Functions ===   // public(package)
 // === Private Functions ===
-// === Test Functions ===
+// === Test Functions ===      // #[test_only], at the bottom
 ```
 
-**Review Checklist:**
+## Hot-potato Request / Frame
 
-- [ ] Are functions organized in the correct order?
-- [ ] Are test-only functions at the bottom with `#[test_only]` attribute?
+`Request` and `Frame` have **no abilities** — they cannot be stored, copied, or
+dropped, so a tx that starts an action must finish it. Constructors are
+`public(package)`; only `Entity` mints/consumes them.
 
-## Naming Conventions
+```move
+public struct Request { entity_id: Option<ID>, requires: vector<Requirement> }
+public(package) fun new(...): Request { ... }
+public(package) fun complete(request: Request) {
+    let Request { requires, .. } = request;
+    assert!(requires.length() == 0, ERequirementsRemain);
+}
+```
 
-- **Modules**: snake_case (e.g., `power_gen`, `access_control`)
-- **Structs**: PascalCase (e.g., `Inventory`, `OwnerCap`)
-- **Functions**: snake_case (e.g., `create_character`, `is_authorized`)
-- **Constants**: SCREAMING_SNAKE_CASE (e.g., `VERSION`)
-- **Error constants**: Prefix with `E` (e.g., `EAssemblyNotAuthorized`)
+A `Request` completes only when **every** requirement is satisfied. Requirements
+are stored reversed so `pop_back` yields declaration order.
+
+## Witness + `internal::Permit<T>` authorization
+
+Authorization is type-driven, not argument-driven. A requirement of type `T` can
+only be satisfied by the module that defines `T`, proven with the package-private
+`internal::Permit<T>`. Approvals are phantom witnesses (`AdminApproval<phantom T>`).
+
+```move
+public struct Owner(ID) has drop;            // witness owned by this module
+
+public fun verify_owner_cap(request: &mut Request) {
+    let (requirement, frame) = request.take_next(internal::permit<Owner>());
+    // enforce requirement.data() before mutating, then:
+    frame.destroy_empty(); // or request.enqueue(frame) to add follow-ups
+}
+```
+
+Module *identity* is enforced via the next requirement's `name`, read inside
+`module_mut` — never trust a name passed as a handler argument.
+
+## Versioning
+
+Every persisted type carries `const VERSION` + a `version: u64` field, asserted on
+entry. Modules pass their own `VERSION` at install time so they can upgrade
+independently of `core`.
+
+```move
+const VERSION: u64 = 1;
+assert!(e.version == VERSION, EWrongVersion);
+e.install("grid", Grid { .. }, VERSION, internal::permit(), ctx);
+```
+
+## Entity & dynamic fields
+
+Keep `Entity` small; store modules/actions as dynamic fields keyed by **typed key
+structs**, so adding a module never changes the `Entity` type.
+
+```move
+public struct ModuleKey(String) has copy, drop, store;
+public struct ActionsKey() has copy, drop, store;
+// df: ModuleKey(name) => Module<T>,  ActionsKey() => VecMap<String, Action>
+```
+
+## Requirements as BCS config
+
+Requirement config is BCS bytes; the type identity carries the meaning. Build with
+`requirement::from_config` and decode with a symmetric `peel_*` parser. Use
+`type_name::with_original_ids<T>()` for stable type identity.
+
+```move
+public struct Deposit(ItemRequirement) has drop;
+requirement::from_config(option::some(module_name), Deposit(rule)); // encode
+let req = parse_bcs_requirement(requirement.data());                // decode (mirror field order)
+```
+
+## Handlers & PTB templates
+
+Behavior lives in module/service handlers (`deposit`, `verify_owner_cap`) that
+`take_next<T>`, enforce the decoded config, then mutate. Pair each with a
+`*_template` that emits the `ptb::move_call` for client discovery (referencing the
+package by MVR name, e.g. `mvr:@frontier/inventory`).
+
+## Prefer Move macros
+
+Use stdlib macros over manual loops/branches when one fits — they're clearer and
+less error-prone. Common ones: `map_ref!`, `map!`, `do!`, `destroy!`,
+`destroy_or!`, `is_some_and!`, `peel_option!`.
+
+```move
+// Good — declarative
+request::new(entity_id, action.requirements.map_ref!(|r| r.clone()));
+pending.destroy!(|r| request.requires.push_back(r));
+req.entity_id().do!(|id| assert!(id == e.id.to_inner(), EWrongEntity));
+
+// Avoid — manual index loop when a macro expresses the intent
+```
+
+## Comments
+
+Follow the Sui/Move docgen convention so `sui move build --doc` produces clean,
+publishable docs ([Move best practices](https://docs.sui.io/develop/write-move/move-best-practices)).
+
+- **`///` = published docs**, `//` = internal notes. Use `///` for anything that
+  should appear in generated docs (modules, public structs/fields, public
+  functions); use `//` for technical asides that shouldn't.
+- **Module-level**: every module starts with a `///` block explaining what it is and
+  its key concepts/behaviors (see `archive/world/sources/assemblies/turret.move`
+  lines 1-17 for the expected depth).
+- **Function-level**: a short `///` line on public functions stating intent, not
+  mechanics. Document params/return values for complex functions; add `///` field
+  comments on structs.
+- **Explain the non-obvious**: add a brief `//` comment when a macro is used or
+  logic is hard to follow (the *why*). Don't narrate obvious code.
+- **Keep docgen happy**: balance all backticks in `///` comments — an unmatched
+  backtick makes `sui move build --doc` panic.
+
+## Cross-references
+
+- Imports: see the `no-inline-imports` rule (group `use` at top).
 
