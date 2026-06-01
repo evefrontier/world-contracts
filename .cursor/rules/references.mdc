@@ -1,0 +1,28 @@
+---
+description: Authoritative external references for Sui Move and TypeScript SDK development.
+alwaysApply: true
+---
+
+# External References
+
+Prefer these authoritative sources when answering or generating code. For
+library/API specifics, fetch current docs (e.g. Context7) rather than relying
+on memory.
+
+## Sui & Move
+
+- Sui docs: https://docs.sui.io
+- Sui Move concepts: https://docs.sui.io/concepts/sui-move-concepts
+- Sui framework reference: https://docs.sui.io/references/framework
+- The Move Book: https://move-book.com
+- Move reference: https://move-book.com/reference
+- Sui CLI reference: https://docs.sui.io/references/cli
+
+## SDKs & Frontend
+
+- Sui TypeScript SDK (`@mysten/sui`): https://sdk.mystenlabs.com/typescript
+- dApp Kit: https://sdk.mystenlabs.com/dapp-kit
+
+## Skills
+
+- Sui dev skills repo (source for `.cursor/skills/`): https://github.com/MystenLabs/sui-dev-skills
