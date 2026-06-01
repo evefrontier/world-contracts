@@ -1,3 +1,5 @@
+
+<!-- NEEDS UPDATE FOR V1 -->
 # Code Review Guide for World Contracts
 
 This guide provides instructions for reviewing code changes in this repository.

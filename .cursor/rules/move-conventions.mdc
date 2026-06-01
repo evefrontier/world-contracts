@@ -1,0 +1,46 @@
+---
+description: Sui Move conventions for the world-contracts modular architecture
+globs: **/*.move
+alwaysApply: false
+---
+
+# Move Conventions (world-contracts)
+This guide covers Move-specific conventions, patterns, and best practices for this repository.
+
+## Official Conventions
+
+Follow the official Move conventions:
+
+- [Sui Move Concepts - Conventions](https://docs.sui.io/concepts/sui-move-concepts/conventions)
+- [Move Book - Code Quality Checklist](https://move-book.com/guides/code-quality-checklist)
+
+## Function Organization Order
+
+Organize functions in this order within each module:
+
+```move
+// === Errors ===
+// === Structs ===
+// === Events ===
+
+// === Public Functions ===
+// === View Functions ===
+// === Admin Functions ===
+// === Package Functions ===
+// === Private Functions ===
+// === Test Functions ===
+```
+
+**Review Checklist:**
+
+- [ ] Are functions organized in the correct order?
+- [ ] Are test-only functions at the bottom with `#[test_only]` attribute?
+
+## Naming Conventions
+
+- **Modules**: snake_case (e.g., `power_gen`, `access_control`)
+- **Structs**: PascalCase (e.g., `Inventory`, `OwnerCap`)
+- **Functions**: snake_case (e.g., `create_character`, `is_authorized`)
+- **Constants**: SCREAMING_SNAKE_CASE (e.g., `VERSION`)
+- **Error constants**: Prefix with `E` (e.g., `EAssemblyNotAuthorized`)
+

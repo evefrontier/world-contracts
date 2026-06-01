@@ -22,48 +22,25 @@ Key conventions from Move Book:
 
 Tests mirror the source structure in the `tests/` directory:
 
+// TODO
 ```
-tests/
-  access/
-    access_tests.move
-  assemblies/
-    assembly_tests.move
-    storage_unit_tests.move
-  test_helpers.move      # Shared test utilities
 ```
 
 ## Test Module Declaration
 
 ```move
 #[test_only]
-module world::assembly_tests;
+module world::entity_tests;
 ```
 
 ## Test Pattern with test_scenario
 
 ```move
 #[test]
-fun anchor_assembly() {
-    let mut ts = ts::begin(governor());
-    test_helpers::setup_world(&mut ts);
-
-    // Perform test actions
-    ts::next_tx(&mut ts, admin());
-    {
-        let mut registry = ts::take_shared<AssemblyRegistry>(&ts);
-        let admin_acl = ts::take_shared<AdminACL>(&ts);
-
-        // Test logic here...
-
-        ts::return_to_sender(&ts, admin_cap);
-        ts::return_shared(registry);
-    };
-
-    ts::end(ts);
-}
+// TODO
 ```
 
-**Note:** Function is named `anchor_assembly`, not `test_anchor_assembly`. The `_tests` module suffix already indicates these are tests.
+**Note:** Function is named `install_modules`, not `test_install_modules`. The `_tests` module suffix already indicates these are tests.
 
 ## Expected Failure Tests
 
