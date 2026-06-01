@@ -76,3 +76,9 @@ TODO
 - Add agentic instructions 
 - All README's
 - scripts
+- Workflows 
+   - integration test
+   - publish to mvr 
+   - publish sdks
+   - deploy workflow 
+
