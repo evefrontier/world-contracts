@@ -346,7 +346,7 @@ public fun deposit_template(
             "mvr:@frontier/inventory",
             "inventory",
             "deposit",
-            vector[tx::entity(), tx::request(), item],
+            vector[tx::entity(), tx::request(), args.pop_back()],
             vector[],
         ),
     );
