@@ -240,6 +240,7 @@ The returned `Frame` lets a handler push **new** requirements onto the same requ
 `take_next<T>` only checks the requirement *type*. Module *identity* is enforced when the handler borrows the module. `module_mut` reads the module name off the **next requirement**, not off the handler's own arguments:
 
 ```move
+// NOTE: Pseudocode / illustrative API sketch (some helper macros/functions are placeholders).
 public fun module_mut<T: store>(e: &mut Entity, req: &Request, _: internal::Permit<T>): &mut Module<T> {
     assert!(req.structure_id().is_some_and!(|id| id == e.id.to_inner()));
     // name comes from the requirement, so the handler can't hit the wrong module
