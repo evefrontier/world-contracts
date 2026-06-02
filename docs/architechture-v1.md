@@ -212,7 +212,7 @@ The request API is:
 // Returns the requirement plus a Frame the handler can push follow-ups into.
 public fun take_next<T>(request: &mut Request, _: internal::Permit<T>): (Requirement, Frame) {
     let next = request.requires.pop_back();
-    assert!(next.is<T>());
+    assert!(next.is<T>(), 0);
     (next, Frame { pending: vector[] })
 }
 
