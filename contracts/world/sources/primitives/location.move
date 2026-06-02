@@ -283,6 +283,28 @@ public(package) fun reveal_location(
 
 // === Package Functions ===
 
+/// Records plaintext coordinates for an object without requiring an owner cap.
+/// Used by object types (e.g. Rifts) that have no OwnerCap.
+public(package) fun record_revealed_coordinates(
+    registry: &mut LocationRegistry,
+    object_id: ID,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+) {
+    let data = Coordinates {
+        solarsystem,
+        x,
+        y,
+        z,
+    };
+    if (registry.locations.contains(object_id)) {
+        registry.locations.remove(object_id);
+    };
+    registry.locations.add(object_id, data);
+}
+
 public(package) fun attach(location_hash: vector<u8>): Location {
     assert!(location_hash.length() == 32, EInvalidHashLength);
     Location {
