@@ -1,6 +1,6 @@
-/// A named, ordered list of `Requirement`s exposed by an `Assembly`.
+/// A named, ordered list of `Requirement`s exposed by an `Entity`.
 ///
-/// An action executes no logic itself; `assembly::interact` turns it into a
+/// An action executes no logic itself; `entity::interact` turns it into a
 /// `Request` that the transaction must satisfy.
 module core::action;
 
@@ -38,6 +38,16 @@ public fun version(action: &Action): u64 {
 
 // === Package Functions ===
 
-public(package) fun to_request(action: &Action, assembly_id: Option<ID>): Request {
-    request::new(assembly_id, action.requirements.map_ref!(|r| r.clone()))
+/// Build a `Request` from this action. `pre_requirements` are pushed after the
+/// action's own (reversed) requirements, so they `pop_back` first and therefore
+/// resolve before the action's declared requirements (e.g. a proximity check the
+/// entity injects ahead of the action).
+public(package) fun to_request(
+    action: &Action,
+    entity_id: Option<ID>,
+    pre_requirements: vector<Requirement>,
+): Request {
+    let mut requirements = action.requirements.map_ref!(|r| r.clone());
+    pre_requirements.do!(|r| requirements.push_back(r));
+    request::new(entity_id, requirements)
 }

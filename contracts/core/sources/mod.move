@@ -1,4 +1,4 @@
-/// Thin wrapper around typed module state installed on an `Assembly`.
+/// Thin wrapper around typed module state installed on an `Entity`.
 /// Adds a human-readable name and a version to the inner behavior type `T`.
 module core::mod;
 
@@ -42,7 +42,7 @@ public fun name<T: store>(m: &Module<T>): String {
 
 // === Package Functions ===
 
-/// Only `core::assembly` may wrap module state.
+/// Only `core::entity` may wrap module state.
 public(package) fun new<T: store>(name: String, inner: T, version: u64): Module<T> {
     Module { version, inner, name }
 }

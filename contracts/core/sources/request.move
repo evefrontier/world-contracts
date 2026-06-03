@@ -2,7 +2,7 @@
 ///
 /// `Request` has no abilities: it cannot be stored, copied, or dropped. Once an
 /// action creates it, the transaction must satisfy every requirement and
-/// `complete` it (via `assembly::complete_request`).
+/// `complete` it (via `entity::complete_request`).
 module core::request;
 
 use core::{internal::Permit, requirement::Requirement};
@@ -17,8 +17,8 @@ const ENoRequirements: u64 = 3;
 // === Structs ===
 
 public struct Request {
-    /// Assembly this request targets, if any.
-    assembly_id: Option<ID>,
+    /// Entity this request targets, if any.
+    entity_id: Option<ID>,
     /// Outstanding requirements, stored in reverse of declaration order.
     requires: vector<Requirement>,
 }
@@ -35,7 +35,7 @@ public struct Frame {
 ///
 /// Only the requirement *type* is checked here. Structure-ID and module-name
 /// targeting are enforced when the handler borrows the module via
-/// `assembly::module_mut`, which reads `assembly_id()` and `next().module_name()`
+/// `entity::module_mut`, which reads `entity_id()` and `next().module_name()`
 /// off the request.
 public fun take_next<T>(request: &mut Request, _: Permit<T>): (Requirement, Frame) {
     let next = request.requires.pop_back();
@@ -63,8 +63,8 @@ public fun enqueue(request: &mut Request, frame: Frame) {
 
 // === View Functions ===
 
-public fun assembly_id(r: &Request): Option<ID> {
-    r.assembly_id
+public fun entity_id(r: &Request): Option<ID> {
+    r.entity_id
 }
 
 public fun requires(r: &Request): &vector<Requirement> {
@@ -72,7 +72,7 @@ public fun requires(r: &Request): &vector<Requirement> {
 }
 
 /// Borrow the next requirement (the one `take_next` would pop) without removing
-/// it. Used by `assembly::module_mut` to read the target module name.
+/// it. Used by `entity::module_mut` to read the target module name.
 public fun next(r: &Request): &Requirement {
     let len = r.requires.length();
     assert!(len > 0, ENoRequirements);
@@ -81,8 +81,8 @@ public fun next(r: &Request): &Requirement {
 
 // === Package Functions ===
 
-public(package) fun new(assembly_id: Option<ID>, requires: vector<Requirement>): Request {
-    Request { assembly_id, requires }
+public(package) fun new(entity_id: Option<ID>, requires: vector<Requirement>): Request {
+    Request { entity_id, requires }
 }
 
 /// Complete the request. Aborts unless every requirement has been satisfied.

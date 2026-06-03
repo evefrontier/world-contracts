@@ -3,7 +3,7 @@
 /// A `Permit<T>` is unforgeable proof that the holder's package defines `T`.
 /// It gates the two privileged operations of the architecture:
 /// - satisfying a `Requirement` of type `T` (`request::take_next`)
-/// - borrowing or unwrapping a `Module<T>` (`assembly::module_mut`, `mod::unwrap`)
+/// - borrowing or unwrapping a `Module<T>` (`entity::module_mut`, `mod::unwrap`)
 module core::internal;
 
 use std::type_name;
