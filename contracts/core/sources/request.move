@@ -1,0 +1,99 @@
+/// Transaction-scoped checklist for one action.
+///
+/// `Request` has no abilities: it cannot be stored, copied, or dropped. Once an
+/// action creates it, the transaction must satisfy every requirement and
+/// `complete` it (via `assembly::complete_request`).
+module core::request;
+
+use core::{internal::Permit, requirement::Requirement};
+
+// === Errors ===
+
+const EWrongRequirementType: u64 = 0;
+const EFrameNotEmpty: u64 = 1;
+const ERequestNotComplete: u64 = 2;
+const ENoRequirements: u64 = 3;
+
+// === Structs ===
+
+public struct Request {
+    /// Assembly this request targets, if any.
+    assembly_id: Option<ID>,
+    /// Outstanding requirements, stored in reverse of declaration order.
+    requires: vector<Requirement>,
+}
+
+/// Requirements spawned by a handler before they are pushed back onto a request.
+public struct Frame {
+    pending: vector<Requirement>,
+}
+
+// === Public Functions ===
+
+/// Pop the next requirement, proving the caller owns type `T` via a `Permit`.
+/// Returns the requirement plus a `Frame` the handler can push follow-ups into.
+///
+/// Only the requirement *type* is checked here. Structure-ID and module-name
+/// targeting are enforced when the handler borrows the module via
+/// `assembly::module_mut`, which reads `assembly_id()` and `next().module_name()`
+/// off the request.
+public fun take_next<T>(request: &mut Request, _: Permit<T>): (Requirement, Frame) {
+    let next = request.requires.pop_back();
+    assert!(next.is<T>(), EWrongRequirementType);
+    (next, Frame { pending: vector[] })
+}
+
+/// Add a newly-spawned requirement to a `Frame`.
+public fun require(frame: &mut Frame, requirement: Requirement) {
+    frame.pending.push_back(requirement);
+}
+
+/// Discard an empty `Frame` without touching the request.
+public fun destroy_empty_frame(frame: Frame) {
+    let Frame { pending } = frame;
+    assert!(pending.length() == 0, EFrameNotEmpty);
+    pending.destroy_empty();
+}
+
+/// Push a handler's spawned requirements back onto the request.
+public fun enqueue(request: &mut Request, frame: Frame) {
+    let Frame { pending } = frame;
+    pending.destroy!(|r| request.requires.push_back(r));
+}
+
+// === View Functions ===
+
+public fun assembly_id(r: &Request): Option<ID> {
+    r.assembly_id
+}
+
+public fun requires(r: &Request): &vector<Requirement> {
+    &r.requires
+}
+
+/// Borrow the next requirement (the one `take_next` would pop) without removing
+/// it. Used by `assembly::module_mut` to read the target module name.
+public fun next(r: &Request): &Requirement {
+    let len = r.requires.length();
+    assert!(len > 0, ENoRequirements);
+    &r.requires[len - 1]
+}
+
+// === Package Functions ===
+
+public(package) fun new(assembly_id: Option<ID>, requires: vector<Requirement>): Request {
+    Request { assembly_id, requires }
+}
+
+/// Complete the request. Aborts unless every requirement has been satisfied.
+public(package) fun complete(request: Request) {
+    let Request { requires, .. } = request;
+    assert!(requires.length() == 0, ERequestNotComplete);
+}
+
+// === Test Functions ===
+
+#[test_only]
+public fun destroy(r: Request) {
+    let Request { .. } = r;
+}

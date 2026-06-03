@@ -28,19 +28,54 @@ Conventions for the modular Entity/Module/Action/Request/Requirement architectur
 - Functions / variables: `snake_case`. Constants: `SCREAMING_SNAKE_CASE` (`VERSION`).
 - Error constants: `E` + PascalCase (see above).
 
-## Function organization order
+## Module layout & function order
+
+Every module **must** use `// === Section ===` header comments and lay out
+declarations in this exact order (omit a section if empty). This follows the conventions in Move Book
+[code-quality checklist](https://move-book.com/guides/code-quality-checklist)
+(module label style, `EPascalCase` errors, positional `Key` structs, `///` docs).
 
 ```move
-// === Errors ===
-// === Constants ===
-// === Structs ===
-// === Events ===
-// === Public Functions ===
-// === View Functions ===
-// === Admin Functions ===
-// === Package Functions ===   // public(package)
+// === Errors ===            // E + PascalCase
+// === Constants ===         // SCREAMING_SNAKE (VERSION, ...)
+// === Structs ===           // key/positional-key structs, then main type
+// === Events ===            // past-tense names (UserRegistered)
+// === Public Functions ===  // constructors + mutating entry points
+// === View Functions ===    // getters: name() / name_mut(), no get_ prefix
+// === Admin Functions ===   // cap/ACL-gated mutations
+// === Package Functions ===  // public(package)
 // === Private Functions ===
-// === Test Functions ===      // #[test_only], at the bottom
+// === Init ===              // fun init, if any
+// === Test Functions ===    // #[test_only], at the bottom
+```
+
+Within a function signature, **objects go first, capabilities second**, then
+plain args, with `&Clock` / `&mut TxContext` last (Move Book: "Objects Go First",
+"Capabilities Go Second"):
+
+```move
+public fun call(app: &mut App, cap: &AdminCap, value: u64, ctx: &mut TxContext)
+```
+
+## Field getters
+
+Every struct field **must** have a getter in `// === View Functions ===`. Name it
+after the field (no `get_` prefix), return a copy for primitives and a `&`
+reference otherwise; add a `_mut` variant only when callers legitimately mutate.
+Keep getters even if currently unused — they are the module's read API and keep
+fields private.
+
+Exempt: the `id: UID` field (callers use `object::id`), positional key/witness
+structs, and transient hot-potato internals (e.g. `Request`/`Frame` fields that
+must stay opaque).
+
+```move
+public struct Module<T: store> has store { version: u64, inner: T, name: String }
+
+public fun version<T: store>(m: &Module<T>): u64 { m.version }   // primitive: by value
+public fun name<T: store>(m: &Module<T>): String { m.name }
+public fun inner<T: store>(m: &Module<T>): &T { &m.inner }       // non-primitive: by ref
+public fun inner_mut<T: store>(m: &mut Module<T>): &mut T { &mut m.inner }
 ```
 
 ## Hot-potato Request / Frame
