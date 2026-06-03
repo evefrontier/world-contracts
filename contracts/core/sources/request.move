@@ -5,7 +5,8 @@
 /// `complete` it (via `entity::complete_request`).
 module core::request;
 
-use core::{internal::Permit, requirement::Requirement};
+use core::requirement::Requirement;
+use std::internal::Permit;
 
 // === Errors ===
 

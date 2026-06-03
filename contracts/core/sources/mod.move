@@ -2,8 +2,7 @@
 /// Adds a human-readable name and a version to the inner behavior type `T`.
 module core::mod;
 
-use core::internal::Permit;
-use std::string::String;
+use std::{internal::Permit, string::String};
 
 // === Structs ===
 

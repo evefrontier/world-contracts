@@ -1,7 +1,7 @@
 #[test_only]
 module core::core_tests;
 
-use core::{action, entity, internal, location_service, requirement::{Self, Requirement}};
+use core::{action, entity, location_service, requirement::{Self, Requirement}};
 use std::string;
 use sui::test_scenario as ts;
 
@@ -28,7 +28,7 @@ fun end_to_end_flow() {
         string::utf8(b"counter"),
         Counter { value: 0 },
         1,
-        internal::permit_for_testing<Counter>(),
+        internal::permit<Counter>(),
         ctx,
     );
     e.complete_request(req);
@@ -43,8 +43,8 @@ fun end_to_end_flow() {
     // module by requirement, satisfy it, and mutate.
     let mut req = e.interact(string::utf8(b"bump"), ctx);
     location_service::verify_proximity(&mut req, vector[]);
-    let counter = e.module_mut<Counter>(&req, internal::permit_for_testing<Counter>()).inner_mut();
-    let (_requirement, frame) = req.take_next<Bump>(internal::permit_for_testing<Bump>());
+    let counter = e.module_mut<Counter>(&req, internal::permit<Counter>()).inner_mut();
+    let (_requirement, frame) = req.take_next<Bump>(internal::permit<Bump>());
     counter.value = counter.value + 1;
     req.enqueue(frame);
     e.complete_request(req);
@@ -63,7 +63,7 @@ fun cannot_complete_with_pending_requirement() {
         string::utf8(b"counter"),
         Counter { value: 0 },
         1,
-        internal::permit_for_testing<Counter>(),
+        internal::permit<Counter>(),
         ctx,
     );
     e.complete_request(req);

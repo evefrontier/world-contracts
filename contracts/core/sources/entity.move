@@ -7,14 +7,8 @@
 /// access and leaves room for system approval requirements.
 module core::entity;
 
-use core::{
-    action::Action,
-    internal::Permit,
-    location_service,
-    mod::{Self, Module},
-    request::{Self, Request}
-};
-use std::string::String;
+use core::{action::Action, location_service, mod::{Self, Module}, request::{Self, Request}};
+use std::{internal::Permit, string::String};
 use sui::{dynamic_field as df, vec_map::{Self, VecMap}};
 
 // === Errors ===

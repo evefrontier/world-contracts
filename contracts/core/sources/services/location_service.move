@@ -6,7 +6,8 @@
 /// scope for this module and will be layered on later.
 module core::location_service;
 
-use core::{internal::{Self, Permit}, request::Request, requirement::{Self, Requirement}};
+use core::{request::Request, requirement::{Self, Requirement}};
+use std::internal::Permit;
 use sui::bcs;
 
 // === Errors ===
@@ -39,5 +40,5 @@ public fun verify_proximity(request: &mut Request, proof: vector<u8>) {
 /// Mint the package-authorship permit for `Proximity`. Only this module defines
 /// `Proximity`, so only this module can satisfy its requirement.
 fun permit(): Permit<Proximity> {
-    internal::permit<Proximity, Proximity>(Proximity(vector[]))
+    internal::permit<Proximity>()
 }
