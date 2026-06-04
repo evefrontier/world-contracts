@@ -29,6 +29,8 @@ public fun proximity_requirement(location_hash: vector<u8>): Requirement {
 /// Satisfy the next (proximity) requirement on `request`. Aborts unless `proof`
 /// matches the required location hash.
 public fun verify_proximity(request: &mut Request, proof: vector<u8>) {
+    // TODO: Replace hash equality with server-signed LocationProof verification
+    // (authorized server registry, player == sender, target hash, deadline, sig_verify).
     let (requirement, frame) = request.take_next(permit());
     let required = bcs::new(requirement.data()).peel_vec_u8();
     assert!(proof == required, EProximityMismatch);
