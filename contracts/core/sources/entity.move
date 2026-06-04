@@ -1,15 +1,25 @@
 /// `Entity` in-game can be a ship or a structure. It stays small: modules and actions are
 /// stored as dynamic fields, so installing behavior never changes its type.
 ///
+/// On-chain object IDs are derived from `ObjectRegistry` using a tenant-scoped game
+/// identifier (`id + tenant`), so each in-game ID maps to exactly one entity.
+///
 /// Lifecycle operations (`install`, `uninstall`, `enable_action`,
 /// `disable_action`, `interact`) lock the entity and return a `Request` that
 /// the transaction must `complete_request` — this is what gates `module_mut`
 /// access and leaves room for system approval requirements.
 module core::entity;
 
-use core::{action::Action, location_service, mod::{Self, Module}, request::{Self, Request}};
+use core::{
+    action::Action,
+    entity_key::{Self, EntityKey},
+    location_service,
+    mod::{Self, Module},
+    object_registry::ObjectRegistry,
+    request::{Self, Request}
+};
 use std::{internal::Permit, string::String};
-use sui::{dynamic_field as df, vec_map::{Self, VecMap}};
+use sui::{derived_object, dynamic_field as df, vec_map::{Self, VecMap}};
 
 // === Errors ===
 
@@ -21,6 +31,9 @@ const EUnknownAction: u64 = 4;
 const EModuleExists: u64 = 5;
 const EModuleMissing: u64 = 6;
 const EActionExists: u64 = 7;
+const EIdEmpty: u64 = 8;
+const ETenantEmpty: u64 = 9;
+const EEntityAlreadyExists: u64 = 10;
 
 // === Constants ===
 
@@ -35,14 +48,30 @@ public struct InFlight() has copy, drop, store;
 public struct Entity has key {
     id: UID,
     version: u64,
+    /// Tenant-scoped game identifier used to derive this entity's object ID.
+    key: EntityKey,
     /// Location hash injected as a proximity requirement on every interaction.
     location_hash: vector<u8>,
 }
 
 // === Public Functions ===
 
-public fun new(location_hash: vector<u8>, ctx: &mut TxContext): Entity {
-    let mut entity = Entity { id: object::new(ctx), version: VERSION, location_hash };
+/// Claim an entity with a deterministic ID derived from `id + tenant`. The same
+/// in-game ID can only ever back a single entity.
+public fun new(
+    registry: &mut ObjectRegistry,
+    id: u64,
+    tenant: String,
+    location_hash: vector<u8>,
+): Entity {
+    assert!(id != 0, EIdEmpty);
+    assert!(tenant.length() > 0, ETenantEmpty);
+
+    let key = entity_key::new(id, tenant);
+    assert!(!registry.exists(key), EEntityAlreadyExists);
+
+    let uid = derived_object::claim(registry.borrow_id(), key);
+    let mut entity = Entity { id: uid, version: VERSION, key, location_hash };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
     entity
 }
@@ -155,6 +184,14 @@ public fun complete_request(entity: &mut Entity, req: Request) {
 }
 
 // === View Functions ===
+
+public fun id(entity: &Entity): ID {
+    object::id(entity)
+}
+
+public fun key(entity: &Entity): EntityKey {
+    entity.key
+}
 
 public fun has_module(entity: &Entity, name: String): bool {
     df::exists_(&entity.id, ModuleKey(name))
