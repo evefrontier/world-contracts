@@ -1,7 +1,7 @@
 #[test_only]
 module core::core_tests;
 
-use core::{action, entity, location_service, requirement::{Self, Requirement}};
+use core::{action, entity, location_service, request, requirement::{Self, Requirement}};
 use std::string;
 use sui::test_scenario as ts;
 
@@ -53,7 +53,7 @@ fun end_to_end_flow() {
     scenario.end();
 }
 
-#[test, expected_failure]
+#[test, expected_failure(abort_code = request::ERequestNotComplete)]
 fun cannot_complete_with_pending_requirement() {
     let mut scenario = ts::begin(@0xA);
     let ctx = scenario.ctx();

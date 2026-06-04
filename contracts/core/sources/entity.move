@@ -148,6 +148,7 @@ public fun module_mut<T: store>(self: &mut Entity, req: &Request, _: Permit<T>):
 /// Complete a request against this entity and unlock it.
 public fun complete_request(self: &mut Entity, req: Request) {
     assert!(self.version == VERSION, EWrongVersion);
+    assert!(self.is_locked(), ENotLocked);
     req.entity_id().do!(|id| assert!(id == self.id.to_inner(), EWrongEntity));
     req.complete();
     self.unlock();

@@ -39,6 +39,7 @@ public struct Frame {
 /// `entity::module_mut`, which reads `entity_id()` and `next().module_name()`
 /// off the request.
 public fun take_next<T>(request: &mut Request, _: Permit<T>): (Requirement, Frame) {
+    assert!(request.requires.length() > 0, ENoRequirements);
     let next = request.requires.pop_back();
     assert!(next.is<T>(), EWrongRequirementType);
     (next, Frame { pending: vector[] })
