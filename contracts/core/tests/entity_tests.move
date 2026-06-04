@@ -58,14 +58,10 @@ fun new_zero_id_aborts() {
     setup(&mut scenario);
 
     ts::next_tx(&mut scenario, @0xA);
-    {
-        let mut registry = take_registry(&scenario);
-        let e = entity::new(&mut registry, 0, string::utf8(TENANT), vector[]);
-        entity::share(e);
-        ts::return_shared(registry);
-    };
+    let mut registry = take_registry(&scenario);
+    let _e = entity::new(&mut registry, 0, string::utf8(TENANT), vector[]);
 
-    scenario.end();
+    abort
 }
 
 #[test, expected_failure(abort_code = entity::ETenantEmpty)]
@@ -74,14 +70,10 @@ fun new_empty_tenant_aborts() {
     setup(&mut scenario);
 
     ts::next_tx(&mut scenario, @0xA);
-    {
-        let mut registry = take_registry(&scenario);
-        let e = entity::new(&mut registry, 1, string::utf8(b""), vector[]);
-        entity::share(e);
-        ts::return_shared(registry);
-    };
+    let mut registry = take_registry(&scenario);
+    let _e = entity::new(&mut registry, 1, string::utf8(b""), vector[]);
 
-    scenario.end();
+    abort
 }
 
 #[test, expected_failure(abort_code = entity::EEntityAlreadyExists)]
@@ -90,16 +82,11 @@ fun reclaiming_same_id_aborts() {
     setup(&mut scenario);
 
     ts::next_tx(&mut scenario, @0xA);
-    {
-        let mut registry = take_registry(&scenario);
-        let first = claim(&mut registry, 7);
-        let second = claim(&mut registry, 7);
-        entity::share(first);
-        entity::share(second);
-        ts::return_shared(registry);
-    };
+    let mut registry = take_registry(&scenario);
+    let _first = claim(&mut registry, 7);
+    let _second = claim(&mut registry, 7);
 
-    scenario.end();
+    abort
 }
 
 #[test]
@@ -160,9 +147,7 @@ fun install_duplicate_module_aborts() {
     let req = e.install(counter_name(), Counter { value: 1 }, 1, internal::permit<Counter>(), ctx);
     e.complete_request(req);
 
-    entity::share(e);
-    ts::return_shared(registry);
-    scenario.end();
+    abort
 }
 
 #[test]
@@ -200,13 +185,9 @@ fun uninstall_missing_module_aborts() {
     let mut e = claim(&mut registry, 1);
     let ctx = scenario.ctx();
 
-    let (m, req) = e.uninstall<Counter>(counter_name(), internal::permit<Counter>(), ctx);
-    e.complete_request(req);
-    let Counter { value: _ } = m.unwrap(internal::permit<Counter>());
+    let (_m, _req) = e.uninstall<Counter>(counter_name(), internal::permit<Counter>(), ctx);
 
-    entity::share(e);
-    ts::return_shared(registry);
-    scenario.end();
+    abort
 }
 
 // === Actions ===
@@ -247,9 +228,7 @@ fun enable_duplicate_action_aborts() {
     let req = e.enable_action(string::utf8(b"act"), action::new(vector[]), ctx);
     e.complete_request(req);
 
-    entity::share(e);
-    ts::return_shared(registry);
-    scenario.end();
+    abort
 }
 
 #[test, expected_failure(abort_code = entity::EUnknownAction)]
@@ -265,9 +244,7 @@ fun disable_unknown_action_aborts() {
     let req = e.disable_action(string::utf8(b"missing"), ctx);
     e.complete_request(req);
 
-    entity::share(e);
-    ts::return_shared(registry);
-    scenario.end();
+    abort
 }
 
 #[test, expected_failure(abort_code = entity::EUnknownAction)]
@@ -283,7 +260,5 @@ fun interact_unknown_action_aborts() {
     let req = e.interact(string::utf8(b"missing"), ctx);
     e.complete_request(req);
 
-    entity::share(e);
-    ts::return_shared(registry);
-    scenario.end();
+    abort
 }

@@ -97,10 +97,9 @@ fun cannot_complete_with_pending_requirement() {
     let req = e.enable_action(string::utf8(b"increment"), action, ctx);
     e.complete_request(req);
 
-    // Try to complete without satisfying the Bump requirement.
+    // Try to complete without satisfying the requirement.
     let req = e.interact(string::utf8(b"increment"), ctx);
     e.complete_request(req);
 
-    e.share();
-    scenario.end();
+    abort
 }

@@ -1,6 +1,6 @@
 /// Unified registry for deterministic entity object IDs.
 ///
-/// Every entity derives its object ID from this registry using a `TenantGameId`
+/// Every entity derives its object ID from this registry using an `EntityKey`
 /// (`id + tenant`), guaranteeing each in-game ID maps to exactly one on-chain object.
 module core::object_registry;
 
