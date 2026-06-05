@@ -177,6 +177,9 @@ public fun module_mut<T: store>(entity: &mut Entity, req: &Request, _: Permit<T>
     df::borrow_mut(&mut entity.id, ModuleKey(name))
 }
 
+/// Read-only access to a module by name. `Permit<T>` enforces that only the
+/// package that authored `T` can read it; no lock is required since nothing
+/// is mutated.
 public fun module_ref<T: store>(entity: &Entity, name: String, _: Permit<T>): &Module<T> {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(name)), EModuleMissing);

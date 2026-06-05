@@ -16,11 +16,7 @@ const VERSION: u64 = 1;
 // === Structs ===
 
 public struct Identity has store {
-    /// Tribe the character belongs to.
     tribe_id: u32,
-    /// Single address for now: client lookups rely on the Sui GraphQL
-    /// `ObjectFilter.owner` scalar, which filters by exactly one address per query.
-    /// TODO: support multi-address / multisig (`VecSet<address>`).
     owner: address,
 }
 
