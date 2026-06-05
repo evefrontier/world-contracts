@@ -285,6 +285,8 @@ public(package) fun reveal_location(
 
 /// Records plaintext coordinates for an object without requiring an owner cap.
 /// Used by object types (e.g. Rifts) that have no OwnerCap.
+/// Note: this function performs no authorization checks; callers must
+/// enforce ACLs (e.g. `AdminACL::verify_sponsor`).
 public(package) fun record_revealed_coordinates(
     registry: &mut LocationRegistry,
     object_id: ID,
