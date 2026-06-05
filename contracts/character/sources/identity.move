@@ -1,9 +1,9 @@
 /// Identity module installed on a Character `Entity`.
 ///
 /// Holds the character's tribe and the single wallet address bound to it.
-/// v1 is creation-only: identity is set at creation and read thereafter. Mutating
-/// it (e.g. a tribe change) is deferred to a later PR, where it must be gated by
-/// the game-wide access-control / admin model rather than left open.
+///
+/// TODO: support multi-address / multisig ownership (`VecSet<address>`) so that
+/// multiple addresses can be bound to a single character.
 module character::identity;
 
 use core::{entity::Entity, mod::Module, request::Request};
