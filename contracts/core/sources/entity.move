@@ -58,6 +58,9 @@ public struct Entity has key {
 
 /// Claim an entity with a deterministic ID derived from `id + tenant`. The same
 /// in-game ID can only ever back a single entity.
+///
+/// TODO: gate creation behind an adminACL authorization requirement so only
+/// admins can claim IDs.
 public fun new(
     registry: &mut ObjectRegistry,
     id: u64,
