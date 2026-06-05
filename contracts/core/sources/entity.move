@@ -177,6 +177,12 @@ public fun module_mut<T: store>(entity: &mut Entity, req: &Request, _: Permit<T>
     df::borrow_mut(&mut entity.id, ModuleKey(name))
 }
 
+public fun module_ref<T: store>(entity: &Entity, name: String, _: Permit<T>): &Module<T> {
+    assert!(entity.version == VERSION, EWrongVersion);
+    assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(name)), EModuleMissing);
+    df::borrow(&entity.id, ModuleKey(name))
+}
+
 /// Complete a request against this entity and unlock it.
 public fun complete_request(entity: &mut Entity, req: Request) {
     assert!(entity.version == VERSION, EWrongVersion);
