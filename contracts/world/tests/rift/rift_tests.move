@@ -8,7 +8,7 @@ use world::{
     location::{Self, LocationRegistry},
     object_registry::ObjectRegistry,
     rift::{Self, Rift},
-    test_helpers::{Self, governor, admin, tenant},
+    test_helpers::{Self, governor, admin, tenant}
 };
 
 const LOCATION_HASH: vector<u8> =

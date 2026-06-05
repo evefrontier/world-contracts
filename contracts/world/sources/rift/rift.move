@@ -12,7 +12,7 @@ use world::{
     access::AdminACL,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location, LocationRegistry},
-    object_registry::ObjectRegistry,
+    object_registry::ObjectRegistry
 };
 
 // === Errors ===
