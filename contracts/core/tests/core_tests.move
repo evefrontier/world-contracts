@@ -1,7 +1,14 @@
 #[test_only]
 module core::core_tests;
 
-use core::{action, entity, location_service, request, requirement::{Self, Requirement}};
+use core::{
+    action,
+    entity,
+    location_service,
+    object_registry::{Self, ObjectRegistry},
+    request,
+    requirement::{Self, Requirement}
+};
 use std::string;
 use sui::test_scenario as ts;
 
@@ -12,16 +19,31 @@ public struct Counter has store {
 /// Requirement marker satisfied by this test's handler.
 public struct Bump has drop {}
 
-fun bump_requirement(module_name: vector<u8>): Requirement {
+const TENANT: vector<u8> = b"test";
+
+fun increment_requirement(module_name: vector<u8>): Requirement {
     requirement::from_config(option::some(string::utf8(module_name)), Bump {})
+}
+
+fun setup_registry(scenario: &mut ts::Scenario) {
+    object_registry::init_for_testing(scenario.ctx());
+}
+
+fun claim_test_entity(scenario: &ts::Scenario): entity::Entity {
+    let mut registry = ts::take_shared<ObjectRegistry>(scenario);
+    let e = entity::new(&mut registry, 1, string::utf8(TENANT), vector[]);
+    ts::return_shared(registry);
+    e
 }
 
 #[test]
 fun end_to_end_flow() {
     let mut scenario = ts::begin(@0xA);
-    let ctx = scenario.ctx();
+    setup_registry(&mut scenario);
 
-    let mut e = entity::new(vector[], ctx);
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = claim_test_entity(&scenario);
+    let ctx = scenario.ctx();
 
     // Install a module, then close out the install request.
     let req = e.install(
@@ -35,13 +57,13 @@ fun end_to_end_flow() {
     assert!(e.has_module(string::utf8(b"counter")));
 
     // Expose an action carrying one module-scoped requirement.
-    let action = action::new(vector[bump_requirement(b"counter")]);
-    let req = e.enable_action(string::utf8(b"bump"), action, ctx);
+    let action = action::new(vector[increment_requirement(b"counter")]);
+    let req = e.enable_action(string::utf8(b"increment"), action, ctx);
     e.complete_request(req);
 
     // Interact: satisfy the injected proximity requirement first, then borrow the
     // module by requirement, satisfy it, and mutate.
-    let mut req = e.interact(string::utf8(b"bump"), ctx);
+    let mut req = e.interact(string::utf8(b"increment"), ctx);
     location_service::verify_proximity(&mut req, vector[]);
     let counter = e.module_mut<Counter>(&req, internal::permit<Counter>()).inner_mut();
     let (_requirement, frame) = req.take_next<Bump>(internal::permit<Bump>());
@@ -56,9 +78,12 @@ fun end_to_end_flow() {
 #[test, expected_failure(abort_code = request::ERequestNotComplete)]
 fun cannot_complete_with_pending_requirement() {
     let mut scenario = ts::begin(@0xA);
+    setup_registry(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = claim_test_entity(&scenario);
     let ctx = scenario.ctx();
 
-    let mut e = entity::new(vector[], ctx);
     let req = e.install(
         string::utf8(b"counter"),
         Counter { value: 0 },
@@ -68,14 +93,13 @@ fun cannot_complete_with_pending_requirement() {
     );
     e.complete_request(req);
 
-    let action = action::new(vector[bump_requirement(b"counter")]);
-    let req = e.enable_action(string::utf8(b"bump"), action, ctx);
+    let action = action::new(vector[increment_requirement(b"counter")]);
+    let req = e.enable_action(string::utf8(b"increment"), action, ctx);
     e.complete_request(req);
 
-    // Try to complete without satisfying the Bump requirement.
-    let req = e.interact(string::utf8(b"bump"), ctx);
+    // Try to complete without satisfying the requirement.
+    let req = e.interact(string::utf8(b"increment"), ctx);
     e.complete_request(req);
 
-    e.share();
-    scenario.end();
+    abort
 }
