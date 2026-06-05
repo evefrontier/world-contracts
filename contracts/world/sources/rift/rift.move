@@ -1,9 +1,9 @@
-/// Server-only spatial objects that hold a hashed location until mining begins.
+/// Server-controlled spatial objects that initially store only a hashed location.
 ///
-/// Rifts are created and mutated solely by EVE gameplay servers (authorized sponsors).
+/// Rifts are created and managed solely by gameplay servers (authorized sponsors).
 /// Players have no OwnerCap and therefore no on-chain path to create or modify them.
-/// When a player starts mining, the server broadcasts the plaintext location on-chain
-/// to enable PvP interference.
+/// Authorized sponsors may broadcast the plaintext location on-chain (e.g. when mining begins)
+/// to enable PvP interference; the mining lifecycle itself is enforced off-chain.
 module world::rift;
 
 use std::string::String;
