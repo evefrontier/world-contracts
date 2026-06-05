@@ -18,8 +18,8 @@ RUN sui --version && node --version && pnpm --version && jq --version
 
 WORKDIR /app
 
-# Copy package files and install dependencies with pnpm
-COPY package*.json pnpm-lock.yaml ./
+# Copy workspace manifests first for better layer caching, then install with pnpm
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --no-frozen-lockfile
 
 COPY . .
@@ -34,14 +34,12 @@ FROM dependency-stage AS lint-stage
 RUN pnpm run fmt:check
 
 FROM dependency-stage AS build-stage
-# Build all Move contracts in parallel
-RUN find contracts -maxdepth 1 -mindepth 1 -type d | \
-    xargs -P 4 -I {} sui move build --path {}
+# Build all Move packages
+RUN pnpm run build
 
 FROM build-stage AS test-stage
-# Run all tests in parallel
-RUN find contracts -maxdepth 1 -mindepth 1 -type d | \
-    xargs -P 4 -I {} sui move test --path {}
+# Run all Move package tests
+RUN pnpm run test
 
 FROM dependency-stage AS release-stage
 ENV CI=true

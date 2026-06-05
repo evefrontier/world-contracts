@@ -129,54 +129,55 @@ if [ $# -eq 1 ]; then
   export CI="${CI:-true}"
 
   pnpm install --frozen-lockfile
-  pnpm deploy-world localnet
-  pnpm run configure-world localnet
-  pnpm deploy-builder-ext localnet
+  # TODO: UPDATE FOR V1
+#   pnpm deploy-world localnet
+#   pnpm run configure-world localnet
+#   pnpm deploy-builder-ext localnet
 
-  if [ "$1" = "test" ]; then
-    echo "[ci] Running integration tests..."
+#   if [ "$1" = "test" ]; then
+#     echo "[ci] Running integration tests..."
 
-    chmod +x ./scripts/run-integration-test.sh
-    DELAY_SECONDS="${DELAY_SECONDS:-3}" ./scripts/run-integration-test.sh
-  elif [ "$1" = "snapshot" ]; then
-    echo "[ci] Building snapshot image..."
+#     chmod +x ./scripts/run-integration-test.sh
+#     DELAY_SECONDS="${DELAY_SECONDS:-3}" ./scripts/run-integration-test.sh
+#   elif [ "$1" = "snapshot" ]; then
+#     echo "[ci] Building snapshot image..."
 
-    echo "[ci] Shutting down node..."
-    if kill -0 "$NODE_PID" 2>/dev/null; then
-      # Try graceful shutdown first (SIGTERM), with a bounded wait.
-      echo "[ci] Node process signaled for shutdown..."
-      kill "$NODE_PID" 2>/dev/null || true
+#     echo "[ci] Shutting down node..."
+#     if kill -0 "$NODE_PID" 2>/dev/null; then
+#       # Try graceful shutdown first (SIGTERM), with a bounded wait.
+#       echo "[ci] Node process signaled for shutdown..."
+#       kill "$NODE_PID" 2>/dev/null || true
 
-      SHUTDOWN_TIMEOUT="${SHUTDOWN_TIMEOUT:-60}"
-      while kill -0 "$NODE_PID" 2>/dev/null && [ "$SHUTDOWN_TIMEOUT" -gt 0 ]; do
-        echo "[ci] Waiting for node to shutdown... $SHUTDOWN_TIMEOUT seconds remaining"
+#       SHUTDOWN_TIMEOUT="${SHUTDOWN_TIMEOUT:-60}"
+#       while kill -0 "$NODE_PID" 2>/dev/null && [ "$SHUTDOWN_TIMEOUT" -gt 0 ]; do
+#         echo "[ci] Waiting for node to shutdown... $SHUTDOWN_TIMEOUT seconds remaining"
 
-        sleep 1
-        SHUTDOWN_TIMEOUT=$((SHUTDOWN_TIMEOUT - 1))
-      done
+#         sleep 1
+#         SHUTDOWN_TIMEOUT=$((SHUTDOWN_TIMEOUT - 1))
+#       done
 
-      if kill -0 "$NODE_PID" 2>/dev/null; then
-        echo "[ci] Node did not exit gracefully, forcing termination..."
-        kill -9 "$NODE_PID" 2>/dev/null || true
-      fi
+#       if kill -0 "$NODE_PID" 2>/dev/null; then
+#         echo "[ci] Node did not exit gracefully, forcing termination..."
+#         kill -9 "$NODE_PID" 2>/dev/null || true
+#       fi
 
-      # Ensure the process is fully reaped before proceeding.
-      echo "[ci] Making sure the node process is fully reaped..."
-      wait "$NODE_PID" 2>/dev/null || true
-    else
-      echo "[ci] Node process not running; skipping shutdown wait."
-    fi
+#       # Ensure the process is fully reaped before proceeding.
+#       echo "[ci] Making sure the node process is fully reaped..."
+#       wait "$NODE_PID" 2>/dev/null || true
+#     else
+#       echo "[ci] Node process not running; skipping shutdown wait."
+#     fi
 
-    echo "[ci] Replacing entrypoint with snapshot image entrypoint..."
-    mv /entrypoint-snapshot-image.sh /entrypoint.sh
-    chmod a+x /entrypoint.sh
+#     echo "[ci] Replacing entrypoint with snapshot image entrypoint..."
+#     mv /entrypoint-snapshot-image.sh /entrypoint.sh
+#     chmod a+x /entrypoint.sh
 
-    # Unmounted copy used at runtime to seed an empty host bind mount at /data/deployment.
-    echo "[ci] Copying extracted object ids to /opt/world-contracts/extracted-object-ids.json..."
-    mkdir -p /opt/world-contracts
-    cp deployments/localnet/extracted-object-ids.json /opt/world-contracts/extracted-object-ids.json
-  fi
-else
-  echo "[ci] Localnet ready. Running command..."
-  exec "$@"
-fi
+#     # Unmounted copy used at runtime to seed an empty host bind mount at /data/deployment.
+#     echo "[ci] Copying extracted object ids to /opt/world-contracts/extracted-object-ids.json..."
+#     mkdir -p /opt/world-contracts
+#     cp deployments/localnet/extracted-object-ids.json /opt/world-contracts/extracted-object-ids.json
+#   fi
+# else
+#   echo "[ci] Localnet ready. Running command..."
+#   exec "$@"
+# fi

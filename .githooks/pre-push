@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Runs full build + tests before every push. Skip with `git push --no-verify`.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+echo "[pre-push] build"
+pnpm build
+
+echo "[pre-push] test"
+pnpm test

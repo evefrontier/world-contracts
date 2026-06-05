@@ -13,5 +13,5 @@ labels: feature
 <!-- Please describe your feature request in detail. -->
 
 <!-- Make sure that you have reviewed the Contributor Guidelines. -->
-<!-- https://github.com/projectawakening/world-chain-contracts/blob/develop/CONTRIBUTING.md -->
+<!-- https://github.com/evefrontier/world-contracts/blob/main/CONTRIBUTING.md -->
 

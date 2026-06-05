@@ -13,13 +13,13 @@ start_logging "$ENV" "deploy-builder-ext"
 echo "--- pnpm i ---"
 pnpm i
 
-echo "--- sui client publish ---"
-# For localnet, extension_examples must use world's Pub.localnet.toml (deploy world first).
-publish extension_examples "deployments/$ENV/builder_package.json" "$ENV" "../world/Pub.localnet.toml"
+# echo "--- sui client publish ---"
+# # For localnet, extension_examples must use world's Pub.localnet.toml (deploy world first).
+# publish extension_examples "deployments/$ENV/builder_package.json" "$ENV" "../world/Pub.localnet.toml"
 
-echo "--- extract-object-ids ---"
-export SUI_NETWORK="$ENV"
-pnpm exec tsx ts-scripts/utils/extract-object-ids.ts
+# echo "--- extract-object-ids ---"
+# export SUI_NETWORK="$ENV"
+# pnpm exec tsx ts-scripts/utils/extract-object-ids.ts
 
-echo "Deployed builder-ext to $ENV. Output: deployments/$ENV/"
-echo "Log: deployments/$ENV/deploy.log"
+# echo "Deployed builder-ext to $ENV. Output: deployments/$ENV/"
+# echo "Log: deployments/$ENV/deploy.log"

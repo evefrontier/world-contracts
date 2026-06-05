@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Node/pnpm dependencies (root workspace + members)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      mysten:
+        patterns:
+          - "@mysten/*"
+      dev-dependencies:
+        dependency-type: development
+
+  # GitHub Actions versions used in workflows
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+
+  # Docker base images (docker/Dockerfile, docker/Dockerfile.integration)
+  - package-ecosystem: docker
+    directory: "/docker"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5

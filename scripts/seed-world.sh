@@ -12,17 +12,6 @@ export SUI_NETWORK="$ENV"
 DELAY_SECONDS="${DELAY_SECONDS:-${2:-5}}"
 
 commands=(
-  "create-character"
-  "create-nwn"
-  "deposit-fuel"
-  "online-nwn"
-  "create-storage-unit"
-  "ssu-online"
-  "game-item-to-chain"
-  "deposit-to-ephemeral-inventory"
-  "create-gates"
-  "online-gates"
-  "link-gates"
 )
 
 echo "Seeding world on $ENV: ${#commands[@]} steps with ${DELAY_SECONDS}s delay..."

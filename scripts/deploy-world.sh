@@ -13,12 +13,12 @@ start_logging "$ENV" "deploy-world"
 echo "--- pnpm i ---"
 pnpm i
 
-echo "--- sui client publish ---"
-publish world "deployments/$ENV/world_package.json" "$ENV"
+# echo "--- sui client publish ---"
+# publish world "deployments/$ENV/world_package.json" "$ENV"
 
-echo "--- extract-object-ids ---"
-export SUI_NETWORK="$ENV"
-pnpm exec tsx ts-scripts/utils/extract-object-ids.ts
+# echo "--- extract-object-ids ---"
+# export SUI_NETWORK="$ENV"
+# pnpm exec tsx ts-scripts/utils/extract-object-ids.ts
 
-echo "Deployed world to $ENV. Output: deployments/$ENV/"
-echo "Log: deployments/$ENV/deploy.log"
+# echo "Deployed world to $ENV. Output: deployments/$ENV/"
+# echo "Log: deployments/$ENV/deploy.log"

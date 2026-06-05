@@ -1,0 +1,14 @@
+packages:
+  - "sdk/*"
+
+# Single source of truth for shared dependency versions across the workspace.
+catalog:
+  "@mysten/sui": ^2.0.0
+  "@mysten/bcs": ^2.0.2
+  "@mysten/prettier-plugin-move": ^0.3.3
+  "@noble/hashes": ^1.8.0
+  dotenv: ^17.2.3
+  prettier: ^3.7.4
+  typescript: ^5.9.3
+  tsx: ^4.21.0
+  "@types/node": ^24.10.4
