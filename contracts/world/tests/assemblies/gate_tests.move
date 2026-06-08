@@ -242,6 +242,14 @@ fun link_and_online_gates(
 }
 
 fun authorize_gate_extension(ts: &mut ts::Scenario, character_id: ID, gate_id: ID) {
+    authorize_gate_extension_typed<GateAuth>(ts, character_id, gate_id);
+}
+
+fun authorize_gate_extension_typed<Auth: drop>(
+    ts: &mut ts::Scenario,
+    character_id: ID,
+    gate_id: ID,
+) {
     ts::next_tx(ts, user_a());
     {
         let mut gate_obj = ts::take_shared_by_id<Gate>(ts, gate_id);
@@ -249,7 +257,22 @@ fun authorize_gate_extension(ts: &mut ts::Scenario, character_id: ID, gate_id: I
         let owner_cap_id = gate_obj.owner_cap_id();
         let gate_ticket = ts::receiving_ticket_by_id<OwnerCap<Gate>>(owner_cap_id);
         let (owner_cap, receipt) = character.borrow_owner_cap<Gate>(gate_ticket, ts.ctx());
-        gate_obj.authorize_extension<GateAuth>(&owner_cap);
+        gate_obj.authorize_extension<Auth>(&owner_cap);
+        character.return_owner_cap(owner_cap, receipt);
+        ts::return_shared(character);
+        ts::return_shared(gate_obj);
+    };
+}
+
+fun revoke_gate_extension(ts: &mut ts::Scenario, character_id: ID, gate_id: ID) {
+    ts::next_tx(ts, user_a());
+    {
+        let mut gate_obj = ts::take_shared_by_id<Gate>(ts, gate_id);
+        let mut character = ts::take_shared_by_id<Character>(ts, character_id);
+        let owner_cap_id = gate_obj.owner_cap_id();
+        let gate_ticket = ts::receiving_ticket_by_id<OwnerCap<Gate>>(owner_cap_id);
+        let (owner_cap, receipt) = character.borrow_owner_cap<Gate>(gate_ticket, ts.ctx());
+        gate_obj.revoke_extension_authorization(&owner_cap);
         character.return_owner_cap(owner_cap, receipt);
         ts::return_shared(character);
         ts::return_shared(gate_obj);
@@ -745,6 +768,113 @@ fun test_jump_with_permit_fails_expired_permit() {
     ts::return_shared(gate_a);
     ts::return_shared(gate_b);
     clock.destroy_for_testing();
+    ts::end(ts);
+}
+
+// A permit issued under an extension must not survive that extension being revoked.
+#[test]
+#[expected_failure(abort_code = gate::EExtensionNotConfigured)]
+fun jump_with_permit_fails_after_extension_revoked() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 120);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+    authorize_gate_extension(&mut ts, character_id, gate_a_id);
+    authorize_gate_extension(&mut ts, character_id, gate_b_id);
+
+    // Issue a permit under GateAuth while the extension is active.
+    ts::next_tx(&mut ts, user_a());
+    {
+        let clock = clock::create_for_testing(ts.ctx());
+        let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_a, &gate_b, &character, expires_at_timestamp_ms, ts.ctx());
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(character);
+        clock.destroy_for_testing();
+    };
+
+    // Owner revokes the gate extension after the permit was minted.
+    revoke_gate_extension(&mut ts, character_id, gate_a_id);
+
+    // The previously valid permit can no longer be used to jump.
+    ts::next_tx(&mut ts, user_a());
+    {
+        let clock = clock::create_for_testing(ts.ctx());
+        let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(character);
+        clock.destroy_for_testing();
+    };
+
+    ts::end(ts);
+}
+
+// A shadow permit (issued under the old extension) must not work after the extension is swapped.
+#[test]
+#[expected_failure(abort_code = gate::EJumpPermitExtensionMismatch)]
+fun jump_with_permit_fails_after_extension_swapped() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 121);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+    authorize_gate_extension(&mut ts, character_id, gate_a_id);
+    authorize_gate_extension(&mut ts, character_id, gate_b_id);
+
+    // Issue a permit under GateAuth.
+    ts::next_tx(&mut ts, user_a());
+    {
+        let clock = clock::create_for_testing(ts.ctx());
+        let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_a, &gate_b, &character, expires_at_timestamp_ms, ts.ctx());
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(character);
+        clock.destroy_for_testing();
+    };
+
+    // Owner swaps both gates to a different extension witness.
+    authorize_gate_extension_typed<WrongGateAuth>(&mut ts, character_id, gate_a_id);
+    authorize_gate_extension_typed<WrongGateAuth>(&mut ts, character_id, gate_b_id);
+
+    // The GateAuth permit no longer matches the gate's WrongGateAuth extension.
+    ts::next_tx(&mut ts, user_a());
+    {
+        let clock = clock::create_for_testing(ts.ctx());
+        let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(character);
+        clock.destroy_for_testing();
+    };
+
     ts::end(ts);
 }
 

@@ -72,6 +72,11 @@ const EExtensionConfigFrozen: vector<u8> = b"Extension configuration is frozen";
 const EExtensionNotConfigured: vector<u8> = b"Extension must be configured before freezing";
 #[error(code = 19)]
 const ENoExtensionToRevoke: vector<u8> = b"No extension authorization to revoke";
+#[error(code = 20)]
+const EJumpPermitExtensionMismatch: vector<u8> =
+    b"Jump permit extension does not match gate extension";
+#[error(code = 21)]
+const EGateExtensionMismatch: vector<u8> = b"Linked gates use different extension types";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -100,6 +105,10 @@ public struct JumpPermit has key, store {
     // Computed in a direction-agnostic way so the same permit works for A->B and B->A.
     route_hash: vector<u8>,
     expires_at_timestamp_ms: u64,
+    // Extension witness type active on the gates when the permit was issued. Binding the permit to
+    // the extension prevents a permit from outliving the extension that authorized it (e.g. after
+    // the owner revokes or swaps the gate's extension).
+    extension_type: TypeName,
 }
 
 // === Events ===
@@ -368,6 +377,10 @@ public fun delete_jump_permit_with_auth<Auth: drop>(
     _: Auth,
 ) {
     assert_gate_extension_matches<Auth>(source_gate);
+    assert!(
+        jump_permit.extension_type == type_name::with_defining_ids<Auth>(),
+        EJumpPermitExtensionMismatch,
+    );
     let JumpPermit { id, .. } = jump_permit;
     id.delete();
 }
@@ -530,6 +543,11 @@ public fun id(gate: &Gate): ID {
 
 public fun jump_permit_id(permit: &JumpPermit): ID {
     object::id(permit)
+}
+
+/// Returns the extension witness type the permit was issued under.
+public fun jump_permit_extension(permit: &JumpPermit): TypeName {
+    permit.extension_type
 }
 
 public fun status(gate: &Gate): &AssemblyStatus {
@@ -891,6 +909,15 @@ fun validate_jump_permit(
     let source_gate_id = object::id(source_gate);
     let destination_gate_id = object::id(destination_gate);
 
+    // Bind the permit to the extension active on both gates. This prevents a permit issued under one
+    // extension from being used after the gate's extension is revoked or swapped (shadow permits).
+    assert!(option::is_some(&source_gate.extension), EExtensionNotConfigured);
+    assert!(option::is_some(&destination_gate.extension), EExtensionNotConfigured);
+    let src_ext = option::borrow(&source_gate.extension);
+    let dst_ext = option::borrow(&destination_gate.extension);
+    assert!(src_ext == dst_ext, EGateExtensionMismatch);
+    assert!(jump_permit.extension_type == *src_ext, EJumpPermitExtensionMismatch);
+
     // Validate jump permit then invalidate it
     assert!(jump_permit.expires_at_timestamp_ms > clock.timestamp_ms(), EJumpPermitExpired);
     assert!(jump_permit.character_id == object::id(character), EInvalidJumpPermit);
@@ -967,15 +994,16 @@ fun issue_jump_permit_internal<Auth: drop>(
     let permit_uid = object::new(ctx);
     let jump_permit_id = object::uid_to_inner(&permit_uid);
 
+    let extension_type = type_name::with_defining_ids<Auth>();
     let jump_permit = JumpPermit {
         id: permit_uid,
         route_hash,
         character_id,
         expires_at_timestamp_ms,
+        extension_type,
     };
     transfer::transfer(jump_permit, character.character_address());
 
-    let extension_type = type_name::with_defining_ids<Auth>();
     event::emit(JumpPermitIssuedEvent {
         jump_permit_id,
         source_gate_id,
