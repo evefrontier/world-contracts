@@ -878,6 +878,60 @@ fun jump_with_permit_fails_after_extension_swapped() {
     ts::end(ts);
 }
 
+// A permit must not revive after the SAME extension type is revoked and then re-authorized.
+#[test]
+#[expected_failure(abort_code = gate::EJumpPermitStaleExtension)]
+fun jump_with_permit_fails_after_revoke_then_reauthorize_same_auth() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_character(&mut ts, user_a(), 122);
+    let nwn_id = create_network_node(&mut ts, character_id);
+    let gate_a_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_1);
+    let gate_b_id = create_gate(&mut ts, character_id, nwn_id, GATE_TYPE_ID_1, GATE_ITEM_ID_2);
+
+    bring_network_node_online(&mut ts, character_id, nwn_id);
+    link_and_online_gates(&mut ts, character_id, nwn_id, gate_a_id, gate_b_id);
+    authorize_gate_extension(&mut ts, character_id, gate_a_id);
+    authorize_gate_extension(&mut ts, character_id, gate_b_id);
+
+    // Issue a permit under the first GateAuth configuration.
+    ts::next_tx(&mut ts, user_a());
+    {
+        let clock = clock::create_for_testing(ts.ctx());
+        let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let expires_at_timestamp_ms = clock.timestamp_ms() + 10_000;
+        claim_ticket(&gate_a, &gate_b, &character, expires_at_timestamp_ms, ts.ctx());
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(character);
+        clock.destroy_for_testing();
+    };
+
+    // Owner revokes then re-authorizes the SAME extension witness type on the source gate.
+    revoke_gate_extension(&mut ts, character_id, gate_a_id);
+    authorize_gate_extension(&mut ts, character_id, gate_a_id);
+
+    // The permit was bound to the previous configuration session and must not be reusable.
+    ts::next_tx(&mut ts, user_a());
+    {
+        let clock = clock::create_for_testing(ts.ctx());
+        let gate_a = ts::take_shared_by_id<Gate>(&ts, gate_a_id);
+        let gate_b = ts::take_shared_by_id<Gate>(&ts, gate_b_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let permit = ts::take_from_sender<JumpPermit>(&ts);
+        gate::test_jump_with_permit(&gate_a, &gate_b, &character, permit, &clock);
+        ts::return_shared(gate_a);
+        ts::return_shared(gate_b);
+        ts::return_shared(character);
+        clock.destroy_for_testing();
+    };
+
+    ts::end(ts);
+}
+
 #[test]
 #[expected_failure(abort_code = gate::EExtensionNotAuthorized)]
 fun delete_jump_permit_with_auth_fails_wrong_auth() {

@@ -77,6 +77,9 @@ const EJumpPermitExtensionMismatch: vector<u8> =
     b"Jump permit extension does not match gate extension";
 #[error(code = 21)]
 const EGateExtensionMismatch: vector<u8> = b"Gates use different extension types";
+#[error(code = 22)]
+const EJumpPermitStaleExtension: vector<u8> =
+    b"Jump permit was issued under a stale gate extension configuration";
 
 // === Structs ===
 public struct GateConfig has key {
@@ -95,6 +98,8 @@ public struct Gate has key {
     energy_source_id: Option<ID>,
     metadata: Option<Metadata>,
     extension: Option<TypeName>,
+    // Bumped on every `authorize_extension`
+    extension_version: u64,
 }
 
 // Note : Can add more fields later
@@ -109,6 +114,9 @@ public struct JumpPermit has key, store {
     // the extension prevents a permit from outliving the extension that authorized it (e.g. after
     // the owner revokes or swaps the gate's extension).
     extension_type: TypeName,
+    // Order-agnostic hash binding both gates' ids and their `extension_version` at issuance. Even if
+    // the same extension type is later re-authorized, the version bump invalidates this permit.
+    extension_config_hash: vector<u8>,
 }
 
 // === Events ===
@@ -179,6 +187,7 @@ public fun authorize_extension<Auth: drop>(gate: &mut Gate, owner_cap: &OwnerCap
     assert!(!extension_freeze::is_extension_frozen(&gate.id), EExtensionConfigFrozen);
     let previous_extension = gate.extension;
     gate.extension.swap_or_fill(type_name::with_defining_ids<Auth>());
+    gate.extension_version = gate.extension_version + 1;
     event::emit(ExtensionAuthorizedEvent {
         assembly_id: gate_id,
         assembly_key: gate.key,
@@ -648,6 +657,7 @@ public fun anchor(
             ),
         ),
         extension: option::none(),
+        extension_version: 0,
     };
 
     network_node.connect_assembly(gate_id);
@@ -878,6 +888,21 @@ fun compute_route_hash(gate_a_id: ID, gate_b_id: ID): vector<u8> {
     hash::blake2b256(&concatenated)
 }
 
+/// Binds a permit to both gates' ids and their `extension_version`. `validate_jump_permit` checks
+/// both orderings, so the permit stays direction-agnostic while detecting a version bump on either gate.
+fun compute_extension_config_hash(
+    gate_a_id: ID,
+    gate_a_version: u64,
+    gate_b_id: ID,
+    gate_b_version: u64,
+): vector<u8> {
+    let mut bytes = bcs::to_bytes(&gate_a_id);
+    vector::append(&mut bytes, bcs::to_bytes(&gate_a_version));
+    vector::append(&mut bytes, bcs::to_bytes(&gate_b_id));
+    vector::append(&mut bytes, bcs::to_bytes(&gate_b_version));
+    hash::blake2b256(&bytes)
+}
+
 fun jump_internal(source_gate: &Gate, destination_gate: &Gate, character: &Character) {
     let source_gate_id = object::id(source_gate);
     let destination_gate_id = object::id(destination_gate);
@@ -917,6 +942,24 @@ fun validate_jump_permit(
     let dst_ext = option::borrow(&destination_gate.extension);
     assert!(src_ext == dst_ext, EGateExtensionMismatch);
     assert!(jump_permit.extension_type == *src_ext, EJumpPermitExtensionMismatch);
+
+    // Reject permits issued under a previous extension configuration session (revoke -> reauthorize
+    // of the same type bumps `extension_version`, so a stale permit no longer matches).
+    assert!(
+        jump_permit.extension_config_hash == compute_extension_config_hash(
+            source_gate_id,
+            source_gate.extension_version,
+            destination_gate_id,
+            destination_gate.extension_version,
+        )
+        || jump_permit.extension_config_hash == compute_extension_config_hash(
+            destination_gate_id,
+            destination_gate.extension_version,
+            source_gate_id,
+            source_gate.extension_version,
+        ),
+        EJumpPermitStaleExtension,
+    );
 
     // Validate jump permit then invalidate it
     assert!(jump_permit.expires_at_timestamp_ms > clock.timestamp_ms(), EJumpPermitExpired);
@@ -995,12 +1038,19 @@ fun issue_jump_permit_internal<Auth: drop>(
     let jump_permit_id = object::uid_to_inner(&permit_uid);
 
     let extension_type = type_name::with_defining_ids<Auth>();
+    let extension_config_hash = compute_extension_config_hash(
+        source_gate_id,
+        source_gate.extension_version,
+        destination_gate_id,
+        destination_gate.extension_version,
+    );
     let jump_permit = JumpPermit {
         id: permit_uid,
         route_hash,
         character_id,
         expires_at_timestamp_ms,
         extension_type,
+        extension_config_hash,
     };
     transfer::transfer(jump_permit, character.character_address());
 
