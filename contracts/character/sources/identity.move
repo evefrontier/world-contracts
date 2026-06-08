@@ -6,8 +6,12 @@
 /// multiple addresses can be bound to a single character.
 module character::identity;
 
-use core::{entity::Entity, mod::Module, request::Request};
+use core::{entity::Entity, mod::{Self, Module}, request::Request};
 use std::{internal::Permit, string::{Self, String}};
+
+// === Errors ===
+
+const EWrongVersion: u64 = 0;
 
 // === Constants ===
 
@@ -47,6 +51,7 @@ public(package) fun install(
 
 fun borrow(entity: &Entity): &Identity {
     let m: &Module<Identity> = entity.module_ref(module_name(), module_permit());
+    assert!(mod::version(m) == VERSION, EWrongVersion);
     m.inner()
 }
 
