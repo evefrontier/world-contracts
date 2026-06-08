@@ -69,14 +69,14 @@ const EGateTypeMismatch: vector<u8> = b"Gates have different TypeId values";
 #[error(code = 17)]
 const EExtensionConfigFrozen: vector<u8> = b"Extension configuration is frozen";
 #[error(code = 18)]
-const EExtensionNotConfigured: vector<u8> = b"Extension must be configured before freezing";
+const EExtensionNotConfigured: vector<u8> = b"Gate extension must be configured";
 #[error(code = 19)]
 const ENoExtensionToRevoke: vector<u8> = b"No extension authorization to revoke";
 #[error(code = 20)]
 const EJumpPermitExtensionMismatch: vector<u8> =
     b"Jump permit extension does not match gate extension";
 #[error(code = 21)]
-const EGateExtensionMismatch: vector<u8> = b"Linked gates use different extension types";
+const EGateExtensionMismatch: vector<u8> = b"Gates use different extension types";
 
 // === Structs ===
 public struct GateConfig has key {
