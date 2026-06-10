@@ -1,4 +1,11 @@
-# World Contracts Architecture Decision Record (ADR)
+# 1. Assembly Architecture
+
+- **Status:** Superseded by [0002-modular-architecture](0002-modular-architecture.md)
+- **Applies to:** the legacy `world::` code now under `contracts/archive/`
+
+> This records the original assembly-first design (three-layer primitives / assemblies /
+> extensions, `GovernorCap`/`AdminACL`/`OwnerCap`). It is kept for historical context and to
+> document the archived code; new work follows ADR 0002.
 
 ## Context
 The Frontier world contracts need to support a complex game environment with structures that can be composed, extended, and modified by both the core game and third-party builders. The architecture must balance flexibility with security while preserving player privacy in a transparent blockchain environment.
