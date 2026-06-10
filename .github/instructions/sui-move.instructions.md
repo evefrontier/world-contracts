@@ -1,410 +1,313 @@
 ---
-description: "Guidelines for building Sui Move contracts"
+description: "Guidelines for building Sui Move contracts (modular Entity/Module/Action/Request/Requirement architecture)"
 applyTo: "**/*.move"
 ---
 
 # Sui Move Code Guidelines
 
-This guide covers Move-specific conventions, patterns, and best practices for this repository.
+Conventions for the modular **Entity / Module / Action / Request / Requirement**
+architecture. These mirror `CLAUDE.md` and `.cursor/rules/move-conventions.mdc` — keep all
+three in sync. Follow the official
+[Sui Move Conventions](https://docs.sui.io/concepts/sui-move-concepts/conventions) and the
+[Move Book code-quality checklist](https://move-book.com/guides/code-quality-checklist).
 
-## Official Conventions
+> **Scope:** Live code is in `contracts/core/sources/` (modules `core::entity`, `core::mod`,
+> `core::action`, `core::request`, `core::requirement`, …). Everything under
+> `contracts/archive/` (the legacy `world::` assembly model — `StorageUnit`, `assemblies/`,
+> `primitives/`, `GovernorCap`/`AdminACL`/`OwnerCap`) is **deprecated**. Do not copy its
+> patterns into new code.
 
-Follow the official Move conventions:
+## Architecture in one minute
 
-- [Sui Move Concepts - Conventions](https://docs.sui.io/concepts/sui-move-concepts/conventions)
-- [Move Book - Code Quality Checklist](https://move-book.com/guides/code-quality-checklist)
+- `Entity` — base shared object (a ship or structure). Stays small; modules and actions are
+  stored as **dynamic fields** keyed by typed key structs, so installing behavior never
+  changes the `Entity` type.
+- `Module<T>` — typed module state installed on an entity under a human-readable name.
+- `Action` — a named, ordered list of `Requirement`s exposed by an entity.
+- `Request` — a transaction-scoped, **abilities-free hot potato** created when an action
+  starts; must be completed in the same tx.
+- `Requirement` — a typed rule instance; the `TypeName` identifies the handler, an optional
+  `name` targets a module, and `data` is BCS-encoded config.
+
+See [`docs/architechture-v1.md`](../../docs/architechture-v1.md) for the full design.
 
 ## Function Organization Order
 
-Organize functions in this order within each module:
+Every module **must** use `// === Section ===` headers and lay out declarations in this exact
+order (omit empty sections):
 
 ```move
-// === Errors ===
-// === Structs ===
-// === Events ===
-
-fun init(ctx: &mut TxContext) { }
-
-// === Public Functions ===
-// === View Functions ===
-// === Admin Functions ===
-// === Package Functions ===
+// === Errors ===            // E + PascalCase
+// === Constants ===         // SCREAMING_SNAKE (VERSION, ...)
+// === Structs ===           // key/positional-key structs, then main type
+// === Events ===            // past-tense names (UserRegistered)
+// === Public Functions ===  // constructors + mutating entry points
+// === View Functions ===    // getters: name() / name_mut(), no get_ prefix
+// === Admin Functions ===   // cap/ACL-gated mutations
+// === Package Functions === // public(package)
 // === Private Functions ===
-// === Test Functions ===
+// === Init ===              // fun init, if any
+// === Test Functions ===    // #[test_only], at the bottom
+```
+
+Within a signature, **objects first, capabilities second**, then plain args, with `&Clock` /
+`&mut TxContext` last:
+
+```move
+public fun call(app: &mut App, cap: &AdminCap, value: u64, ctx: &mut TxContext)
 ```
 
 **Review Checklist:**
 
-- [ ] Are functions organized in the correct order?
-- [ ] Is the `init` function placed after structs/events and before other functions?
-- [ ] Are test-only functions at the bottom with `#[test_only]` attribute?
+- [ ] Are declarations grouped under `// === Section ===` headers in the order above?
+- [ ] Do signatures put objects first, capabilities second, `ctx`/`&Clock` last?
+- [ ] Are `#[test_only]` functions at the bottom?
 
 ## Naming Conventions
 
-- **Modules**: snake_case (e.g., `storage_unit`, `access_control`)
-- **Structs**: PascalCase (e.g., `StorageUnit`, `OwnerCap`)
-- **Functions**: snake_case (e.g., `create_character`, `is_authorized`)
-- **Constants**: SCREAMING_SNAKE_CASE (e.g., `ENotAuthorized`)
-- **Error constants**: Prefix with `E` (e.g., `EAssemblyNotAuthorized`)
-
-## Receiver Syntax
-
-Use receiver syntax for method calls when appropriate:
-
-```move
-// Good
-assembly.status.online();
-storage_unit.location.hash();
-
-// Avoid when receiver syntax is available
-status::online(&mut assembly.status);
-```
-
-## Index Syntax
-
-Use index syntax for collections:
-
-```move
-// Good
-let value = &vec_map[&key];
-
-// Avoid
-let value = vec_map::get(&vec_map, &key);
-```
-
-## Access Control
-
-### Capability Hierarchy
-
-This project uses a three-tier capability system:
-
-1. **GovernorCap**: Top-level, held by deployer
-    - Can add/remove sponsors in AdminACL
-    - Can configure server addresses and ACLs
-
-2. **AdminACL**: Shared object with authorized sponsor addresses
-    - Authorized sponsors can create/delete OwnerCaps
-    - Authorized sponsors can perform admin operations (anchor, unanchor, etc.)
-
-3. **OwnerCap<T>**: Object-level, held by players
-    - Grants access to specific objects
-    - Phantom type `T` ensures type safety
-
-**Review Checklist:**
-
-- [ ] Is the appropriate capability required for each operation?
-- [ ] Are capability checks performed before state mutations?
-- [ ] Is `OwnerCap<T>` properly typed for the target object?
-
-### Authorization Patterns
-
-**Direct Authorization Check:**
-
-```move
-public fun online(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap<StorageUnit>) {
-    assert!(access::is_authorized(owner_cap, object::id(storage_unit)), EAssemblyNotAuthorized);
-    storage_unit.status.online();
-}
-```
-
-**Typed Witness Pattern (for extensions):**
-
-```move
-public fun deposit_item<Auth: drop>(
-    storage_unit: &mut StorageUnit,
-    item: Item,
-    _: Auth,  // Witness - only the defining module can create this
-) {
-    assert!(
-        storage_unit.extension.contains(&type_name::with_defining_ids<Auth>()),
-        EExtensionNotAuthorized,
-    );
-    // ... operation
-}
-```
-
-**ACL-based Authorization (for sponsored transactions):**
-
-```move
-let sponsor_opt = tx_context::sponsor(ctx);
-assert!(option::is_some(&sponsor_opt), ETransactionNotSponsored);
-let sponsor = *option::borrow(&sponsor_opt);
-assert!(admin_acl.is_authorized_sponsor(sponsor), EUnauthorizedSponsor);
-```
-
-**Review Checklist:**
-
-- [ ] Are all state-mutating functions protected by capability checks?
-- [ ] Is the authorization check the first thing in the function?
-- [ ] Are witness types used correctly (with `drop` ability, passed by value)?
+- **Modules**: `snake_case` (e.g. `entity`, `location_service`, `owner_service`).
+- **Structs**: `PascalCase` (e.g. `Entity`, `Module`, `Requirement`, `OwnerCap`).
+- **Functions / variables**: `snake_case`.
+- **Constants**: `SCREAMING_SNAKE_CASE` (e.g. `VERSION`).
+- **Error constants**: `E` + PascalCase (e.g. `EWrongVersion`, `EModuleMissing`). Pick this
+  one style — do **not** use `E_SCREAMING_SNAKE`.
 
 ## Error Handling
 
-### Error Definition Pattern
-
-Define errors at the top of the module with codes and descriptive messages:
+Define plain `u64` error constants in the `// === Errors ===` section, numbered from 0, and
+assert with a named constant — never a bare `abort` or unnamed `assert!`:
 
 ```move
 // === Errors ===
-#[error(code = 0)]
-const EStorageUnitTypeIdEmpty: vector<u8> = b"StorageUnit TypeId is empty";
-#[error(code = 1)]
-const EStorageUnitItemIdEmpty: vector<u8> = b"StorageUnit ItemId is empty";
-#[error(code = 2)]
-const EStorageUnitAlreadyExists: vector<u8> = b"StorageUnit with the same Item Id already exists";
+
+const EWrongVersion: u64 = 0;
+const ENotLocked: u64 = 1;
+const EModuleMissing: u64 = 6;
 ```
-
-**Review Checklist:**
-
-- [ ] Are error codes unique within the module?
-- [ ] Are error codes sequential starting from 0?
-- [ ] Do error messages clearly describe the failure condition?
-- [ ] Are errors defined in the `=== Errors ===` section at the top?
-
-### Assertion Pattern
-
-Use `assert!` with meaningful error constants:
 
 ```move
 // Good
-assert!(type_id != 0, EStorageUnitTypeIdEmpty);
-assert!(item_id != 0, EStorageUnitItemIdEmpty);
-assert!(storage_unit.status.is_online(), ENotOnline);
+assert!(entity.version == VERSION, EWrongVersion);
+assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(name)), EModuleMissing);
 
-// Avoid - no error context
-assert!(type_id != 0);
+// Avoid — no named error
+assert!(entity.version == VERSION);
 ```
 
 **Review Checklist:**
 
-- [ ] Do all assertions use named error constants?
-- [ ] Are preconditions checked before performing operations?
-- [ ] Are error messages user-friendly and actionable?
+- [ ] Are error constants `E` + PascalCase, typed `u64`, and defined in `// === Errors ===`?
+- [ ] Are codes unique within the module?
+- [ ] Do all `assert!` calls use a named error constant (no bare `abort`)?
 
-## Events
+## Versioning
 
-### Event Definition
-
-Define events in the `=== Events ===` section:
+Every persisted type carries a `const VERSION` plus a `version: u64` field, asserted on entry.
+Modules pass their **own** `VERSION` at install time so they can upgrade independently of
+`core`.
 
 ```move
-public struct AssemblyCreatedEvent has copy, drop {
-    assembly_id: ID,
-    key: TenantItemId,
-    type_id: u64,
-    volume: u64,
+const VERSION: u64 = 1;
+assert!(entity.version == VERSION, EWrongVersion);
+```
+
+**Review Checklist:**
+
+- [ ] Does every persisted struct carry a `version` field and a module `VERSION` constant?
+- [ ] Do mutating entry points assert `version == VERSION` first?
+
+## Field Getters
+
+Every struct field **must** have a getter in `// === View Functions ===`. Name it after the
+field (no `get_` prefix); return a copy for primitives and a `&` reference otherwise. Add a
+`_mut` variant only when callers legitimately mutate. Keep getters even if unused — they are
+the module's read API and keep fields private.
+
+```move
+public fun version<T: store>(m: &Module<T>): u64 { m.version }   // primitive: by value
+public fun name<T: store>(m: &Module<T>): String { m.name }
+public fun inner<T: store>(m: &Module<T>): &T { &m.inner }       // non-primitive: by ref
+public fun inner_mut<T: store>(m: &mut Module<T>): &mut T { &mut m.inner }
+```
+
+Exempt: the `id: UID` field (callers use `object::id`), positional key/witness structs, and
+transient hot-potato internals (e.g. `Request`/`Frame` fields that must stay opaque).
+
+**Review Checklist:**
+
+- [ ] Does every non-exempt field have a getter named after the field (no `get_`)?
+- [ ] Are primitives returned by value and non-primitives by `&`?
+- [ ] Are `_mut` getters added only where mutation is legitimate?
+
+## Entity & Dynamic Fields
+
+Keep `Entity` small; store modules/actions as dynamic fields keyed by **typed key structs**,
+so adding a module never changes the `Entity` type.
+
+```move
+public struct ModuleKey(String) has copy, drop, store;
+public struct ActionsKey() has copy, drop, store;
+// df: ModuleKey(name) => Module<T>,  ActionsKey() => VecMap<String, Action>
+```
+
+**Review Checklist:**
+
+- [ ] Are extension data and modules stored as dynamic fields, not new `Entity` fields?
+- [ ] Are dynamic-field keys typed key structs (not raw strings/ids)?
+- [ ] Is `df::exists_`/`exists_with_type` checked before borrowing optional fields?
+
+## Hot-potato Request / Frame
+
+`Request` and `Frame` have **no abilities** — they cannot be stored, copied, or dropped, so a
+tx that starts an action must finish it. Constructors are `public(package)`; only `core::entity`
+mints/consumes a `Request`. A `Request` completes only when **every** requirement is satisfied.
+Requirements are stored reversed so `pop_back` yields declaration order.
+
+```move
+public(package) fun complete(request: Request) {
+    let Request { requires, .. } = request;
+    assert!(requires.length() == 0, ERequestNotComplete);
 }
 ```
 
-### Event Emission
+**Review Checklist:**
 
-Emit events for all significant state changes:
+- [ ] Do `Request`/`Frame` declare no abilities?
+- [ ] Are their constructors `public(package)`?
+- [ ] Does every entry point that creates a `Request` force the caller to complete it?
+
+## Witness + `internal::Permit<T>` Authorization
+
+Authorization is **type-driven, not argument-driven**. A requirement of type `T` can only be
+satisfied by the module that defines `T`, proven with the package-private `internal::Permit<T>`.
+Module *identity* is enforced via the next requirement's `name`, read inside
+`entity::module_mut` — **never** trust a name passed as a handler argument.
 
 ```move
-event::emit(AssemblyCreatedEvent {
-    assembly_id,
-    key: assembly_key,
-    type_id,
-    volume,
-});
+public struct Owner(ID) has drop;            // witness owned by this module
+
+public fun verify_owner_cap(request: &mut Request) {
+    let (requirement, frame) = request.take_next(internal::permit<Owner>());
+    // enforce requirement.data() before mutating, then:
+    frame.destroy_empty_frame(); // or request.enqueue(frame) to add follow-ups
+}
+```
+
+```move
+// module_mut reads the target module name off the request, not the caller's args
+let name = req.next().module_name().destroy_or!(abort ERequirementNotModuleScoped);
+df::borrow_mut(&mut entity.id, ModuleKey(name))
 ```
 
 **Review Checklist:**
 
-- [ ] Are events defined for all significant state changes?
-- [ ] Do events have `copy` and `drop` abilities?
-- [ ] Do events include all relevant data for indexers?
-- [ ] Are events emitted after successful state changes (not before)?
+- [ ] Is authorization proven by type (`Permit<T>` / witness), not by a string/id argument?
+- [ ] Does the handler enforce `requirement.data()` before mutating state?
+- [ ] Is the target module name read from the requirement, never from handler arguments?
 
-## Object Model
+## Requirements as BCS Config
 
-### Shared vs Owned Objects
-
-**Shared Objects** (most assemblies):
-
-```move
-transfer::share_object(assembly);
-```
-
-- Use for objects that need concurrent access
-- Require explicit `share_object` call
-
-**Owned Objects** (capabilities):
+Requirement config is BCS bytes; the **type identity carries the meaning**. Build with
+`requirement::from_config` and decode with a symmetric `peel_*` parser mirroring field order.
+Type identity uses `type_name::with_original_ids<T>()` for stability across upgrades.
 
 ```move
-transfer::transfer(owner_cap, owner);
-```
-
-- Use for capabilities and personal assets
-- Can only be accessed by the owner
-
-### Derived Objects
-
-Use `derived_object` for deterministic ID generation:
-
-```move
-let assembly_key = in_game_id::create_key(item_id, tenant);
-let assembly_uid = derived_object::claim(&mut registry.id, assembly_key);
+public struct Deposit(ItemRequirement) has drop;
+requirement::from_config(option::some(module_name), Deposit(rule)); // encode
+let req = parse_bcs_requirement(requirement.data());                // decode (mirror field order)
 ```
 
 **Review Checklist:**
 
-- [ ] Are assemblies created as shared objects?
-- [ ] Are capabilities created as owned objects?
-- [ ] Is `derived_object` used for deterministic ID generation?
-- [ ] Are UIDs properly deleted when objects are destroyed?
+- [ ] Is config encoded via `requirement::from_config` and decoded with a matching parser?
+- [ ] Does the decode mirror the encode field order exactly?
+- [ ] Is type identity established with `type_name::with_original_ids<T>()`?
 
-### Dynamic Fields
+## Handlers & PTB Templates
 
-Use dynamic fields for variable-sized collections:
-
-```move
-// Add
-df::add(&mut storage_unit.id, owner_cap_id, inventory);
-
-// Borrow
-let inventory = df::borrow<ID, Inventory>(&storage_unit.id, owner_cap_id);
-
-// Borrow mut
-let inventory = df::borrow_mut<ID, Inventory>(&mut storage_unit.id, owner_cap_id);
-
-// Remove
-df::remove<ID, Inventory>(&mut id, key);
-```
+Behavior lives in module/service handlers (`deposit`, `verify_owner_cap`) that `take_next<T>`,
+enforce the decoded config, then mutate. Pair each with a `*_template` that emits the
+`ptb::move_call` for client discovery (referencing the package by MVR name, e.g.
+`mvr:@frontier/inventory`).
 
 **Review Checklist:**
 
-- [ ] Are dynamic fields used for unbounded collections?
-- [ ] Are dynamic fields properly cleaned up on object destruction?
-- [ ] Is `df::exists_` checked before accessing optional fields?
+- [ ] Does each handler `take_next<T>`, enforce config, then mutate — in that order?
+- [ ] Is there a matching `*_template` for client PTB discovery?
 
-## Security Considerations
+## Prefer Move Macros
 
-### Input Validation
+Use stdlib macros over manual loops/branches when one fits — clearer and less error-prone.
+Common ones: `map_ref!`, `map!`, `do!`, `destroy!`, `destroy_or!`, `is_some_and!`,
+`peel_option!`.
 
-- [ ] Are all input parameters validated before use?
-- [ ] Are zero values rejected where appropriate (e.g., `type_id != 0`)?
-- [ ] Are duplicate checks performed (e.g., `!assembly_exists()`)?
+```move
+// Good — declarative
+request::new(entity_id, action.requirements.map_ref!(|r| r.clone()));
+req.entity_id().do!(|id| assert!(id == e.id.to_inner(), EWrongEntity));
+```
 
-### Access Control
+## Receiver & Index Syntax
 
-- [ ] Are all mutating functions protected by capability checks?
-- [ ] Is the typed witness pattern used correctly for extensions?
-- [ ] Are server addresses validated against the registry?
+```move
+// Receiver syntax for method calls
+entity.complete_request(req);
+e.has_module(name);
 
-### State Integrity
-
-- [ ] Are state transitions valid (e.g., OFFLINE -> ONLINE)?
-- [ ] Are objects properly cleaned up on destruction?
-- [ ] Are dynamic fields removed before deleting parent objects?
-
-### Location Privacy
-
-- [ ] Are locations stored as hashes, not cleartext?
-- [ ] Are proximity proofs verified before location-sensitive operations?
-- [ ] Are server signatures validated for location attestations?
-
-### Tenant Isolation
-
-- [ ] Are tenant checks performed for cross-object operations?
-- [ ] Is `ETenantMismatch` error used for cross-tenant violations?
+// Index syntax for collections
+let value = &vec_map[&key];   // not vec_map::get(&vec_map, &key)
+```
 
 ## Documentation Requirements
 
-### Module Documentation
+Follow the Sui/Move docgen convention so `sui move build --doc` produces clean docs.
 
-Every module should have a doc comment explaining its purpose:
-
-```move
-/// This module handles the functionality of the in-game Storage Unit Assembly
-///
-/// The Storage Unit is a programmable, on-chain storage structure.
-/// It can allow players to store, withdraw, and manage items under rules they design themselves.
-module world::storage_unit;
-```
-
-### Function Documentation
-
-Public functions should have doc comments:
-
-```move
-/// Bridges items from chain to game inventory
-public fun chain_item_to_game_inventory<T: key>(
-    storage_unit: &mut StorageUnit,
-    // ...
-) { }
-```
+- **`///` = published docs**, `//` = internal notes.
+- **Module-level**: every module starts with a `///` block explaining what it is and its key
+  concepts (see `contracts/core/sources/entity.move` lines 1-11).
+- **Function-level**: a short `///` line on public functions stating intent, not mechanics.
+- **Explain the non-obvious**: a brief `//` for a tricky macro or invariant (the *why*).
+- **Keep docgen happy**: balance all backticks in `///` comments — an unmatched backtick makes
+  `sui move build --doc` panic.
 
 **Review Checklist:**
 
-- [ ] Do all modules have doc comments?
-- [ ] Do all public functions have doc comments?
-- [ ] Are complex patterns explained with comments or documentation links?
+- [ ] Does every module start with a `///` doc block?
+- [ ] Do public functions/structs/fields have `///` comments?
+- [ ] Are backticks balanced in all `///` comments?
 
-## Common Issues to Flag
+## Imports
 
-### Access Control Issues
-
-- Missing capability checks on mutating functions
-- Wrong capability type used (e.g., `AdminACL` where `OwnerCap` is needed)
-- Missing authorization assertion before state changes
-
-### State Management Issues
-
-- State transitions that bypass status checks
-- Dynamic fields not cleaned up on destruction
-
-### Error Handling Issues
-
-- Using raw abort codes instead of named error constants
-- Missing error constants for failure conditions
-- Non-sequential error codes
-
-### Architecture Issues
-
-- Primitive non-admin state-mutating functions exposed as `public` instead of `public(package)`
-- Business logic in primitives instead of assemblies
-- Direct field access bypassing accessor functions
+Group all `use` declarations at the top of the module — no inline imports.
 
 ## What NOT to Review
 
-Do not flag issues that are handled by automated tools:
+Do not flag issues handled by automated tooling:
 
 - Code formatting (handled by `sui move fmt`)
-- Unused imports (handled by Move compiler warnings)
-- Unused variables (handled by Move compiler warnings)
+- Unused imports / unused variables (handled by Move compiler warnings)
 
-Focus on logic, architecture, access control, and security rather than style issues.
+Focus on logic, architecture, authorization, and the invariants above rather than style.
 
-## Adding New Features
+## Adding New Behavior
 
-1. **Determine the layer:**
-    - Primitive (Layer 1): New digital physics concept
-    - Assembly (Layer 2): New in-game structure
-    - Extension (Layer 3): New player-customizable behavior
+Adding behavior should usually mean **installing a module, adding a handler, or exposing a new
+action** — not changing the base `Entity` type.
 
-2. **For primitives:**
+1. **New module behavior** → add a `Module<T>` type and an `install`-time `Permit<T>`; store it
+   under a name via dynamic fields.
+2. **New rule** → add a `Requirement` type + its BCS config, a handler that `take_next<T>` and
+   enforces it, and a `*_template`.
+3. **New action** → expose it with `entity::enable_action`, composing existing requirements.
+4. **Layout/interface change** → introduce a V2 module type, install it, migrate state,
+   deprecate the old module name (see the upgrade strategy in
+   [`docs/architechture-v1.md`](../../docs/architechture-v1.md)).
 
-    ```
-    sources/primitives/{feature}.move
-    tests/primitives/{feature}_tests.move
-    ```
+## Key Files to Reference
 
-    - Use `public(package)` for state-mutating functions
-    - Use `public` for view/read-only and utility functions
-    - Focus on single responsibility
-
-3. **For assemblies:**
-
-    ```
-    sources/assemblies/{assembly}.move
-    tests/assemblies/{assembly}_tests.move
-    ```
-
-    - Compose from existing primitives
-    - Implement as shared objects
-    - Add capability-protected mutations
-
-4. **Update test helpers** if new setup functions are needed
-
-5. **Update architecture docs** if new patterns are introduced
+- `contracts/core/sources/entity.move` — `Entity`, install/uninstall, actions, `module_mut`
+- `contracts/core/sources/request.move` — hot-potato `Request` / `Frame`
+- `contracts/core/sources/requirement.move` — typed BCS requirements
+- `contracts/core/sources/mod.move` — `Module<T>` wrapper
+- `contracts/core/sources/action.move` — `Action`
+- `docs/architechture-v1.md` — full architecture and rationale
