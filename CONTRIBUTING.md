@@ -34,11 +34,14 @@ When contributing code to World Chain Contracts, please follow these guidelines:
 
 ### Architecture
 
-Check the [Architecture ADR](https://github.com/evefrontier/world-contracts/blob/main/docs/architechture.md) for architecture reference and design decisions.
+Check the [current architecture ADR](docs/adr/0002-modular-architecture.md) for the design and
+its rationale, and [`CONTEXT.md`](CONTEXT.md) for the domain glossary. (The earlier assembly
+design is preserved as [ADR 0001](docs/adr/0001-assembly-architecture.md), superseded.)
 
 ### Move Conventions
 
-Follow the official Move conventions and best practices:
+Follow the repository conventions in [`docs/move-conventions.md`](docs/move-conventions.md),
+which build on the official guidance:
 
 - [Sui Move Concepts - Conventions](https://docs.sui.io/concepts/sui-move-concepts/conventions)
 - [Move Book - Code Quality Checklist](https://move-book.com/guides/code-quality-checklist)
