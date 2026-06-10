@@ -18,7 +18,7 @@
 /// proof shape on the real `core` primitives, not a merge-ready refinery.
 module refinery::recipe;
 
-use core::{action::{Self, Action}, entity::Entity, mod::Module, request::Request, requirement};
+use core::{action::{Self, Action}, entity::Entity, mod::{Self, Module}, request::Request, requirement};
 use std::{internal::Permit, string::{Self, String}};
 use sui::clock::Clock;
 
@@ -32,6 +32,7 @@ const ERecipeOutputsEmpty: u64 = 4;
 const ERecipeOutputsLengthMismatch: u64 = 5;
 const ERecipeZeroInput: u64 = 6;
 const ERecipeZeroOutput: u64 = 7;
+const EWrongVersion: u64 = 8;
 
 // === Constants ===
 
@@ -124,6 +125,7 @@ public fun start_refine(
     _ctx: &mut TxContext,
 ) {
     let m: &mut Module<RecipeState> = entity.module_mut(request, module_permit());
+    assert!(mod::version(m) == VERSION, EWrongVersion);
     let (_requirement, frame) = request.take_next<StartRefine>(start_permit());
 
     let state = m.inner_mut();
@@ -154,6 +156,7 @@ public fun claim(
     _ctx: &mut TxContext,
 ) {
     let m: &mut Module<RecipeState> = entity.module_mut(request, module_permit());
+    assert!(mod::version(m) == VERSION, EWrongVersion);
     let (_requirement, frame) = request.take_next<Claim>(claim_permit());
 
     let state = m.inner_mut();
@@ -212,6 +215,7 @@ public(package) fun install(entity: &mut Entity, recipe: Recipe, _ctx: &mut TxCo
 
 fun borrow_state(entity: &Entity): &RecipeState {
     let m: &Module<RecipeState> = entity.module_ref(module_name(), module_permit());
+    assert!(mod::version(m) == VERSION, EWrongVersion);
     m.inner()
 }
 
