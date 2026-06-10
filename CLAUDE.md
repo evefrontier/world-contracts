@@ -6,10 +6,12 @@ Request / Requirement** architecture.
 ## Where things live
 
 - **`contracts/core/`** — the live v1 architecture. Start here.
+- **`contracts/character/`** — scaffolded package, not yet implemented (empty module stub).
 - **`contracts/archive/`** — the deprecated `world::` assembly model. Reference only; do **not**
   copy its patterns (`StorageUnit`, `assemblies/`, `primitives/`, `GovernorCap`/`AdminACL`/`OwnerCap`).
 - **`tools/error-decoder/`** — TypeScript tool for decoding Move abort codes.
 - **`scripts/`** — bash deploy/test helpers.
+- **`docker/`** — containerized deploy and localnet snapshot stack (see [`docker/README.md`](docker/README.md)).
 
 ## Read before working
 
