@@ -15,8 +15,9 @@ and the [Move Book code-quality checklist](https://move-book.com/guides/code-qua
 
 ## Production guardrails (non-negotiable)
 
-- No bare `abort`. Every `assert!` takes a named error constant:
-  `assert!(e.version == VERSION, EWrongVersion);`
+- No bare `abort` in production code. Every `assert!` takes a named error constant:
+  `assert!(e.version == VERSION, EWrongVersion);` (the one exception is the `abort` that ends an
+  `expected_failure` test — see [Testing](#testing).)
 - Error constants are `E` + PascalCase, typed `u64` — never `E_SCREAMING_SNAKE`.
 - Keep modules small and single-purpose — compose behavior, don't grow god-modules.
 - Adding behavior should mean **installing a module, adding a handler, or exposing an action** —
@@ -39,14 +40,19 @@ this exact order (omit a section if empty):
 // === Constants ===         // SCREAMING_SNAKE (VERSION, ...)
 // === Structs ===           // key/positional-key structs, then main type
 // === Events ===            // past-tense names (UserRegistered)
+// === Init ===              // fun init — the FIRST function, if present
 // === Public Functions ===  // constructors + mutating entry points
 // === View Functions ===    // getters: name() / name_mut(), no get_ prefix
 // === Admin Functions ===   // cap/ACL-gated mutations
 // === Package Functions === // public(package)
 // === Private Functions ===
-// === Init ===              // fun init, if any
 // === Test Functions ===    // #[test_only], at the bottom
 ```
+
+Per [Sui's Move best practices](https://docs.sui.io/concepts/sui-move-concepts/conventions),
+`init` is the **first function** in the module when present — placed right after `Structs` /
+`Events`, before `Public Functions` (see `contracts/core/sources/object_registry.move`). Not at
+the bottom.
 
 Within a function signature, **objects go first, capabilities second**, then plain args, with
 `&Clock` / `&mut TxContext` last:
@@ -57,15 +63,15 @@ public fun call(app: &mut App, cap: &AdminCap, value: u64, ctx: &mut TxContext)
 
 ## Error handling
 
-Define plain `u64` error constants in `// === Errors ===`, numbered from 0, and assert with a
-named constant:
+Define plain `u64` error constants in `// === Errors ===`, numbered sequentially from 0 and kept
+unique, and assert with a named constant:
 
 ```move
 // === Errors ===
 
 const EWrongVersion: u64 = 0;
 const ENotLocked: u64 = 1;
-const EModuleMissing: u64 = 6;
+const EWrongEntity: u64 = 2;
 ```
 
 ```move
@@ -78,10 +84,15 @@ assert!(entity.version == VERSION);
 
 ## Field getters
 
-Every struct field **must** have a getter in `// === View Functions ===`. Name it after the
-field (no `get_` prefix), return a copy for primitives and a `&` reference otherwise; add a
-`_mut` variant only when callers legitimately mutate. Keep getters even if currently unused —
-they are the module's read API and keep fields private.
+Every struct field **must** have a **read-only** getter in `// === View Functions ===`:
+
+- **Read-only return.** Getters never expose mutable access — return copyable types (scalars,
+  and small copy types like `String` / `ID`) by value, everything else by **immutable `&`
+  reference**. No `_mut` getters. Mutable access, when genuinely needed (e.g. `mod::inner_mut`
+  for handlers), is a deliberate, separately-justified accessor — not a default getter, and not
+  part of this rule.
+- **Naming.** Match the field name, no `get_` prefix.
+- Keep getters even if currently unused — they are the module's read API and keep fields private.
 
 Exempt: the `id: UID` field (callers use `object::id`), positional key/witness structs, and
 transient hot-potato internals (e.g. `Request`/`Frame` fields that must stay opaque).
@@ -89,10 +100,9 @@ transient hot-potato internals (e.g. `Request`/`Frame` fields that must stay opa
 ```move
 public struct Module<T: store> has store { version: u64, inner: T, name: String }
 
-public fun version<T: store>(m: &Module<T>): u64 { m.version }   // primitive: by value
-public fun name<T: store>(m: &Module<T>): String { m.name }
-public fun inner<T: store>(m: &Module<T>): &T { &m.inner }       // non-primitive: by ref
-public fun inner_mut<T: store>(m: &mut Module<T>): &mut T { &mut m.inner }
+public fun version<T: store>(m: &Module<T>): u64 { m.version }   // copyable scalar: by value
+public fun name<T: store>(m: &Module<T>): String { m.name }      // copyable String: by value
+public fun inner<T: store>(m: &Module<T>): &T { &m.inner }       // everything else: immutable &
 ```
 
 ## Hot-potato Request / Frame
