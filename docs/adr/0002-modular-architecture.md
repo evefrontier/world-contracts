@@ -1,4 +1,10 @@
-# ADR: Modular Structures
+# 2. Modular Architecture
+
+- **Status:** Accepted — implemented in `contracts/core/`
+- **Supersedes:** [0001-assembly-architecture](0001-assembly-architecture.md)
+- **See also:** [`CONTEXT.md`](../../CONTEXT.md) (domain glossary),
+  [`docs/move-conventions.md`](../move-conventions.md) (coding conventions)
+
 ## Motivation
 
 The current production `world` design is assembly-first. Each structure type, such as a gate or storage unit, owns its object shape and exposes a fixed set of APIs.

@@ -73,7 +73,6 @@ pnpm deploy-world
 ### Progress on V1 
 TODO 
 - Docker files update 
-- Add agentic instructions 
 - All README's
 - scripts
 - Workflows 

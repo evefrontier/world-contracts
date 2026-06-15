@@ -36,3 +36,4 @@ dist/
 # pnpm-store when pnpm install executed in containers
 .pnpm-store
 
+docs/v1/

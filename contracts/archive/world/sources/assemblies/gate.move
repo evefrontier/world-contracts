@@ -11,7 +11,7 @@
 /// logic programmed by the owner. When extension logic is configured, the `jump` function
 /// validates the pass/ticket before allowing the jump.
 ///
-/// Extension pattern: https://github.com/evefrontier/world-contracts/blob/main/docs/architechture.md#layer-3-player-extensions-moddability
+/// Extension pattern: https://github.com/evefrontier/world-contracts/blob/main/docs/adr/0001-assembly-architecture.md#layer-3-player-extensions-moddability
 module world::gate;
 
 use std::{bcs, string::String, type_name::{Self, TypeName}};

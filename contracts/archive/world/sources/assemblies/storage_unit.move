@@ -3,7 +3,7 @@
 /// The Storage Unit is a programmable, on-chain storage structure.
 /// It can allow players to store, withdraw, and manage items under rules they design themselves.
 /// The behaviour of a Storage Unit can be customized by registering a custom contract
-/// using the typed witness pattern. https://github.com/evefrontier/world-contracts/blob/main/docs/architechture.md#layer-3-player-extensions-moddability
+/// using the typed witness pattern. https://github.com/evefrontier/world-contracts/blob/main/docs/adr/0001-assembly-architecture.md#layer-3-player-extensions-moddability
 ///
 /// Storage Units support three access modes to enable player-to-player interactions:
 ///
