@@ -1,0 +1,37 @@
+{
+    "name": "@evefrontier/world-sdk",
+    "version": "0.0.0",
+    "type": "module",
+    "description": "TypeScript SDK for the EVE Frontier world-contracts",
+    "license": "MIT",
+    "author": "EVE Frontier",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run --passWithNoTests",
+        "test:watch": "vitest"
+    },
+    "peerDependencies": {
+        "@mysten/sui": "^2.0.0"
+    },
+    "devDependencies": {
+        "@mysten/sui": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
+}
