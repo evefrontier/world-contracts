@@ -6,3 +6,7 @@ export { OBJECT_REGISTRY, objectRegistry, requireSharedObject } from "./config/s
 export { type CreateWorldClientOptions, createWorldClient } from "./client.js";
 export { type EntityKeyInput, deriveObjectId } from "./packages/core.js";
 export { type CreateCharacterArgs, createCharacter } from "./packages/character.js";
+export { type CharacterSeed, type SeedEntry, type Seeder } from "./seed/types.js";
+export { type SeederRegistry, characterSeeder, defaultSeeders } from "./seed/seeders.js";
+export { type SeedOptions, type SeedResult, seed } from "./seed/seed.js";
+export { defaultSeedSpec } from "./seed/spec.js";

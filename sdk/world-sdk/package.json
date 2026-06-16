@@ -29,7 +29,8 @@
         "test:watch": "vitest",
         "test:integration": "vitest run --config vitest.integration.config.ts",
         "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run build",
-        "create:character": "tsx scripts/create-character.ts"
+        "create:character": "tsx scripts/create-character.ts",
+        "seed": "tsx scripts/seed.ts"
     },
     "peerDependencies": {
         "@mysten/sui": "^2.0.0"
