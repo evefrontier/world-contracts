@@ -9,3 +9,7 @@ export function requireSharedObject(config: WorldConfig, name: string): SharedOb
     }
     return ref;
 }
+
+export function objectRegistry(config: WorldConfig): SharedObjectRef {
+    return requireSharedObject(config, OBJECT_REGISTRY);
+}
