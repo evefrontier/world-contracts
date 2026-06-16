@@ -1,43 +1,18 @@
 ---
-# Deterministic localnet genesis for world-contracts Docker images.
+# Deterministic localnet genesis PARAMETERS for world-contracts Docker images.
 #
-# Funds the four predefined accounts (ADMIN, PLAYER_A, PLAYER_B, PLAYER_C) whose
-# addresses are derived from a well-known, NON-SECRET test mnemonic. See
-# accounts.json for the alias -> derivation-path -> address mapping, and
-# README.md for how to regenerate.
+# This file holds only the genesis tuning. The `accounts:` funding block is NOT
+# here — the integration entrypoint appends it at runtime from the addresses it
+# derives out of accounts.json (the single source of truth for the mnemonic,
+# derivation paths, and resulting addresses). 
 ssfn_config_info: ~
 validator_config_info: ~
 parameters:
   chain_start_timestamp_ms: 0
-  protocol_version: 119
+  protocol_version: 119  # MUST track SUI_VERSION (119 <-> testnet-v1.69.1); bump together.
   allow_insertion_of_extra_objects: true
   epoch_duration_ms: 86400000
   stake_subsidy_start_epoch: 0
   stake_subsidy_initial_distribution_amount: 1000000000000000
   stake_subsidy_period_length: 10
   stake_subsidy_decrease_rate: 1000
-accounts:
-  # ADMIN  (m/44'/784'/0'/0'/0')
-  - address: "0xc88ef07b9b8b2fc3b7daad9478f4e1337f01792e2eab9c3794494e610636026e"
-    gas_amounts:
-      - 30000000000000000
-      - 30000000000000000
-      - 30000000000000000
-  # PLAYER_A  (m/44'/784'/1'/0'/0')
-  - address: "0x31e57c79ce7793434b5f607d19832d74821bbeca30596b99eb27050c36b543a7"
-    gas_amounts:
-      - 30000000000000000
-      - 30000000000000000
-      - 30000000000000000
-  # PLAYER_B  (m/44'/784'/2'/0'/0')
-  - address: "0x7d6c4056c17e8415feb89311d8a512aa8401942fc4aa5c86a0c77e37701f22db"
-    gas_amounts:
-      - 30000000000000000
-      - 30000000000000000
-      - 30000000000000000
-  # PLAYER_C  (m/44'/784'/3'/0'/0')
-  - address: "0x0b04a30158a022c1159efde4ffae99d12505e1653ef98e3a14799ed5c92d0d02"
-    gas_amounts:
-      - 30000000000000000
-      - 30000000000000000
-      - 30000000000000000

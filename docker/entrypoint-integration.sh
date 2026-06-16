@@ -76,9 +76,20 @@ done < <(jq -r '.accounts[] | [.alias, .derivationPath] | @tsv' "$ACCOUNTS_JSON"
 sui client switch --address "${ADDR[ADMIN]}" >/dev/null
 
 # ── 2. Deterministic genesis ─────────────────────────────────────────────────
-log "Generating genesis from $GENESIS_CONFIG"
+GAS_PER_COIN="${GENESIS_GAS_PER_COIN:-30000000000000000}"
+GENESIS_RUNTIME_CONFIG="/tmp/genesis-config.runtime.yaml"
 mkdir -p "$DATA_DIR"
-sui genesis --from-config "$GENESIS_CONFIG" --working-dir "$DATA_DIR" --with-faucet -f
+{
+  cat "$GENESIS_CONFIG"
+  echo "accounts:"
+  while IFS=$'\t' read -r alias _; do
+    printf '  - address: "%s"\n    gas_amounts: [%s, %s, %s]\n' \
+      "${ADDR[$alias]}" "$GAS_PER_COIN" "$GAS_PER_COIN" "$GAS_PER_COIN"
+  done < <(jq -r '.accounts[] | [.alias, .derivationPath] | @tsv' "$ACCOUNTS_JSON")
+} > "$GENESIS_RUNTIME_CONFIG"
+
+log "Generating genesis from $GENESIS_RUNTIME_CONFIG (funding ${#ADDR[@]} accounts)"
+sui genesis --from-config "$GENESIS_RUNTIME_CONFIG" --working-dir "$DATA_DIR" --with-faucet -f
 cp /fullnode.yaml "$DATA_DIR/fullnode.yaml"
 
 # ── 3. Start node ────────────────────────────────────────────────────────────

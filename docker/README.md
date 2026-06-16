@@ -1,7 +1,9 @@
 # Docker
 
-Two Dockerfiles, three jobs. One pinned toolchain: `SUI_VERSION=testnet-v1.69.1`
-(bump in both Dockerfiles and CI together).
+Two Dockerfiles, three jobs. One pinned toolchain: `SUI_VERSION=testnet-v1.69.1`.
+To bump it, update together: both Dockerfiles, `pr.yml`, this README, and
+`genesis/genesis-config.yaml`'s `protocol_version` (which must match the Sui
+version).
 
 | Image | File | Job |
 |-------|------|-----|

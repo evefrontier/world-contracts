@@ -31,9 +31,6 @@ RUN groupadd -r deployer && \
 RUN chown -R deployer:deployer /app
 USER deployer
 
-FROM dependency-stage AS lint-stage
-RUN pnpm run fmt:check
-
 FROM dependency-stage AS build-stage
 # Build all Move packages
 RUN pnpm run build
