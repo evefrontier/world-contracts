@@ -28,7 +28,8 @@
         "test": "vitest run --passWithNoTests",
         "test:watch": "vitest",
         "test:integration": "vitest run --config vitest.integration.config.ts",
-        "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run build"
+        "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run build",
+        "create:character": "tsx scripts/create-character.ts"
     },
     "peerDependencies": {
         "@mysten/sui": "^2.0.0"
@@ -36,6 +37,8 @@
     "devDependencies": {
         "@mysten/sui": "catalog:",
         "@types/node": "catalog:",
+        "dotenv": "^17.2.3",
+        "tsx": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:"
     }
