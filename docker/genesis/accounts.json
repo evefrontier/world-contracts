@@ -1,0 +1,27 @@
+{
+  "mnemonic": "test test test test test test test test test test test junk",
+  "scheme": "ed25519",
+  "note": "NON-SECRET, localnet-only",
+  "accounts": [
+    {
+      "alias": "ADMIN",
+      "derivationPath": "m/44'/784'/0'/0'/0'",
+      "address": "0xc88ef07b9b8b2fc3b7daad9478f4e1337f01792e2eab9c3794494e610636026e"
+    },
+    {
+      "alias": "PLAYER_A",
+      "derivationPath": "m/44'/784'/1'/0'/0'",
+      "address": "0x31e57c79ce7793434b5f607d19832d74821bbeca30596b99eb27050c36b543a7"
+    },
+    {
+      "alias": "PLAYER_B",
+      "derivationPath": "m/44'/784'/2'/0'/0'",
+      "address": "0x7d6c4056c17e8415feb89311d8a512aa8401942fc4aa5c86a0c77e37701f22db"
+    },
+    {
+      "alias": "PLAYER_C",
+      "derivationPath": "m/44'/784'/3'/0'/0'",
+      "address": "0x0b04a30158a022c1159efde4ffae99d12505e1653ef98e3a14799ed5c92d0d02"
+    }
+  ]
+}
