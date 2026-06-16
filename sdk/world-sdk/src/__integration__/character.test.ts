@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Transaction } from "@mysten/sui/transactions";
 import { loadWorldConfig } from "../config/load.js";
-import { deriveObjectId } from "../derive.js";
+import { deriveObjectId } from "../packages/core.js";
 import { createWorldClient } from "../client.js";
-import { createCharacter } from "../character.js";
+import { createCharacter } from "../packages/character.js";
 
 // Integration: exercises the createCharacter binding against a running localnet.
 // Requires `pnpm deploy:localnet` (or equivalent) so deployments/localnet/world.json

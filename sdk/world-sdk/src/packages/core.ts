@@ -1,7 +1,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { deriveObjectID } from "@mysten/sui/utils";
-import type { WorldConfig } from "./config/types.js";
-import { objectRegistry } from "./config/shared-objects.js";
+import type { WorldConfig } from "../config/types.js";
+import { objectRegistry } from "../config/shared-objects.js";
 
 const CORE_PACKAGE = "core";
 

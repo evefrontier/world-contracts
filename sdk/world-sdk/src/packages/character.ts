@@ -1,7 +1,7 @@
 import type { Transaction } from "@mysten/sui/transactions";
-import type { WorldConfig } from "./config/types.js";
-import { mvrName } from "./config/env.js";
-import { objectRegistry } from "./config/shared-objects.js";
+import type { WorldConfig } from "../config/types.js";
+import { mvrName } from "../config/env.js";
+import { objectRegistry } from "../config/shared-objects.js";
 
 const CHARACTER_PACKAGE = "character";
 

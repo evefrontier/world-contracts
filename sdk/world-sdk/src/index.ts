@@ -4,5 +4,5 @@ export { loadWorldConfig } from "./config/load.js";
 export { getWorldConfig } from "./config/presets.js";
 export { OBJECT_REGISTRY, objectRegistry, requireSharedObject } from "./config/shared-objects.js";
 export { type CreateWorldClientOptions, createWorldClient } from "./client.js";
-export { type EntityKeyInput, deriveObjectId } from "./derive.js";
-export { type CreateCharacterArgs, createCharacter } from "./character.js";
+export { type EntityKeyInput, deriveObjectId } from "./packages/core.js";
+export { type CreateCharacterArgs, createCharacter } from "./packages/character.js";
