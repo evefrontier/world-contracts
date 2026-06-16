@@ -20,7 +20,7 @@ interface CreatedChange {
     type: "created";
     objectId: string;
     objectType: string;
-    owner: { Shared?: { initial_shared_version: number } } | unknown;
+    owner: { Shared?: { initial_shared_version: number | string } } | unknown;
 }
 
 type ObjectChange = PublishedChange | CreatedChange | { type: string };
@@ -38,7 +38,7 @@ interface PackageEntry {
 
 interface SharedObjectEntry {
     id: string;
-    initialSharedVersion: number;
+    initialSharedVersion: string;
     type: string;
 }
 
@@ -54,10 +54,11 @@ function isCreated(c: ObjectChange): c is CreatedChange {
     return c.type === "created";
 }
 
-function sharedVersion(owner: CreatedChange["owner"]): number | undefined {
+function sharedVersion(owner: CreatedChange["owner"]): string | undefined {
     if (typeof owner === "object" && owner !== null && "Shared" in owner) {
-        return (owner as { Shared: { initial_shared_version: number } }).Shared
-            .initial_shared_version;
+        const v = (owner as { Shared?: { initial_shared_version?: number | string } }).Shared
+            ?.initial_shared_version;
+        return v === undefined ? undefined : String(v);
     }
     return undefined;
 }
@@ -89,13 +90,14 @@ function main(): void {
         const upgradeCap = changes.find(
             (c): c is CreatedChange => isCreated(c) && c.objectType === UPGRADE_CAP_TYPE
         );
+        if (!upgradeCap) throw new Error(`no UpgradeCap created in ${pkg}.publish.json`);
 
         manifest.packages[pkg] = {
             // Fresh publish: original id, published-at and package id are identical.
             // Upgrades (real envs) will need to read published-at from Published.toml.
             originalId: published.packageId,
             publishedAt: published.packageId,
-            upgradeCap: upgradeCap?.objectId ?? "",
+            upgradeCap: upgradeCap.objectId,
             version: Number(published.version),
         };
 

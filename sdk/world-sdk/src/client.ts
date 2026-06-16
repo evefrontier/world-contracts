@@ -31,13 +31,21 @@ export function createWorldClient(options: CreateWorldClientOptions): SuiJsonRpc
 
 function mvrOptions(config: WorldConfig, profile: EnvProfile): SuiClientTypes.MvrOptions {
     const { network, mvrMode } = profile;
-    if (mvrMode === "overrides") {
-        const packages: Record<string, string> = {};
-        for (const [pkg, id] of Object.entries(config.packageOverrides ?? {})) {
-            packages[mvrName(config.env, pkg)] = id;
+    switch (mvrMode) {
+        case "overrides": {
+            const packages: Record<string, string> = {};
+            for (const [pkg, id] of Object.entries(config.packageOverrides ?? {})) {
+                packages[mvrName(config.env, pkg)] = id;
+            }
+            return { overrides: { packages } };
         }
-        return { overrides: { packages } };
+        case "registry": {
+            const url = MVR_ENDPOINT[network];
+            return url ? { url } : {};
+        }
+        default: {
+            const _exhaustive: never = mvrMode;
+            return _exhaustive;
+        }
     }
-    const url = MVR_ENDPOINT[network];
-    return url ? { url } : {};
 }

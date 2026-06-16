@@ -1,7 +1,7 @@
 import type { Env, WorldConfig } from "./types.js";
 import { OBJECT_REGISTRY } from "./shared-objects.js";
 
-const UNDEPLOYED = { id: "", initialSharedVersion: 0, type: "" };
+const UNDEPLOYED = { id: "", initialSharedVersion: "0", type: "" };
 
 // Populated by each env's deploy. Empty objectRegistry id => not deployed.
 const PRESETS: Record<Exclude<Env, "local">, WorldConfig> = {
