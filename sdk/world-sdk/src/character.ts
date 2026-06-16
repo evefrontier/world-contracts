@@ -12,7 +12,11 @@ export interface CreateCharacterArgs {
     owner: string;
 }
 
-export function createCharacter(tx: Transaction, config: WorldConfig, args: CreateCharacterArgs): void {
+export function createCharacter(
+    tx: Transaction,
+    config: WorldConfig,
+    args: CreateCharacterArgs
+): void {
     const registry = objectRegistry(config);
     tx.moveCall({
         target: `${mvrName(config.env, CHARACTER_PACKAGE)}::character::create`,
