@@ -1,25 +1,31 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
+
+DATA_DIR="/data/sui-localnet"
+SEED_SRC="/opt/world-contracts/world.json"   # baked at bake time, never mounted
+SEED_DST_DIR="/data/deployment"               # host bind mount target
 
 if [ -z "${POSTGRES_CONNECTION_STRING:-}" ]; then
     echo "ERROR: POSTGRES_CONNECTION_STRING is not set" >&2
     exit 1
 fi
 
-echo "========================"
-echo "starting sui with indexer and graphql"
-echo "========================"
+if [ -f "$SEED_SRC" ]; then
+    mkdir -p "$SEED_DST_DIR"
+    cp -f "$SEED_SRC" "$SEED_DST_DIR/world.json"
+    echo "Seeded $SEED_DST_DIR/world.json from the image (synced to the host mount)."
+else
+    echo "WARN: $SEED_SRC not found; skipping world.json seed." >&2
+fi
 
-# TODO: UPDATE FOR V1
-# If /data/deployment is an empty host bind mount, it hides the baked layer; copy from a path that
-# is never mounted so the same file appears on the host and in-container.
-# SEED=/opt/world-contracts/extracted-object-ids.json
-# if [ -f "$SEED" ]; then
-#     mkdir -p /data/deployment
+echo "========================================"
+echo "Starting Sui localnet with indexer + GraphQL"
+echo "  RPC      : 0.0.0.0:9000"
+echo "  GraphQL  : 0.0.0.0:9125"
+echo "========================================"
 
-#     cp -f "$SEED" /data/deployment/extracted-object-ids.json
-#     echo "Seeded /data/deployment/extracted-object-ids.json from image (synced to host mount)."
-# fi
-
-exec sui start --network.config /data/sui-localnet --with-faucet --with-indexer="$POSTGRES_CONNECTION_STRING" --with-graphql=0.0.0.0:9125
+exec sui start \
+    --network.config "$DATA_DIR" \
+    --with-faucet \
+    --with-indexer="$POSTGRES_CONNECTION_STRING" \
+    --with-graphql=0.0.0.0:9125
