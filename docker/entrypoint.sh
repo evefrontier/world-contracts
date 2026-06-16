@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# Docker entrypoint: set up Sui environment, import keys, deploy and configure.
 set -euo pipefail
 
 cd /app
 
-# ── Load .env ────────────────────────────────────────────────────────────────
+# ── Load .env if present (optional; CI may inject env vars instead) ───────────
 if [ -f .env ]; then
     set -a && source .env && set +a
-else
-    echo "Error: .env file not found. Mount it to /app/.env"
-    exit 1
 fi
 
 ENV="${SUI_NETWORK:-localnet}"
@@ -73,16 +69,16 @@ import_key() {
     echo "$output" | grep -oE '0x[a-fA-F0-9]{64}' | head -n 1
 }
 
-if [ -z "${GOVERNOR_PRIVATE_KEY:-}" ]; then
-    echo "Error: GOVERNOR_PRIVATE_KEY is not set in .env"
+if [ -z "${DEPLOYER_PRIVATE_KEY:-}" ]; then
+    echo "Error: DEPLOYER_PRIVATE_KEY is not set (via .env or env var)"
     exit 1
 fi
 
-DEPLOYER_ADDRESS=$(import_key "GOVERNOR_PRIVATE_KEY (deployer)" "$GOVERNOR_PRIVATE_KEY")
+DEPLOYER_ADDRESS=$(import_key "DEPLOYER_PRIVATE_KEY" "$DEPLOYER_PRIVATE_KEY")
 
 
 if [ -z "$DEPLOYER_ADDRESS" ]; then
-    echo "Error: Could not determine deployer address from GOVERNOR_PRIVATE_KEY"
+    echo "Error: Could not determine deployer address from DEPLOYER_PRIVATE_KEY"
     exit 1
 fi
 
@@ -91,19 +87,16 @@ sui client switch --address "$DEPLOYER_ADDRESS"
 echo ""
 
 # ── Deploy world ─────────────────────────────────────────────────────────────
-# TODO: UPDATE FOR V1
-# echo "======================================"
-# echo "  Deploying world contracts..."
-# echo "======================================"   
-# ./scripts/deploy-world.sh "$ENV"
+# Deploys core + character to the target network and writes the deployment
+# manifest. MVR publishing is intentionally out of scope here (separate
+# workstream); this image only publishes the packages on-chain.
+echo "======================================"
+echo "  Deploying world contracts to $ENV ..."
+echo "======================================"
+./scripts/deploy-world.sh "$ENV"
 
-# echo ""
-# echo "======================================"
-# echo "  Configuring world..."
-# echo "======================================"
-# ./scripts/configure-world.sh "$ENV"
-
-# echo ""
-# echo "======================================"
-# echo "  Deployment & configuration complete!"
-# echo "======================================"
+echo ""
+echo "======================================"
+echo "  Deployment complete."
+echo "  Manifest: deployments/$ENV/world.json"
+echo "======================================"

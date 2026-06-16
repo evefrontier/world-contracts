@@ -1,9 +1,15 @@
+# Build and run the release image locally as a deploy vehicle.
+# Reads credentials/target from ../.env (SUI_NETWORK, DEPLOYER_PRIVATE_KEY). T
+#
+#   docker compose -f docker/compose.yml run --rm deploy
 services:
   deploy:
     build:
       context: ..
       dockerfile: docker/Dockerfile
       target: release-stage
+      args:
+        SUI_VERSION: testnet-v1.69.1
     image: world-contracts:latest
     volumes:
       - ../.env:/app/.env:ro

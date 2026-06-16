@@ -1,5 +1,6 @@
-
-FROM mysten/sui-tools:testnet-v1.64.0 AS dependency-stage
+# Pinned Sui toolchain — keep in sync with Dockerfile.integration and CI.
+ARG SUI_VERSION=testnet-v1.69.1
+FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
