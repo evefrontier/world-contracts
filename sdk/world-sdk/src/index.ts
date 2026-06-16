@@ -1,9 +1,5 @@
-/**
- * @evefrontier/world-sdk
- *
- * SDK for the EVE Frontier world-contracts: resolves packages by
- * MVR name per environment, derives deterministic entity object IDs, and appends
- * world calls to a caller-supplied transaction. Signing and execution stay with
- * the caller.
- */
-export {};
+export type { Env, Network, SharedObjectRef, WorldConfig } from "./config/types.js";
+export { type EnvProfile, type MvrMode, MVR_ORG, envProfile, mvrName } from "./config/env.js";
+export { loadWorldConfig } from "./config/load.js";
+export { getWorldConfig } from "./config/presets.js";
+export { OBJECT_REGISTRY, requireSharedObject } from "./config/shared-objects.js";
