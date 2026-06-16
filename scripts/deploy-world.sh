@@ -18,7 +18,9 @@ start_logging "$ENV" "deploy-world"
 PUBFILE="$REPO_ROOT/$DEPLOY_DIR/Pub.$ENV.toml"
 rm -f "$PUBFILE" "$REPO_ROOT"/contracts/*/Pub."$ENV".toml
 
-[[ "$ENV" == "localnet" ]] && sui client switch --env localnet >/dev/null
+# Pin the active env to the deploy target so publish + chain-identifier never
+# run against a stale selection (which would deploy to the wrong network).
+sui client switch --env "$ENV" >/dev/null
 
 echo "Deploying [${PACKAGES[*]}] to $ENV ..."
 for pkg in "${PACKAGES[@]}"; do
