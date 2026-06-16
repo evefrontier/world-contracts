@@ -11,7 +11,7 @@ const EntityKey = bcs.struct("EntityKey", {
 });
 
 export interface EntityKeyInput {
-    id: bigint | number;
+    id: bigint;
     tenant: string;
 }
 
@@ -29,6 +29,6 @@ export function deriveObjectId(config: WorldConfig, key: EntityKeyInput): string
         );
     }
     const registryId = objectRegistry(config).id;
-    const bytes = EntityKey.serialize({ id: BigInt(key.id), tenant: key.tenant }).toBytes();
+    const bytes = EntityKey.serialize({ id: key.id, tenant: key.tenant }).toBytes();
     return deriveObjectID(registryId, `${coreId}::entity_key::EntityKey`, bytes);
 }

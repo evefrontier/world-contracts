@@ -23,7 +23,8 @@
         "build": "tsc -p tsconfig.build.json",
         "typecheck": "tsc --noEmit",
         "test": "vitest run --passWithNoTests",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "test:integration": "vitest run --config vitest.integration.config.ts"
     },
     "peerDependencies": {
         "@mysten/sui": "^2.0.0"

@@ -6,7 +6,7 @@ import { objectRegistry } from "./config/shared-objects.js";
 const CHARACTER_PACKAGE = "character";
 
 export interface CreateCharacterArgs {
-    inGameId: bigint | number;
+    inGameId: bigint;
     tenant: string;
     tribeId: number;
     owner: string;

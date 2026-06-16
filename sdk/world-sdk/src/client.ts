@@ -1,7 +1,7 @@
 import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import type { SuiClientTypes } from "@mysten/sui/client";
 import type { Env, Network, WorldConfig } from "./config/types.js";
-import { envProfile, mvrName } from "./config/env.js";
+import { type EnvProfile, envProfile, mvrName } from "./config/env.js";
 import { getWorldConfig } from "./config/presets.js";
 
 const MVR_ENDPOINT: Partial<Record<Network, string>> = {
@@ -20,13 +20,17 @@ export type CreateWorldClientOptions =
  */
 export function createWorldClient(options: CreateWorldClientOptions): SuiJsonRpcClient {
     const config = "config" in options ? options.config : getWorldConfig(options.env);
-    const { network } = envProfile(config.env);
-    const url = options.rpcUrl ?? getJsonRpcFullnodeUrl(network);
-    return new SuiJsonRpcClient({ url, network, mvr: mvrOptions(config) });
+    const profile = envProfile(config.env);
+    const url = options.rpcUrl ?? getJsonRpcFullnodeUrl(profile.network);
+    return new SuiJsonRpcClient({
+        url,
+        network: profile.network,
+        mvr: mvrOptions(config, profile),
+    });
 }
 
-function mvrOptions(config: WorldConfig): SuiClientTypes.MvrOptions {
-    const { network, mvrMode } = envProfile(config.env);
+function mvrOptions(config: WorldConfig, profile: EnvProfile): SuiClientTypes.MvrOptions {
+    const { network, mvrMode } = profile;
     if (mvrMode === "overrides") {
         const packages: Record<string, string> = {};
         for (const [pkg, id] of Object.entries(config.packageOverrides ?? {})) {
