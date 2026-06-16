@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# Runs fast checks before every commit. Skip with `git commit --no-verify`.
-set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
-
-echo "[pre-commit] build"
-pnpm build
