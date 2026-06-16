@@ -37,7 +37,7 @@ On `local`, load config from a generated `world.json` manifest:
 ```ts
 import { loadWorldConfig, deriveObjectId } from "@evefrontier/world-sdk";
 
-const config = loadWorldConfig("deployments/localnet/world.json", "local");
+const config = loadWorldConfig("deployments/localnet/world.json");
 const id = deriveObjectId(config, { id: 7n, tenant: "my-tenant" });
 ```
 

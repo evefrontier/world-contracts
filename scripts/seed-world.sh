@@ -11,6 +11,7 @@ export SUI_NETWORK="$ENV"
 
 DELAY_SECONDS="${DELAY_SECONDS:-${2:-5}}"
 
+# Populated when seed steps exist (e.g. create test characters on-chain).
 commands=(
 )
 

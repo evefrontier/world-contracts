@@ -5,7 +5,11 @@ import { objectRegistry } from "../config/shared-objects.js";
 
 const CORE_PACKAGE = "core";
 
-const EntityKey = bcs.struct("EntityKey", {
+/** Must match `core::entity_key::EntityKey` in Move. */
+const ENTITY_KEY_MODULE = "entity_key";
+const ENTITY_KEY_STRUCT = "EntityKey";
+
+const EntityKey = bcs.struct(ENTITY_KEY_STRUCT, {
     id: bcs.u64(),
     tenant: bcs.string(),
 });
@@ -30,5 +34,6 @@ export function deriveObjectId(config: WorldConfig, key: EntityKeyInput): string
     }
     const registryId = objectRegistry(config).id;
     const bytes = EntityKey.serialize({ id: key.id, tenant: key.tenant }).toBytes();
-    return deriveObjectID(registryId, `${coreId}::entity_key::EntityKey`, bytes);
+    const typeTag = `${coreId}::${ENTITY_KEY_MODULE}::${ENTITY_KEY_STRUCT}`;
+    return deriveObjectID(registryId, typeTag, bytes);
 }

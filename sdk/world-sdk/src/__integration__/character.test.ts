@@ -9,13 +9,15 @@ import { createCharacter } from "../packages/character.js";
 // Integration: exercises the createCharacter binding against a running localnet.
 // Requires `pnpm deploy:localnet` (or equivalent) so deployments/localnet/world.json
 // exists and the chain is up. Run with: pnpm --filter @evefrontier/world-sdk test:integration
-const MANIFEST = fileURLToPath(new URL("../../../../deployments/localnet/world.json", import.meta.url));
+const MANIFEST = fileURLToPath(
+    new URL("../../../../deployments/localnet/world.json", import.meta.url)
+);
 // devInspect is a read-only simulation, so any valid address works as the sender.
 const SENDER =
     process.env.SENDER ?? "0x0000000000000000000000000000000000000000000000000000000000000001";
 
 describe("createCharacter (localnet)", () => {
-    const config = loadWorldConfig(MANIFEST, "local");
+    const config = loadWorldConfig(MANIFEST);
     const client = createWorldClient({ config });
 
     it("builds a character::create call the chain accepts, at the derived id", async () => {

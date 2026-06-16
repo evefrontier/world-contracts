@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Env, SharedObjectRef, WorldConfig } from "./types.js";
+import type { SharedObjectRef, WorldConfig } from "./types.js";
 import { OBJECT_REGISTRY } from "./shared-objects.js";
 
 interface WorldManifest {
@@ -9,11 +9,11 @@ interface WorldManifest {
 }
 
 /**
- * Read a generated `world.json` into a `WorldConfig`. Node-only, for `local`/CI:
+ * Read a generated `world.json` into a `WorldConfig`. Node-only, for local/CI:
  * the chain is ephemeral and packages have no MVR registry, so the manifest's
- * package IDs become `packageOverrides`.
+ * package IDs become `packageOverrides`. Always sets `env` to `"local"`.
  */
-export function loadWorldConfig(path: string, env: Env = "local"): WorldConfig {
+export function loadWorldConfig(path: string): WorldConfig {
     let raw: string;
     try {
         raw = readFileSync(path, "utf8");
@@ -44,7 +44,7 @@ export function loadWorldConfig(path: string, env: Env = "local"): WorldConfig {
     }
 
     return {
-        env,
+        env: "local",
         chainId: manifest.chainId,
         sharedObjects,
         packageOverrides,

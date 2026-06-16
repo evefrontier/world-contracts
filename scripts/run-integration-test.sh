@@ -9,7 +9,7 @@ set -euo pipefail
 DELAY_SECONDS="${DELAY_SECONDS:-${1:-2}}"
 
 commands=(
- 
+  "test:sdk:integration"
 )
 
 echo "Running ${#commands[@]} pnpm commands with ${DELAY_SECONDS}s delay..."

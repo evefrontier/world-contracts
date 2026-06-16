@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - main
-      - dev 
+      - dev
 
 env:
   CONTRACTS_DIR: contracts

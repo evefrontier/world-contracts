@@ -37,9 +37,9 @@ interface PackageEntry {
 }
 
 interface SharedObjectEntry {
-  id: string;
-  initialSharedVersion: string;
-  type: string;
+    id: string;
+    initialSharedVersion: string;
+    type: string;
 }
 
 interface Manifest {
@@ -55,12 +55,15 @@ function isCreated(c: ObjectChange): c is CreatedChange {
 }
 
 function sharedVersion(owner: CreatedChange["owner"]): string | undefined {
-  if (typeof owner === "object" && owner !== null && "Shared" in owner) {
-    const v = (owner as { Shared?: { initial_shared_version?: number | string } })
-      .Shared?.initial_shared_version;
-    return v === undefined ? undefined : String(v);
-  }
-  return undefined;
+    if (typeof owner === "object" && owner !== null && "Shared" in owner) {
+        const v = (owner as { Shared?: { initial_shared_version?: number | string | null } }).Shared
+            ?.initial_shared_version;
+        if (v === undefined || v === null) return undefined;
+        if (typeof v === "number" && Number.isFinite(v) && v >= 0) return String(v);
+        if (typeof v === "string" && /^\d+$/.test(v)) return v;
+        throw new Error(`invalid initial_shared_version: ${String(v)}`);
+    }
+    return undefined;
 }
 
 /** lower-camel key for a created shared object, from its `module::Struct` suffix. */
@@ -70,53 +73,51 @@ function sharedKey(objectType: string): string {
 }
 
 function main(): void {
-  const [deployDir, chainId, ...packages] = process.argv.slice(2);
-  if (!deployDir || !chainId || packages.length === 0) {
-    console.error("Usage: tsx ts-scripts/build-manifest.ts <deployDir> <chainId> <pkg...>");
-    process.exit(1);
-  }
-
-  const manifest: Manifest = { chainId, packages: {}, sharedObjects: {} };
-
-  for (const pkg of packages) {
-    const out: PublishOutput = JSON.parse(
-      readFileSync(join(deployDir, `${pkg}.publish.json`), "utf8")
-    );
-    const changes = out.objectChanges ?? [];
-
-    const published = changes.find((c): c is PublishedChange => c.type === "published");
-    if (!published) throw new Error(`no published package in ${pkg}.publish.json`);
-
-    const upgradeCap = changes.find(
-      (c): c is CreatedChange => isCreated(c) && c.objectType === UPGRADE_CAP_TYPE
-    );
-    if (!upgradeCap) throw new Error(`no UpgradeCap created in ${pkg}.publish.json`);
-
-    manifest.packages[pkg] = {
-      // Fresh publish: original id, published-at and package id are identical.
-      // Upgrades (real envs) will need to read published-at from Published.toml.
-      originalId: published.packageId,
-      publishedAt: published.packageId,
-      upgradeCap: upgradeCap.objectId,
-      version: Number(published.version),
-    };
-
-    // Record every shared object created at publish (e.g. the ObjectRegistry).
-    for (const c of changes) {
-      if (!isCreated(c)) continue;
-      const v = sharedVersion(c.owner);
-      if (v === undefined) continue;
-      manifest.sharedObjects[sharedKey(c.objectType)] = {
-        id: c.objectId,
-        initialSharedVersion: v,
-        type: c.objectType,
-      };
+    const [deployDir, chainId, ...packages] = process.argv.slice(2);
+    if (!deployDir || !chainId || packages.length === 0) {
+        console.error("Usage: tsx ts-scripts/build-manifest.ts <deployDir> <chainId> <pkg...>");
+        process.exit(1);
     }
-  }
 
-  const path = join(deployDir, "world.json");
-  writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n");
-  console.log(`Wrote ${path}`);
+    const manifest: Manifest = { chainId, packages: {}, sharedObjects: {} };
+
+    for (const pkg of packages) {
+        const out: PublishOutput = JSON.parse(
+            readFileSync(join(deployDir, `${pkg}.publish.json`), "utf8")
+        );
+        const changes = out.objectChanges ?? [];
+
+        const published = changes.find((c): c is PublishedChange => c.type === "published");
+        if (!published) throw new Error(`no published package in ${pkg}.publish.json`);
+
+        const upgradeCap = changes.find(
+            (c): c is CreatedChange => isCreated(c) && c.objectType === UPGRADE_CAP_TYPE
+        );
+        if (!upgradeCap) throw new Error(`no UpgradeCap created in ${pkg}.publish.json`);
+
+        manifest.packages[pkg] = {
+            originalId: published.packageId,
+            publishedAt: published.packageId,
+            upgradeCap: upgradeCap.objectId,
+            version: Number(published.version),
+        };
+
+        // Record every shared object created at publish (e.g. the ObjectRegistry).
+        for (const c of changes) {
+            if (!isCreated(c)) continue;
+            const v = sharedVersion(c.owner);
+            if (v === undefined) continue;
+            manifest.sharedObjects[sharedKey(c.objectType)] = {
+                id: c.objectId,
+                initialSharedVersion: v,
+                type: c.objectType,
+            };
+        }
+    }
+
+    const path = join(deployDir, "world.json");
+    writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n");
+    console.log(`Wrote ${path}`);
 }
 
 main();
