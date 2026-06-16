@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Transaction } from "@mysten/sui/transactions";
 import { loadWorldConfig } from "../config/load.js";
@@ -8,7 +9,7 @@ import { createCharacter } from "../packages/character.js";
 // Integration: exercises the createCharacter binding against a running localnet.
 // Requires `pnpm deploy:localnet` (or equivalent) so deployments/localnet/world.json
 // exists and the chain is up. Run with: pnpm --filter @evefrontier/world-sdk test:integration
-const MANIFEST = new URL("../../../../deployments/localnet/world.json", import.meta.url).pathname;
+const MANIFEST = fileURLToPath(new URL("../../../../deployments/localnet/world.json", import.meta.url));
 // devInspect is a read-only simulation, so any valid address works as the sender.
 const SENDER =
     process.env.SENDER ?? "0x0000000000000000000000000000000000000000000000000000000000000001";

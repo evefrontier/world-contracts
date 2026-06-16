@@ -112,48 +112,11 @@ function main(): void {
         type: c.objectType,
       };
     }
+  }
 
-    const manifest: Manifest = { chainId, packages: {}, sharedObjects: {} };
-
-    for (const pkg of packages) {
-        const out: PublishOutput = JSON.parse(
-            readFileSync(join(deployDir, `${pkg}.publish.json`), "utf8")
-        );
-        const changes = out.objectChanges ?? [];
-
-        const published = changes.find((c): c is PublishedChange => c.type === "published");
-        if (!published) throw new Error(`no published package in ${pkg}.publish.json`);
-
-        const upgradeCap = changes.find(
-            (c): c is CreatedChange => isCreated(c) && c.objectType === UPGRADE_CAP_TYPE
-        );
-        if (!upgradeCap) throw new Error(`no UpgradeCap created in ${pkg}.publish.json`);
-
-        manifest.packages[pkg] = {
-            // Fresh publish: original id, published-at and package id are identical.
-            // Upgrades (real envs) will need to read published-at from Published.toml.
-            originalId: published.packageId,
-            publishedAt: published.packageId,
-            upgradeCap: upgradeCap.objectId,
-            version: Number(published.version),
-        };
-
-        // Record every shared object created at publish (e.g. the ObjectRegistry).
-        for (const c of changes) {
-            if (!isCreated(c)) continue;
-            const v = sharedVersion(c.owner);
-            if (v === undefined) continue;
-            manifest.sharedObjects[sharedKey(c.objectType)] = {
-                id: c.objectId,
-                initialSharedVersion: v,
-                type: c.objectType,
-            };
-        }
-    }
-
-    const path = join(deployDir, "world.json");
-    writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n");
-    console.log(`Wrote ${path}`);
+  const path = join(deployDir, "world.json");
+  writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n");
+  console.log(`Wrote ${path}`);
 }
 
 main();
