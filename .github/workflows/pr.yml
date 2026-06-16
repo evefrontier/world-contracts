@@ -31,7 +31,7 @@ jobs:
         run: pnpm run fmt:check
 
   sdk:
-    name: SDK (format, typecheck, test)
+    name: SDK (format, typecheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
