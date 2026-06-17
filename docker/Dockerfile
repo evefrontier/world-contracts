@@ -17,19 +17,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
 # Verify installations
 RUN sui --version && node --version && pnpm --version && jq --version
 
-WORKDIR /app
-
-# Copy workspace manifests first for better layer caching, then install with pnpm
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-RUN pnpm install --frozen-lockfile
-
-COPY . .
-
-# Run as deployer:deployer (non-root user)
+# Create the non-root user before installing so files are owned correctly at
+# copy/install time — avoids a costly recursive chown of node_modules.
 RUN groupadd -r deployer && \
     useradd -r -g deployer -m -d /home/deployer deployer
-RUN chown -R deployer:deployer /app
+
+WORKDIR /app
+RUN chown deployer:deployer /app
 USER deployer
+
+# Copy workspace manifests first for better layer caching, then install with pnpm
+COPY --chown=deployer:deployer package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN pnpm install --frozen-lockfile
+
+COPY --chown=deployer:deployer . .
 
 FROM dependency-stage AS build-stage
 # Build all Move packages
