@@ -4,7 +4,11 @@ on:
   push:
     tags:
       - 'v*.*.*'
-      - 'dev-v*.*.*'   # ← dev release dry-runs
+      - 'dev-v*.*.*'   # ← dev dry-runs: build + push under an isolated dev-v* tag only (no latest/semver)
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -22,11 +26,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: Run full test pipeline
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
           target: test-stage
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,mode=max,scope=release
       
       # TODO: Add integration tests here
       # TODO: Add smoke tests for deployed contracts
@@ -66,10 +72,13 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha
-            type=raw,value=latest
+            # `latest` only for stable `v*` tags — never moved by a dev dry-run.
+            type=raw,value=latest,enable=${{ startsWith(github.ref_name, 'v') }}
+            # Dev dry-runs still push, but only under an isolated `dev-v*` tag.
+            type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref_name, 'dev-') }}
 
       - name: Build and push release image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
@@ -78,6 +87,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,mode=max,scope=release
 
       - name: Bake and push snapshot image (pre-baked container state)
         env:
