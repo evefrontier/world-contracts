@@ -22,7 +22,8 @@ function main(): void {
     const block = toml.published?.[env];
     if (!block) throw new Error(`${path}: no [published.${env}]`);
     const v = block[field];
-    if (v === undefined || v === null) throw new Error(`${path} [published.${env}]: missing ${field}`);
+    if (v === undefined || v === null)
+        throw new Error(`${path} [published.${env}]: missing ${field}`);
     process.stdout.write(String(v));
 }
 

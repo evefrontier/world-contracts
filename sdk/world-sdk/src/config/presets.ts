@@ -1,15 +1,11 @@
-import type { Env, WorldConfig } from "./types.js";
-import { OBJECT_REGISTRY } from "./shared-objects.js";
+import type { Env, SharedObjectRef, WorldConfig } from "./types.js";
+import presets from "./presets.json" with { type: "json" };
 
-const UNDEPLOYED = { id: "", initialSharedVersion: "0", type: "" };
-
-// Populated by each env's deploy. Empty objectRegistry id => not deployed.
-const PRESETS: Record<Exclude<Env, "local">, WorldConfig> = {
-    dev: { env: "dev", chainId: "", sharedObjects: { [OBJECT_REGISTRY]: UNDEPLOYED } },
-    uat: { env: "uat", chainId: "", sharedObjects: { [OBJECT_REGISTRY]: UNDEPLOYED } },
-    test: { env: "test", chainId: "", sharedObjects: { [OBJECT_REGISTRY]: UNDEPLOYED } },
-    live: { env: "live", chainId: "", sharedObjects: { [OBJECT_REGISTRY]: UNDEPLOYED } },
-};
+// presets.json is maintained by ts-scripts/build-manifest.ts on each deploy:
+// the per-env chainId + sharedObjects projected from deployments/<env>/world.json.
+// Package ids resolve by MVR name at runtime, so they aren't carried here.
+type Preset = { chainId: string; sharedObjects: Record<string, SharedObjectRef> };
+const PRESETS = presets as Partial<Record<Exclude<Env, "local">, Preset>>;
 
 /**
  * The config shipped with the SDK for a published env. Throws for `local`
@@ -21,9 +17,7 @@ export function getWorldConfig(env: Env): WorldConfig {
             `env "local" has no preset config; load it from a world.json via loadWorldConfig`
         );
     }
-    const config = PRESETS[env];
-    if (!config.sharedObjects[OBJECT_REGISTRY]?.id) {
-        throw new Error(`env "${env}" is not deployed yet (no preset config)`);
-    }
-    return config;
+    const preset = PRESETS[env];
+    if (!preset) throw new Error(`env "${env}" is not deployed yet (no preset config)`);
+    return { env, chainId: preset.chainId, sharedObjects: preset.sharedObjects };
 }

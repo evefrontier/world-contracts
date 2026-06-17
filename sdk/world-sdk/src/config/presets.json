@@ -1,0 +1,12 @@
+{
+  "dev": {
+    "chainId": "4c78adac",
+    "sharedObjects": {
+      "objectRegistry": {
+        "id": "0x80ec078303e3cbdd70449e33d66ff4a1d2511da8003747366cad89a7e1366fa7",
+        "initialSharedVersion": "868826219",
+        "type": "0x88f1c51d307a3ef1ef42e7e712aa7be702c6a9187165b9da540191ac8129a0b0::object_registry::ObjectRegistry"
+      }
+    }
+  }
+}
