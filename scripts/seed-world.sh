@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create test resources after deploying and configuring world.
-# Usage: ./scripts/seed-world.sh [localnet|testnet|mainnet|devnet] [delay_seconds]
+# Usage: ./scripts/seed-world.sh [localnet|dev|test|uat|live] [delay_seconds]
 source "$(dirname "$0")/lib.sh"
 
 setup
