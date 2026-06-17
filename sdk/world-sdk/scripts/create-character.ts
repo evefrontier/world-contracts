@@ -7,8 +7,6 @@ import { createWorldClient } from "../src/client.js";
 import { createCharacter } from "../src/packages/character.js";
 import { deriveObjectId } from "../src/packages/core.js";
 
-
-
 const MANIFEST = fileURLToPath(
     new URL("../../../deployments/localnet/world.json", import.meta.url)
 );
