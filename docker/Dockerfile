@@ -21,7 +21,7 @@ WORKDIR /app
 
 # Copy workspace manifests first for better layer caching, then install with pnpm
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 
@@ -37,6 +37,13 @@ RUN pnpm run build
 
 FROM build-stage AS test-stage
 # Run all Move package tests
+RUN pnpm run test
+
+# CI gate for pull requests: format + lint + test in the pinned toolchain.
+# Each RUN is a separate cached layer and a distinct step in the build log.
+FROM dependency-stage AS ci-stage
+RUN pnpm run fmt:check
+RUN pnpm run lint
 RUN pnpm run test
 
 FROM dependency-stage AS release-stage
