@@ -45,7 +45,7 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 CHAIN_ID=$(sui client chain-identifier)
-pnpm exec tsx ts-scripts/build-manifest.ts "$DEPLOY_DIR" "$CHAIN_ID" "${PACKAGES[@]}"
+pnpm exec tsx ts-scripts/build-manifest.ts "$DEPLOY_DIR" "$ENV" "$CHAIN_ID" "${PACKAGES[@]}"
 
 echo "Done ('$MODE') world to $ENV."
 echo "  Manifest: $DEPLOY_DIR/world.json"

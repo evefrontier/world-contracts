@@ -1,0 +1,24 @@
+{
+  "chainId": "4c78adac",
+  "packages": {
+    "core": {
+      "originalId": "0x88f1c51d307a3ef1ef42e7e712aa7be702c6a9187165b9da540191ac8129a0b0",
+      "publishedAt": "0x88f1c51d307a3ef1ef42e7e712aa7be702c6a9187165b9da540191ac8129a0b0",
+      "upgradeCap": "0xbff51d095daba7741b89636afb70e9d7aea5ed73cbe6f4beae13762b34fabc64",
+      "version": 1
+    },
+    "character": {
+      "originalId": "0xf68a9c06254a2cce45ac64f7ee09a7d12f8313678c4f8b1c986a819d67aebc94",
+      "publishedAt": "0xf68a9c06254a2cce45ac64f7ee09a7d12f8313678c4f8b1c986a819d67aebc94",
+      "upgradeCap": "0x5e40c44db14a1a404bececb20c4df3dd1d5285677b8a22fcfd3cd603ffd4dae1",
+      "version": 1
+    }
+  },
+  "sharedObjects": {
+    "objectRegistry": {
+      "id": "0x80ec078303e3cbdd70449e33d66ff4a1d2511da8003747366cad89a7e1366fa7",
+      "initialSharedVersion": "868826219",
+      "type": "0x88f1c51d307a3ef1ef42e7e712aa7be702c6a9187165b9da540191ac8129a0b0::object_registry::ObjectRegistry"
+    }
+  }
+}
