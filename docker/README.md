@@ -1,15 +1,19 @@
 # Docker
 
-Two Dockerfiles, three jobs. One pinned toolchain: `SUI_VERSION=testnet-v1.69.1`.
-To bump it, update together: both Dockerfiles, `pr.yml`, this README, and
-`genesis/genesis-config.yaml`'s `protocol_version` (which must match the Sui
-version).
+Two Dockerfiles. One pinned toolchain: `SUI_VERSION=testnet-v1.69.1` (plus
+`PNPM_VERSION=9`), declared as build `ARG`s in each Dockerfile. To bump, update
+together: both Dockerfiles, this README, and `genesis/genesis-config.yaml`'s
+`protocol_version` (which must match the Sui version). The CI workflows build
+these Dockerfiles, so they inherit the pin automatically — there is no tag to
+edit in `pr.yml`.
 
-| Image | File | Job |
-|-------|------|-----|
-| **integration** | [`Dockerfile.integration`](Dockerfile.integration) | localnet + deploy + run SDK integration tests |
+| Stage / image | File | Used by |
+|---------------|------|---------|
+| **ci-stage** | [`Dockerfile`](Dockerfile) | `pr.yml` — format + lint + test contracts |
+| **test-stage** | [`Dockerfile`](Dockerfile) | `release.yml` — build + test gate before release |
+| **release-stage** | [`Dockerfile`](Dockerfile) | pinned, self-contained artifact that deploys the world to a network |
+| **integration** | [`Dockerfile.integration`](Dockerfile.integration) | `pr.yml` — localnet + deploy + run SDK integration tests |
 | **snapshot** | [`Dockerfile.integration`](Dockerfile.integration) | bake the running chain into a downstream image (localnet + indexer + GraphQL) |
-| **release** | [`Dockerfile`](Dockerfile) | pinned, self-contained artifact that deploys the world to a network |
 
 Every deploy writes `deployments/<network>/world.json` — the manifest (chainId,
 package ids, shared objects) the SDK and downstream read.
