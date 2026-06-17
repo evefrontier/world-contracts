@@ -1,17 +1,14 @@
 # Pinned Sui toolchain — keep in sync with Dockerfile.integration and CI.
 ARG SUI_VERSION=testnet-v1.69.1
+ARG PNPM_VERSION=9
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
+ARG PNPM_VERSION
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    jq \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js and pnpm
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs \
-    && npm install -g pnpm \
+# Install system dependencies, Node.js, and pnpm in a single layer
+RUN apt-get update && apt-get install -y --no-install-recommends jq curl \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g "pnpm@${PNPM_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify installations
