@@ -21,18 +21,21 @@ case "$MODE" in
     *) echo "Usage: $0 [localnet|dev|test|uat|live] [publish|upgrade]" >&2; exit 1 ;;
 esac
 
-sui client switch --env "$NETWORK" >/dev/null
+if [[ "$ENV" == "localnet" ]]; then
+    sui client switch --env localnet >/dev/null
+else
+    ensure_client_env "$ENV" "$(get_rpc "$ENV")"
+fi
 
-# localnet uses an ephemeral shared pubfile (gitignored) so local deps resolve
-# each other's published ids. Named envs use the committed Published.toml that
-# `sui client publish/upgrade -e <env>` maintains per package — never deleted.
+# localnet test-publishes into a shared ephemeral pubfile; named envs use the
+# committed Published.toml maintained by sui.
 PUBFILE=""
 if [[ "$ENV" == "localnet" ]]; then
     PUBFILE="$REPO_ROOT/$DEPLOY_DIR/Pub.$ENV.toml"
     rm -f "$PUBFILE" "$REPO_ROOT"/contracts/*/Pub."$ENV".toml
 fi
 
-echo "${MODE^} [${PACKAGES[*]}] to $ENV (network: $NETWORK) ..."
+echo "Running '$MODE' for [${PACKAGES[*]}] to $ENV (network: $NETWORK) ..."
 for pkg in "${PACKAGES[@]}"; do
     if [[ "$MODE" == "upgrade" ]]; then
         upgrade "$pkg" "$ENV" "$DEPLOY_DIR/$pkg.publish.json"
@@ -44,6 +47,6 @@ done
 CHAIN_ID=$(sui client chain-identifier)
 pnpm exec tsx ts-scripts/build-manifest.ts "$DEPLOY_DIR" "$CHAIN_ID" "${PACKAGES[@]}"
 
-echo "${MODE^}d world to $ENV."
+echo "Done ('$MODE') world to $ENV."
 echo "  Manifest: $DEPLOY_DIR/world.json"
 echo "  Log:      $DEPLOY_DIR/deploy.log"
