@@ -20,5 +20,17 @@
       "initialSharedVersion": "868826219",
       "type": "0x88f1c51d307a3ef1ef42e7e712aa7be702c6a9187165b9da540191ac8129a0b0::object_registry::ObjectRegistry"
     }
+  },
+  "mvr": {
+    "core": {
+      "name": "@evefrontier/world-core-dev",
+      "packageInfo": "0x7676d70578cc76cfd05fcc6cdea35f73bd76068e3adea8b7c1667f1e0f979004",
+      "appCap": "0x8d7b780dbc14ef896ed3777a17517ccfcb546e680351f440948b1166d9742c91"
+    },
+    "character": {
+      "name": "@evefrontier/world-character-dev",
+      "packageInfo": "0x505ea5d5d5724a38623dcc2901b7f2af8b30e5549453ec018bce484e2bfdf541",
+      "appCap": "0xc97feaba0f682fa7f7265db18a6911c379afdc3c1cd1f316c296cd924e2c2c65"
+    }
   }
 }

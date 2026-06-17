@@ -42,10 +42,17 @@ interface SharedObjectEntry {
     type: string;
 }
 
+interface MvrEntry {
+    name: string;
+    packageInfo?: string;
+    appCap?: string;
+}
+
 interface Manifest {
     chainId: string;
     packages: Record<string, PackageEntry>;
     sharedObjects: Record<string, SharedObjectEntry>;
+    mvr?: Record<string, MvrEntry>;
 }
 
 const UPGRADE_CAP_TYPE = "0x2::package::UpgradeCap";
@@ -154,6 +161,7 @@ function main(): void {
         chainId,
         packages: {},
         sharedObjects: existing.sharedObjects ?? {},
+        ...(existing.mvr ? { mvr: existing.mvr } : {}),
     };
 
     for (const pkg of packages) {
