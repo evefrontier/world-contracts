@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # In-container deploy orchestration for .github/workflows/deploy.yml.
-# Runs inside the pinned release image (Sui + tooling baked in) with the
-# workspace mounted, so the records it writes are visible to the runner.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
@@ -22,6 +20,18 @@ DEPLOYER_ADDR=$(import_key "$DEPLOYER_KEY")
 [[ -z "$DEPLOYER_ADDR" ]] && { echo "ERROR: could not import deployer key" >&2; exit 1; }
 sui client switch --address "$DEPLOYER_ADDR" >/dev/null
 
+# Get the deployment artifacts the workflow commits into one dir, so it can copy
+# them out with a single docker cp and without re-deriving the package list.
+export_artifacts() {
+    local dir="deployments/$TARGET_ENV/records"
+    rm -rf "$dir"
+    for pkg in $PACKAGES; do
+        mkdir -p "$dir/contracts/$pkg"
+        cp "contracts/$pkg/Published.toml" "$dir/contracts/$pkg/Published.toml"
+    done
+    cp "deployments/$TARGET_ENV/world.json" "$dir/world.json"
+}
+
 # Publish/upgrade on the target network, then refresh the manifest + SDK preset.
 run ./scripts/deploy-world.sh "$TARGET_ENV" "$MODE"
 
@@ -30,6 +40,7 @@ if [[ "$MODE" == "upgrade" ]]; then
     for pkg in $PACKAGES; do
         run ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
     done
+    export_artifacts
     exit 0
 fi
 
@@ -49,3 +60,4 @@ for pkg in $PACKAGES; do
     sui client switch --address "$DEPLOYER_ADDR" >/dev/null
     run ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
 done
+export_artifacts

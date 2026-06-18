@@ -72,10 +72,6 @@ jobs:
       - name: Pull pinned image
         run: docker pull "${{ steps.cfg.outputs.image }}"
 
-      # Drive the deploy scripts inside the pinned image (Sui + tooling baked in),
-      # overriding the publish-only entrypoint. The workspace is mounted so the
-      # records the scripts write (Published.toml, world.json) land on the
-      # runner for commit. Keys are imported into a per-run sui config.
       - name: Deploy / upgrade on-chain (+ MVR)
         env:
           # On testnet the deployer also holds the AppCaps, so one key signs both
@@ -86,10 +82,9 @@ jobs:
           MODE: ${{ inputs.mode }}
           VERSION: ${{ inputs.version }}
           NET: ${{ steps.cfg.outputs.net }}
+          CONTAINER: deploy-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/app" \
-            -w /app \
+          docker run --name "$CONTAINER" \
             -e CI=true \
             -e DEPLOYER_KEY -e APPCAP_KEY \
             -e TARGET_ENV -e MODE -e VERSION -e NET \
@@ -98,6 +93,20 @@ jobs:
             "${{ steps.cfg.outputs.image }}" \
             scripts/ci-deploy.sh
 
+          # ci-deploy.sh exports the artifacts to commit; copy that
+          # dir out and lay them down where the next step expects them.
+          env="${{ inputs.env }}"
+          tmp="$(mktemp -d)"
+          docker cp "$CONTAINER:/app/deployments/$env/records/." "$tmp/"
+          cp -r "$tmp/contracts/." contracts/
+          mkdir -p "deployments/$env"
+          cp "$tmp/world.json" "deployments/$env/world.json"
+          rm -rf "$tmp"
+
+      - name: Remove deploy container
+        if: always()
+        run: docker rm -f "deploy-${{ github.run_id }}-${{ github.run_attempt }}" 2>/dev/null || true
+
       - name: Open deployment records PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,7 +114,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A \
-            contracts/core/Published.toml contracts/character/Published.toml \
+            'contracts/*/Published.toml' \
             "deployments/${{ inputs.env }}/world.json"
           if git diff --cached --quiet; then
             echo "No record changes to commit."
