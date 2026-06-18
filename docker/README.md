@@ -44,6 +44,11 @@ anything. `world.json` is copied to the host at
 `9125` GraphQL. Bake one with
 [`../scripts/bake-snapshot-image.sh`](../scripts/bake-snapshot-image.sh).
 
+> **No world state yet.** The snapshot ships the *deployed* packages but an
+> *empty* world — `seed-world.sh` is currently a no-op, so there are no
+> characters or other entities on-chain. Seeding (e.g. a baked test character)
+> is tracked as a TODO in `seed-world.sh` for a later PR.
+
 ## Release image
 
 Env-agnostic deploy vehicle: given `SUI_NETWORK` + `DEPLOYER_PRIVATE_KEY` (via

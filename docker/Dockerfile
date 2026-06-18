@@ -1,4 +1,3 @@
-# Pinned Sui toolchain — keep in sync with Dockerfile.integration and CI.
 ARG SUI_VERSION=testnet-v1.69.1
 ARG PNPM_VERSION=9
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
@@ -30,15 +29,8 @@ RUN pnpm install --frozen-lockfile
 COPY --chown=deployer:deployer . .
 
 FROM dependency-stage AS build-stage
-# Build all Move packages
 RUN pnpm run build
 
-FROM build-stage AS test-stage
-# Run all Move package tests
-RUN pnpm run test
-
-# CI gate for pull requests: format + lint + test in the pinned toolchain.
-# Each RUN is a separate cached layer and a distinct step in the build log.
 FROM dependency-stage AS ci-stage
 RUN pnpm run fmt:check
 RUN pnpm run lint

@@ -1,4 +1,7 @@
 # This is an example of how to use the snapshot image to start a localnet with indexer and graphql.
+#
+# NOTE: the snapshot ships the deployed packages but an EMPTY world — no characters
+# or other entities on-chain yet (seed-world.sh is a no-op). Seeding is a TODO.
 
 services:
   postgres:

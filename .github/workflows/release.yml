@@ -1,4 +1,4 @@
-name: Release and Deploy
+name: Release
 
 on:
   push:
@@ -25,18 +25,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Run full test pipeline
+      - name: Run full CI pipeline (fmt + lint + test)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
-          target: test-stage
+          target: ci-stage
           cache-from: type=gha,scope=release
           cache-to: type=gha,mode=max,scope=release
       
-      # TODO: Add integration tests here
-      # TODO: Add smoke tests for deployed contracts
-
   release-image:
     name: Build and Push Release Image
     runs-on: ubuntu-latest
