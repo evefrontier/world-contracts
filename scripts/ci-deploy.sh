@@ -10,23 +10,25 @@ source "$(dirname "$0")/lib.sh"
 # Packages in dependency order, matching deploy-world.sh.
 PACKAGES="core character"
 
-# Import a key into the fresh per-run keystore, print its address.
-import_key() {
-    sui keytool import "$1" ed25519 2>&1 | grep -oE '0x[a-fA-F0-9]{64}' | head -1
+# Run a step, or just print it under DRY_RUN=1.
+run() {
+    if [[ "${DRY_RUN:-}" == "1" ]]; then echo "DRY_RUN: $*"; else "$@"; fi
 }
 
 setup
+# Overriding the image entrypoint skips its sui init, so bootstrap config here.
+sui_init_config "$NET" "$(get_rpc "$TARGET_ENV")"
 DEPLOYER_ADDR=$(import_key "$DEPLOYER_KEY")
 [[ -z "$DEPLOYER_ADDR" ]] && { echo "ERROR: could not import deployer key" >&2; exit 1; }
 sui client switch --address "$DEPLOYER_ADDR" >/dev/null
 
 # Publish/upgrade on the target network, then refresh the manifest + SDK preset.
-./scripts/deploy-world.sh "$TARGET_ENV" "$MODE"
+run ./scripts/deploy-world.sh "$TARGET_ENV" "$MODE"
 
 if [[ "$MODE" == "upgrade" ]]; then
     # Same lineage: target-network git metadata only. No mainnet, no AppCap.
     for pkg in $PACKAGES; do
-        ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
+        run ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
     done
     exit 0
 fi
@@ -39,11 +41,11 @@ if [[ -n "${APPCAP_KEY:-}" ]]; then APPCAP_ADDR=$(import_key "$APPCAP_KEY"); fi
 
 for pkg in $PACKAGES; do
     sui client switch --address "$DEPLOYER_ADDR" >/dev/null
-    ./scripts/mvr.sh package-info "$TARGET_ENV" "$pkg"
+    run ./scripts/mvr.sh package-info "$TARGET_ENV" "$pkg"
 
     sui client switch --address "$APPCAP_ADDR" >/dev/null
-    ./scripts/mvr.sh set-network "$TARGET_ENV" "$pkg"
+    run ./scripts/mvr.sh set-network "$TARGET_ENV" "$pkg"
 
     sui client switch --address "$DEPLOYER_ADDR" >/dev/null
-    ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
+    run ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
 done

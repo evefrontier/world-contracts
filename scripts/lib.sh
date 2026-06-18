@@ -20,7 +20,7 @@ get_env() {
     [[ "$env" == "local" ]] && env="localnet"
     case "$env" in
         localnet|dev|test|uat|live) echo "$env" ;;
-        *) echo "Usage: $0 [localnet|dev|test|uat|live] [publish|upgrade]" >&2; exit 1 ;;
+        *) echo "get_env: unknown env '$env' (want localnet|dev|test|uat|live)" >&2; exit 1 ;;
     esac
 }
 
@@ -40,6 +40,42 @@ get_rpc() {
         live)          echo "https://fullnode.mainnet.sui.io:443" ;;
         *) echo "get_rpc: unknown env '$1'" >&2; exit 1 ;;
     esac
+}
+
+# Create an empty Sui client config if none exists, so keytool/client can write.
+# Needed when running without the image entrypoint (which does its own init).
+sui_init_config() {
+    local env=$1 rpc=$2 cfg="$HOME/.sui/sui_config"
+    [[ -f "$cfg/client.yaml" ]] && return 0
+    mkdir -p "$cfg"
+    cat > "$cfg/client.yaml" <<EOF
+---
+keystore:
+  File: $cfg/sui.keystore
+envs:
+  - alias: $env
+    rpc: "$rpc"
+    ws: ~
+    basic_auth: ~
+active_env: $env
+active_address: ~
+EOF
+    echo "[]" > "$cfg/sui.keystore"
+}
+
+# Import a private key into the keystore (idempotent), print its address.
+import_key() {
+    local key=$1 out rc
+    [[ -z "$key" ]] && return 0
+    set +e
+    out=$(sui keytool import "$key" "${KEY_SCHEME:-ed25519}" 2>&1)
+    rc=$?
+    set -e
+    if [[ $rc -ne 0 ]] && ! grep -qi "already exists" <<<"$out"; then
+        echo "import_key: $out" >&2
+        return 1
+    fi
+    grep -oE '0x[a-fA-F0-9]{64}' <<<"$out" | head -1
 }
 
 # publish builds for the active client env and writes [published.<active-env>],
