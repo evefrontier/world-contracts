@@ -21,11 +21,7 @@ case "$MODE" in
     *) echo "Usage: $0 [localnet|dev|test|uat|live] [publish|upgrade]" >&2; exit 1 ;;
 esac
 
-if [[ "$ENV" == "localnet" ]]; then
-    sui client switch --env localnet >/dev/null
-else
-    ensure_client_env "$ENV" "$(get_rpc "$ENV")"
-fi
+ensure_client_env "$ENV" "$(get_rpc "$ENV")"
 
 # localnet test-publishes into a shared ephemeral pubfile; named envs use the
 # committed Published.toml maintained by sui.
