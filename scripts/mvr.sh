@@ -17,7 +17,11 @@ usage() {
     exit 1
 }
 
-published_field() { pnpm exec tsx ts-scripts/read-published.ts "$2" "$1" "$3"; }
+# Read packages.<pkg>.<field> from the env's world.json (written by build-manifest.ts
+# during deploy-world.sh, before any mvr.sh call). Fields: publishedAt, upgradeCap, ...
+pkg_field() {
+    jq -r --arg p "$2" --arg f "$3" '.packages[$p][$f] // empty' "deployments/$1/world.json"
+}
 
 # Read/write mvr.<pkg>.<field> in the env's world.json (read-modify-write, preserves the rest).
 mvr_get() {
@@ -55,7 +59,7 @@ cmd_package_info() {
     local meta name cap out
     meta=$(mvr_metadata_pkg "$env")
     name=$(mvr_name "$pkg" "$env")
-    cap=$(published_field "$env" "$pkg" upgrade-capability)
+    cap=$(pkg_field "$env" "$pkg" upgradeCap)
     out="deployments/$env/$pkg.package-info.json"
 
     ensure_client_env "$env" "$(get_rpc "$env")"
@@ -82,7 +86,7 @@ cmd_set_network() {
     local env=$1 pkg=$2
     local pi_id pkg_addr app_cap
     pi_id=$(mvr_get "$env" "$pkg" packageInfo)
-    pkg_addr=$(published_field "$env" "$pkg" published-at)
+    pkg_addr=$(pkg_field "$env" "$pkg" publishedAt)
     app_cap=$(mvr_get "$env" "$pkg" appCap)
     [[ -z "$pi_id"   ]] && { echo "ERROR: no packageInfo for $pkg/$env — run package-info first" >&2; exit 1; }
     [[ -z "$app_cap" ]] && { echo "ERROR: no appCap for $pkg/$env — run set-appcap (from bootstrap register)" >&2; exit 1; }

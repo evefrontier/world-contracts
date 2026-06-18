@@ -47,8 +47,6 @@ jobs:
       packages: read
       pull-requests: write
     steps:
-      # Records always target dev. Check it out so the per-run branch (and its PR)
-      # is based on dev, giving a clean diff regardless of the dispatch ref.
       - uses: actions/checkout@v5
         with:
           ref: dev

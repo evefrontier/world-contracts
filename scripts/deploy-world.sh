@@ -2,7 +2,7 @@
 # Deploy the world Move packages (core, then character) to a deployment env.
 # Assumes the target node is already running (for localnet, start it separately).
 #
-# Usage: ./scripts/deploy-world.sh [localnet|dev|test|uat|live] [publish|upgrade]
+# Usage: ./scripts/deploy-world.sh [localnet|dev|test|uat|live] [deploy|publish|upgrade]
 source "$(dirname "$0")/lib.sh"
 
 # Packages in dependency order (character depends on core).
@@ -16,9 +16,11 @@ DEPLOY_DIR="deployments/$ENV"
 mkdir -p "$DEPLOY_DIR"
 start_logging "$ENV" "deploy-world ($MODE)"
 
+# `deploy` (workflow term for a new lineage) is a synonym for `publish`.
 case "$MODE" in
-    publish|upgrade) ;;
-    *) echo "Usage: $0 [localnet|dev|test|uat|live] [publish|upgrade]" >&2; exit 1 ;;
+    deploy|publish) MODE="publish" ;;
+    upgrade) ;;
+    *) echo "Usage: $0 [localnet|dev|test|uat|live] [deploy|publish|upgrade]" >&2; exit 1 ;;
 esac
 
 ensure_client_env "$ENV" "$(get_rpc "$ENV")"
