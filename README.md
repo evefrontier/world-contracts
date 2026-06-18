@@ -65,16 +65,19 @@ npm run test
 ```
 
 ### Deploy Locally
+
+Deploys the Move packages (`core`, then `character`) to a **running** localnet. Start a
+local node first (e.g. `sui start --with-faucet --force-regenesis`) and fund your active
+address from the faucet.
+
 ```bash
-# Uses SUI_NETWORK from .env (default: localnet)
-pnpm deploy-world
+./scripts/deploy-world.sh localnet
 ```
 
 ### Progress on V1 
 TODO 
 - Docker files update 
 - All README's
-- scripts
 - Workflows 
    - integration test
    - publish to mvr 

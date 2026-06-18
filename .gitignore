@@ -25,6 +25,8 @@ prd.md
 
 # contracts
 contracts/**/Pub.*.toml
+# ephemeral publish files (shared pubfile lives under deployments/)
+Pub.*.toml
 
 # Error decoder build artifacts
 tools/error-decoder/*.js

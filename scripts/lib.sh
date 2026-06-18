@@ -8,7 +8,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 setup() {
     cd "$REPO_ROOT"
-    [ -f .env ] && set -a && source .env && set +a
+    if [ -f .env ]; then
+        set -a
+        source .env
+        set +a
+    fi
 }
 
 get_env() {
@@ -32,52 +36,44 @@ start_logging() {
     exec 1> >(tee -a "$LOG") 2>&1
 }
 
-# publish() {
-#     local pkg=$1
-#     local out_file=$2
-#     local env=$3
-#     local localnet_pubfile=${4:-}
-#     local tmp tmp_err
-#     tmp=$(mktemp)
-#     tmp_err=$(mktemp)
-#     trap 'rm -f -- "$tmp" "$tmp_err"' RETURN
+# Publish one package to the current network and save the raw --json output.
+# Args: pkg env pubfile out_file
+#   pkg      package dir name under contracts/ (e.g. core)
+#   env      target env (localnet uses ephemeral test-publish; others use publish)
+#   pubfile  absolute path to a SHARED pubfile; all packages read/write the same
+#            file so local deps (character -> core) resolve their published ids
+#   out_file path to write the raw publish JSON to
+publish() {
+    local pkg=$1 env=$2 pubfile=$3 out_file=$4
+    local tmp tmp_err
+    tmp=$(mktemp)
+    tmp_err=$(mktemp)
+    trap 'rm -f -- "$tmp" "$tmp_err"' RETURN
 
-#     sui client switch --env "$env"
+    # JSON goes to stdout; build progress goes to stderr. Do not merge them.
+    if [[ "$env" == "localnet" ]]; then
+        (cd "contracts/$pkg" && sui client test-publish --build-env testnet --pubfile-path "$pubfile" --json) > "$tmp" 2> "$tmp_err" || true
+    else
+        (cd "contracts/$pkg" && sui client publish --json) > "$tmp" 2> "$tmp_err" || true
+    fi
 
-#     # JSON goes to stdout; build progress often goes to stderr. Do not merge (2>&1) or extract-json breaks.
-#     if [[ "$env" == "localnet" ]]; then
-#         if [[ -n "$localnet_pubfile" ]]; then
-#             # Path is relative to contracts/$pkg (same as test-publish cwd); check from there.
-#             if ! (cd "contracts/$pkg" && [[ -f "$localnet_pubfile" && -r "$localnet_pubfile" ]]); then
-#                 echo "Error: localnet pubfile not found or not readable: $localnet_pubfile (from contracts/$pkg)" >&2
-#                 exit 1
-#             fi
-#             (cd "contracts/$pkg" && sui client test-publish --build-env testnet --pubfile-path "$localnet_pubfile" --json) > "$tmp" 2> "$tmp_err" || true
-#         else
-#             (cd "contracts/$pkg" && sui client test-publish --build-env testnet --json) > "$tmp" 2> "$tmp_err" || true
-#         fi
-#     else
-#         (cd "contracts/$pkg" && sui client publish --json) > "$tmp" 2> "$tmp_err" || true
-#     fi
+    {
+        echo ""
+        echo "--- Publish $pkg output ---"
+        cat "$tmp"
+        if [[ -s "$tmp_err" ]]; then
+            echo "--- Publish $pkg stderr ---"
+            cat "$tmp_err"
+        fi
+    } >> "${LOG:-deployments/$env/deploy.log}"
 
-#     pnpm exec tsx ts-scripts/utils/extract-json.ts "$tmp" > "$out_file" || true
+    # On dependency/build errors sui prints a plain message to stdout, not JSON.
+    if [[ "$(head -c1 "$tmp")" != "{" ]]; then
+        echo "ERROR: publish '$pkg' failed:" >&2
+        cat "$tmp" "$tmp_err" >&2
+        exit 1
+    fi
 
-#     log="${LOG:-deployments/$env/deploy.log}"
-#     {
-#         echo ""
-#         echo "--- Publish output ---"
-#         cat "$tmp"
-#         if [[ -s "$tmp_err" ]]; then
-#             echo ""
-#             echo "--- Publish stderr ---"
-#             cat "$tmp_err"
-#         fi
-#     } >> "$log"
-
-#     if [[ ! -s "$out_file" ]]; then
-#         echo "" >&2
-#         echo "=== Publish failed. Raw output ===" >&2
-#         cat "$tmp" "$tmp_err" >&2
-#         exit 1
-#     fi
-# }
+    cp "$tmp" "$out_file"
+    echo "Published $pkg -> $out_file"
+}
