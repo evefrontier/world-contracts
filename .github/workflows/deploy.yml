@@ -76,8 +76,8 @@ jobs:
 
       # Drive the deploy scripts inside the pinned image (Sui + tooling baked in),
       # overriding the publish-only entrypoint. The workspace is mounted so the
-      # records the scripts write (Published.toml, world.json, presets.json) land
-      # on the runner for commit. Keys are imported into a per-run sui config.
+      # records the scripts write (Published.toml, world.json) land on the
+      # runner for commit. Keys are imported into a per-run sui config.
       - name: Deploy / upgrade on-chain (+ MVR)
         env:
           # On testnet the deployer also holds the AppCaps, so one key signs both
@@ -108,8 +108,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A \
             contracts/core/Published.toml contracts/character/Published.toml \
-            "deployments/${{ inputs.env }}/world.json" \
-            sdk/world-sdk/src/config/presets.json
+            "deployments/${{ inputs.env }}/world.json"
           if git diff --cached --quiet; then
             echo "No record changes to commit."
             exit 0

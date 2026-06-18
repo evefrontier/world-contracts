@@ -179,25 +179,6 @@ function main(): void {
 
     writeFileSync(existingPath, JSON.stringify(manifest, null, 2) + "\n");
     console.log(`Wrote ${existingPath}`);
-
-    if (env !== "localnet") syncSdkPreset(env, manifest);
-}
-
-const SDK_PRESETS = "sdk/world-sdk/src/config/presets.json";
-
-/**
- * Project this env's manifest down to what the bundled SDK preset needs
- * (chainId + sharedObjects; package ids resolve via MVR at runtime) and merge
- * it into the committed presets.json the SDK imports. One env per deploy.
- */
-function syncSdkPreset(env: string, manifest: Manifest): void {
-    const presets: Record<string, { chainId: string; sharedObjects: Manifest["sharedObjects"] }> =
-        existsSync(SDK_PRESETS)
-            ? (JSON.parse(readFileSync(SDK_PRESETS, "utf8")) as typeof presets)
-            : {};
-    presets[env] = { chainId: manifest.chainId, sharedObjects: manifest.sharedObjects };
-    writeFileSync(SDK_PRESETS, JSON.stringify(presets, null, 2) + "\n");
-    console.log(`Wrote ${SDK_PRESETS} [${env}]`);
 }
 
 main();
