@@ -1,4 +1,4 @@
-name: Release and Deploy
+name: Release
 
 on:
   push:
@@ -34,8 +34,6 @@ jobs:
           cache-from: type=gha,scope=release
           cache-to: type=gha,mode=max,scope=release
       
-      # TODO: Add smoke tests for deployed contracts
-
   release-image:
     name: Build and Push Release Image
     runs-on: ubuntu-latest
