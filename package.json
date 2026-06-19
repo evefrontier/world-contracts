@@ -5,7 +5,6 @@
   "description": "contracts for eve frontier",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks || true",
     "build": "find contracts -maxdepth 1 -mindepth 1 -type d -not -name archive | xargs -P 4 -I {} sui move build --build-env testnet --path {}",
     "lint": "find contracts -maxdepth 1 -mindepth 1 -type d -not -name archive | xargs -P 4 -I {} sui move build --build-env testnet --lint --path {}",
     "test": "find contracts -maxdepth 1 -mindepth 1 -type d -not -name archive | xargs -P 4 -I {} sui move test --build-env testnet --path {}",
