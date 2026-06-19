@@ -30,7 +30,7 @@ jobs:
         with:
           context: .
           file: ./docker/Dockerfile
-          target: test-stage
+          target: ci-stage
           cache-from: type=gha,scope=release
           cache-to: type=gha,mode=max,scope=release
       

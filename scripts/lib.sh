@@ -120,6 +120,7 @@ _run_pkg_cmd() {
         fi
     } >> "${LOG:-deployments/$env/deploy.log}"
 
+    # On dependency/build errors sui prints a plain message to stdout, not JSON.
     if [[ "$(head -c1 "$tmp")" != "{" ]]; then
         echo "ERROR: $action '$pkg' failed:" >&2
         cat "$tmp" "$tmp_err" >&2

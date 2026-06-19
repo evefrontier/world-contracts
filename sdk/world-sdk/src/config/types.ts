@@ -1,11 +1,11 @@
-export type Env = "local" | "dev" | "uat" | "test" | "live";
+export type Env = 'local' | 'dev' | 'uat' | 'test' | 'live'
 
-export type Network = "localnet" | "testnet" | "mainnet";
+export type Network = 'localnet' | 'testnet' | 'mainnet'
 
 export interface SharedObjectRef {
-    id: string;
-    initialSharedVersion: string;
-    type: string;
+  id: string
+  initialSharedVersion: string
+  type: string
 }
 
 /**
@@ -14,8 +14,8 @@ export interface SharedObjectRef {
  * (short package name -> published id) feeds the resolver.
  */
 export interface WorldConfig {
-    env: Env;
-    chainId: string;
-    sharedObjects: Record<string, SharedObjectRef>;
-    packageOverrides?: Record<string, string>;
+  env: Env
+  chainId: string
+  sharedObjects: Record<string, SharedObjectRef>
+  packageOverrides?: Record<string, string>
 }
