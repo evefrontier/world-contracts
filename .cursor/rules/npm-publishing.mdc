@@ -1,0 +1,32 @@
+---
+description: npm publishing conventions for the world-sdk package
+globs:
+  - "sdk/**"
+---
+
+# npm publishing (world-sdk)
+
+Conventions for `@evefrontier/world-sdk` published to npm.
+
+## Package shape
+
+- ESM-only: `"type": "module"`, `main`/`types` point at `dist/`, and an `exports` map
+  with `types` listed **before** `import`.
+- Ship build output only: `"files": ["dist"]` (whitelist; no `src`, tests, or configs).
+  Always include `LICENSE` and a human `README.md` (shown on npmjs.org).
+- `@mysten/sui` is a **peerDependency** (also a devDep for local build/test) — never bundle it.
+- Publish from clean, built artifacts; `dist/` stays gitignored.
+
+## Release flow
+
+- `prepublishOnly` must run typecheck + build + tests so a broken build can't be published.
+- Scoped package: publish with `--access public` (set once via `publishConfig.access: "public"`).
+- Use `--provenance` when publishing from CI for a verifiable supply chain.
+- Versioning is **manual and semver**; each release states which contract release it supports
+  (the SDK mirrors on-chain ABIs, so a breaking Move ABI change is a breaking SDK release).
+- Tag the release in git; do not publish with uncommitted changes.
+
+## Don't
+
+- No `prepublish`/postinstall side effects. No `latest` floating deps in published ranges.
+- Don't commit secrets or an `.npmrc` auth token.

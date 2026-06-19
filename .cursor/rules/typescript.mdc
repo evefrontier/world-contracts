@@ -1,0 +1,36 @@
+---
+description: TypeScript conventions for the SDK and TS tooling (comments, design principles)
+alwaysApply: true
+globs:
+  - "**/*.ts"
+---
+
+# TypeScript conventions
+
+Applies to all `.ts` in this repo (the `sdk/`, `ts-scripts/`, `tools/`).
+
+## Comments — only when necessary
+
+Code should read without narration. Default to **no comment**.
+
+- Never restate what the code already says (no "Sui network a deployment lives on" on a
+  `Network` type, no "returns the id" on an `id()` getter).
+- Don't add a `///`/JSDoc block to every type, field, or function. Name things well instead.
+- Do comment the **non-obvious**: a tricky invariant, a "why" that isn't visible in the code,
+  a workaround, or a unit/format constraint. One line is usually enough.
+- Prefer a clear name or a small type over a comment that explains a bad name.
+
+## Design principles (backend TS)
+
+Lean on SOLID + clean-code practices (ref: https://github.com/ramziddin/solid-skills):
+
+- **Single responsibility** per module/function; keep functions small and one level of
+  abstraction. Use early returns over nested `else`.
+- **Explicit types** on exported function params and return values. Avoid `any`; model a type.
+- **Domain types over primitives** where it removes ambiguity (e.g. an `EntityKey`, not loose
+  `id`/`tenant` args passed everywhere).
+- **Builder, not executor** for on-chain calls: append to a caller's `Transaction`; leave
+  signing/execution to the caller.
+- One concept per file; group `use`/imports at top (no inline imports).
+- Exhaustive handling of unions/enums (a `never` check or a `Record<Union, …>` that fails to
+  compile when a variant is added).

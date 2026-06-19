@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - main
-      - dev 
+      - dev
 
 env:
   CONTRACTS_DIR: contracts
@@ -29,6 +29,32 @@ jobs:
       
       - name: Run formatter check
         run: pnpm run fmt:check
+
+  sdk:
+    name: SDK (format, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint and format check
+        run: pnpm run lint:ts:check
+
+      - name: Typecheck
+        run: pnpm --filter @evefrontier/world-sdk typecheck
+
+      - name: Test
+        run: pnpm --filter @evefrontier/world-sdk test
 
   lint-contracts:
     strategy:
