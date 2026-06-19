@@ -30,7 +30,10 @@ export function loadWorldConfig(path: string): WorldConfig {
     if (!manifest.chainId) throw new Error(`${path}: missing chainId`);
 
     const sharedObjects = manifest.sharedObjects ?? {};
-    parseSharedObjectRef(sharedObjects[OBJECT_REGISTRY], `${path}: sharedObjects.${OBJECT_REGISTRY}`);
+    parseSharedObjectRef(
+        sharedObjects[OBJECT_REGISTRY],
+        `${path}: sharedObjects.${OBJECT_REGISTRY}`
+    );
 
     const packageOverrides: Record<string, string> = {};
     for (const [pkg, entry] of Object.entries(manifest.packages ?? {})) {

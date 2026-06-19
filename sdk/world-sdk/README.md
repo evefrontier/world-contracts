@@ -12,11 +12,18 @@ npm install @evefrontier/world-sdk @mysten/sui
 
 ## Usage
 
+Load config from a generated `world.json` manifest, then build and execute a transaction:
+
 ```ts
 import { Transaction } from "@mysten/sui/transactions";
-import { createWorldClient, createCharacter, getWorldConfig } from "@evefrontier/world-sdk";
+import {
+    createWorldClient,
+    createCharacter,
+    loadWorldConfig,
+    deriveObjectId,
+} from "@evefrontier/world-sdk";
 
-const config = getWorldConfig("live");
+const config = loadWorldConfig("deployments/localnet/world.json");
 const client = createWorldClient({ config });
 
 const tx = new Transaction();
@@ -28,17 +35,8 @@ createCharacter(tx, config, {
 });
 
 // sign + execute `tx` with your keypair / wallet
-```
 
-### Local / CI
-
-On `local`, load config from a generated `world.json` manifest:
-
-```ts
-import { loadWorldConfig, deriveObjectId } from "@evefrontier/world-sdk";
-
-const config = loadWorldConfig("deployments/localnet/world.json");
-const id = deriveObjectId(config, { id: 7n, tenant: "my-tenant" });
+const id = deriveObjectId(config, { id: 42n, tenant: "my-tenant" });
 ```
 
 ## Versioning
