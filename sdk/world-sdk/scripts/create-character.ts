@@ -37,13 +37,18 @@ const res = await client.signAndExecuteTransaction({
 });
 
 const status = res.effects?.status;
-console.log("status:", status?.status, status?.error ?? "");
-console.log("expected object id:", deriveObjectId(config, key));
-console.log(
-    "created:",
-    (res.effects?.created ?? []).map((c) => c.reference.objectId)
-);
-
 if (status?.status !== "success") {
-    process.exitCode = 1;
+    throw new Error(`transaction failed: ${status?.error ?? "unknown error"}`);
 }
+
+console.log(
+    JSON.stringify(
+        {
+            digest: res.digest,
+            expectedObjectId: deriveObjectId(config, key),
+            created: (res.effects?.created ?? []).map((c) => c.reference.objectId),
+        },
+        null,
+        2
+    )
+);

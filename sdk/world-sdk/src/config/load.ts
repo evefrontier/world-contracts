@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { SharedObjectRef, WorldConfig } from "./types.js";
-import { OBJECT_REGISTRY } from "./shared-objects.js";
+import { OBJECT_REGISTRY, parseSharedObjectRef } from "./shared-objects.js";
 
 interface WorldManifest {
     chainId: string;
@@ -30,12 +30,7 @@ export function loadWorldConfig(path: string): WorldConfig {
     if (!manifest.chainId) throw new Error(`${path}: missing chainId`);
 
     const sharedObjects = manifest.sharedObjects ?? {};
-    const registry = sharedObjects[OBJECT_REGISTRY];
-    if (!registry?.id) throw new Error(`${path}: missing sharedObjects.${OBJECT_REGISTRY}`);
-    if (registry.initialSharedVersion === undefined) {
-        throw new Error(`${path}: ${OBJECT_REGISTRY} missing initialSharedVersion`);
-    }
-    if (!registry.type) throw new Error(`${path}: ${OBJECT_REGISTRY} missing type`);
+    parseSharedObjectRef(sharedObjects[OBJECT_REGISTRY], `${path}: sharedObjects.${OBJECT_REGISTRY}`);
 
     const packageOverrides: Record<string, string> = {};
     for (const [pkg, entry] of Object.entries(manifest.packages ?? {})) {
