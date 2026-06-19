@@ -187,7 +187,7 @@ function main(): void {
     }
   }
 
-  writeFileSync(existingPath, JSON.stringify(manifest, null, 2) + '\n')
+  writeFileSync(existingPath, `${JSON.stringify(manifest, null, 2)}\n`)
   console.log(`Wrote ${existingPath}`)
 }
 
