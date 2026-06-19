@@ -1,6 +1,5 @@
 ARG SUI_VERSION=testnet-v1.69.1
 ARG PNPM_VERSION=9
-
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 
 # Install system dependencies, Node.js, and pnpm in a single layer

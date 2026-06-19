@@ -15,8 +15,12 @@ node_modules/
 .idea/
 *.log
 
-# Deployment debug files
+# Deployment debug files (raw publish JSON, logs). Commit only the per-env
+# world.json supplement for published envs; localnet stays ephemeral.
 deployments/**
+!deployments/*/
+!deployments/*/world.json
+deployments/localnet/world.json
 .env
 
 # docs

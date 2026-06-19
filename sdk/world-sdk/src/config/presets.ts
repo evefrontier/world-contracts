@@ -1,31 +1,17 @@
-import { OBJECT_REGISTRY } from './shared-objects.js'
-import type { Env, WorldConfig } from './types.js'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import type { Env, SharedObjectRef, WorldConfig } from './types.js'
 
-const UNDEPLOYED = { id: '', initialSharedVersion: '0', type: '' }
-
-// Populated by each env's deploy. Empty objectRegistry id => not deployed.
-const PRESETS: Record<Exclude<Env, 'local'>, WorldConfig> = {
-  dev: {
-    env: 'dev',
-    chainId: '',
-    sharedObjects: { [OBJECT_REGISTRY]: UNDEPLOYED },
-  },
-  uat: {
-    env: 'uat',
-    chainId: '',
-    sharedObjects: { [OBJECT_REGISTRY]: UNDEPLOYED },
-  },
-  test: {
-    env: 'test',
-    chainId: '',
-    sharedObjects: { [OBJECT_REGISTRY]: UNDEPLOYED },
-  },
-  live: {
-    env: 'live',
-    chainId: '',
-    sharedObjects: { [OBJECT_REGISTRY]: UNDEPLOYED },
-  },
+interface WorldManifest {
+  chainId: string
+  sharedObjects: Record<string, SharedObjectRef>
 }
+
+// Deployment manifests are bundled into dist/presets/<env>.json by the build
+// (scripts/copy-presets.ts copies deployments/<env>/world.json). Package ids
+// resolve by MVR name at runtime, so only chainId + sharedObjects are needed.
+const PRESETS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../presets')
 
 /**
  * The config shipped with the SDK for a published env. Throws for `local`
@@ -37,9 +23,16 @@ export function getWorldConfig(env: Env): WorldConfig {
       `env "local" has no preset config; load it from a world.json via loadWorldConfig`,
     )
   }
-  const config = PRESETS[env]
-  if (!config.sharedObjects[OBJECT_REGISTRY]?.id) {
+  let raw: string
+  try {
+    raw = readFileSync(join(PRESETS_DIR, `${env}.json`), 'utf8')
+  } catch {
     throw new Error(`env "${env}" is not deployed yet (no preset config)`)
   }
-  return config
+  const manifest = JSON.parse(raw) as WorldManifest
+  return {
+    env,
+    chainId: manifest.chainId,
+    sharedObjects: manifest.sharedObjects,
+  }
 }

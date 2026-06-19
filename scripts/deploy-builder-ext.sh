@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy builder-extension contracts.
-# Usage: ./scripts/deploy-builder-ext.sh [localnet|testnet|mainnet|devnet]
+# Usage: ./scripts/deploy-builder-ext.sh [localnet|dev|test|uat|live]
 # For localnet: deploy world first so Pub.localnet.toml has world's address.
 source "$(dirname "$0")/lib.sh"
 
