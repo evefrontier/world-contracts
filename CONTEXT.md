@@ -21,10 +21,15 @@ module handlers must satisfy — one at a time — before the request can comple
 
 These five are the load-bearing nouns of v1. All live in [`contracts/core/sources/`](contracts/core/sources/).
 
-- **Entity** — the base shared object representing an in-game structure
-  ([`entity.move`](contracts/core/sources/entity.move)). Stays small; stores installed modules
-  and exposed actions as **dynamic fields** rather than fixed struct fields, so new behavior
-  never changes the base type. Created/claimed deterministically from the `ObjectRegistry`.
+- **Entity** — the base shared object ([`entity.move`](contracts/core/sources/entity.move)).
+  Stays small; stores installed modules and exposed actions as **dynamic fields** rather than
+  fixed struct fields, so new behavior never changes the base type. Created/claimed
+  deterministically from the `ObjectRegistry`. A single Entity type plays one of two **roles**,
+  not a fixed sub-type:
+  - **Structure** — a spatial, anchored Entity (gate, storage unit, turret) with a non-empty
+    `location_hash`, reachable via proximity.
+  - **Principal** — an Entity with no location (empty `location_hash`) that represents an
+    account-like actor and **owns AccessCaps** (a Character or a Tribe). See **Keychain**.
 - **Module** — typed state installed on an Entity ([`mod.move`](contracts/core/sources/mod.move)).
   `Module<T>` wraps a user-defined state `T` (e.g. `Module<Inventory>`) under a human-readable
   name, so one Entity can host several modules, even of the same type.

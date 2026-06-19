@@ -13,20 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Format check
-        run: pnpm run fmt:ts:check
+      - name: Lint and format check
+        run: pnpm run lint:ts:check
 
       - name: Typecheck
         run: pnpm --filter @evefrontier/world-sdk typecheck

@@ -5,14 +5,14 @@
   "description": "contracts for eve frontier",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks || true",
+    "prepare": "husky",
     "build": "find contracts -maxdepth 1 -mindepth 1 -type d -not -name archive | xargs -P 4 -I {} sui move build --build-env testnet --path {}",
     "lint": "find contracts -maxdepth 1 -mindepth 1 -type d -not -name archive | xargs -P 4 -I {} sui move build --build-env testnet --lint --path {}",
     "test": "find contracts -maxdepth 1 -mindepth 1 -type d -not -name archive | xargs -P 4 -I {} sui move test --build-env testnet --path {}",
     "fmt": "prettier --plugin=@mysten/prettier-plugin-move --write \"**/**/*.move\"",
     "fmt:check": "prettier --plugin=@mysten/prettier-plugin-move --check \"**/**/*.move\" ",
-    "fmt:ts": "prettier --write \"ts-scripts/**/*.ts\" \"tools/**/*.ts\" \"sdk/**/*.ts\"",
-    "fmt:ts:check": "prettier --check \"ts-scripts/**/*.ts\" \"tools/**/*.ts\" \"sdk/**/*.ts\"",
+    "lint:ts": "biome check --write",
+    "lint:ts:check": "biome check",
     "clean": "rm -rf contracts/**/Published.toml deployments/*",
     "extract:errors": "tsx tools/error-decoder/error-extractor.ts",
     "compile:decoder": "tsc --project tools/error-decoder/tsconfig.json",
@@ -21,6 +21,10 @@
     "dev:decoder": "npm run extract:errors && npm run compile:decoder -- --watch",
     "debug:prepare": "chmod +x ./scripts/prepare-debug.sh && ./scripts/prepare-debug.sh",
     "test:sdk:integration": "pnpm --filter @evefrontier/world-sdk test:integration"
+  },
+  "lint-staged": {
+    "*.ts": "biome check --write --no-errors-on-unmatched",
+    "*.move": "prettier --plugin=@mysten/prettier-plugin-move --write"
   },
   "dependencies": {
     "@mysten/bcs": "^2.0.2",
@@ -33,7 +37,10 @@
   "author": "EVE Frontier",
   "license": "MIT",
   "devDependencies": {
+    "@biomejs/biome": "2.4.15",
     "@types/node": "^24.10.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
