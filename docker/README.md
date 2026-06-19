@@ -1,42 +1,56 @@
-# Snapshot image (local Sui + contracts)
+# Docker
 
-Pre-built Docker image with a Sui **localnet**, deployed **world** and **builder** packages, and (with Postgres) indexer and GraphQL. Use it to run integration tests against a fixed chain from your laptop or CI.
+Two Dockerfiles, three jobs. One pinned toolchain: `SUI_VERSION=testnet-v1.69.1`.
+To bump it, update together: both Dockerfiles, `pr.yml`, this README, and
+`genesis/genesis-config.yaml`'s `protocol_version` (which must match the Sui
+version).
 
-## Run it locally
+| Image | File | Job |
+|-------|------|-----|
+| **integration** | [`Dockerfile.integration`](Dockerfile.integration) | localnet + deploy + run SDK integration tests |
+| **snapshot** | [`Dockerfile.integration`](Dockerfile.integration) | bake the running chain into a downstream image (localnet + indexer + GraphQL) |
+| **release** | [`Dockerfile`](Dockerfile) | pinned, self-contained artifact that deploys the world to a network |
 
-See **[`docker-compose-snapshot-image.yml`](docker-compose-snapshot-image.yml)** for a working example: Postgres, the snapshot service, ports, and env vars wired up.
+Every deploy writes `deployments/<network>/world.json` — the manifest (chainId,
+package ids, shared objects) the SDK and downstream read.
 
-From the repo root:
+The localnet uses a [deterministic genesis](genesis/): four accounts
+(`ADMIN`, `PLAYER_A/B/C`) derived from a public test mnemonic and funded at
+genesis, identical every run.
+
+## Integration tests
+
+```bash
+docker build -f docker/Dockerfile.integration -t world-integration .
+docker run --rm -v "$(pwd):/app" -w /app -e CI=true world-integration test
+```
+
+Brings up the localnet, deploys `core` + `character`, runs the SDK integration
+suite. Pass no argument instead of `test` to just leave the node running.
+
+## Snapshot image
 
 ```bash
 docker compose -f docker/docker-compose-snapshot-image.yml up
 ```
 
-The compose file defaults to the published **`latest-snapshot`** tag (`ghcr.io/evefrontier/world-contracts:latest-snapshot`). Change `image:` if you want another tag from GHCR (see below).
+Runs a pre-baked chain (with Postgres for indexer + GraphQL) without deploying
+anything. `world.json` is copied to the host at
+`deployments/localnet-snapshot/world.json`. Ports: `9000` RPC · `9123` faucet ·
+`9125` GraphQL. Bake one with
+[`../scripts/bake-snapshot-image.sh`](../scripts/bake-snapshot-image.sh).
 
-## Where to get the image
+> **No world state yet.** The snapshot ships the *deployed* packages but an
+> *empty* world — `seed-world.sh` is currently a no-op, so there are no
+> characters or other entities on-chain. Seeding (e.g. a baked test character)
+> is tracked as a TODO in `seed-world.sh` for a later PR.
 
-Images are on **GitHub Container Registry**:
+## Release image
 
-`ghcr.io/evefrontier/world-contracts:<tag>-snapshot`
+Env-agnostic deploy vehicle: given `SUI_NETWORK` + `DEPLOYER_PRIVATE_KEY` (via
+`.env` or env vars) it deploys the world and writes `world.json`. Logical envs
+(dev/uat/test/live) and MVR are handled by a separate downstream workflow.
 
-Tags line up with releases (e.g. version numbers, `latest`). Check this repo’s **Packages** on GitHub for what’s available.
-
-## Object IDs on your machine (`extracted-object-ids.json`)
-
-Tests need the **package and object IDs** that exist on this chain. The image ships that list as JSON.
-
-**How it gets onto the host**
-
-The compose file mounts a host folder onto `/data/deployment` in the container. A bind mount starts out empty on your machine, which would hide the file that’s baked into the image. On container start, the entrypoint **copies** the baked JSON from `/opt/world-contracts/extracted-object-ids.json` into `/data/deployment/extracted-object-ids.json`, overwriting any existing file. That write goes through the mount, so you end up with a real file on the host:
-
-`deployments/localnet-snapshot/extracted-object-ids.json` (relative to the repo when you use the paths in the compose file).
-
-**What’s in the file**
-
-Small JSON with a `network` name and two groups of IDs:
-
-- **`world`** — the published world package id and important shared objects (governor cap, registries, config objects, etc.).
-- **`builder`** — the builder extension package id and related caps/config ids.
-
-Your services or tests read these hex IDs when calling the chain (e.g. which package to target, which objects to pass into transactions).
+```bash
+docker compose -f docker/compose.yml run --rm deploy   # reads ../.env
+```

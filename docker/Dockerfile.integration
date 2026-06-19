@@ -3,9 +3,7 @@
 FROM docker.io/library/ubuntu:24.04
 
 ARG PNPM_VERSION=9
-# Sui version/network: testnet, devnet, mainnet, or a version tag.
-# Must match Move.toml/Move.lock rev (e.g. testnet-v1.66.2) so the CLI can parse the lockfile.
-ARG SUI_VERSION=testnet-v1.66.2
+ARG SUI_VERSION=testnet-v1.69.1
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Retry apt fetches; --fix-missing for archive 404s on rotated packages (e.g. python3.12).
@@ -38,5 +36,10 @@ COPY docker/entrypoint-snapshot-image.sh /entrypoint-snapshot-image.sh
 RUN dos2unix /entrypoint-snapshot-image.sh && chmod +x /entrypoint-snapshot-image.sh
 
 COPY docker/fullnode.yaml /fullnode.yaml
+
+# Deterministic genesis assets (genesis-config.yaml + accounts.json). Source code
+# is NOT baked in — it is mounted at /app at run time (see bake-snapshot-image.sh
+# and the integration workflow), so contract changes need no image rebuild.
+COPY docker/genesis /genesis
 
 ENTRYPOINT ["/entrypoint.sh"]
