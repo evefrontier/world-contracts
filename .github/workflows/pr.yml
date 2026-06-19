@@ -47,8 +47,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Format check
-        run: pnpm run fmt:ts:check
+      - name: Lint and format check
+        run: pnpm run lint:ts:check
 
       - name: Typecheck
         run: pnpm --filter @evefrontier/world-sdk typecheck

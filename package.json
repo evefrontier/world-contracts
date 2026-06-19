@@ -10,8 +10,8 @@
     "test": "find contracts -maxdepth 1 -mindepth 1 -type d -not -name archive | xargs -P 4 -I {} sui move test --build-env testnet --path {}",
     "fmt": "prettier --plugin=@mysten/prettier-plugin-move --write \"**/**/*.move\"",
     "fmt:check": "prettier --plugin=@mysten/prettier-plugin-move --check \"**/**/*.move\" ",
-    "fmt:ts": "prettier --write \"ts-scripts/**/*.ts\" \"tools/**/*.ts\" \"sdk/**/*.ts\"",
-    "fmt:ts:check": "prettier --check \"ts-scripts/**/*.ts\" \"tools/**/*.ts\" \"sdk/**/*.ts\"",
+    "lint:ts": "biome check --write",
+    "lint:ts:check": "biome check",
     "clean": "rm -rf contracts/**/Published.toml deployments/*",
     "extract:errors": "tsx tools/error-decoder/error-extractor.ts",
     "compile:decoder": "tsc --project tools/error-decoder/tsconfig.json",
@@ -32,6 +32,7 @@
   "author": "EVE Frontier",
   "license": "MIT",
   "devDependencies": {
+    "@biomejs/biome": "2.4.15",
     "@types/node": "^24.10.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
