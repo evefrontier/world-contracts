@@ -100,7 +100,10 @@ public fun install<T: store>(
 
     df::add(&mut entity.id, ModuleKey(name), mod::new(name, inner, version));
     entity.lock();
-    request::new(option::some(entity.id.to_inner()), vector[])
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
+    )
 }
 
 /// Remove module `name`, returning its wrapped state to the caller.
@@ -115,7 +118,11 @@ public fun uninstall<T: store>(
 
     let m: Module<T> = df::remove(&mut entity.id, ModuleKey(name));
     entity.lock();
-    (m, request::new(option::some(entity.id.to_inner()), vector[]))
+    let req = request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
+    );
+    (m, req)
 }
 
 /// Expose a programmable `action` under `name`.

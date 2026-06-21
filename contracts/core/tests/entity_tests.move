@@ -123,7 +123,14 @@ fun install_adds_module() {
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
-    let req = e.install(counter_name(), Counter { value: 0 }, 1, internal::permit<Counter>(), ctx);
+    let mut req = e.install(
+        counter_name(),
+        Counter { value: 0 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
     assert!(e.has_module(counter_name()));
@@ -146,7 +153,14 @@ fun install_duplicate_module_aborts() {
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
-    let req = e.install(counter_name(), Counter { value: 0 }, 1, internal::permit<Counter>(), ctx);
+    let mut req = e.install(
+        counter_name(),
+        Counter { value: 0 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
     let req = e.install(counter_name(), Counter { value: 1 }, 1, internal::permit<Counter>(), ctx);
@@ -166,10 +180,18 @@ fun uninstall_removes_and_returns_module() {
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
-    let req = e.install(counter_name(), Counter { value: 9 }, 1, internal::permit<Counter>(), ctx);
+    let mut req = e.install(
+        counter_name(),
+        Counter { value: 9 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    let (m, req) = e.uninstall<Counter>(counter_name(), internal::permit<Counter>(), ctx);
+    let (m, mut req) = e.uninstall<Counter>(counter_name(), internal::permit<Counter>(), ctx);
+    admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
     assert!(!e.has_module(counter_name()));
