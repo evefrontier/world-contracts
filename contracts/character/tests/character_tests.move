@@ -114,6 +114,24 @@ fun uninstall_identity_removes_module() {
     scenario.end();
 }
 
+#[test, expected_failure(abort_code = identity::EModuleMissing)]
+fun uninstall_without_identity_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    // Claim an entity but never install identity.
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = ts::take_shared<ObjectRegistry>(&scenario);
+    let acl = ts::take_shared<AdminACL>(&scenario);
+    let (mut e, mut req) = entity::new(&mut registry, IN_GAME_ID, tenant(), vector[]);
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    let _req = identity::uninstall(&mut e, scenario.ctx());
+
+    abort
+}
+
 #[test]
 fun same_id_different_tenants_are_distinct() {
     let mut scenario = ts::begin(ADMIN);

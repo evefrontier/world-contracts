@@ -12,6 +12,7 @@ use std::{internal::Permit, string::{Self, String}};
 // === Errors ===
 
 const EWrongVersion: u64 = 0;
+const EModuleMissing: u64 = 1;
 
 // === Constants ===
 
@@ -47,8 +48,10 @@ public fun install(
     entity.install(module_name(), identity, VERSION, module_permit(), ctx)
 }
 
-/// Remove the identity module, discarding its state.
+/// Remove the identity module, discarding its state. Aborts if it was never installed.
 public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
+    assert!(entity.has_module_with_type<Identity>(module_name()), EModuleMissing);
+
     let (m, req) = entity.uninstall<Identity>(module_name(), module_permit(), ctx);
     let Identity { tribe_id: _, owner: _ } = m.unwrap(module_permit());
     req
