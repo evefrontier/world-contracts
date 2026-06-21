@@ -12,6 +12,7 @@ module core::entity;
 
 use core::{
     action::Action,
+    admin_service,
     entity_key::{Self, EntityKey},
     location_service,
     mod::{Self, Module},
@@ -31,9 +32,7 @@ const EUnknownAction: u64 = 4;
 const EModuleExists: u64 = 5;
 const EModuleMissing: u64 = 6;
 const EActionExists: u64 = 7;
-const EIdEmpty: u64 = 8;
-const ETenantEmpty: u64 = 9;
-const EEntityAlreadyExists: u64 = 10;
+const EEntityAlreadyExists: u64 = 8;
 
 // === Constants ===
 
@@ -57,26 +56,28 @@ public struct Entity has key {
 // === Public Functions ===
 
 /// Claim an entity with a deterministic ID derived from `id + tenant`. The same
-/// in-game ID can only ever back a single entity.
-///
-/// TODO: gate creation behind an adminACL authorization requirement so only
-/// admins can claim IDs.
+/// in-game ID can only ever back a single entity. Locked on return with an admin
+/// requirement: the caller must `admin_service::verify_admin` then
+/// `complete_request` before configuring the entity.
 public fun new(
     registry: &mut ObjectRegistry,
     id: u64,
     tenant: String,
     location_hash: vector<u8>,
-): Entity {
-    assert!(id != 0, EIdEmpty);
-    assert!(tenant.length() > 0, ETenantEmpty);
-
+): (Entity, Request) {
     let key = entity_key::new(id, tenant);
     assert!(!registry.exists(key), EEntityAlreadyExists);
 
     let uid = derived_object::claim(registry.borrow_id(), key);
     let mut entity = Entity { id: uid, version: VERSION, key, location_hash };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
-    entity
+
+    entity.lock();
+    let req = request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
+    );
+    (entity, req)
 }
 
 /// Share the entity once configured.

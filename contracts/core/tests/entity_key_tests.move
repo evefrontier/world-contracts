@@ -33,3 +33,13 @@ fun keys_differ_by_tenant() {
     let b = entity_key::new(1, string::utf8(b"dev"));
     assert!(a != b);
 }
+
+#[test, expected_failure(abort_code = entity_key::EIdEmpty)]
+fun new_zero_id_aborts() {
+    entity_key::new(0, string::utf8(TENANT));
+}
+
+#[test, expected_failure(abort_code = entity_key::ETenantEmpty)]
+fun new_empty_tenant_aborts() {
+    entity_key::new(1, string::utf8(b""));
+}

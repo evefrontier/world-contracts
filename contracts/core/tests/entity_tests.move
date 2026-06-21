@@ -1,7 +1,12 @@
 #[test_only]
 module core::entity_tests;
 
-use core::{action, entity, object_registry::{Self, ObjectRegistry}};
+use core::{
+    action,
+    admin_service::{Self, AdminACL},
+    entity,
+    object_registry::{Self, ObjectRegistry}
+};
 use std::string;
 use sui::test_scenario as ts;
 
@@ -13,14 +18,28 @@ const TENANT: vector<u8> = b"test";
 
 fun setup(scenario: &mut ts::Scenario) {
     object_registry::init_for_testing(scenario.ctx());
+    admin_service::init_for_testing(scenario.ctx());
 }
 
 fun take_registry(scenario: &ts::Scenario): ObjectRegistry {
     ts::take_shared<ObjectRegistry>(scenario)
 }
 
-fun claim(registry: &mut ObjectRegistry, id: u64): entity::Entity {
-    entity::new(registry, id, string::utf8(TENANT), vector[])
+fun take_acl(scenario: &ts::Scenario): AdminACL {
+    ts::take_shared<AdminACL>(scenario)
+}
+
+/// Claim and admin-approve an entity, returning it unlocked.
+fun claim(
+    registry: &mut ObjectRegistry,
+    acl: &AdminACL,
+    id: u64,
+    ctx: &mut TxContext,
+): entity::Entity {
+    let (mut e, mut req) = entity::new(registry, id, string::utf8(TENANT), vector[]);
+    admin_service::verify_admin(&mut req, acl, ctx);
+    e.complete_request(req);
+    e
 }
 
 fun counter_name(): string::String {
@@ -37,7 +56,10 @@ fun new_sets_initial_fields() {
     ts::next_tx(&mut scenario, @0xA);
     {
         let mut registry = take_registry(&scenario);
-        let e = entity::new(&mut registry, 1, string::utf8(TENANT), b"loc");
+        let acl = take_acl(&scenario);
+        let (mut e, mut req) = entity::new(&mut registry, 1, string::utf8(TENANT), b"loc");
+        admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+        e.complete_request(req);
 
         assert!(entity::version(&e) == 1);
         assert!(entity::location_hash(&e) == b"loc");
@@ -46,34 +68,11 @@ fun new_sets_initial_fields() {
         assert!(!entity::has_module(&e, counter_name()));
 
         entity::share(e);
+        ts::return_shared(acl);
         ts::return_shared(registry);
     };
 
     scenario.end();
-}
-
-#[test, expected_failure(abort_code = entity::EIdEmpty)]
-fun new_zero_id_aborts() {
-    let mut scenario = ts::begin(@0xA);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, @0xA);
-    let mut registry = take_registry(&scenario);
-    let _e = entity::new(&mut registry, 0, string::utf8(TENANT), vector[]);
-
-    abort
-}
-
-#[test, expected_failure(abort_code = entity::ETenantEmpty)]
-fun new_empty_tenant_aborts() {
-    let mut scenario = ts::begin(@0xA);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, @0xA);
-    let mut registry = take_registry(&scenario);
-    let _e = entity::new(&mut registry, 1, string::utf8(b""), vector[]);
-
-    abort
 }
 
 #[test, expected_failure(abort_code = entity::EEntityAlreadyExists)]
@@ -83,8 +82,9 @@ fun reclaiming_same_id_aborts() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let _first = claim(&mut registry, 7);
-    let _second = claim(&mut registry, 7);
+    let acl = take_acl(&scenario);
+    let _first = claim(&mut registry, &acl, 7, scenario.ctx());
+    let _second = claim(&mut registry, &acl, 7, scenario.ctx());
 
     abort
 }
@@ -97,11 +97,13 @@ fun distinct_ids_yield_distinct_entities() {
     ts::next_tx(&mut scenario, @0xA);
     {
         let mut registry = take_registry(&scenario);
-        let a = claim(&mut registry, 1);
-        let b = claim(&mut registry, 2);
+        let acl = take_acl(&scenario);
+        let a = claim(&mut registry, &acl, 1, scenario.ctx());
+        let b = claim(&mut registry, &acl, 2, scenario.ctx());
         assert!(entity::id(&a) != entity::id(&b));
         entity::share(a);
         entity::share(b);
+        ts::return_shared(acl);
         ts::return_shared(registry);
     };
 
@@ -117,7 +119,8 @@ fun install_adds_module() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let mut e = claim(&mut registry, 1);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
     let req = e.install(counter_name(), Counter { value: 0 }, 1, internal::permit<Counter>(), ctx);
@@ -127,6 +130,7 @@ fun install_adds_module() {
     assert!(e.has_module_with_type<Counter>(counter_name()));
 
     entity::share(e);
+    ts::return_shared(acl);
     ts::return_shared(registry);
     scenario.end();
 }
@@ -138,7 +142,8 @@ fun install_duplicate_module_aborts() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let mut e = claim(&mut registry, 1);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
     let req = e.install(counter_name(), Counter { value: 0 }, 1, internal::permit<Counter>(), ctx);
@@ -157,7 +162,8 @@ fun uninstall_removes_and_returns_module() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let mut e = claim(&mut registry, 1);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
     let req = e.install(counter_name(), Counter { value: 9 }, 1, internal::permit<Counter>(), ctx);
@@ -171,6 +177,7 @@ fun uninstall_removes_and_returns_module() {
     assert!(value == 9);
 
     entity::share(e);
+    ts::return_shared(acl);
     ts::return_shared(registry);
     scenario.end();
 }
@@ -182,7 +189,8 @@ fun uninstall_missing_module_aborts() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let mut e = claim(&mut registry, 1);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
     let (_m, _req) = e.uninstall<Counter>(counter_name(), internal::permit<Counter>(), ctx);
@@ -199,7 +207,8 @@ fun enable_then_disable_action() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let mut e = claim(&mut registry, 1);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
     let req = e.enable_action(string::utf8(b"act"), action::new(vector[]), ctx);
@@ -209,6 +218,7 @@ fun enable_then_disable_action() {
     e.complete_request(req);
 
     entity::share(e);
+    ts::return_shared(acl);
     ts::return_shared(registry);
     scenario.end();
 }
@@ -220,7 +230,8 @@ fun enable_duplicate_action_aborts() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let mut e = claim(&mut registry, 1);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
     let req = e.enable_action(string::utf8(b"act"), action::new(vector[]), ctx);
@@ -238,7 +249,8 @@ fun disable_unknown_action_aborts() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let mut e = claim(&mut registry, 1);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
     let req = e.disable_action(string::utf8(b"missing"), ctx);
@@ -254,7 +266,8 @@ fun interact_unknown_action_aborts() {
 
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
-    let mut e = claim(&mut registry, 1);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
     let req = e.interact(string::utf8(b"missing"), ctx);
