@@ -34,10 +34,10 @@ public fun owner(entity: &Entity): address {
     borrow(entity).owner
 }
 
-// === Package Functions ===
+// === Public Functions ===
 
-/// Build and install the identity module. Called by `character::create`.
-public(package) fun install(
+/// Build and install the identity module on a character entity.
+public fun install(
     entity: &mut Entity,
     tribe_id: u32,
     owner: address,
@@ -45,6 +45,13 @@ public(package) fun install(
 ): Request {
     let identity = Identity { tribe_id, owner };
     entity.install(module_name(), identity, VERSION, module_permit(), ctx)
+}
+
+/// Remove the identity module, discarding its state.
+public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
+    let (m, req) = entity.uninstall<Identity>(module_name(), module_permit(), ctx);
+    let Identity { tribe_id: _, owner: _ } = m.unwrap(module_permit());
+    req
 }
 
 // === Private Functions ===

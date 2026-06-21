@@ -20,7 +20,7 @@ use core::{
     request::{Self, Request}
 };
 use std::{internal::Permit, string::String};
-use sui::{derived_object, dynamic_field as df, vec_map::{Self, VecMap}};
+use sui::{derived_object, dynamic_field as df, event, vec_map::{Self, VecMap}};
 
 // === Errors ===
 
@@ -53,6 +53,13 @@ public struct Entity has key {
     location_hash: vector<u8>,
 }
 
+// === Events ===
+
+public struct EntityCreated has copy, drop {
+    entity_id: ID,
+    key: EntityKey,
+}
+
 // === Public Functions ===
 
 /// Claim an entity with a deterministic ID derived from `id + tenant`. The same
@@ -72,6 +79,7 @@ public fun new(
     let mut entity = Entity { id: uid, version: VERSION, key, location_hash };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
 
+    event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
     entity.lock();
     let req = request::new(
         option::some(entity.id.to_inner()),
