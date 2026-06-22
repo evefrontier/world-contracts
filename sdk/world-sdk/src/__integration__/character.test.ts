@@ -15,10 +15,16 @@ const MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
 )
 const privateKey = process.env.SUI_PRIVATE_KEY
-if (!privateKey) {
-  throw new Error('SUI_PRIVATE_KEY is required (the deploying admin key)')
+const SENDER =
+  process.env.WORLD_ADMIN_ADDRESS ??
+  (privateKey
+    ? Ed25519Keypair.fromSecretKey(privateKey).toSuiAddress()
+    : undefined)
+if (!SENDER) {
+  throw new Error(
+    'WORLD_ADMIN_ADDRESS or SUI_PRIVATE_KEY is required (an admin)',
+  )
 }
-const SENDER = Ed25519Keypair.fromSecretKey(privateKey).toSuiAddress()
 
 describe('createCharacter (localnet)', () => {
   const config = loadWorldConfig(MANIFEST)
