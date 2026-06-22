@@ -20,6 +20,7 @@ const EUnauthorizedSponsor: u64 = 1;
 /// Requirement marker: present on a request means "the caller must be an admin".
 public struct Admin() has drop;
 
+/// TODO: we dont even sponsor practically, think about it
 /// Requirement marker: present on a request means "the caller must be a sponsor".
 public struct Sponsor() has drop;
 
