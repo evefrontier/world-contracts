@@ -26,6 +26,8 @@ export {
   createCharacter,
 } from './packages/character.js'
 export {
+  addAdmins,
+  addSponsors,
   completeRequest,
   deriveObjectId,
   type EntityKeyInput,

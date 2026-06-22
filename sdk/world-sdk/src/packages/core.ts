@@ -114,6 +114,36 @@ export function shareEntity(
   })
 }
 
+/** Add admins to the shared `AdminACL`. Signer must already be an admin. */
+export function addAdmins(
+  tx: Transaction,
+  config: WorldConfig,
+  admins: string[],
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::admin_service::add_admins`,
+    arguments: [
+      sharedRef(tx, adminAcl(config), true),
+      tx.pure.vector('address', admins),
+    ],
+  })
+}
+
+/** Add sponsors to the shared `AdminACL`. Signer must already be an admin. */
+export function addSponsors(
+  tx: Transaction,
+  config: WorldConfig,
+  sponsors: string[],
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::admin_service::add_sponsors`,
+    arguments: [
+      sharedRef(tx, adminAcl(config), true),
+      tx.pure.vector('address', sponsors),
+    ],
+  })
+}
+
 function sharedRef(tx: Transaction, ref: SharedObjectRef, mutable: boolean) {
   return tx.sharedObjectRef({
     objectId: ref.id,

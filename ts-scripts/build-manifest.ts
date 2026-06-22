@@ -65,6 +65,7 @@ const UPGRADE_CAP_TYPE = '0x2::package::UpgradeCap'
 // lookup API moves from objectRegistry(config) to sharedObject(config, "module::Struct").
 const SHARED_OBJECT_KEYS: Record<string, string> = {
   'object_registry::ObjectRegistry': 'objectRegistry',
+  'admin_service::AdminACL': 'adminAcl',
 }
 
 function isCreated(c: ObjectChange): c is CreatedChange {

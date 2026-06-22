@@ -1,4 +1,6 @@
 import { fileURLToPath } from 'node:url'
+import 'dotenv/config'
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import { createWorldClient } from '../client.js'
@@ -12,10 +14,11 @@ import { deriveObjectId } from '../packages/core.js'
 const MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
 )
-// devInspect is a read-only simulation, so any valid address works as the sender.
-const SENDER =
-  process.env.SENDER ??
-  '0x0000000000000000000000000000000000000000000000000000000000000001'
+const privateKey = process.env.SUI_PRIVATE_KEY
+if (!privateKey) {
+  throw new Error('SUI_PRIVATE_KEY is required (the deploying admin key)')
+}
+const SENDER = Ed25519Keypair.fromSecretKey(privateKey).toSuiAddress()
 
 describe('createCharacter (localnet)', () => {
   const config = loadWorldConfig(MANIFEST)
