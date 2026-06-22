@@ -31,6 +31,7 @@ FROM dependency-stage AS build-stage
 RUN pnpm run build
 
 FROM dependency-stage AS ci-stage
+RUN sui client --yes envs >/dev/null 2>&1 || true
 RUN pnpm run fmt:check
 RUN pnpm run lint
 RUN pnpm run test
