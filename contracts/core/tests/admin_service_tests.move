@@ -119,6 +119,24 @@ fun add_admins_batch_then_verify() {
     scenario.end();
 }
 
+#[test]
+fun add_admins_is_idempotent() {
+    let mut scenario = ts::begin(ADMIN);
+    admin_service::init_for_testing(scenario.ctx());
+
+    // Re-add the deployer (already admin #0) plus a new address; must not abort.
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut acl = take_acl(&scenario);
+    admin_service::add_admins(&mut acl, vector[ADMIN, OTHER], scenario.ctx());
+    admin_service::add_admins(&mut acl, vector[OTHER], scenario.ctx());
+
+    assert!(acl.is_admin(ADMIN));
+    assert!(acl.is_admin(OTHER));
+
+    ts::return_shared(acl);
+    scenario.end();
+}
+
 #[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
 fun add_admins_aborts_for_non_admin() {
     let mut scenario = ts::begin(ADMIN);

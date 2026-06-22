@@ -86,13 +86,13 @@ public fun is_sponsor(acl: &AdminACL, addr: address): bool {
 /// Add a batch of admins in one call. Caller must be an admin.
 public fun add_admins(acl: &mut AdminACL, addrs: vector<address>, ctx: &mut TxContext) {
     acl.assert_admin(ctx);
-    addrs.do!(|addr| acl.admins.add(addr, true));
+    addrs.do!(|addr| if (!acl.admins.contains(addr)) acl.admins.add(addr, true));
 }
 
 /// Add a batch of sponsors in one call. Caller must be an admin.
 public fun add_sponsors(acl: &mut AdminACL, addrs: vector<address>, ctx: &mut TxContext) {
     acl.assert_admin(ctx);
-    addrs.do!(|addr| acl.sponsors.add(addr, true));
+    addrs.do!(|addr| if (!acl.sponsors.contains(addr)) acl.sponsors.add(addr, true));
 }
 
 // === Private Functions ===
