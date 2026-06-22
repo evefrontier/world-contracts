@@ -19,6 +19,7 @@ sui_init_config "$NET" "$(get_rpc "$TARGET_ENV")"
 DEPLOYER_ADDR=$(import_key "$DEPLOYER_KEY")
 [[ -z "$DEPLOYER_ADDR" ]] && { echo "ERROR: could not import deployer key" >&2; exit 1; }
 sui client switch --address "$DEPLOYER_ADDR" >/dev/null
+export SUI_PRIVATE_KEY="$DEPLOYER_KEY"
 
 # Get the deployment artifacts the workflow commits into one dir, so it can copy
 # them out with a single docker cp and without re-deriving the package list.
