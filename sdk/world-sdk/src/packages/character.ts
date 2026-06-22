@@ -15,7 +15,7 @@ export interface CreateCharacterArgs {
 /**
  * Append the full character-creation flow to `tx`: claim the entity, install the
  * identity module, and share it. Each lifecycle step is admin-gated, so the
- * caller must sign as (or sponsor for) a whitelisted admin.
+ * transaction must be signed by a whitelisted admin.
  */
 export function createCharacter(
   tx: Transaction,

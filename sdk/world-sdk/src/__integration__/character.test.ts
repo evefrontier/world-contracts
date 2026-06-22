@@ -30,7 +30,7 @@ describe('createCharacter (localnet)', () => {
   const config = loadWorldConfig(MANIFEST)
   const client = createWorldClient({ config })
 
-  it('builds a character::create call the chain accepts, at the derived id', async () => {
+  it('builds a character-creation PTB the chain accepts, at the derived id', async () => {
     const key = { id: 7n, tenant: 'integration' }
     const tx = new Transaction()
     createCharacter(tx, config, {
