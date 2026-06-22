@@ -4,6 +4,7 @@ import type { SharedObjectRef, WorldConfig } from './types.js'
 // TODO: replace these per-object string keys with a full-type lookup
 // (sharedObject(config, "module::Struct")) so new singletons need no constant here.
 export const OBJECT_REGISTRY = 'objectRegistry'
+export const ADMIN_ACL = 'adminAcl'
 
 /** Validate that an unknown value is a complete `SharedObjectRef`. */
 export function parseSharedObjectRef(
@@ -31,4 +32,8 @@ export function requireSharedObject(
 
 export function objectRegistry(config: WorldConfig): SharedObjectRef {
   return requireSharedObject(config, OBJECT_REGISTRY)
+}
+
+export function adminAcl(config: WorldConfig): SharedObjectRef {
+  return requireSharedObject(config, ADMIN_ACL)
 }

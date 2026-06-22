@@ -9,6 +9,8 @@ export {
 export { loadWorldConfig } from './config/load.js'
 export { getWorldConfig } from './config/presets.js'
 export {
+  ADMIN_ACL,
+  adminAcl,
   OBJECT_REGISTRY,
   objectRegistry,
   requireSharedObject,
@@ -23,4 +25,12 @@ export {
   type CreateCharacterArgs,
   createCharacter,
 } from './packages/character.js'
-export { deriveObjectId, type EntityKeyInput } from './packages/core.js'
+export {
+  completeRequest,
+  deriveObjectId,
+  type EntityKeyInput,
+  type EntityNewArgs,
+  entityNew,
+  shareEntity,
+  verifyAdmin,
+} from './packages/core.js'
