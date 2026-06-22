@@ -83,51 +83,23 @@ public fun is_sponsor(acl: &AdminACL, addr: address): bool {
 
 // === Admin Functions ===
 
-/// Add a single admin. Itself admin-gated: caller satisfies `request` first.
-public fun add_admin(
-    acl: &mut AdminACL,
-    request: &mut Request,
-    addr: address,
-    ctx: &mut TxContext,
-) {
-    verify_admin(request, acl, ctx);
-    acl.admins.add(addr, true);
-}
-
-/// Add a single sponsor. Admin-gated.
-public fun add_sponsor(
-    acl: &mut AdminACL,
-    request: &mut Request,
-    addr: address,
-    ctx: &mut TxContext,
-) {
-    verify_admin(request, acl, ctx);
-    acl.sponsors.add(addr, true);
-}
-
-/// Add a batch of admins in one call. Admin-gated.
-public fun add_admins(
-    acl: &mut AdminACL,
-    request: &mut Request,
-    addrs: vector<address>,
-    ctx: &mut TxContext,
-) {
-    verify_admin(request, acl, ctx);
+/// Add a batch of admins in one call. Caller must be an admin.
+public fun add_admins(acl: &mut AdminACL, addrs: vector<address>, ctx: &mut TxContext) {
+    acl.assert_admin(ctx);
     addrs.do!(|addr| acl.admins.add(addr, true));
 }
 
-/// Add a batch of sponsors in one call. Admin-gated.
-public fun add_sponsors(
-    acl: &mut AdminACL,
-    request: &mut Request,
-    addrs: vector<address>,
-    ctx: &mut TxContext,
-) {
-    verify_admin(request, acl, ctx);
+/// Add a batch of sponsors in one call. Caller must be an admin.
+public fun add_sponsors(acl: &mut AdminACL, addrs: vector<address>, ctx: &mut TxContext) {
+    acl.assert_admin(ctx);
     addrs.do!(|addr| acl.sponsors.add(addr, true));
 }
 
 // === Private Functions ===
+
+fun assert_admin(acl: &AdminACL, ctx: &TxContext) {
+    assert!(acl.admins.contains(ctx.sender()), EUnauthorizedAdmin);
+}
 
 /// Mint the package-authorship permit for `Admin`. Only this module defines
 /// `Admin`, so only this module can satisfy its requirement.

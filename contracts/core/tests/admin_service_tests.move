@@ -76,9 +76,7 @@ fun verify_sponsor_passes_for_sponsor() {
     // Admin adds OTHER as a sponsor.
     ts::next_tx(&mut scenario, ADMIN);
     let mut acl = take_acl(&scenario);
-    let mut req = admin_request();
-    admin_service::add_sponsor(&mut acl, &mut req, OTHER, scenario.ctx());
-    req.destroy();
+    admin_service::add_sponsors(&mut acl, vector[OTHER], scenario.ctx());
 
     // OTHER (the sponsor; unsponsored tx, so sender fallback) satisfies the sponsor requirement.
     ts::next_tx(&mut scenario, OTHER);
@@ -112,9 +110,7 @@ fun add_admins_batch_then_verify() {
 
     ts::next_tx(&mut scenario, ADMIN);
     let mut acl = take_acl(&scenario);
-    let mut req = admin_request();
-    admin_service::add_admins(&mut acl, &mut req, vector[OTHER, @0xC], scenario.ctx());
-    req.destroy();
+    admin_service::add_admins(&mut acl, vector[OTHER, @0xC], scenario.ctx());
 
     assert!(acl.is_admin(OTHER));
     assert!(acl.is_admin(@0xC));
@@ -124,14 +120,13 @@ fun add_admins_batch_then_verify() {
 }
 
 #[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
-fun add_admin_aborts_for_non_admin() {
+fun add_admins_aborts_for_non_admin() {
     let mut scenario = ts::begin(ADMIN);
     admin_service::init_for_testing(scenario.ctx());
 
     ts::next_tx(&mut scenario, OTHER);
     let mut acl = take_acl(&scenario);
-    let mut req = admin_request();
-    admin_service::add_admin(&mut acl, &mut req, OTHER, scenario.ctx());
+    admin_service::add_admins(&mut acl, vector[OTHER], scenario.ctx());
 
     abort
 }
