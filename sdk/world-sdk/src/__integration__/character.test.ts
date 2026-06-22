@@ -1,6 +1,5 @@
 import { fileURLToPath } from 'node:url'
 import 'dotenv/config'
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import { createWorldClient } from '../client.js'
@@ -14,16 +13,10 @@ import { deriveObjectId } from '../packages/core.js'
 const MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
 )
-const privateKey = process.env.SUI_PRIVATE_KEY
-const SENDER =
-  process.env.WORLD_ADMIN_ADDRESS ??
-  (privateKey
-    ? Ed25519Keypair.fromSecretKey(privateKey).toSuiAddress()
-    : undefined)
+// devInspectTransactionBlock only needs a sender address, no signing.
+const SENDER = process.env.WORLD_ADMIN_ADDRESS
 if (!SENDER) {
-  throw new Error(
-    'WORLD_ADMIN_ADDRESS or SUI_PRIVATE_KEY is required (an admin)',
-  )
+  throw new Error('WORLD_ADMIN_ADDRESS is required (an admin)')
 }
 
 describe('createCharacter (localnet)', () => {

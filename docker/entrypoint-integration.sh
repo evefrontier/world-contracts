@@ -116,6 +116,9 @@ export CI="${CI:-true}"
 log "pnpm install..."
 pnpm install --frozen-lockfile
 
+log "Cleaning stale Move build artifacts..."
+rm -rf contracts/*/build
+
 log "Deploying world to localnet..."
 ./scripts/deploy-world.sh localnet
 
