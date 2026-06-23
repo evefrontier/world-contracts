@@ -3,47 +3,18 @@ module core::owner_cap_tests;
 
 use core::{
     action,
-    admin_service::{Self, AdminACL},
+    admin_service,
     entity,
     location_service,
-    object_registry::{Self, ObjectRegistry},
-    owner_cap::{Self, AccessCap}
+    owner_cap::{Self, AccessCap},
+    test_helpers::{setup, take_acl, create_entity}
 };
 use std::string;
 use sui::test_scenario as ts;
 
 const ADMIN: address = @0xA;
 const STRANGER: address = @0xC;
-const TENANT: vector<u8> = b"test";
 const OWNER: address = @0xB;
-
-fun setup(scenario: &mut ts::Scenario) {
-    object_registry::init_for_testing(scenario.ctx());
-    admin_service::init_for_testing(scenario.ctx());
-}
-
-fun take_registry(scenario: &ts::Scenario): ObjectRegistry {
-    ts::take_shared<ObjectRegistry>(scenario)
-}
-
-fun take_acl(scenario: &ts::Scenario): AdminACL {
-    ts::take_shared<AdminACL>(scenario)
-}
-
-/// Create and share an entity, returning its id.
-fun create_entity(scenario: &mut ts::Scenario, id: u64): ID {
-    ts::next_tx(scenario, ADMIN);
-    let mut registry = take_registry(scenario);
-    let acl = take_acl(scenario);
-    let (mut e, mut req) = entity::new(&mut registry, id, string::utf8(TENANT), vector[]);
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
-    let entity_id = entity::id(&e);
-    entity::share(e);
-    ts::return_shared(acl);
-    ts::return_shared(registry);
-    entity_id
-}
 
 /// Mint a cap for the shared entity to `owner`.
 fun mint_cap_for(scenario: &mut ts::Scenario, owner: address, transferable: bool) {
