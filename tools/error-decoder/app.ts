@@ -3,7 +3,7 @@ import {
   formatDecodedError,
   isValidAbortCode,
 } from './decoder.js'
-import { getErrorInfo } from './error-map.js'
+import { getErrorInfo, isKnownModule } from './error-map.js'
 import { parseMoveError } from './parser.js'
 
 const tabButtons = document.querySelectorAll('.tab-button')
@@ -145,6 +145,14 @@ function handleParse() {
 
     // Get error constant name and message if available
     try {
+      if (!isKnownModule(parsed.moduleName)) {
+        parserOutput.textContent =
+          `This is a Sui framework error in module "${parsed.moduleName}" ` +
+          `(code ${parsed.abortCode}), not an EVE Frontier contract error.`
+        parserOutput.className = 'output-box error'
+        return
+      }
+
       const errorInfo = getErrorInfo(
         parsed.moduleName,
         parsed.decodedError.error_code,
@@ -157,9 +165,8 @@ function handleParse() {
         parserOutput.className = 'output-box success'
       } else {
         parserOutput.textContent =
-          `Error: No error constant found for module "${parsed.moduleName}" ` +
-          `with error code ${parsed.decodedError.error_code}. The abort code may be invalid ` +
-          `or the error is not defined in this module.`
+          `No error constant found for "${parsed.moduleName}" ` +
+          `with error code ${parsed.decodedError.error_code}.`
         parserOutput.className = 'output-box error'
       }
     } catch (e) {

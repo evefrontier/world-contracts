@@ -6,328 +6,120 @@ export const ERROR_MAP: Record<
   string,
   Record<number, { constantName: string; errorMessage: string }>
 > = {
-  access: {
+  identity: {
     '0': {
-      constantName: 'ECharacterTransfer',
-      errorMessage: 'Character cannot be transferred',
-    },
-  },
-  assembly: {
-    '0': {
-      constantName: 'EAssemblyTypeIdEmpty',
-      errorMessage: 'Assembly TypeId is empty',
+      constantName: 'EWrongVersion',
+      errorMessage:
+        'Identity module version does not match the package version',
     },
     '1': {
-      constantName: 'EAssemblyItemIdEmpty',
-      errorMessage: 'Assembly ItemId is empty',
-    },
-    '2': {
-      constantName: 'EAssemblyAlreadyExists',
-      errorMessage: 'Assembly with this ItemId already exists',
-    },
-    '3': {
-      constantName: 'EAssemblyNotAuthorized',
-      errorMessage: 'Assembly access not authorized',
-    },
-    '4': {
-      constantName: 'ENetworkNodeDoesNotExist',
-      errorMessage:
-        "Provided network node does not match the assembly's configured energy source",
-    },
-    '5': {
-      constantName: 'EAssemblyOnline',
-      errorMessage: 'Assembly should be offline',
+      constantName: 'EModuleMissing',
+      errorMessage: 'Identity module is not installed on this entity',
     },
   },
-  metadata: {
+  entity: {
     '0': {
-      constantName: 'ENotAuthorized',
-      errorMessage: 'Not authorized to update metadata',
-    },
-  },
-  storage_unit: {
-    '0': {
-      constantName: 'EStorageUnitTypeIdEmpty',
-      errorMessage: 'StorageUnit TypeId is empty',
+      constantName: 'EWrongVersion',
+      errorMessage: 'Entity version does not match the package version',
     },
     '1': {
-      constantName: 'EStorageUnitItemIdEmpty',
-      errorMessage: 'StorageUnit ItemId is empty',
+      constantName: 'ENotLocked',
+      errorMessage: 'Entity is not locked',
     },
     '2': {
-      constantName: 'EStorageUnitAlreadyExists',
-      errorMessage: 'StorageUnit with the same Item Id already exists',
+      constantName: 'EWrongEntity',
+      errorMessage: 'Module does not belong to this entity',
     },
     '3': {
-      constantName: 'EAssemblyNotAuthorized',
-      errorMessage: 'StorageUnit access not authorized',
+      constantName: 'ERequirementNotModuleScoped',
+      errorMessage: 'Requirement is not module-scoped',
     },
     '4': {
-      constantName: 'EExtensionNotAuthorized',
-      errorMessage:
-        'Access only authorized for the custom contract of the registered type',
+      constantName: 'EUnknownAction',
+      errorMessage: 'Action is not enabled on this entity',
     },
     '5': {
-      constantName: 'EInventoryNotAuthorized',
-      errorMessage: 'Inventory Access not authorized',
+      constantName: 'EModuleExists',
+      errorMessage: 'Module is already installed',
     },
     '6': {
-      constantName: 'ENotOnline',
-      errorMessage: 'Storage Unit is not online',
+      constantName: 'EModuleMissing',
+      errorMessage: 'Module is not installed',
     },
     '7': {
-      constantName: 'ETenantMismatch',
-      errorMessage: 'Item cannot be transferred across tenants',
+      constantName: 'EActionExists',
+      errorMessage: 'Action is already enabled',
     },
     '8': {
-      constantName: 'EUnauthorizedSponsor',
-      errorMessage: 'Unauthorized sponsor',
-    },
-    '9': {
-      constantName: 'ETransactionNotSponsored',
-      errorMessage: 'Transaction not sponsored',
-    },
-    '10': {
-      constantName: 'ENetworkNodeMismatch',
-      errorMessage:
-        "Provided network node does not match the storage unit's configured energy source",
-    },
-    '11': {
-      constantName: 'EStorageUnitInvalidState',
-      errorMessage: 'Storage Unit should be offline',
+      constantName: 'EEntityAlreadyExists',
+      errorMessage: 'Entity already exists for this key',
     },
   },
-  character: {
+  entity_key: {
     '0': {
-      constantName: 'EGameCharacterIdEmpty',
-      errorMessage: 'Game character ID is empty',
+      constantName: 'EIdEmpty',
+      errorMessage: 'Entity ID must be non-zero',
     },
     '1': {
-      constantName: 'ETribeIdEmpty',
-      errorMessage: 'Tribe ID is empty',
-    },
-    '2': {
-      constantName: 'ECharacterAlreadyExists',
-      errorMessage: 'Character with this game character ID already exists',
-    },
-    '3': {
       constantName: 'ETenantEmpty',
-      errorMessage: 'Tenant name cannot be empty',
-    },
-    '4': {
-      constantName: 'EAddressEmpty',
-      errorMessage: 'Address cannot be empty',
+      errorMessage: 'Tenant must be non-empty',
     },
   },
-  sig_verify: {
+  request: {
     '0': {
-      constantName: 'EInvalidPublicKeyLen',
-      errorMessage: 'Invalid public key length',
+      constantName: 'EWrongRequirementType',
+      errorMessage: 'Next requirement does not match the expected type',
     },
     '1': {
-      constantName: 'EUnsupportedScheme',
-      errorMessage: 'Unsupported scheme',
+      constantName: 'EFrameNotEmpty',
+      errorMessage: 'Frame still holds an unconsumed requirement',
     },
     '2': {
-      constantName: 'EInvalidLen',
-      errorMessage: 'Invalid length',
-    },
-  },
-  network_node: {
-    '0': {
-      constantName: 'ENetworkNodeTypeIdEmpty',
-      errorMessage: 'Network Node TypeId is empty',
-    },
-    '1': {
-      constantName: 'ENetworkNodeItemIdEmpty',
-      errorMessage: 'Network Node ItemId is empty',
-    },
-    '2': {
-      constantName: 'ENetworkNodeAlreadyExists',
-      errorMessage: 'Network Node with this ItemId already exists',
+      constantName: 'ERequestNotComplete',
+      errorMessage: 'Request has unsatisfied requirements',
     },
     '3': {
-      constantName: 'ENetworkNodeNotAuthorized',
-      errorMessage: 'Network Node access not authorized',
+      constantName: 'ENoRequirements',
+      errorMessage: 'Request has no requirements to take',
     },
-    '4': {
-      constantName: 'EAssemblyAlreadyConnected',
-      errorMessage: 'Assembly is already connected to this network node',
+  },
+  admin_service: {
+    '0': {
+      constantName: 'EUnauthorizedAdmin',
+      errorMessage: 'Sender is not an admin',
     },
-    '5': {
-      constantName: 'EAssemblyNotConnected',
-      errorMessage: 'Assembly is not connected to this network node',
-    },
-    '6': {
-      constantName: 'EAssembliesConnected',
-      errorMessage: 'Assemblies needs to be disconnected before unanchor',
-    },
-    '7': {
-      constantName: 'ENetworkNodeOffline',
-      errorMessage: 'Network Node is offline',
-    },
-    '8': {
+    '1': {
       constantName: 'EUnauthorizedSponsor',
-      errorMessage: 'Unauthorized sponsor',
-    },
-    '9': {
-      constantName: 'ETransactionNotSponsored',
-      errorMessage: 'Transaction not sponsored',
+      errorMessage: 'Sender is not a sponsor',
     },
   },
-  energy: {
+  location_service: {
     '0': {
-      constantName: 'ETypeIdEmpty',
-      errorMessage: 'Assembly type id cannot be empty',
+      constantName: 'EProximityMismatch',
+      errorMessage: 'Location proof does not match the required proximity',
+    },
+  },
+  owner_cap: {
+    '0': {
+      constantName: 'ENotOwner',
+      errorMessage: 'Cap does not grant access to this entity',
     },
     '1': {
-      constantName: 'EInvalidEnergyAmount',
-      errorMessage: 'Energy amount must be greater than 0',
+      constantName: 'ENotTransferable',
+      errorMessage: 'Access cap is soulbound and cannot be transferred',
     },
     '2': {
-      constantName: 'EIncorrectAssemblyType',
-      errorMessage:
-        'Energy requirement for this assembly type is not configured',
-    },
-    '3': {
-      constantName: 'EInsufficientAvailableEnergy',
-      errorMessage: 'Insufficient available energy',
-    },
-    '4': {
-      constantName: 'EInvalidMaxEnergyProduction',
-      errorMessage: 'Max energy production must be greater than 0',
-    },
-    '5': {
-      constantName: 'ENotProducingEnergy',
-      errorMessage: 'Energy source is currently not producing energy',
-    },
-    '6': {
-      constantName: 'EProducingEnergy',
-      errorMessage: 'Energy source is already producing energy',
+      constantName: 'EWrongVersion',
+      errorMessage: 'Cap version does not match the package version',
     },
   },
-  fuel: {
-    '0': {
-      constantName: 'ETypeIdEmtpy',
-      errorMessage: 'Fuel Type Id cannot be empty',
-    },
-    '1': {
-      constantName: 'EInvalidFuelEfficiency',
-      errorMessage: 'Invalid Fuel Efficiency',
-    },
-    '2': {
-      constantName: 'EIncorrectFuelType',
-      errorMessage: 'Fuel Efficiency for this fuel type is not configured',
-    },
-    '3': {
-      constantName: 'EInsufficientFuel',
-      errorMessage: 'Insufficient fuel quantity',
-    },
-    '4': {
-      constantName: 'EInvalidDepositQuantity',
-      errorMessage: 'Deposit quantity must be greater than 0',
-    },
-    '5': {
-      constantName: 'EInvalidWithdrawQuantity',
-      errorMessage: 'Withdraw quantity must be greater than 0',
-    },
-    '6': {
-      constantName: 'EFuelCapacityExceeded',
-      errorMessage: 'Fuel capacity would be exceeded',
-    },
-    '7': {
-      constantName: 'EInvalidMaxCapacity',
-      errorMessage: 'Fuel max capacity must be greater than 0',
-    },
-    '8': {
-      constantName: 'EInvalidVolume',
-      errorMessage: 'Fuel volume must be greater than 0',
-    },
-    '9': {
-      constantName: 'EFuelTypeMismatch',
-      errorMessage:
-        'Cannot deposit fuel of different type. Withdraw existing fuel first',
-    },
-    '10': {
-      constantName: 'EInvalidBurnRate',
-      errorMessage:
-        'Burn rate must be at least the minimum configured burn rate',
-    },
-    '11': {
-      constantName: 'EFuelNotBurning',
-      errorMessage: 'Fuel is not currently burning',
-    },
-    '12': {
-      constantName: 'EFuelAlreadyBurning',
-      errorMessage: 'Fuel is already burning',
-    },
-    '13': {
-      constantName: 'ENoFuelToBurn',
-      errorMessage: 'No fuel available to burn',
-    },
-  },
-  inventory: {
-    '0': {
-      constantName: 'ETypeIdEmpty',
-      errorMessage: 'Type ID cannot be empty',
-    },
-    '1': {
-      constantName: 'EInventoryInvalidCapacity',
-      errorMessage: 'Inventory Capacity cannot be 0',
-    },
-    '2': {
-      constantName: 'EInventoryInsufficientCapacity',
-      errorMessage: 'Insufficient capacity in the inventory',
-    },
-    '3': {
-      constantName: 'EItemDoesNotExist',
-      errorMessage: 'Item not found',
-    },
-    '4': {
-      constantName: 'EInventoryInsufficientQuantity',
-      errorMessage: 'Insufficient quantity in inventory',
-    },
-  },
-  location: {
-    '0': {
-      constantName: 'ENotInProximity',
-      errorMessage: 'Structures are not in proximity',
-    },
-    '1': {
-      constantName: 'EInvalidHashLength',
-      errorMessage: 'Invalid length for SHA256',
-    },
-    '2': {
-      constantName: 'EUnverifiedSender',
-      errorMessage: 'The proof was not signed for the sender',
-    },
-    '3': {
-      constantName: 'EInvalidLocationHash',
-      errorMessage: 'Invalid location hash',
-    },
-    '4': {
-      constantName: 'EUnauthorizedServer',
-      errorMessage: 'Message signed by unauthorized server',
-    },
-    '5': {
-      constantName: 'ESignatureVerificationFailed',
-      errorMessage: 'Signature verification failed',
-    },
-    '6': {
-      constantName: 'EDeadlineExpired',
-      errorMessage: 'Deadline has expired',
-    },
-    '7': {
-      constantName: 'EInvalidDistance',
-      errorMessage: 'Invalid Distance',
-    },
-  },
-  status: {
-    '0': {
-      constantName: 'EAssemblyInvalidStatus',
-      errorMessage: 'Assembly status is invalid',
-    },
-  },
+}
+
+/**
+ * Whether the given module is one of our contracts (vs a framework/external module)
+ */
+export function isKnownModule(moduleName: string): boolean {
+  return moduleName in ERROR_MAP
 }
 
 /**

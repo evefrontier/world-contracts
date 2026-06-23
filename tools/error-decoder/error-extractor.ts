@@ -21,8 +21,8 @@ function extractErrorsFromMoveFile(filePath: string): ErrorDefinition[] {
   }
   const errors: ErrorDefinition[] = []
 
-  // Extract module name
-  const moduleMatch = content.match(/module\s+world::(\w+)\s*;/)
+  // Extract module name (any package namespace, e.g. core::entity, character::identity)
+  const moduleMatch = content.match(/module\s+\w+::(\w+)\s*;/)
   if (!moduleMatch) {
     return errors
   }
@@ -81,10 +81,17 @@ function findMoveFiles(dir: string): string[] {
 }
 
 /**
- * Generates the error map TypeScript file
+ * Returns every package source dir under contracts/ except archive
  */
+function findPackageDirs(contractsDir: string): string[] {
+  return fs
+    .readdirSync(contractsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && e.name !== 'archive')
+    .map((e) => path.join(contractsDir, e.name))
+}
+
 function generateErrorMap(outputPath: string, contractsDir: string) {
-  const moveFiles = findMoveFiles(contractsDir)
+  const moveFiles = findPackageDirs(contractsDir).flatMap(findMoveFiles)
   const allErrors: ErrorDefinition[] = []
 
   for (const file of moveFiles) {
@@ -117,6 +124,13 @@ function generateErrorMap(outputPath: string, contractsDir: string) {
 // Run: npm run extract:errors
 
 export const ERROR_MAP: ${typeDef} = ${JSON.stringify(errorMap, null, 2)};
+
+/**
+ * Whether the given module is one of our contracts (vs a framework/external module)
+ */
+export function isKnownModule(moduleName: string): boolean {
+    return moduleName in ERROR_MAP;
+}
 
 /**
  * Gets the error constant name for a given module and error code
@@ -154,7 +168,7 @@ export function getErrorInfo(
 // Get the directory of this script file
 // Use process.cwd() as base and resolve relative to project root
 const projectRoot = process.cwd()
-const contractsDir = path.join(projectRoot, 'contracts/world/sources')
+const contractsDir = path.join(projectRoot, 'contracts')
 const outputPath = path.join(projectRoot, 'tools/error-decoder/error-map.ts')
 
 if (!fs.existsSync(contractsDir)) {
