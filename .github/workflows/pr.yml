@@ -2,9 +2,14 @@ name: Pull Request Validation
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - dev
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   sdk:
@@ -57,7 +62,9 @@ jobs:
     runs-on: ubuntu-latest
     # Heavy job (builds image + spins localnet) — only run once the cheaper
     # unit/build checks pass. v1 integration is simulation-only, so it is safe
-    # to gate merges on it pre-merge.
+    # to gate merges on it pre-merge. Skipped while the PR is a draft so commits
+    # can iterate freely; mark the PR ready for review to run it.
+    if: github.event.pull_request.draft == false
     needs: [sdk, contracts]
     steps:
       - uses: actions/checkout@v5

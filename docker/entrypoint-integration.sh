@@ -75,6 +75,11 @@ done < <(jq -r '.accounts[] | [.alias, .derivationPath] | @tsv' "$ACCOUNTS_JSON"
 
 sui client switch --address "${ADDR[ADMIN]}" >/dev/null
 export WORLD_ADMIN_ADDRESS="${ADDR[ADMIN]}"
+SUI_PRIVATE_KEY="$(sui keytool export --key-identity ADMIN --json | jq -r '.exportedPrivateKey')"
+if [ -z "$SUI_PRIVATE_KEY" ] || [ "$SUI_PRIVATE_KEY" = "null" ]; then
+  log "ERROR: failed to export ADMIN private key"; exit 1
+fi
+export SUI_PRIVATE_KEY
 
 # ── 2. Deterministic genesis ─────────────────────────────────────────────────
 GAS_PER_COIN="${GENESIS_GAS_PER_COIN:-30000000000000000}"

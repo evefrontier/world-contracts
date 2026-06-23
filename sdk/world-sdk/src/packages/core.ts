@@ -114,6 +114,35 @@ export function shareEntity(
   })
 }
 
+export interface MintAccessArgs {
+  entity: string
+  owner: string
+  transferable: boolean
+}
+
+/**
+ * Mint an `AccessCap` for an already-shared entity and grant it to `owner`. A
+ * second-transaction flow (the entity must already be shared): mints, satisfies
+ * the admin requirement, and closes the request. Signer must be an admin.
+ */
+export function mintAccess(
+  tx: Transaction,
+  config: WorldConfig,
+  args: MintAccessArgs,
+): void {
+  const entity = tx.object(args.entity)
+  const request = tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::mint_access`,
+    arguments: [
+      entity,
+      tx.pure.address(args.owner),
+      tx.pure.bool(args.transferable),
+    ],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
 /** Add admins to the shared `AdminACL`. Signer must already be an admin. */
 export function addAdmins(
   tx: Transaction,
@@ -144,7 +173,11 @@ export function addSponsors(
   })
 }
 
-function sharedRef(tx: Transaction, ref: SharedObjectRef, mutable: boolean) {
+function sharedRef(
+  tx: Transaction,
+  ref: Pick<SharedObjectRef, 'id' | 'initialSharedVersion'>,
+  mutable: boolean,
+) {
   return tx.sharedObjectRef({
     objectId: ref.id,
     initialSharedVersion: ref.initialSharedVersion,

@@ -17,6 +17,7 @@ use core::{
     location_service,
     mod::{Self, Module},
     object_registry::ObjectRegistry,
+    owner_cap,
     request::{Self, Request}
 };
 use std::{internal::Permit, string::String};
@@ -91,6 +92,24 @@ public fun new(
 /// Share the entity once configured.
 public fun share(entity: Entity) {
     transfer::share_object(entity);
+}
+
+/// Mint an `AccessCap` for this entity and transfer it to `owner`.
+/// `owner` is a Sui address: either an account address or an object ID
+/// (object-owner), per Sui ownership semantics.
+public fun mint_access(
+    entity: &mut Entity,
+    owner: address,
+    transferable: bool,
+    ctx: &mut TxContext,
+): Request {
+    assert!(entity.version == VERSION, EWrongVersion);
+    owner_cap::mint(entity.id.to_inner(), owner, transferable, ctx);
+    entity.lock();
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
+    )
 }
 
 /// Install module state `T` under `name`. The `Permit<T>` proves the caller's
