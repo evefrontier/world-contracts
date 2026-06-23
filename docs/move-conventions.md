@@ -83,7 +83,7 @@ const EWrongEntity: vector<u8> = b"Module does not belong to this entity";
 assert!(entity.version == VERSION, EWrongVersion);
 
 // Avoid — no named error
-assert!(entity.version == VERSION);
+assert!(entity.version == VERSION, 1);
 ```
 
 The message is surfaced on abort and parsed by the error-decoder tool; the numeric `code` stays

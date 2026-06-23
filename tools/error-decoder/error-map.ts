@@ -6,11 +6,23 @@ type ErrorMap = Record<
   Record<number, { constantName: string; errorMessage: string }>
 >
 
-const response = await fetch('error-map.json')
-const ERROR_MAP = (await response.json()) as ErrorMap
+async function loadErrorMap(): Promise<ErrorMap> {
+  try {
+    const response = await fetch('error-map.json')
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    return (await response.json()) as ErrorMap
+  } catch (error) {
+    console.error('Failed to load error-map.json, using empty map:', error)
+    return {}
+  }
+}
+
+const ERROR_MAP = await loadErrorMap()
 
 export function isKnownModule(moduleName: string): boolean {
-  return moduleName in ERROR_MAP
+  return Object.hasOwn(ERROR_MAP, moduleName)
 }
 
 export function getErrorConstantName(

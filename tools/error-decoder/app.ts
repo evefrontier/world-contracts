@@ -135,19 +135,19 @@ function handleParse() {
       return
     }
 
-    // Framework/external module — not one of our clever errors; show the raw code.
-    if (!isKnownModule(parsed.moduleName)) {
-      parserOutput.textContent =
-        `This is a Sui framework error in module "${parsed.moduleName}" ` +
-        `(code ${parsed.abortCode}), not an EVE Frontier contract error.`
-      parserOutput.className = 'output-box error'
-      return
-    }
-
     if (!isValidAbortCode(parsed.abortCode)) {
       parserOutput.textContent =
         `Error: Invalid abort code format "${parsed.abortCode}". ` +
         `Abort codes should be valid u64 values (8-16 hex digits for hex format).`
+      parserOutput.className = 'output-box error'
+      return
+    }
+
+    // Module not in the generated error map — framework/external module, or a stale map.
+    if (!isKnownModule(parsed.moduleName)) {
+      parserOutput.textContent =
+        `Module "${parsed.moduleName}" (code ${parsed.abortCode}) is not in the ` +
+        `generated error map. It may be a Sui framework/external module, or the map may be out of date.`
       parserOutput.className = 'output-box error'
       return
     }

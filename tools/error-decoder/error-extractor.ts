@@ -81,13 +81,15 @@ function findMoveFiles(dir: string): string[] {
 }
 
 /**
- * Returns every package source dir under contracts/ except archive
+ * Returns every existing package `sources/` dir under contracts/ except archive
+ * TODO: remove it when archive folder is removed
  */
 function findPackageDirs(contractsDir: string): string[] {
   return fs
     .readdirSync(contractsDir, { withFileTypes: true })
     .filter((e) => e.isDirectory() && e.name !== 'archive')
-    .map((e) => path.join(contractsDir, e.name))
+    .map((e) => path.join(contractsDir, e.name, 'sources'))
+    .filter((dir) => fs.existsSync(dir))
 }
 
 function generateErrorMap(outputPath: string, contractsDir: string) {
