@@ -45,6 +45,10 @@ done
 CHAIN_ID=$(sui client chain-identifier)
 pnpm exec tsx ts-scripts/build-manifest.ts "$DEPLOY_DIR" "$ENV" "$CHAIN_ID" "${PACKAGES[@]}"
 
+# Seed the AdminACL from ADMIN_ADDRESS / SPONSOR_ADDRESSES in the env
+echo "Configuring admins/sponsors for $ENV ..."
+ENV="$ENV" pnpm --filter @evefrontier/world-sdk configure:admins
+
 echo "Done ('$MODE') world to $ENV."
 echo "  Manifest: $DEPLOY_DIR/world.json"
 echo "  Log:      $DEPLOY_DIR/deploy.log"

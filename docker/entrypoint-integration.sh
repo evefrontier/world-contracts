@@ -74,6 +74,7 @@ while IFS=$'\t' read -r alias path; do
 done < <(jq -r '.accounts[] | [.alias, .derivationPath] | @tsv' "$ACCOUNTS_JSON")
 
 sui client switch --address "${ADDR[ADMIN]}" >/dev/null
+export WORLD_ADMIN_ADDRESS="${ADDR[ADMIN]}"
 
 # ── 2. Deterministic genesis ─────────────────────────────────────────────────
 GAS_PER_COIN="${GENESIS_GAS_PER_COIN:-30000000000000000}"
@@ -114,6 +115,9 @@ export CI="${CI:-true}"
 
 log "pnpm install..."
 pnpm install --frozen-lockfile
+
+log "Cleaning stale Move build artifacts..."
+rm -rf contracts/*/build
 
 log "Deploying world to localnet..."
 ./scripts/deploy-world.sh localnet

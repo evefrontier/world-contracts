@@ -82,12 +82,15 @@ jobs:
           MODE: ${{ inputs.mode }}
           VERSION: ${{ inputs.version }}
           NET: ${{ steps.cfg.outputs.net }}
+          ADMIN_ADDRESS: ${{ vars.ADMIN_ADDRESS }}
+          SPONSOR_ADDRESSES: ${{ vars.SPONSOR_ADDRESSES }}
           CONTAINER: deploy-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           docker run --name "$CONTAINER" \
             -e CI=true \
             -e DEPLOYER_KEY -e APPCAP_KEY \
             -e TARGET_ENV -e MODE -e VERSION -e NET \
+            -e ADMIN_ADDRESS -e SPONSOR_ADDRESSES \
             -e COMMIT="${{ github.sha }}" \
             --entrypoint bash \
             "${{ steps.cfg.outputs.image }}" \

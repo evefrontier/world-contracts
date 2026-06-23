@@ -6,6 +6,11 @@ module core::entity_key;
 
 use std::string::String;
 
+// === Errors ===
+
+const EIdEmpty: u64 = 0;
+const ETenantEmpty: u64 = 1;
+
 // === Structs ===
 
 public struct EntityKey has copy, drop, store {
@@ -16,6 +21,8 @@ public struct EntityKey has copy, drop, store {
 // === Public Functions ===
 
 public fun new(id: u64, tenant: String): EntityKey {
+    assert!(id != 0, EIdEmpty);
+    assert!(tenant.length() > 0, ETenantEmpty);
     EntityKey { id, tenant }
 }
 

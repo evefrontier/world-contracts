@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { OBJECT_REGISTRY, parseSharedObjectRef } from './shared-objects.js'
+import {
+  ADMIN_ACL,
+  OBJECT_REGISTRY,
+  parseSharedObjectRef,
+} from './shared-objects.js'
 import type { SharedObjectRef, WorldConfig } from './types.js'
 
 interface WorldManifest {
@@ -32,10 +36,9 @@ export function loadWorldConfig(path: string): WorldConfig {
   if (!manifest.chainId) throw new Error(`${path}: missing chainId`)
 
   const sharedObjects = manifest.sharedObjects ?? {}
-  parseSharedObjectRef(
-    sharedObjects[OBJECT_REGISTRY],
-    `${path}: sharedObjects.${OBJECT_REGISTRY}`,
-  )
+  for (const key of [OBJECT_REGISTRY, ADMIN_ACL]) {
+    parseSharedObjectRef(sharedObjects[key], `${path}: sharedObjects.${key}`)
+  }
 
   const packageOverrides: Record<string, string> = {}
   for (const [pkg, entry] of Object.entries(manifest.packages ?? {})) {

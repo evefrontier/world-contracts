@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url'
+import 'dotenv/config'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import { createWorldClient } from '../client.js'
@@ -12,16 +13,17 @@ import { deriveObjectId } from '../packages/core.js'
 const MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
 )
-// devInspect is a read-only simulation, so any valid address works as the sender.
-const SENDER =
-  process.env.SENDER ??
-  '0x0000000000000000000000000000000000000000000000000000000000000001'
+// devInspectTransactionBlock only needs a sender address, no signing.
+const SENDER = process.env.WORLD_ADMIN_ADDRESS
+if (!SENDER) {
+  throw new Error('WORLD_ADMIN_ADDRESS is required (an admin)')
+}
 
 describe('createCharacter (localnet)', () => {
   const config = loadWorldConfig(MANIFEST)
   const client = createWorldClient({ config })
 
-  it('builds a character::create call the chain accepts, at the derived id', async () => {
+  it('builds a character-creation PTB the chain accepts, at the derived id', async () => {
     const key = { id: 7n, tenant: 'integration' }
     const tx = new Transaction()
     createCharacter(tx, config, {

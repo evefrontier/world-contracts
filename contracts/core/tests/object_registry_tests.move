@@ -1,7 +1,12 @@
 #[test_only]
 module core::object_registry_tests;
 
-use core::{entity, entity_key, object_registry::{Self, ObjectRegistry}};
+use core::{
+    admin_service::{Self, AdminACL},
+    entity,
+    entity_key,
+    object_registry::{Self, ObjectRegistry}
+};
 use std::string;
 use sui::test_scenario as ts;
 
@@ -9,6 +14,7 @@ const TENANT: vector<u8> = b"test";
 
 fun setup(scenario: &mut ts::Scenario) {
     object_registry::init_for_testing(scenario.ctx());
+    admin_service::init_for_testing(scenario.ctx());
 }
 
 #[test]
@@ -87,15 +93,19 @@ fun claim_marks_key_existing() {
     ts::next_tx(&mut scenario, @0xA);
     {
         let mut registry = ts::take_shared<ObjectRegistry>(&scenario);
+        let acl = ts::take_shared<AdminACL>(&scenario);
         let key = entity_key::new(99, string::utf8(TENANT));
         let precomputed = object::id_from_address(registry.derive_id(key));
 
-        let e = entity::new(&mut registry, 99, string::utf8(TENANT), vector[]);
+        let (mut e, mut req) = entity::new(&mut registry, 99, string::utf8(TENANT), vector[]);
+        admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+        e.complete_request(req);
 
         assert!(registry.exists(key));
         assert!(entity::id(&e) == precomputed);
 
         entity::share(e);
+        ts::return_shared(acl);
         ts::return_shared(registry);
     };
 

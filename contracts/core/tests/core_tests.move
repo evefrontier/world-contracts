@@ -3,6 +3,7 @@ module core::core_tests;
 
 use core::{
     action,
+    admin_service::{Self, AdminACL},
     entity,
     location_service,
     object_registry::{Self, ObjectRegistry},
@@ -27,11 +28,14 @@ fun increment_requirement(module_name: vector<u8>): Requirement {
 
 fun setup_registry(scenario: &mut ts::Scenario) {
     object_registry::init_for_testing(scenario.ctx());
+    admin_service::init_for_testing(scenario.ctx());
 }
 
-fun claim_test_entity(scenario: &ts::Scenario): entity::Entity {
+fun claim_test_entity(scenario: &mut ts::Scenario, acl: &AdminACL): entity::Entity {
     let mut registry = ts::take_shared<ObjectRegistry>(scenario);
-    let e = entity::new(&mut registry, 1, string::utf8(TENANT), vector[]);
+    let (mut e, mut req) = entity::new(&mut registry, 1, string::utf8(TENANT), vector[]);
+    admin_service::verify_admin(&mut req, acl, scenario.ctx());
+    e.complete_request(req);
     ts::return_shared(registry);
     e
 }
@@ -42,17 +46,19 @@ fun end_to_end_flow() {
     setup_registry(&mut scenario);
 
     ts::next_tx(&mut scenario, @0xA);
-    let mut e = claim_test_entity(&scenario);
+    let acl = ts::take_shared<AdminACL>(&scenario);
+    let mut e = claim_test_entity(&mut scenario, &acl);
     let ctx = scenario.ctx();
 
-    // Install a module, then close out the install request.
-    let req = e.install(
+    // Install a module (admin-gated), then close out the install request.
+    let mut req = e.install(
         string::utf8(b"counter"),
         Counter { value: 0 },
         1,
         internal::permit<Counter>(),
         ctx,
     );
+    admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
     assert!(e.has_module(string::utf8(b"counter")));
 
@@ -72,6 +78,7 @@ fun end_to_end_flow() {
     e.complete_request(req);
 
     e.share();
+    ts::return_shared(acl);
     scenario.end();
 }
 
@@ -81,16 +88,18 @@ fun cannot_complete_with_pending_requirement() {
     setup_registry(&mut scenario);
 
     ts::next_tx(&mut scenario, @0xA);
-    let mut e = claim_test_entity(&scenario);
+    let acl = ts::take_shared<AdminACL>(&scenario);
+    let mut e = claim_test_entity(&mut scenario, &acl);
     let ctx = scenario.ctx();
 
-    let req = e.install(
+    let mut req = e.install(
         string::utf8(b"counter"),
         Counter { value: 0 },
         1,
         internal::permit<Counter>(),
         ctx,
     );
+    admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
     let action = action::new(vector[increment_requirement(b"counter")]);

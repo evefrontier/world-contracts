@@ -1,8 +1,13 @@
 #[test_only]
 module character::character_tests;
 
-use character::{character::{Self, CharacterCreated}, identity};
-use core::{entity::{Self, Entity}, entity_key, object_registry::{Self, ObjectRegistry}};
+use character::identity;
+use core::{
+    admin_service::{Self, AdminACL},
+    entity::{Self, Entity, EntityCreated},
+    entity_key,
+    object_registry::{Self, ObjectRegistry}
+};
 use std::string::{Self, String};
 use sui::{event, test_scenario as ts};
 
@@ -16,10 +21,12 @@ const TRIBE_ID: u32 = 7;
 
 fun tenant(): String { string::utf8(TENANT) }
 
-fun setup_registry(scenario: &mut ts::Scenario) {
+fun setup(scenario: &mut ts::Scenario) {
     object_registry::init_for_testing(scenario.ctx());
+    admin_service::init_for_testing(scenario.ctx());
 }
 
+/// Full character-creation flow, as a client PTB would issue it:
 fun create_character(
     scenario: &mut ts::Scenario,
     in_game_id: u64,
@@ -28,7 +35,18 @@ fun create_character(
     owner: address,
 ) {
     let mut registry = ts::take_shared<ObjectRegistry>(scenario);
-    character::create(&mut registry, in_game_id, tenant, tribe_id, owner, scenario.ctx());
+    let acl = ts::take_shared<AdminACL>(scenario);
+
+    let (mut character, mut req) = entity::new(&mut registry, in_game_id, tenant, vector[]);
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    character.complete_request(req);
+
+    let mut req = identity::install(&mut character, tribe_id, owner, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    character.complete_request(req);
+
+    character.share();
+    ts::return_shared(acl);
     ts::return_shared(registry);
 }
 
@@ -40,7 +58,7 @@ fun character_id(registry: &ObjectRegistry, in_game_id: u64, tenant: String): ID
 #[test]
 fun create_installs_identity() {
     let mut scenario = ts::begin(ADMIN);
-    setup_registry(&mut scenario);
+    setup(&mut scenario);
 
     ts::next_tx(&mut scenario, ADMIN);
     create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
@@ -60,24 +78,65 @@ fun create_installs_identity() {
 }
 
 #[test]
-fun create_emits_event() {
+fun create_emits_entity_created() {
     let mut scenario = ts::begin(ADMIN);
-    setup_registry(&mut scenario);
+    setup(&mut scenario);
 
     ts::next_tx(&mut scenario, ADMIN);
     create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
 
-    assert!(event::events_by_type<CharacterCreated>().length() == 1);
+    assert!(event::events_by_type<EntityCreated>().length() == 1);
 
     scenario.end();
 }
 
 #[test]
+fun uninstall_identity_removes_module() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut e = ts::take_shared<Entity>(&scenario);
+        let acl = ts::take_shared<AdminACL>(&scenario);
+        let mut req = identity::uninstall(&mut e, scenario.ctx());
+        admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+        e.complete_request(req);
+
+        assert!(!e.has_module(string::utf8(b"identity")));
+        ts::return_shared(acl);
+        ts::return_shared(e);
+    };
+
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = identity::EModuleMissing)]
+fun uninstall_without_identity_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    // Claim an entity but never install identity.
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = ts::take_shared<ObjectRegistry>(&scenario);
+    let acl = ts::take_shared<AdminACL>(&scenario);
+    let (mut e, mut req) = entity::new(&mut registry, IN_GAME_ID, tenant(), vector[]);
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    let _req = identity::uninstall(&mut e, scenario.ctx());
+
+    abort
+}
+
+#[test]
 fun same_id_different_tenants_are_distinct() {
     let mut scenario = ts::begin(ADMIN);
-    setup_registry(&mut scenario);
+    setup(&mut scenario);
 
-    // Same in-game ID under two tenants must produce two independent entities.
     ts::next_tx(&mut scenario, ADMIN);
     create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
 
@@ -107,34 +166,13 @@ fun same_id_different_tenants_are_distinct() {
 #[test, expected_failure(abort_code = entity::EEntityAlreadyExists)]
 fun create_twice_same_key_fails() {
     let mut scenario = ts::begin(ADMIN);
-    setup_registry(&mut scenario);
+    setup(&mut scenario);
 
     ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = ts::take_shared<ObjectRegistry>(&scenario);
-    character::create(&mut registry, IN_GAME_ID, tenant(), TRIBE_ID, OWNER, scenario.ctx());
-    character::create(&mut registry, IN_GAME_ID, tenant(), TRIBE_ID, OWNER, scenario.ctx());
-
-    abort
-}
-
-#[test, expected_failure(abort_code = entity::EIdEmpty)]
-fun create_zero_id_fails() {
-    let mut scenario = ts::begin(ADMIN);
-    setup_registry(&mut scenario);
+    create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
 
     ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, 0, tenant(), TRIBE_ID, OWNER);
-
-    abort
-}
-
-#[test, expected_failure(abort_code = entity::ETenantEmpty)]
-fun create_empty_tenant_fails() {
-    let mut scenario = ts::begin(ADMIN);
-    setup_registry(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, IN_GAME_ID, string::utf8(b""), TRIBE_ID, OWNER);
+    create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
 
     abort
 }

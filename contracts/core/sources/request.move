@@ -96,6 +96,11 @@ public(package) fun complete(request: Request) {
 // === Test Functions ===
 
 #[test_only]
+public fun new_for_testing(entity_id: Option<ID>, requires: vector<Requirement>): Request {
+    Request { entity_id, requires }
+}
+
+#[test_only]
 public fun destroy(r: Request) {
     let Request { .. } = r;
 }
