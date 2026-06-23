@@ -1,5 +1,3 @@
-import { decodeCleverErrorCode } from './decoder.js'
-
 /**
  * Extracts abort code from a Move error message string
  */
@@ -20,7 +18,6 @@ export interface ParsedError {
   address: string
   instruction: number
   abortCode: string
-  decodedError: ReturnType<typeof decodeCleverErrorCode>
   commandIndex: number
 }
 
@@ -57,41 +54,12 @@ export function parseMoveError(errorMessage: string): ParsedError | null {
     commandIndex,
   ] = match
 
-  // Validate and decode abort code
-  let decodedError: ReturnType<typeof decodeCleverErrorCode>
-  try {
-    decodedError = decodeCleverErrorCode(abortCode)
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Invalid format'
-    throw new Error(`Failed to decode abort code "${abortCode}": ${errorMsg}`)
-  }
-
   return {
     moduleName,
     functionName,
     address,
     instruction: parseInt(instruction, 10),
     abortCode,
-    decodedError,
     commandIndex: parseInt(commandIndex, 10),
   }
-}
-
-/**
- * Formats the parsed error as a readable string
- */
-export function formatParsedError(parsed: ParsedError): string {
-  return JSON.stringify(
-    {
-      module: parsed.moduleName,
-      function: parsed.functionName,
-      address: parsed.address,
-      instruction: parsed.instruction,
-      abort_code: parsed.abortCode,
-      decoded: parsed.decodedError,
-      command_index: parsed.commandIndex,
-    },
-    null,
-    2,
-  )
 }

@@ -135,6 +135,15 @@ function handleParse() {
       return
     }
 
+    // Framework/external module — not one of our clever errors; show the raw code.
+    if (!isKnownModule(parsed.moduleName)) {
+      parserOutput.textContent =
+        `This is a Sui framework error in module "${parsed.moduleName}" ` +
+        `(code ${parsed.abortCode}), not an EVE Frontier contract error.`
+      parserOutput.className = 'output-box error'
+      return
+    }
+
     if (!isValidAbortCode(parsed.abortCode)) {
       parserOutput.textContent =
         `Error: Invalid abort code format "${parsed.abortCode}". ` +
@@ -143,35 +152,16 @@ function handleParse() {
       return
     }
 
-    // Get error constant name and message if available
-    try {
-      if (!isKnownModule(parsed.moduleName)) {
-        parserOutput.textContent =
-          `This is a Sui framework error in module "${parsed.moduleName}" ` +
-          `(code ${parsed.abortCode}), not an EVE Frontier contract error.`
-        parserOutput.className = 'output-box error'
-        return
-      }
-
-      const errorInfo = getErrorInfo(
-        parsed.moduleName,
-        parsed.decodedError.error_code,
-      )
-      if (errorInfo) {
-        const errorMessage = errorInfo.errorMessage
-          ? ` : ${errorInfo.errorMessage}`
-          : ''
-        parserOutput.textContent = `Error : ${parsed.moduleName}::${errorInfo.constantName}${errorMessage}`
-        parserOutput.className = 'output-box success'
-      } else {
-        parserOutput.textContent =
-          `No error constant found for "${parsed.moduleName}" ` +
-          `with error code ${parsed.decodedError.error_code}.`
-        parserOutput.className = 'output-box error'
-      }
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : 'Unknown error'
-      parserOutput.textContent = `Error: Could not lookup error constant. ${errorMsg}`
+    const { error_code } = decodeCleverErrorCode(parsed.abortCode)
+    const errorInfo = getErrorInfo(parsed.moduleName, error_code)
+    if (errorInfo) {
+      const errorMessage = errorInfo.errorMessage
+        ? ` : ${errorInfo.errorMessage}`
+        : ''
+      parserOutput.textContent = `Error : ${parsed.moduleName}::${errorInfo.constantName}${errorMessage}`
+      parserOutput.className = 'output-box success'
+    } else {
+      parserOutput.textContent = `No error constant found for "${parsed.moduleName}" with error code ${error_code}.`
       parserOutput.className = 'output-box error'
     }
   } catch (error) {

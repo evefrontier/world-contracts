@@ -35,6 +35,7 @@ Pub.*.toml
 # Error decoder build artifacts
 tools/error-decoder/*.js
 tools/error-decoder/*.js.map
+tools/error-decoder/error-map.json
 tools/error-decoder/dist/
 dist/
 .replay/
