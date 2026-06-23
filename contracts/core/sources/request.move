@@ -10,10 +10,14 @@ use std::internal::Permit;
 
 // === Errors ===
 
-const EWrongRequirementType: u64 = 0;
-const EFrameNotEmpty: u64 = 1;
-const ERequestNotComplete: u64 = 2;
-const ENoRequirements: u64 = 3;
+#[error(code = 0)]
+const EWrongRequirementType: vector<u8> = b"Next requirement does not match the expected type";
+#[error(code = 1)]
+const EFrameNotEmpty: vector<u8> = b"Frame still holds an unconsumed requirement";
+#[error(code = 2)]
+const ERequestNotComplete: vector<u8> = b"Request has unsatisfied requirements";
+#[error(code = 3)]
+const ENoRequirements: vector<u8> = b"Request has no requirements to take";
 
 // === Structs ===
 

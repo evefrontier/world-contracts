@@ -12,7 +12,8 @@ use sui::bcs;
 
 // === Errors ===
 
-const EProximityMismatch: u64 = 0;
+#[error(code = 0)]
+const EProximityMismatch: vector<u8> = b"Location proof does not match the required proximity";
 
 // === Structs ===
 
