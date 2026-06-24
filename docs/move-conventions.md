@@ -18,7 +18,8 @@ and the [Move Book code-quality checklist](https://move-book.com/guides/code-qua
 - No bare `abort` in production code. Every `assert!` takes a named error constant:
   `assert!(e.version == VERSION, EWrongVersion);` (the one exception is the `abort` that ends an
   `expected_failure` test — see [Testing](#testing).)
-- Error constants are `E` + PascalCase, typed `u64` — never `E_SCREAMING_SNAKE`.
+- Error constants are `E` + PascalCase with an `#[error(code = N)]` attribute and a `vector<u8>`
+  message — never `E_SCREAMING_SNAKE`. See [Error handling](#error-handling).
 - Keep modules small and single-purpose — compose behavior, don't grow god-modules.
 - Adding behavior should mean **installing a module, adding a handler, or exposing an action** —
   not changing the base `Entity` type.
@@ -63,15 +64,18 @@ public fun call(app: &mut App, cap: &AdminCap, value: u64, ctx: &mut TxContext)
 
 ## Error handling
 
-Define plain `u64` error constants in `// === Errors ===`, numbered sequentially from 0 and kept
-unique, and assert with a named constant:
+Define error constants in `// === Errors ===` using the `#[error]` attribute with a sequential,
+unique `code`, a `vector<u8>` message, and assert with the named constant:
 
 ```move
 // === Errors ===
 
-const EWrongVersion: u64 = 0;
-const ENotLocked: u64 = 1;
-const EWrongEntity: u64 = 2;
+#[error(code = 0)]
+const EWrongVersion: vector<u8> = b"Entity version does not match the package version";
+#[error(code = 1)]
+const ENotLocked: vector<u8> = b"Entity is not locked";
+#[error(code = 2)]
+const EWrongEntity: vector<u8> = b"Module does not belong to this entity";
 ```
 
 ```move
@@ -81,6 +85,9 @@ assert!(entity.version == VERSION, EWrongVersion);
 // Avoid — no named error
 assert!(entity.version == VERSION);
 ```
+
+The message is surfaced on abort and parsed by the error-decoder tool; the numeric `code` stays
+unique within the module.
 
 ## Field getters
 

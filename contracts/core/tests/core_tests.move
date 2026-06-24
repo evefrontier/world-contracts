@@ -6,9 +6,9 @@ use core::{
     admin_service::{Self, AdminACL},
     entity,
     location_service,
-    object_registry::{Self, ObjectRegistry},
     request,
-    requirement::{Self, Requirement}
+    requirement::{Self, Requirement},
+    test_helpers::{setup, take_registry, take_acl, claim}
 };
 use std::string;
 use sui::test_scenario as ts;
@@ -20,22 +20,13 @@ public struct Counter has store {
 /// Requirement marker satisfied by this test's handler.
 public struct Bump has drop {}
 
-const TENANT: vector<u8> = b"test";
-
 fun increment_requirement(module_name: vector<u8>): Requirement {
     requirement::from_config(option::some(string::utf8(module_name)), Bump {})
 }
 
-fun setup_registry(scenario: &mut ts::Scenario) {
-    object_registry::init_for_testing(scenario.ctx());
-    admin_service::init_for_testing(scenario.ctx());
-}
-
 fun claim_test_entity(scenario: &mut ts::Scenario, acl: &AdminACL): entity::Entity {
-    let mut registry = ts::take_shared<ObjectRegistry>(scenario);
-    let (mut e, mut req) = entity::new(&mut registry, 1, string::utf8(TENANT), vector[]);
-    admin_service::verify_admin(&mut req, acl, scenario.ctx());
-    e.complete_request(req);
+    let mut registry = take_registry(scenario);
+    let e = claim(&mut registry, acl, 1, scenario.ctx());
     ts::return_shared(registry);
     e
 }
@@ -43,10 +34,10 @@ fun claim_test_entity(scenario: &mut ts::Scenario, acl: &AdminACL): entity::Enti
 #[test]
 fun end_to_end_flow() {
     let mut scenario = ts::begin(@0xA);
-    setup_registry(&mut scenario);
+    setup(&mut scenario);
 
     ts::next_tx(&mut scenario, @0xA);
-    let acl = ts::take_shared<AdminACL>(&scenario);
+    let acl = take_acl(&scenario);
     let mut e = claim_test_entity(&mut scenario, &acl);
     let ctx = scenario.ctx();
 
@@ -85,10 +76,10 @@ fun end_to_end_flow() {
 #[test, expected_failure(abort_code = request::ERequestNotComplete)]
 fun cannot_complete_with_pending_requirement() {
     let mut scenario = ts::begin(@0xA);
-    setup_registry(&mut scenario);
+    setup(&mut scenario);
 
     ts::next_tx(&mut scenario, @0xA);
-    let acl = ts::take_shared<AdminACL>(&scenario);
+    let acl = take_acl(&scenario);
     let mut e = claim_test_entity(&mut scenario, &acl);
     let ctx = scenario.ctx();
 

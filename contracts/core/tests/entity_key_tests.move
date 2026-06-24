@@ -1,29 +1,27 @@
 #[test_only]
 module core::entity_key_tests;
 
-use core::entity_key;
+use core::{entity_key, test_helpers::tenant};
 use std::string;
-
-const TENANT: vector<u8> = b"test";
 
 #[test]
 fun new_exposes_id_and_tenant() {
-    let key = entity_key::new(42, string::utf8(TENANT));
+    let key = entity_key::new(42, tenant());
     assert!(key.id() == 42);
-    assert!(key.tenant() == string::utf8(TENANT));
+    assert!(key.tenant() == tenant());
 }
 
 #[test]
 fun keys_with_same_inputs_are_equal() {
-    let a = entity_key::new(7, string::utf8(TENANT));
-    let b = entity_key::new(7, string::utf8(TENANT));
+    let a = entity_key::new(7, tenant());
+    let b = entity_key::new(7, tenant());
     assert!(a == b);
 }
 
 #[test]
 fun keys_differ_by_id() {
-    let a = entity_key::new(1, string::utf8(TENANT));
-    let b = entity_key::new(2, string::utf8(TENANT));
+    let a = entity_key::new(1, tenant());
+    let b = entity_key::new(2, tenant());
     assert!(a != b);
 }
 
@@ -36,7 +34,7 @@ fun keys_differ_by_tenant() {
 
 #[test, expected_failure(abort_code = entity_key::EIdEmpty)]
 fun new_zero_id_aborts() {
-    entity_key::new(0, string::utf8(TENANT));
+    entity_key::new(0, tenant());
     abort
 }
 

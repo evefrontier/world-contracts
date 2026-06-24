@@ -11,8 +11,10 @@ use std::{internal::Permit, string::{Self, String}};
 
 // === Errors ===
 
-const EWrongVersion: u64 = 0;
-const EModuleMissing: u64 = 1;
+#[error(code = 0)]
+const EWrongVersion: vector<u8> = b"Identity module version does not match the package version";
+#[error(code = 1)]
+const EModuleMissing: vector<u8> = b"Identity module is not installed on this entity";
 
 // === Constants ===
 

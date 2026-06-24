@@ -8,8 +8,10 @@ use std::string::String;
 
 // === Errors ===
 
-const EIdEmpty: u64 = 0;
-const ETenantEmpty: u64 = 1;
+#[error(code = 0)]
+const EIdEmpty: vector<u8> = b"Entity ID must be non-zero";
+#[error(code = 1)]
+const ETenantEmpty: vector<u8> = b"Tenant must be non-empty";
 
 // === Structs ===
 

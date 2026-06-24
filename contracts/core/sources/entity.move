@@ -25,15 +25,24 @@ use sui::{derived_object, dynamic_field as df, event, vec_map::{Self, VecMap}};
 
 // === Errors ===
 
-const EWrongVersion: u64 = 0;
-const ENotLocked: u64 = 1;
-const EWrongEntity: u64 = 2;
-const ERequirementNotModuleScoped: u64 = 3;
-const EUnknownAction: u64 = 4;
-const EModuleExists: u64 = 5;
-const EModuleMissing: u64 = 6;
-const EActionExists: u64 = 7;
-const EEntityAlreadyExists: u64 = 8;
+#[error(code = 0)]
+const EWrongVersion: vector<u8> = b"Entity version does not match the package version";
+#[error(code = 1)]
+const ENotLocked: vector<u8> = b"Entity is not locked";
+#[error(code = 2)]
+const EWrongEntity: vector<u8> = b"Module does not belong to this entity";
+#[error(code = 3)]
+const ERequirementNotModuleScoped: vector<u8> = b"Requirement is not module-scoped";
+#[error(code = 4)]
+const EUnknownAction: vector<u8> = b"Action is not enabled on this entity";
+#[error(code = 5)]
+const EModuleExists: vector<u8> = b"Module is already installed";
+#[error(code = 6)]
+const EModuleMissing: vector<u8> = b"Module is not installed";
+#[error(code = 7)]
+const EActionExists: vector<u8> = b"Action is already enabled";
+#[error(code = 8)]
+const EEntityAlreadyExists: vector<u8> = b"Entity already exists for this key";
 
 // === Constants ===
 

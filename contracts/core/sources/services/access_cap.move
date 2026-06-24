@@ -13,11 +13,11 @@ use sui::event;
 // === Errors ===
 
 #[error(code = 0)]
-const ENotOwner: vector<u8> = b"Sender does not own this entity";
+const ENotOwner: vector<u8> = b"AccessCap does not grant access to this entity";
 #[error(code = 1)]
-const ENotTransferable: vector<u8> = b"This access cap is soulbound";
+const ENotTransferable: vector<u8> = b"Access cap is soulbound and cannot be transferred";
 #[error(code = 2)]
-const EWrongVersion: vector<u8> = b"Unsupported access cap version";
+const EWrongVersion: vector<u8> = b"AccessCap version does not match the package version";
 
 // === Constants ===
 

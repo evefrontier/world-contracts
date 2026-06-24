@@ -2,20 +2,14 @@
 module core::object_registry_tests;
 
 use core::{
-    admin_service::{Self, AdminACL},
+    admin_service,
     entity,
     entity_key,
-    object_registry::{Self, ObjectRegistry}
+    object_registry::{Self, ObjectRegistry},
+    test_helpers::{setup, tenant, take_registry, take_acl}
 };
 use std::string;
 use sui::test_scenario as ts;
-
-const TENANT: vector<u8> = b"test";
-
-fun setup(scenario: &mut ts::Scenario) {
-    object_registry::init_for_testing(scenario.ctx());
-    admin_service::init_for_testing(scenario.ctx());
-}
 
 #[test]
 fun init_shares_registry_with_stable_id() {
@@ -24,7 +18,7 @@ fun init_shares_registry_with_stable_id() {
 
     ts::next_tx(&mut scenario, @0xA);
     {
-        let registry = ts::take_shared<ObjectRegistry>(&scenario);
+        let registry = take_registry(&scenario);
         assert!(object_registry::id(&registry) == object::id(&registry));
         ts::return_shared(registry);
     };
@@ -39,8 +33,8 @@ fun fresh_key_does_not_exist() {
 
     ts::next_tx(&mut scenario, @0xA);
     {
-        let registry = ts::take_shared<ObjectRegistry>(&scenario);
-        let key = entity_key::new(1, string::utf8(TENANT));
+        let registry = take_registry(&scenario);
+        let key = entity_key::new(1, tenant());
         assert!(!registry.exists(key));
         ts::return_shared(registry);
     };
@@ -55,8 +49,8 @@ fun derive_id_is_deterministic() {
 
     ts::next_tx(&mut scenario, @0xA);
     {
-        let registry = ts::take_shared<ObjectRegistry>(&scenario);
-        let key = entity_key::new(5, string::utf8(TENANT));
+        let registry = take_registry(&scenario);
+        let key = entity_key::new(5, tenant());
         assert!(registry.derive_id(key) == registry.derive_id(key));
         ts::return_shared(registry);
     };
@@ -71,9 +65,9 @@ fun derive_id_differs_by_key() {
 
     ts::next_tx(&mut scenario, @0xA);
     {
-        let registry = ts::take_shared<ObjectRegistry>(&scenario);
-        let by_id_a = registry.derive_id(entity_key::new(1, string::utf8(TENANT)));
-        let by_id_b = registry.derive_id(entity_key::new(2, string::utf8(TENANT)));
+        let registry = take_registry(&scenario);
+        let by_id_a = registry.derive_id(entity_key::new(1, tenant()));
+        let by_id_b = registry.derive_id(entity_key::new(2, tenant()));
         let by_tenant = registry.derive_id(entity_key::new(1, string::utf8(b"other")));
         assert!(by_id_a != by_id_b);
         assert!(by_id_a != by_tenant);
@@ -92,12 +86,12 @@ fun claim_marks_key_existing() {
 
     ts::next_tx(&mut scenario, @0xA);
     {
-        let mut registry = ts::take_shared<ObjectRegistry>(&scenario);
-        let acl = ts::take_shared<AdminACL>(&scenario);
-        let key = entity_key::new(99, string::utf8(TENANT));
+        let mut registry = take_registry(&scenario);
+        let acl = take_acl(&scenario);
+        let key = entity_key::new(99, tenant());
         let precomputed = object::id_from_address(registry.derive_id(key));
 
-        let (mut e, mut req) = entity::new(&mut registry, 99, string::utf8(TENANT), vector[]);
+        let (mut e, mut req) = entity::new(&mut registry, 99, tenant(), vector[]);
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
         e.complete_request(req);
 

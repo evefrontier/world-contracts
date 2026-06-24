@@ -3,43 +3,15 @@ module core::entity_tests;
 
 use core::{
     action,
-    admin_service::{Self, AdminACL},
+    admin_service,
     entity,
-    object_registry::{Self, ObjectRegistry}
+    test_helpers::{setup, take_registry, take_acl, claim, tenant}
 };
 use std::string;
 use sui::test_scenario as ts;
 
 public struct Counter has store {
     value: u64,
-}
-
-const TENANT: vector<u8> = b"test";
-
-fun setup(scenario: &mut ts::Scenario) {
-    object_registry::init_for_testing(scenario.ctx());
-    admin_service::init_for_testing(scenario.ctx());
-}
-
-fun take_registry(scenario: &ts::Scenario): ObjectRegistry {
-    ts::take_shared<ObjectRegistry>(scenario)
-}
-
-fun take_acl(scenario: &ts::Scenario): AdminACL {
-    ts::take_shared<AdminACL>(scenario)
-}
-
-/// Claim and admin-approve an entity, returning it unlocked.
-fun claim(
-    registry: &mut ObjectRegistry,
-    acl: &AdminACL,
-    id: u64,
-    ctx: &mut TxContext,
-): entity::Entity {
-    let (mut e, mut req) = entity::new(registry, id, string::utf8(TENANT), vector[]);
-    admin_service::verify_admin(&mut req, acl, ctx);
-    e.complete_request(req);
-    e
 }
 
 fun counter_name(): string::String {
@@ -57,14 +29,14 @@ fun new_sets_initial_fields() {
     {
         let mut registry = take_registry(&scenario);
         let acl = take_acl(&scenario);
-        let (mut e, mut req) = entity::new(&mut registry, 1, string::utf8(TENANT), b"loc");
+        let (mut e, mut req) = entity::new(&mut registry, 1, tenant(), b"loc");
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
         e.complete_request(req);
 
         assert!(entity::version(&e) == 1);
         assert!(entity::location_hash(&e) == b"loc");
         assert!(entity::key(&e).id() == 1);
-        assert!(entity::key(&e).tenant() == string::utf8(TENANT));
+        assert!(entity::key(&e).tenant() == tenant());
         assert!(!entity::has_module(&e, counter_name()));
 
         entity::share(e);

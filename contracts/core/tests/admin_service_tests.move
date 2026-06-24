@@ -1,15 +1,11 @@
 #[test_only]
 module core::admin_service_tests;
 
-use core::{admin_service::{Self, AdminACL}, request};
+use core::{admin_service, request, test_helpers::take_acl};
 use sui::test_scenario as ts;
 
 const ADMIN: address = @0xA;
 const OTHER: address = @0xB;
-
-fun take_acl(scenario: &ts::Scenario): AdminACL {
-    ts::take_shared<AdminACL>(scenario)
-}
 
 fun admin_request(): request::Request {
     request::new_for_testing(option::none(), vector[admin_service::admin_requirement()])
