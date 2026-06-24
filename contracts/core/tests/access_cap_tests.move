@@ -7,7 +7,6 @@ use core::{
     admin_service,
     entity,
     location_service,
-    owner_cap::{Self, AccessCap},
     test_helpers::{setup, take_acl, create_entity}
 };
 use std::string;
