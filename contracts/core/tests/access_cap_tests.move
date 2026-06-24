@@ -1,7 +1,8 @@
 #[test_only]
-module core::owner_cap_tests;
+module core::access_cap_tests;
 
 use core::{
+    access_cap::{Self, AccessCap},
     action,
     admin_service,
     entity,
@@ -34,7 +35,7 @@ const OWNER_ACTION: vector<u8> = b"deposit_by_owner";
 fun enable_owner_action(scenario: &mut ts::Scenario) {
     ts::next_tx(scenario, ADMIN);
     let mut e = ts::take_shared<entity::Entity>(scenario);
-    let act = action::new(vector[owner_cap::owner_requirement()]);
+    let act = action::new(vector[access_cap::owner_requirement()]);
     let req = e.enable_action(string::utf8(OWNER_ACTION), act, scenario.ctx());
     e.complete_request(req);
     ts::return_shared(e);
@@ -97,7 +98,7 @@ fun verify_passes_with_matching_cap() {
         let cap = ts::take_from_sender<AccessCap>(&scenario);
         let mut req = e.interact(string::utf8(OWNER_ACTION), scenario.ctx());
         location_service::verify_proximity(&mut req, vector[]);
-        owner_cap::verify(&mut req, &cap);
+        access_cap::verify(&mut req, &cap);
         e.complete_request(req);
         ts::return_shared(e);
         ts::return_to_sender(&scenario, cap);
@@ -106,7 +107,7 @@ fun verify_passes_with_matching_cap() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = owner_cap::ENotOwner)]
+#[test, expected_failure(abort_code = access_cap::ENotOwner)]
 fun verify_aborts_with_wrong_entity_cap() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -125,7 +126,7 @@ fun verify_aborts_with_wrong_entity_cap() {
         ts::return_shared(acl);
 
         let mut e1 = ts::take_shared_by_id<entity::Entity>(&scenario, one);
-        let act = action::new(vector[owner_cap::owner_requirement()]);
+        let act = action::new(vector[access_cap::owner_requirement()]);
         let req = e1.enable_action(string::utf8(OWNER_ACTION), act, scenario.ctx());
         e1.complete_request(req);
         ts::return_shared(e1);
@@ -137,7 +138,7 @@ fun verify_aborts_with_wrong_entity_cap() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e1.interact(string::utf8(OWNER_ACTION), scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
-    owner_cap::verify(&mut req, &cap);
+    access_cap::verify(&mut req, &cap);
 
     abort
 }
@@ -152,7 +153,7 @@ fun transfer_access_moves_transferable_cap() {
     ts::next_tx(&mut scenario, OWNER);
     {
         let cap = ts::take_from_sender<AccessCap>(&scenario);
-        owner_cap::transfer_access(cap, STRANGER);
+        access_cap::transfer_access(cap, STRANGER);
     };
 
     ts::next_tx(&mut scenario, STRANGER);
@@ -164,7 +165,7 @@ fun transfer_access_moves_transferable_cap() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = owner_cap::ENotTransferable)]
+#[test, expected_failure(abort_code = access_cap::ENotTransferable)]
 fun transfer_access_aborts_on_soulbound_cap() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -173,7 +174,7 @@ fun transfer_access_aborts_on_soulbound_cap() {
 
     ts::next_tx(&mut scenario, OWNER);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    owner_cap::transfer_access(cap, STRANGER);
+    access_cap::transfer_access(cap, STRANGER);
 
     abort
 }

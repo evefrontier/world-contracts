@@ -1,10 +1,10 @@
-/// The KeyCard: a capability proving its holder owns an entity.
+/// A capability proving its holder owns an entity.
 ///
 /// An `AccessCap` is bound to one entity and is `key`-only, so it can never be
 /// `public_transfer`ed. A soulbound cap (`transferable: false`) has no transfer
 /// path at all; a transferable cap moves only via `transfer_access`. Minting is
 /// admin-gated through `entity::mint_access`.
-module core::owner_cap;
+module core::access_cap;
 
 use core::{request::Request, requirement::{Self, Requirement}};
 use std::internal::Permit;
@@ -13,11 +13,11 @@ use sui::event;
 // === Errors ===
 
 #[error(code = 0)]
-const ENotOwner: vector<u8> = b"Cap does not grant access to this entity";
+const ENotOwner: vector<u8> = b"AccessCap does not grant access to this entity";
 #[error(code = 1)]
 const ENotTransferable: vector<u8> = b"Access cap is soulbound and cannot be transferred";
 #[error(code = 2)]
-const EWrongVersion: vector<u8> = b"Cap version does not match the package version";
+const EWrongVersion: vector<u8> = b"AccessCap version does not match the package version";
 
 // === Constants ===
 
