@@ -11,6 +11,7 @@
 module core::entity;
 
 use core::{
+    access_cap,
     action::Action,
     admin_service,
     entity_key::{Self, EntityKey},
@@ -113,7 +114,7 @@ public fun mint_access(
     ctx: &mut TxContext,
 ): Request {
     assert!(entity.version == VERSION, EWrongVersion);
-    owner_cap::mint(entity.id.to_inner(), owner, transferable, ctx);
+    access_cap::mint(entity.id.to_inner(), owner, transferable, ctx);
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),

@@ -86,5 +86,5 @@ function coreCapType(config: ReturnType<typeof loadWorldConfig>): string {
   if (!coreId) {
     throw new Error('localnet config must supply the core package id')
   }
-  return `${coreId}::owner_cap::AccessCap`
+  return `${coreId}::access_cap::AccessCap`
 }

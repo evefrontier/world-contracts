@@ -13,9 +13,9 @@ use sui::table::{Self, Table};
 // === Errors ===
 
 #[error(code = 0)]
-const EUnauthorizedAdmin: vector<u8> = b"Sender is not an admin";
+const EUnauthorizedAdmin: vector<u8> = b"Signer is not an admin";
 #[error(code = 1)]
-const EUnauthorizedSponsor: vector<u8> = b"Sender is not a sponsor";
+const EUnauthorizedSponsor: vector<u8> = b"Signer is not a sponsor";
 
 // === Structs ===
 
