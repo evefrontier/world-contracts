@@ -33,6 +33,8 @@ export {
   type EntityKeyInput,
   type EntityNewArgs,
   entityNew,
+  type MintAccessArgs,
+  mintAccess,
   shareEntity,
   verifyAdmin,
 } from './packages/core.js'
