@@ -10,7 +10,14 @@ import type { Env } from '../src/config/types.js'
 import { addAdmins, addSponsors } from '../src/packages/core.js'
 
 const DEPLOY_ENV = process.env.ENV ?? 'localnet'
-const SDK_ENV = (DEPLOY_ENV === 'localnet' ? 'local' : DEPLOY_ENV) as Env
+const SDK_ENV = DEPLOY_ENV === 'localnet' ? 'local' : DEPLOY_ENV
+const VALID_ENVS: readonly Env[] = ['local', 'dev', 'uat', 'test', 'live']
+if (!VALID_ENVS.includes(SDK_ENV as Env)) {
+  throw new Error(
+    `unknown ENV "${DEPLOY_ENV}" (want localnet|${VALID_ENVS.join('|')})`,
+  )
+}
+const env = SDK_ENV as Env
 const MANIFEST = fileURLToPath(
   new URL(`../../../deployments/${DEPLOY_ENV}/world.json`, import.meta.url),
 )
@@ -38,9 +45,7 @@ const keypair = Ed25519Keypair.fromSecretKey(privateKey)
 
 const config = loadWorldConfig(MANIFEST)
 const rpcUrl =
-  SDK_ENV === 'local'
-    ? undefined
-    : getJsonRpcFullnodeUrl(envProfile(SDK_ENV).network)
+  env === 'local' ? undefined : getJsonRpcFullnodeUrl(envProfile(env).network)
 const client = createWorldClient({ config, rpcUrl })
 
 const tx = new Transaction()
