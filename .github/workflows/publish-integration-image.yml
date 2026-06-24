@@ -46,6 +46,8 @@ jobs:
         with:
           context: .
           file: ./docker/Dockerfile.integration
+          platforms: linux/amd64
+          provenance: false
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
