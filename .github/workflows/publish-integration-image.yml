@@ -46,7 +46,9 @@ jobs:
         with:
           context: .
           file: ./docker/Dockerfile.integration
-          tags: ${{ env.IMAGE }}:latest
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
           push: true
           cache-from: type=gha,scope=integration
           cache-to: type=gha,mode=max,scope=integration
