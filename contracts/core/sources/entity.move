@@ -18,7 +18,6 @@ use core::{
     location_service,
     mod::{Self, Module},
     object_registry::ObjectRegistry,
-    owner_cap,
     request::{Self, Request}
 };
 use std::{internal::Permit, string::String};
