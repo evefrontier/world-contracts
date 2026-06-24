@@ -33,6 +33,15 @@ export_artifacts() {
     cp "deployments/$TARGET_ENV/world.json" "$dir/world.json"
 }
 
+# drop any committed [published.<env>] entry so the
+# fresh publish doesn't hit "package already published". upgrade keeps it.
+if [[ "$MODE" == "deploy" ]]; then
+    for pkg in $PACKAGES; do
+        run pnpm exec tsx ts-scripts/clear-published.ts \
+            "contracts/$pkg/Published.toml" "$TARGET_ENV"
+    done
+fi
+
 # Publish/upgrade on the target network, then refresh the manifest + SDK preset.
 run ./scripts/deploy-world.sh "$TARGET_ENV" "$MODE"
 

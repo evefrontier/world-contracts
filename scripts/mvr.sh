@@ -92,6 +92,11 @@ cmd_set_network() {
     [[ -z "$app_cap" ]] && { echo "ERROR: no appCap for $pkg/$env — run set-appcap (from bootstrap register)" >&2; exit 1; }
 
     ensure_client_env mainnet "$(get_rpc live)"
+
+    sui client ptb \
+        --move-call "$MVR_CORE_MAINNET::move_registry::unset_network" \
+            "@$MVR_REGISTRY" "@$app_cap" "\"$MVR_TESTNET_CHAIN_ID\"" \
+        || echo "unset_network: no existing mapping for $pkg (first deploy)"
     sui client ptb \
         --move-call 0x1::option::some "<0x2::object::ID>" "@$pi_id" --assign pinfo \
         --move-call 0x1::option::some "<address>" "@$pkg_addr" --assign pid \

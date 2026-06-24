@@ -1,14 +1,18 @@
 import { fileURLToPath } from 'node:url'
+import { getJsonRpcFullnodeUrl } from '@mysten/sui/jsonRpc'
 import 'dotenv/config'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
 import { createWorldClient } from '../src/client.js'
+import { envProfile } from '../src/config/env.js'
 import { loadWorldConfig } from '../src/config/load.js'
+import type { Env } from '../src/config/types.js'
 import { addAdmins, addSponsors } from '../src/packages/core.js'
 
-const ENV = process.env.ENV ?? 'localnet'
+const DEPLOY_ENV = process.env.ENV ?? 'localnet'
+const SDK_ENV = (DEPLOY_ENV === 'localnet' ? 'local' : DEPLOY_ENV) as Env
 const MANIFEST = fileURLToPath(
-  new URL(`../../../deployments/${ENV}/world.json`, import.meta.url),
+  new URL(`../../../deployments/${DEPLOY_ENV}/world.json`, import.meta.url),
 )
 
 // Comma-separated list of addresses, e.g. 0x..,0x..
@@ -33,7 +37,11 @@ if (!privateKey) {
 const keypair = Ed25519Keypair.fromSecretKey(privateKey)
 
 const config = loadWorldConfig(MANIFEST)
-const client = createWorldClient({ config })
+const rpcUrl =
+  SDK_ENV === 'local'
+    ? undefined
+    : getJsonRpcFullnodeUrl(envProfile(SDK_ENV).network)
+const client = createWorldClient({ config, rpcUrl })
 
 const tx = new Transaction()
 if (admins.length > 0) addAdmins(tx, config, admins)
