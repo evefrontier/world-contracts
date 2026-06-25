@@ -12,12 +12,12 @@ upgrade-capability = "0x20d2782bafff72df38e854cc813879f4513ee7a5dc14225c2a2889b1
 
 [published.testnet_stillness]
 chain-id = "4c78adac"
-published-at = "0x2a66a89b5a735738ffa4423ac024d23571326163f324f9051557617319e59d60"
-original-id = "0x2a66a89b5a735738ffa4423ac024d23571326163f324f9051557617319e59d60"
+published-at = "0xac361aa5ceb726bd974f885c9dea9e55dc9bc98fa1f5731c5965a810707bf0b8"
+original-id = "0xac361aa5ceb726bd974f885c9dea9e55dc9bc98fa1f5731c5965a810707bf0b8"
 version = 1
-toolchain-version = "1.67.1"
+toolchain-version = "1.74.0"
 build-config = { flavor = "sui", edition = "2024" }
-upgrade-capability = "0x7be14e8d115f6b4031a015c8ff3a2fbfd9b0086b7bc1a79d089abcf5eac42a82"
+upgrade-capability = "0x4fd9d93aca5383580f4142e40b22a10c89de22aeb6a9556580dfea2d7ad768c4"
 
 [published.testnet_utopia]
 chain-id = "4c78adac"

@@ -27,3 +27,27 @@ source = { local = "../world" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet_stillness.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "b124567746b3a78a7e294ac2de265f693401ec9d" }
+use_environment = "testnet_stillness"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.testnet_stillness.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "b124567746b3a78a7e294ac2de265f693401ec9d" }
+use_environment = "testnet_stillness"
+manifest_digest = "38D8855849DF7CA0FAD3B9510DD9EC3755149F5B283E45CA6547194ADFF90D73"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.testnet_stillness.extension_examples]
+source = { root = true }
+use_environment = "testnet_stillness"
+manifest_digest = "322B638CF4A392ED1066EBFAB27290B5F66C03C1713AC921AC3252ED6F77B315"
+deps = { std = "MoveStdlib", sui = "Sui", world = "world" }
+
+[pinned.testnet_stillness.world]
+source = { local = "../world" }
+use_environment = "testnet_stillness"
+manifest_digest = "16363423CD37589C5B9A56E3F9E984FED988276E0134635135B45CB4480A9484"
+deps = { std = "MoveStdlib", sui = "Sui" }
