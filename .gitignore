@@ -44,3 +44,5 @@ dist/
 .pnpm-store
 
 docs/v1/
+.secrets
+.vars
