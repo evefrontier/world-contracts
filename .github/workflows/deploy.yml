@@ -87,6 +87,10 @@ jobs:
           CONTAINER: deploy-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           env="${{ inputs.env }}"
+          if [[ ! -f "deployments/$env/world.json" ]]; then
+            echo "ERROR: deployments/$env/world.json missing — MVR appCaps required" >&2
+            exit 1
+          fi
           docker create --name "$CONTAINER" \
             -e CI=true \
             -e DEPLOYER_KEY -e APPCAP_KEY \
@@ -95,10 +99,8 @@ jobs:
             -e COMMIT="${{ github.sha }}" \
             --entrypoint bash \
             "${{ steps.cfg.outputs.image }}" \
-            scripts/ci-deploy.sh
-          if [[ -f "deployments/$env/world.json" ]]; then
-            docker cp "deployments/$env/world.json" "$CONTAINER:/app/deployments/$env/world.json"
-          fi
+            -c "mkdir -p deployments/$env && mv /app/world.json.seed deployments/$env/world.json && scripts/ci-deploy.sh"
+          docker cp "deployments/$env/world.json" "$CONTAINER:/app/world.json.seed"
           docker start -a "$CONTAINER"
 
           # ci-deploy.sh exports the artifacts to commit; copy that
