@@ -133,8 +133,11 @@ jobs:
           title="deploy(${{ inputs.env }}): ${{ inputs.image_tag }}"
           git commit -m "$title [skip ci]"
           git push origin "HEAD:${branch}"
+          # PR creation may be blocked by org policy; the records branch is
+          # already pushed, so print a link to open it.
           gh pr create \
             --base dev \
             --head "$branch" \
             --title "$title" \
-            --body "Automated deployment records for \`${{ inputs.env }}\` from image \`${{ inputs.image_tag }}\` (mode: ${{ inputs.mode }}, version: ${{ inputs.version }}, commit: ${{ github.sha }})."
+            --body "Automated deployment records for \`${{ inputs.env }}\` from image \`${{ inputs.image_tag }}\` (mode: ${{ inputs.mode }}, version: ${{ inputs.version }}, commit: ${{ github.sha }})." \
+            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/dev...${branch}?expand=1"
