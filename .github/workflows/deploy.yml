@@ -99,7 +99,7 @@ jobs:
             -e COMMIT="${{ github.sha }}" \
             --entrypoint bash \
             "${{ steps.cfg.outputs.image }}" \
-            -c "mkdir -p deployments/$env && mv /app/world.json.seed deployments/$env/world.json && scripts/ci-deploy.sh"
+            -c "mkdir -p deployments/$env && cat /app/world.json.seed > deployments/$env/world.json && rm -f /app/world.json.seed && scripts/ci-deploy.sh"
           docker cp "deployments/$env/world.json" "$CONTAINER:/app/world.json.seed"
           docker start -a "$CONTAINER"
 
