@@ -140,4 +140,4 @@ jobs:
             --head "$branch" \
             --title "$title" \
             --body "Automated deployment records for \`${{ inputs.env }}\` from image \`${{ inputs.image_tag }}\` (mode: ${{ inputs.mode }}, version: ${{ inputs.version }}, commit: ${{ github.sha }})." \
-            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/pull/new/${branch}"
+            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/dev...${branch}?expand=1"
