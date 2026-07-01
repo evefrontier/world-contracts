@@ -126,30 +126,10 @@ public struct ItemBurnedEvent has copy, drop {
     quantity: u32,
 }
 
-public struct ItemDepositedEvent has copy, drop {
-    assembly_id: ID,
-    assembly_key: TenantItemId,
-    character_id: ID,
-    character_key: TenantItemId,
-    item_id: u64,
-    type_id: u64,
-    quantity: u32,
-}
-
 public struct ItemDepositedEventV2 has copy, drop {
     assembly_id: ID,
     assembly_key: TenantItemId,
     inventory_key: ID,
-    character_id: ID,
-    character_key: TenantItemId,
-    item_id: u64,
-    type_id: u64,
-    quantity: u32,
-}
-
-public struct ItemWithdrawnEvent has copy, drop {
-    assembly_id: ID,
-    assembly_key: TenantItemId,
     character_id: ID,
     character_key: TenantItemId,
     item_id: u64,
