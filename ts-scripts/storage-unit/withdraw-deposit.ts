@@ -74,11 +74,11 @@ async function withdraw(
     console.log("Transaction digest:", result.digest);
 
     const withdrawEvent = result.events?.find((event) =>
-        event.type.endsWith("::inventory::ItemWithdrawnEvent")
+        event.type.endsWith("::inventory::ItemWithdrawnEventV2")
     );
 
     if (!withdrawEvent) {
-        throw new Error("ItemWithdrawnEvent not found in transaction result");
+        throw new Error("ItemWithdrawnEventV2 not found in transaction result");
     }
 
     console.log("withdrawEvent:", withdrawEvent);
