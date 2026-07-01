@@ -15,14 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       
+      - name: Setup pnpm
+        # version is read from the "packageManager" field in package.json
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-      
-      - name: Setup pnpm
-        # version is read from the "packageManager" field in package.json
-        uses: pnpm/action-setup@v4
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
