@@ -11,7 +11,8 @@
 /// read volume from there instead of carrying it on each `Item`.
 module inventory::item;
 
-use sui::table::{Self, Table};
+use core::entity_key::{Self, EntityKey};
+use sui::{event, table::{Self, Table}};
 
 // === Errors ===
 
@@ -38,6 +39,28 @@ public struct ItemBag has store {
     balances: Table<u64, u64>,
 }
 
+// === Events ===
+
+public struct ItemMinted has copy, drop {
+    game_id: EntityKey,
+    quantity: u64,
+}
+
+public struct ItemBurned has copy, drop {
+    game_id: EntityKey,
+    quantity: u64,
+}
+
+public struct ItemDeposited has copy, drop {
+    game_id: EntityKey,
+    quantity: u64,
+}
+
+public struct ItemWithdrawn has copy, drop {
+    game_id: EntityKey,
+    quantity: u64,
+}
+
 // === View Functions ===
 
 public fun type_id(item: &Item): u64 {
@@ -60,14 +83,18 @@ public fun balance(bag: &ItemBag, type_id: u64): u64 {
 // === Package Functions ===
 
 /// Construct a fresh `Item`.
-public(package) fun new(type_id: u64, quantity: u64, volume: u64, ctx: &mut TxContext): Item {
+public(package) fun new(game_id: EntityKey, quantity: u64, volume: u64, ctx: &mut TxContext): Item {
     assert!(quantity > 0, EZeroQuantity);
+    let type_id = entity_key::id(&game_id);
+    event::emit(ItemMinted { game_id, quantity });
     Item { id: object::new(ctx), type_id, quantity, volume }
 }
 
 /// Destroy an `Item`, removing its quantity from existence.
-public(package) fun destroy(item: Item) {
-    let Item { id, .. } = item;
+public(package) fun destroy(item: Item, game_id: EntityKey) {
+    let Item { id, type_id, quantity, volume: _ } = item;
+    assert!(entity_key::id(&game_id) == type_id, EWrongType);
+    event::emit(ItemBurned { game_id, quantity });
     id.delete();
 }
 
@@ -84,31 +111,48 @@ public(package) fun destroy_bag(bag: ItemBag) {
 }
 
 /// Deposit `item` into `bag`, merging into the existing balance for its type.
-public(package) fun deposit(bag: &mut ItemBag, item: Item) {
-    let Item { id, type_id, quantity, volume: _ } = item;
+public(package) fun deposit(bag: &mut ItemBag, item: Item, game_id: EntityKey) {
+    let type_id = entity_key::id(&game_id);
+    let Item { id, type_id: item_type_id, quantity, volume: _ } = item;
+    assert!(type_id == item_type_id, EWrongType);
     id.delete();
     if (bag.balances.contains(type_id)) {
         *&mut bag.balances[type_id] = bag.balances[type_id] + quantity;
     } else {
         bag.balances.add(type_id, quantity);
-    }
+    };
+    event::emit(ItemDeposited { game_id, quantity });
 }
 
-/// Withdraw `quantity` of `type_id` from `bag` as a fresh `Item` with `volume`.
+/// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item` with `volume`.
 public(package) fun withdraw(
     bag: &mut ItemBag,
-    type_id: u64,
+    game_id: EntityKey,
     quantity: u64,
     volume: u64,
     ctx: &mut TxContext,
 ): Item {
+    let type_id = entity_key::id(&game_id);
     assert!(quantity > 0, EZeroQuantity);
     assert!(bag.balances.contains(type_id), EInsufficientQuantity);
     let balance = &mut bag.balances[type_id];
     assert!(*balance >= quantity, EInsufficientQuantity);
     *balance = *balance - quantity;
     if (*balance == 0) { bag.balances.remove(type_id); };
+    event::emit(ItemWithdrawn { game_id, quantity });
     Item { id: object::new(ctx), type_id, quantity, volume }
+}
+
+/// Burn `quantity` of `game_id` from `bag`, removing it from existence.
+public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
+    let type_id = entity_key::id(&game_id);
+    assert!(quantity > 0, EZeroQuantity);
+    assert!(bag.balances.contains(type_id), EInsufficientQuantity);
+    let balance = &mut bag.balances[type_id];
+    assert!(*balance >= quantity, EInsufficientQuantity);
+    *balance = *balance - quantity;
+    if (*balance == 0) { bag.balances.remove(type_id); };
+    event::emit(ItemBurned { game_id, quantity });
 }
 
 /// Split `quantity` off `item` into a new `Item` of the same type.
