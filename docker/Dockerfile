@@ -7,20 +7,25 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js and pnpm
+# Install Node.js, then enable pnpm via corepack
+# (pnpm version is pinned by the "packageManager" field in package.json)
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g pnpm \
+    && corepack enable \
     && rm -rf /var/lib/apt/lists/*
 
+# Let corepack download the pinned pnpm without an interactive prompt
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
 # Verify installations
-RUN sui --version && node --version && pnpm --version && jq --version
+RUN sui --version && node --version && jq --version
 
 WORKDIR /app
 
 # Copy package files and install dependencies with pnpm
-COPY package*.json pnpm-lock.yaml ./
-RUN pnpm install --no-frozen-lockfile
+# (pnpm version is resolved from the "packageManager" field in package.json)
+COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm --version && pnpm install --no-frozen-lockfile
 
 COPY . .
 
