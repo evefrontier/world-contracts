@@ -13,14 +13,37 @@ fun tenant(): string::String { string::utf8(b"test") }
 
 fun fuel_key(): entity_key::EntityKey { entity_key::new(FUEL, tenant()) }
 
+fun withdraw_item(
+    bag: &mut item::ItemBag,
+    key: entity_key::EntityKey,
+    quantity: u64,
+    ctx: &mut TxContext,
+): item::Item {
+    item::mint(bag, key, quantity);
+    item::withdraw(bag, key, quantity, VOL, ctx)
+}
+
 #[test]
-fun new_records_fields() {
+fun bag_mint_adds_balance() {
     let mut scenario = ts::begin(@0xA);
-    let fuel = item::new(fuel_key(), 50, VOL, scenario.ctx());
-    assert!(fuel.type_id() == FUEL);
-    assert!(fuel.quantity() == 50);
-    assert!(fuel.volume() == VOL);
-    item::destroy(fuel, fuel_key());
+    let mut bag = item::new_bag(scenario.ctx());
+    let key = fuel_key();
+
+    item::mint(&mut bag, key, 25);
+    assert!(item::balance(&bag, FUEL) == 25);
+
+    item::destroy_bag(bag);
+    scenario.end();
+}
+
+#[test]
+fun burn_all_clears_bag() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let key = fuel_key();
+
+    item::mint(&mut bag, key, 50);
+    item::burn_all_and_destroy(bag, tenant());
     scenario.end();
 }
 
@@ -30,16 +53,32 @@ fun bag_deposit_merges_by_type() {
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
 
-    bag.deposit(item::new(key, 30, VOL, scenario.ctx()), key);
-    bag.deposit(item::new(key, 20, VOL, scenario.ctx()), key);
-    assert!(bag.balance(FUEL) == 50);
+    let item_a = withdraw_item(&mut bag, key, 30, scenario.ctx());
+    item::deposit(&mut bag, item_a, key);
+    let item_b = withdraw_item(&mut bag, key, 20, scenario.ctx());
+    item::deposit(&mut bag, item_b, key);
+    assert!(item::balance(&bag, FUEL) == 50);
 
-    let out = bag.withdraw(key, 15, VOL, scenario.ctx());
+    let out = item::withdraw(&mut bag, key, 15, VOL, scenario.ctx());
     assert!(out.quantity() == 15);
     assert!(out.volume() == VOL);
-    assert!(bag.balance(FUEL) == 35);
+    assert!(item::balance(&bag, FUEL) == 35);
 
     item::destroy(out, key);
+    item::destroy_bag(bag);
+    scenario.end();
+}
+
+#[test]
+fun withdraw_records_fields() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let key = fuel_key();
+    let fuel = withdraw_item(&mut bag, key, 50, scenario.ctx());
+    assert!(fuel.type_id() == FUEL);
+    assert!(fuel.quantity() == 50);
+    assert!(fuel.volume() == VOL);
+    item::destroy(fuel, key);
     item::destroy_bag(bag);
     scenario.end();
 }
@@ -49,8 +88,8 @@ fun withdraw_over_balance_aborts() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
-    bag.deposit(item::new(key, 10, VOL, scenario.ctx()), key);
-    let _out = bag.withdraw(key, 11, VOL, scenario.ctx());
+    item::mint(&mut bag, key, 10);
+    let _out = item::withdraw(&mut bag, key, 11, VOL, scenario.ctx());
 
     abort
 }
@@ -58,26 +97,31 @@ fun withdraw_over_balance_aborts() {
 #[test]
 fun split_and_merge() {
     let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
-    let mut a = item::new(key, 100, VOL, scenario.ctx());
-    let b = a.split(40, scenario.ctx());
+    let mut a = withdraw_item(&mut bag, key, 100, scenario.ctx());
+    let b = item::split(&mut a, 40, scenario.ctx());
     assert!(a.quantity() == 60);
     assert!(b.quantity() == 40);
     assert!(b.volume() == VOL);
 
-    a.merge(b);
+    item::merge(&mut a, b);
     assert!(a.quantity() == 100);
 
     item::destroy(a, key);
+    item::destroy_bag(bag);
     scenario.end();
 }
 
 #[test, expected_failure(abort_code = item::EWrongType)]
 fun merge_wrong_type_aborts() {
     let mut scenario = ts::begin(@0xA);
-    let mut a = item::new(fuel_key(), 10, VOL, scenario.ctx());
-    let b = item::new(entity_key::new(FUEL + 1, tenant()), 10, VOL, scenario.ctx());
-    a.merge(b);
+    let mut bag = item::new_bag(scenario.ctx());
+    let key_a = fuel_key();
+    let key_b = entity_key::new(FUEL + 1, tenant());
+    let mut a = withdraw_item(&mut bag, key_a, 10, scenario.ctx());
+    let b = withdraw_item(&mut bag, key_b, 10, scenario.ctx());
+    item::merge(&mut a, b);
 
     abort
 }

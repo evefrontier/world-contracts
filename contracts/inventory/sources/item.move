@@ -2,9 +2,7 @@
 ///
 /// `Item` is a standalone object created on withdraw and consumed on deposit;
 /// `ItemBag` is at-rest balances keyed by `type_id`. Items are fungible: balances
-/// stack exactly by `type_id`. Mutators are `public(package)` — the inventory
-/// module composes them into its mint/burn/withdraw/deposit operations; nothing
-/// outside the package touches items directly.
+/// stack exactly by `type_id`.
 ///
 /// TODO: `volume` (and mass) are entity metadata to be added later. Move them
 /// into a dedicated metadata module (admin-maintained) and have capacity math
@@ -12,7 +10,8 @@
 module inventory::item;
 
 use core::entity_key::{Self, EntityKey};
-use sui::{event, table::{Self, Table}};
+use std::string::String;
+use sui::{event, linked_table::{Self, LinkedTable}};
 
 // === Errors ===
 
@@ -36,7 +35,7 @@ public struct Item has key, store {
 
 /// At-rest balances inside an inventory: `type_id -> quantity`.
 public struct ItemBag has store {
-    balances: Table<u64, u64>,
+    balances: LinkedTable<u64, u64>,
 }
 
 // === Events ===
@@ -82,12 +81,41 @@ public fun balance(bag: &ItemBag, type_id: u64): u64 {
 
 // === Package Functions ===
 
-/// Construct a fresh `Item`.
-public(package) fun new(game_id: EntityKey, quantity: u64, volume: u64, ctx: &mut TxContext): Item {
-    assert!(quantity > 0, EZeroQuantity);
+/// Create an empty balance store.
+public(package) fun new_bag(ctx: &mut TxContext): ItemBag {
+    ItemBag { balances: linked_table::new(ctx) }
+}
+
+/// Drop a bag and all its balances without emitting burn events.
+public(package) fun destroy_bag(bag: ItemBag) {
+    let ItemBag { balances } = bag;
+    linked_table::drop(balances);
+}
+
+/// Mint `quantity` of `game_id` directly into `bag` (game-to-chain bridge).
+public(package) fun mint(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
     let type_id = entity_key::id(&game_id);
+    assert!(quantity > 0, EZeroQuantity);
+    add_balance(bag, type_id, quantity);
     event::emit(ItemMinted { game_id, quantity });
-    Item { id: object::new(ctx), type_id, quantity, volume }
+}
+
+/// Burn `quantity` of `game_id` from `bag`, removing it from existence.
+public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
+    let type_id = entity_key::id(&game_id);
+    assert!(quantity > 0, EZeroQuantity);
+    subtract_balance(bag, type_id, quantity);
+    event::emit(ItemBurned { game_id, quantity });
+}
+
+/// Burn every balance in `bag` (one `ItemBurned` event per type), then destroy it.
+public(package) fun burn_all_and_destroy(bag: ItemBag, tenant: String) {
+    let ItemBag { mut balances } = bag;
+    while (!balances.is_empty()) {
+        let (type_id, quantity) = balances.pop_front();
+        event::emit(ItemBurned { game_id: entity_key::new(type_id, tenant), quantity });
+    };
+    balances.destroy_empty();
 }
 
 /// Destroy an `Item`, removing its quantity from existence.
@@ -98,29 +126,13 @@ public(package) fun destroy(item: Item, game_id: EntityKey) {
     id.delete();
 }
 
-/// Create an empty balance store.
-public(package) fun new_bag(ctx: &mut TxContext): ItemBag {
-    ItemBag { balances: table::new(ctx) }
-}
-
-/// Drop a bag and all its balances. Used on teardown, where remaining contents
-/// are jettisoned rather than returned.
-public(package) fun destroy_bag(bag: ItemBag) {
-    let ItemBag { balances } = bag;
-    balances.drop();
-}
-
 /// Deposit `item` into `bag`, merging into the existing balance for its type.
 public(package) fun deposit(bag: &mut ItemBag, item: Item, game_id: EntityKey) {
     let type_id = entity_key::id(&game_id);
     let Item { id, type_id: item_type_id, quantity, volume: _ } = item;
     assert!(type_id == item_type_id, EWrongType);
     id.delete();
-    if (bag.balances.contains(type_id)) {
-        *&mut bag.balances[type_id] = bag.balances[type_id] + quantity;
-    } else {
-        bag.balances.add(type_id, quantity);
-    };
+    add_balance(bag, type_id, quantity);
     event::emit(ItemDeposited { game_id, quantity });
 }
 
@@ -134,25 +146,9 @@ public(package) fun withdraw(
 ): Item {
     let type_id = entity_key::id(&game_id);
     assert!(quantity > 0, EZeroQuantity);
-    assert!(bag.balances.contains(type_id), EInsufficientQuantity);
-    let balance = &mut bag.balances[type_id];
-    assert!(*balance >= quantity, EInsufficientQuantity);
-    *balance = *balance - quantity;
-    if (*balance == 0) { bag.balances.remove(type_id); };
+    subtract_balance(bag, type_id, quantity);
     event::emit(ItemWithdrawn { game_id, quantity });
     Item { id: object::new(ctx), type_id, quantity, volume }
-}
-
-/// Burn `quantity` of `game_id` from `bag`, removing it from existence.
-public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
-    let type_id = entity_key::id(&game_id);
-    assert!(quantity > 0, EZeroQuantity);
-    assert!(bag.balances.contains(type_id), EInsufficientQuantity);
-    let balance = &mut bag.balances[type_id];
-    assert!(*balance >= quantity, EInsufficientQuantity);
-    *balance = *balance - quantity;
-    if (*balance == 0) { bag.balances.remove(type_id); };
-    event::emit(ItemBurned { game_id, quantity });
 }
 
 /// Split `quantity` off `item` into a new `Item` of the same type.
@@ -169,4 +165,24 @@ public(package) fun merge(item: &mut Item, other: Item) {
     assert!(item.type_id == type_id, EWrongType);
     id.delete();
     item.quantity = item.quantity + quantity;
+}
+
+// === Private Functions ===
+
+fun add_balance(bag: &mut ItemBag, type_id: u64, quantity: u64) {
+    if (bag.balances.contains(type_id)) {
+        *&mut bag.balances[type_id] = bag.balances[type_id] + quantity;
+    } else {
+        bag.balances.push_back(type_id, quantity);
+    };
+}
+
+fun subtract_balance(bag: &mut ItemBag, type_id: u64, quantity: u64) {
+    assert!(bag.balances.contains(type_id), EInsufficientQuantity);
+    let balance = &mut bag.balances[type_id];
+    assert!(*balance >= quantity, EInsufficientQuantity);
+    *balance = *balance - quantity;
+    if (*balance == 0) {
+        bag.balances.remove(type_id);
+    };
 }
