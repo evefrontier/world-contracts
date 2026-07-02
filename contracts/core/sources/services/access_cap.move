@@ -36,6 +36,12 @@ public struct AccessCap has key {
 /// `AccessCap` for the request's target entity".
 public struct Owner() has drop;
 
+/// Requirement marker: the caller must present *any* valid `AccessCap`. Records
+/// its `entity()` as the request's authorized entity for downstream routing
+/// (e.g. inventory owner-vs-ephemeral). Does not require the cap to own the
+/// target entity.
+public struct Caller() has drop;
+
 // === Events ===
 
 public struct AccessCapCreated has copy, drop {
@@ -49,10 +55,26 @@ public fun owner_requirement(): Requirement {
     requirement::from_config(option::none(), Owner())
 }
 
+/// Requirement satisfied by any valid `AccessCap`, recording its holder as the
+/// request actor. Use to gate actions open to any identified caller.
+public fun caller_requirement(): Requirement {
+    requirement::from_config(option::none(), Caller())
+}
+
 public fun verify(request: &mut Request, cap: &AccessCap) {
     assert!(cap.version == VERSION, EWrongVersion);
     let (_requirement, frame) = request.take_next(permit());
     assert!(request.entity_id() == option::some(cap.entity), ENotOwner);
+    request.set_authorized_id(cap.entity);
+    frame.destroy_empty_frame();
+}
+
+/// Satisfy the next (caller) requirement with any valid cap, recording
+/// `cap.entity()` as the request's authorized entity for downstream routing.
+public fun verify_caller(request: &mut Request, cap: &AccessCap) {
+    assert!(cap.version == VERSION, EWrongVersion);
+    let (_requirement, frame) = request.take_next(caller_permit());
+    request.set_authorized_id(cap.entity);
     frame.destroy_empty_frame();
 }
 
@@ -88,4 +110,8 @@ public(package) fun mint(entity: ID, owner: address, transferable: bool, ctx: &m
 
 fun permit(): Permit<Owner> {
     internal::permit<Owner>()
+}
+
+fun caller_permit(): Permit<Caller> {
+    internal::permit<Caller>()
 }

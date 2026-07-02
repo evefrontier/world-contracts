@@ -24,6 +24,10 @@ const ENoRequirements: vector<u8> = b"Request has no requirements to take";
 public struct Request {
     /// Entity this request targets, if any.
     entity_id: Option<ID>,
+    /// Entity id the presented `AccessCap` authorises, resolved by an access
+    /// handler mid-request, if any. Transient: it lives only for this request
+    /// and is dropped on `complete`.
+    authorized_id: Option<ID>,
     /// Outstanding requirements, stored in reverse of declaration order.
     requires: vector<Requirement>,
 }
@@ -73,6 +77,11 @@ public fun entity_id(r: &Request): Option<ID> {
     r.entity_id
 }
 
+/// Entity id the presented cap authorises, recorded by an access handler, if one ran.
+public fun authorized_id(r: &Request): Option<ID> {
+    r.authorized_id
+}
+
 public fun requires(r: &Request): &vector<Requirement> {
     &r.requires
 }
@@ -88,7 +97,13 @@ public fun next(r: &Request): &Requirement {
 // === Package Functions ===
 
 public(package) fun new(entity_id: Option<ID>, requires: vector<Requirement>): Request {
-    Request { entity_id, requires }
+    Request { entity_id, authorized_id: option::none(), requires }
+}
+
+/// Record the entity id the presented cap authorises, resolved by an access
+/// handler mid-request.
+public(package) fun set_authorized_id(request: &mut Request, authorized_id: ID) {
+    request.authorized_id = option::some(authorized_id);
 }
 
 /// Complete the request. Aborts unless every requirement has been satisfied.
@@ -101,7 +116,7 @@ public(package) fun complete(request: Request) {
 
 #[test_only]
 public fun new_for_testing(entity_id: Option<ID>, requires: vector<Requirement>): Request {
-    Request { entity_id, requires }
+    Request { entity_id, authorized_id: option::none(), requires }
 }
 
 #[test_only]
