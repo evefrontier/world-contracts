@@ -1,22 +1,28 @@
 /// Inventory module installed on an `Entity`.
 ///
-/// Gives an entity the ability to hold non-singleton items. It has 2 types
-/// of inventories :
+/// Holds one `Inventory` (balance area with its own volume cap) per accessor,
+/// keyed by the id the caller's `AccessCap` authorises (`req.authorized_id()`):
 ///
-/// - **main** — the entity's primary balance, with its own volume capacity.
-/// - **ephemeral** — a per-character balance
+/// - **main** — keyed by the entity's own id; the owner (a cap for this entity)
+///   operates here.
+/// - **ephemeral** — keyed by a non-owner's own entity id; lazily created so a
+///   player interacting with this entity has a personal, access-controlled space.
+///   A stop-gap until ship inventories are on-chain; removable without a schema
+///   change.
+///
+/// The access-cap service (`access_cap::verify_caller`) records the caller
+/// mid-request and each op routes on it. Every inventory action must therefore
+/// carry `access_cap::caller_requirement()`.
 ///
 /// # Item flow
 ///
 /// Items exist at-rest as balances in an `ItemBag` and in-transit as standalone
 /// `Item` objects (see `inventory::item`):
 ///
-/// - `game_item_to_chain_inventory`  — mints a balance directly into the main inventory.
-/// - `chain_item_to_game_inventory` — burns a balance from the main inventory
-/// - `withdraw`   — moves a balance out as an `Item` object.
-/// - `deposit`    — returns an `Item` object into the main inventory.
-///
-/// TODO: operations are currently ungated; attach owner/biometric requirements.
+/// - `game_item_to_chain_inventory` — mints a balance into the routed inventory.
+/// - `chain_item_to_game_inventory` — burns a balance from the routed inventory.
+/// - `withdraw` — moves a balance out as an `Item` object.
+/// - `deposit`  — returns an `Item` object into the routed inventory.
 module inventory::inventory;
 
 use core::{
@@ -44,6 +50,8 @@ const EItemTypeNotAllowed: vector<u8> = b"Item type not permitted by the require
 const EQuantityBelowMin: vector<u8> = b"Quantity below the required minimum";
 #[error(code = 5)]
 const EQuantityAboveMax: vector<u8> = b"Quantity above the allowed maximum";
+#[error(code = 6)]
+const ENotAuthorized: vector<u8> = b"No caller recorded; action must carry a caller requirement";
 
 // === Constants ===
 
@@ -58,11 +66,14 @@ public struct Inventory has store {
     items: ItemBag,
 }
 
-/// Module state installed on the entity.
+/// Module state installed on the entity. One `Inventory` per player, keyed by
+/// the authorized id: the entity's own id is the main inventory (created at
+/// install); any other key is a lazily-created ephemeral inventory.
 public struct StorageInventory has store {
-    main: Inventory,
     ephemeral_capacity: u64,
-    ephemeral: LinkedTable<ID, Inventory>,
+    // `LinkedTable`: so it can be iterated to burn every inventory
+    // on uninstall.
+    inventories: LinkedTable<ID, Inventory>,
 }
 
 /// Requirement config shared by deposit, withdraw, and bridge handlers.
@@ -90,74 +101,83 @@ public fun install(
     ephemeral_capacity: u64,
     ctx: &mut TxContext,
 ): Request {
-    let storage = StorageInventory {
-        main: Inventory { capacity: main_capacity, used: 0, items: item::new_bag(ctx) },
-        ephemeral_capacity,
-        ephemeral: linked_table::new(ctx),
-    };
+    let entity_id = entity.id();
+    let mut inventories = linked_table::new(ctx);
+    inventories.push_back(
+        entity_id,
+        Inventory { capacity: main_capacity, used: 0, items: item::new_bag(ctx) },
+    );
+    let storage = StorageInventory { ephemeral_capacity, inventories };
     entity.install(name, storage, VERSION, module_permit(), ctx)
 }
 
-/// Remove the storage module. Aborts if it was never installed. Burns all main
-/// and ephemeral inventory balances (emitting `ItemBurned` per type) so the
-/// game client is notified.
+/// Remove the storage module. Aborts if it was never installed. Burns every
+/// inventory's balances (emitting `ItemBurned` per type) so the game client is
+/// notified.
 public fun uninstall(entity: &mut Entity, name: String, ctx: &mut TxContext): Request {
     assert!(entity.has_module_with_type<StorageInventory>(name), EModuleMissing);
 
     let tenant = entity.key().tenant();
     let (inv_module, req) = entity.uninstall<StorageInventory>(name, module_permit(), ctx);
-    let StorageInventory { main, ephemeral_capacity: _, ephemeral } = inv_module.unwrap(
+    let StorageInventory { ephemeral_capacity: _, inventories } = inv_module.unwrap(
         module_permit(),
     );
-    burn_inventory(main, tenant);
-    burn_all_ephemeral(ephemeral, tenant);
+    burn_all_inventories(inventories, tenant);
     req
 }
 
-/// Game to chain bridge: mint `quantity` of `type_id` directly into the main
-/// owner inventory's balance.
+/// Game to chain bridge: mint `quantity` of `type_id` into the caller's routed
+/// inventory (owner to main, else ephemeral).
 public fun game_item_to_chain_inventory(
     entity: &mut Entity,
     req: &mut Request,
     type_id: u64,
     quantity: u64,
     volume: u64,
+    ctx: &mut TxContext,
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
+    let authorized_id = req.authorized_id().destroy_or!(abort ENotAuthorized);
     let (requirement, frame, storage) = take(entity, req, module_permit_bridge_in());
     enforce_rule(&requirement, type_id, quantity);
-    storage.main.mint_item(key, quantity, volume);
+    storage.ensure_inventory(authorized_id, ctx);
+    storage.inventory_mut(authorized_id).mint_item(key, quantity, volume);
     req.enqueue(frame);
 }
 
-/// Chain to game bridge: burn `quantity` of `type_id` from the main inventory
+/// Chain to game bridge: burn `quantity` of `type_id` from the caller's routed
+/// inventory.
 public fun chain_item_to_game_inventory(
     entity: &mut Entity,
     req: &mut Request,
     type_id: u64,
     quantity: u64,
+    ctx: &mut TxContext,
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
+    let authorized_id = req.authorized_id().destroy_or!(abort ENotAuthorized);
     let (requirement, frame, storage) = take(entity, req, module_permit_bridge_out());
     enforce_rule(&requirement, type_id, quantity);
-    let volume = storage.main.items.volume_of(type_id);
-    storage.main.items.burn(key, quantity);
-    storage.main.used = storage.main.used - volume * quantity;
+    storage.ensure_inventory(authorized_id, ctx);
+    storage.inventory_mut(authorized_id).burn_item(key, type_id, quantity);
     req.enqueue(frame);
 }
 
-/// Deposit a standalone `Item` into the main inventory.
-public fun deposit(entity: &mut Entity, req: &mut Request, item: Item) {
+/// Deposit a standalone `Item` into the caller's routed inventory.
+public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
     let type_id = item.type_id();
     let quantity = item.quantity();
     let tenant = entity.key().tenant();
+    let authorized_id = req.authorized_id().destroy_or!(abort ENotAuthorized);
     let (requirement, frame, storage) = take(entity, req, module_permit_deposit());
     enforce_rule(&requirement, type_id, quantity);
-    storage.main.deposit_item(item, tenant);
+    storage.ensure_inventory(authorized_id, ctx);
+    storage.inventory_mut(authorized_id).deposit_item(item, tenant);
     req.enqueue(frame);
 }
 
-/// Withdraw `quantity` of `type_id` from the main inventory as a fresh `Item`.
+/// Withdraw `quantity` of `type_id` from the caller's routed inventory as a
+/// fresh `Item`.
 public fun withdraw(
     entity: &mut Entity,
     req: &mut Request,
@@ -166,10 +186,11 @@ public fun withdraw(
     ctx: &mut TxContext,
 ): Item {
     let key = entity_key::new(type_id, entity.key().tenant());
+    let authorized_id = req.authorized_id().destroy_or!(abort ENotAuthorized);
     let (requirement, frame, storage) = take(entity, req, module_permit_withdrawal());
     enforce_rule(&requirement, type_id, quantity);
-    let item = storage.main.items.withdraw(key, quantity, ctx);
-    storage.main.used = storage.main.used - item.volume() * quantity;
+    storage.ensure_inventory(authorized_id, ctx);
+    let item = storage.inventory_mut(authorized_id).withdraw_item(key, type_id, quantity, ctx);
     req.enqueue(frame);
     item
 }
@@ -251,8 +272,14 @@ public fun ephemeral_capacity(storage: &StorageInventory): u64 {
     storage.ephemeral_capacity
 }
 
-public fun main(storage: &StorageInventory): &Inventory {
-    &storage.main
+/// True if an inventory exists for `authorized_id`.
+public fun has_inventory(storage: &StorageInventory, authorized_id: ID): bool {
+    storage.inventories.contains(authorized_id)
+}
+
+/// Read the inventory for `authorized_id` (the entity's own id for main).
+public fun inventory(storage: &StorageInventory, authorized_id: ID): &Inventory {
+    &storage.inventories[authorized_id]
 }
 
 // === Private Functions ===
@@ -284,12 +311,42 @@ fun enforce_rule(requirement: &Requirement, type_id: u64, quantity: u64) {
     max_quantity.do!(|m| assert!(quantity <= m, EQuantityAboveMax));
 }
 
+/// Ensure an inventory exists for `authorized_id`, lazily creating an ephemeral
+/// one if absent. The main inventory (entity's own id) always exists from
+/// install, so a missing key is by definition a non-owner's ephemeral inventory.
+fun ensure_inventory(storage: &mut StorageInventory, authorized_id: ID, ctx: &mut TxContext) {
+    if (!storage.inventories.contains(authorized_id)) {
+        storage
+            .inventories
+            .push_back(
+                authorized_id,
+                Inventory {
+                    capacity: storage.ephemeral_capacity,
+                    used: 0,
+                    items: item::new_bag(ctx),
+                },
+            );
+    };
+}
+
+/// Borrow the inventory for `authorized_id`.
+fun inventory_mut(storage: &mut StorageInventory, authorized_id: ID): &mut Inventory {
+    &mut storage.inventories[authorized_id]
+}
+
 /// Mint a balance into an inventory, enforcing its volume capacity.
 fun mint_item(inv: &mut Inventory, game_id: entity_key::EntityKey, quantity: u64, volume: u64) {
     let added = volume * quantity;
     assert!(inv.used + added <= inv.capacity, EOverCapacity);
     inv.used = inv.used + added;
     inv.items.mint(game_id, quantity, volume);
+}
+
+/// Burn a balance from an inventory, freeing its volume (chain-to-game bridge).
+fun burn_item(inv: &mut Inventory, game_id: entity_key::EntityKey, type_id: u64, quantity: u64) {
+    let volume = inv.items.volume_of(type_id);
+    inv.used = inv.used - volume * quantity;
+    inv.items.burn(game_id, quantity);
 }
 
 /// Deposit an item into an inventory, enforcing its volume capacity.
@@ -300,17 +357,30 @@ fun deposit_item(inv: &mut Inventory, item: Item, tenant: String) {
     inv.items.deposit(item, tenant);
 }
 
+/// Withdraw a balance from an inventory as a fresh `Item`, freeing its volume.
+fun withdraw_item(
+    inv: &mut Inventory,
+    game_id: entity_key::EntityKey,
+    type_id: u64,
+    quantity: u64,
+    ctx: &mut TxContext,
+): Item {
+    let volume = inv.items.volume_of(type_id);
+    inv.used = inv.used - volume * quantity;
+    inv.items.withdraw(game_id, quantity, ctx)
+}
+
 fun burn_inventory(inv: Inventory, tenant: String) {
     let Inventory { items, capacity: _, used: _ } = inv;
     item::burn_all_and_destroy(items, tenant);
 }
 
-fun burn_all_ephemeral(mut ephemeral: LinkedTable<ID, Inventory>, tenant: String) {
-    while (!ephemeral.is_empty()) {
-        let (_, inv) = ephemeral.pop_front();
+fun burn_all_inventories(mut inventories: LinkedTable<ID, Inventory>, tenant: String) {
+    while (!inventories.is_empty()) {
+        let (_, inv) = inventories.pop_front();
         burn_inventory(inv, tenant);
     };
-    ephemeral.destroy_empty();
+    inventories.destroy_empty();
 }
 
 fun module_permit(): Permit<StorageInventory> {
