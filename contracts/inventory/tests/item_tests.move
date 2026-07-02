@@ -4,7 +4,7 @@ module inventory::item_tests;
 use core::entity_key;
 use inventory::item;
 use std::string;
-use sui::test_scenario as ts;
+use sui::{event, test_scenario as ts};
 
 const FUEL: u64 = 100;
 const VOL: u64 = 10;
@@ -19,8 +19,8 @@ fun withdraw_item(
     quantity: u64,
     ctx: &mut TxContext,
 ): item::Item {
-    item::mint(bag, key, quantity);
-    item::withdraw(bag, key, quantity, VOL, ctx)
+    item::mint(bag, key, quantity, VOL);
+    item::withdraw(bag, key, quantity, ctx)
 }
 
 #[test]
@@ -29,7 +29,7 @@ fun bag_mint_adds_balance() {
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
 
-    item::mint(&mut bag, key, 25);
+    item::mint(&mut bag, key, 25, VOL);
     assert!(item::balance(&bag, FUEL) == 25);
 
     item::destroy_bag(bag);
@@ -42,8 +42,10 @@ fun burn_all_clears_bag() {
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
 
-    item::mint(&mut bag, key, 50);
+    item::mint(&mut bag, key, 50, VOL);
+    assert!(item::balance(&bag, FUEL) == 50);
     item::burn_all_and_destroy(bag, tenant());
+    assert!(event::events_by_type<item::ItemBurned>().length() == 1);
     scenario.end();
 }
 
@@ -54,12 +56,12 @@ fun bag_deposit_merges_by_type() {
     let key = fuel_key();
 
     let item_a = withdraw_item(&mut bag, key, 30, scenario.ctx());
-    item::deposit(&mut bag, item_a, key);
+    item::deposit(&mut bag, item_a, tenant());
     let item_b = withdraw_item(&mut bag, key, 20, scenario.ctx());
-    item::deposit(&mut bag, item_b, key);
+    item::deposit(&mut bag, item_b, tenant());
     assert!(item::balance(&bag, FUEL) == 50);
 
-    let out = item::withdraw(&mut bag, key, 15, VOL, scenario.ctx());
+    let out = item::withdraw(&mut bag, key, 15, scenario.ctx());
     assert!(out.quantity() == 15);
     assert!(out.volume() == VOL);
     assert!(item::balance(&bag, FUEL) == 35);
@@ -88,8 +90,19 @@ fun withdraw_over_balance_aborts() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
-    item::mint(&mut bag, key, 10);
-    let _out = item::withdraw(&mut bag, key, 11, VOL, scenario.ctx());
+    item::mint(&mut bag, key, 10, VOL);
+    let _out = item::withdraw(&mut bag, key, 11, scenario.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::EVolumeMismatch)]
+fun mint_mismatched_volume_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let key = fuel_key();
+    item::mint(&mut bag, key, 10, VOL);
+    item::mint(&mut bag, key, 10, VOL + 1);
 
     abort
 }
