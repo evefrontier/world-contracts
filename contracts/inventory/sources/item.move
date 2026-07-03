@@ -4,9 +4,9 @@
 /// `ItemBag` is at-rest balances keyed by `type_id`. Items are fungible: balances
 /// stack exactly by `type_id`.
 ///
-/// TODO: volume (and mass) are entity metadata. Move them into a dedicated
-/// admin-maintained metadata module and read volume from there instead of
-/// carrying it on the bag.
+/// TODO: volume (and mass) are per-type metadata, not per-balance. Move them to
+/// an admin-registered item type (source of truth) and read volume from there
+/// instead of carrying it on the bag. Pending team discussion.
 module inventory::item;
 
 use core::entity_key::{Self, EntityKey};
