@@ -373,8 +373,8 @@ fun mint_item(inv: &mut Inventory, game_id: entity_key::EntityKey, quantity: u64
 /// Burn a balance from an inventory, freeing its volume (chain-to-game bridge).
 fun burn_item(inv: &mut Inventory, game_id: entity_key::EntityKey, type_id: u64, quantity: u64) {
     let volume = inv.items.volume_of(type_id);
-    inv.used = inv.used - volume * quantity;
     inv.items.burn(game_id, quantity);
+    inv.used = inv.used - volume * quantity;
 }
 
 /// Deposit an item into an inventory, enforcing its volume capacity.
@@ -394,8 +394,9 @@ fun withdraw_item(
     ctx: &mut TxContext,
 ): Item {
     let volume = inv.items.volume_of(type_id);
+    let item = inv.items.withdraw(game_id, quantity, ctx);
     inv.used = inv.used - volume * quantity;
-    inv.items.withdraw(game_id, quantity, ctx)
+    item
 }
 
 fun burn_inventory(inv: Inventory, tenant: String) {
