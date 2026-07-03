@@ -1,10 +1,11 @@
 /// Inventory module installed on an `Entity`. Holds one `Inventory` (a balance
 /// area with its own volume cap) per accessor, keyed by entity id:
 ///
-/// - **main** — keyed by the entity's own id, created at install.
-///   only the owner can add a main inv requirement on an action, so
-///   satisfying the action grants access to main inv. Lets an owner-configured swap
-///   run in one player-signed transaction with no owner cap at call time.
+/// - **main** — keyed by the entity's own id, created at install. Only the owner
+///   can configure actions (`enable_action` is owner-gated), so a main
+///   requirement on an action is trusted by construction and satisfying the
+///   action grants access to main inv. Lets an owner-configured swap run in one
+///   player-signed transaction with no owner cap at call time.
 /// - **ephemeral** — keyed by the caller's id (`req.authorized_id()`), created on
 ///   first use, giving a player a personal space. Stop-gap until ship
 ///   inventories are on-chain; removable without a schema change.

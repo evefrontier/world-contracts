@@ -2,6 +2,7 @@
 module core::entity_tests;
 
 use core::{
+    access_cap::{Self, AccessCap},
     action,
     admin_service,
     entity,
@@ -203,18 +204,59 @@ fun enable_then_disable_action() {
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
-    let ctx = scenario.ctx();
-
-    let req = e.enable_action(string::utf8(b"act"), action::new(vector[]), ctx);
+    let mut req = e.mint_access(@0xB, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
-
-    let req = e.disable_action(string::utf8(b"act"), ctx);
-    e.complete_request(req);
-
+    let e_id = e.id();
     entity::share(e);
     ts::return_shared(acl);
     ts::return_shared(registry);
+
+    // Owner enables then disables the action.
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+
+    let mut req = e.disable_action(string::utf8(b"act"), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
     scenario.end();
+}
+
+#[test, expected_failure(abort_code = access_cap::ENotOwner)]
+fun enable_action_by_non_owner_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e1 = claim(&mut registry, &acl, 1, scenario.ctx());
+    let e1_id = e1.id();
+    entity::share(e1);
+    // Mint entity two's cap to @0xB: a cap that does not own entity one.
+    let mut e2 = claim(&mut registry, &acl, 2, scenario.ctx());
+    let mut req = e2.mint_access(@0xB, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e2.complete_request(req);
+    entity::share(e2);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    // @0xB tries to configure entity one with the wrong entity's cap.
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e1 = ts::take_shared_by_id<entity::Entity>(&scenario, e1_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e1.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+
+    abort
 }
 
 #[test, expected_failure(abort_code = entity::EActionExists)]
@@ -226,11 +268,21 @@ fun enable_duplicate_action_aborts() {
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
-    let ctx = scenario.ctx();
-
-    let req = e.enable_action(string::utf8(b"act"), action::new(vector[]), ctx);
+    let mut req = e.mint_access(@0xB, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
-    let req = e.enable_action(string::utf8(b"act"), action::new(vector[]), ctx);
+    let e_id = e.id();
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+    let req = e.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
     e.complete_request(req);
 
     abort

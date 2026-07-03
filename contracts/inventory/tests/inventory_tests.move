@@ -24,15 +24,23 @@ const VOL: u64 = 2;
 
 fun unit_name(): String { string::utf8(b"SU-01") }
 
-/// Enable an action gated by a caller requirement plus `item_req`.
-fun enable(e: &mut Entity, name: vector<u8>, item_req: Requirement, ctx: &mut TxContext) {
+/// Enable an action gated by a caller requirement plus `item_req`. The owner
+/// signs with their `AccessCap` (enable is owner-gated).
+fun enable(
+    e: &mut Entity,
+    name: vector<u8>,
+    item_req: Requirement,
+    owner_cap: &AccessCap,
+    ctx: &mut TxContext,
+) {
     let act = action::new(vector[access_cap::caller_requirement(), item_req]);
-    let req = e.enable_action(string::utf8(name), act, ctx);
+    let mut req = e.enable_action(string::utf8(name), act, ctx);
+    access_cap::verify(&mut req, owner_cap);
     e.complete_request(req);
 }
 
-/// Claim an entity, install an inventory, mint the owner (transferable) cap to
-/// OWNER, and expose a main and an ephemeral action set.
+/// Claim an entity, install an inventory, and mint the owner (transferable) cap
+/// to OWNER. Admin-only; the owner configures actions separately.
 fun build_storage_unit(
     scenario: &mut ts::Scenario,
     registry: &mut ObjectRegistry,
@@ -50,57 +58,87 @@ fun build_storage_unit(
     admin_service::verify_admin(&mut req, acl, scenario.ctx());
     e.complete_request(req);
 
+    e
+}
+
+/// Owner enables `act` on the shared entity, signing with their cap. Runs in its
+/// own OWNER tx and leaves the entity shared.
+fun owner_enable(scenario: &mut ts::Scenario, e_id: ID, name: vector<u8>, act: action::Action) {
+    ts::next_tx(scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let mut req = e.enable_action(string::utf8(name), act, scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(e);
+}
+
+/// Owner exposes the standard main + ephemeral action set on the shared entity.
+fun configure_default_actions(scenario: &mut ts::Scenario, e_id: ID) {
+    ts::next_tx(scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
     let name = unit_name();
     let any = option::none();
     enable(
         &mut e,
         b"bridge_in",
         inventory::bridge_in_requirement(name, false, any, any, any),
+        &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"bridge_out",
         inventory::bridge_out_requirement(name, false, any, any, any),
+        &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"deposit",
         inventory::deposit_requirement(name, false, any, any, any),
+        &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"withdraw",
         inventory::withdraw_requirement(name, false, any, any, any),
+        &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_bridge_in",
         inventory::bridge_in_requirement(name, true, any, any, any),
+        &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_bridge_out",
         inventory::bridge_out_requirement(name, true, any, any, any),
+        &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_deposit",
         inventory::deposit_requirement(name, true, any, any, any),
+        &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_withdraw",
         inventory::withdraw_requirement(name, true, any, any, any),
+        &cap,
         scenario.ctx(),
     );
-    e
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(e);
 }
 
 /// Create a separate "character" entity and mint a soulbound cap to PLAYER.
@@ -222,6 +260,7 @@ fun owner_interaction_main_inventory() {
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -249,10 +288,16 @@ fun main_inv_interaction_without_caller() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let mut e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
+    let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
     // A main action with no caller requirement: any player can execute it.
-    let req = e.enable_action(
-        string::utf8(b"public_bridge"),
+    owner_enable(
+        &mut scenario,
+        e_id,
+        b"public_bridge",
         action::new(vector[
             inventory::bridge_in_requirement(
                 unit_name(),
@@ -262,13 +307,7 @@ fun main_inv_interaction_without_caller() {
                 option::none(),
             ),
         ]),
-        scenario.ctx(),
     );
-    e.complete_request(req);
-    let e_id = e.id();
-    e.share();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
 
     // PLAYER (not the owner, no cap presented) still lands in main.
     ts::next_tx(&mut scenario, PLAYER);
@@ -297,6 +336,7 @@ fun player_interaction_ephemeral_inventory() {
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id);
 
     ts::next_tx(&mut scenario, PLAYER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -324,47 +364,51 @@ fun swap_moves_between_main_and_ephemeral_single_signer() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let mut e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 1000);
+    let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 1000);
     let name = unit_name();
-    // Owner-configured swap: give a fuel from your ephemeral, get a lens from main.
-    let swap = action::new(vector[
-        access_cap::caller_requirement(),
-        inventory::withdraw_requirement(
-            name,
-            true,
-            option::some(FUEL),
-            option::none(),
-            option::none(),
-        ),
-        inventory::deposit_requirement(
-            name,
-            false,
-            option::some(FUEL),
-            option::none(),
-            option::none(),
-        ),
-        inventory::withdraw_requirement(
-            name,
-            false,
-            option::some(LENS),
-            option::none(),
-            option::none(),
-        ),
-        inventory::deposit_requirement(
-            name,
-            true,
-            option::some(LENS),
-            option::none(),
-            option::none(),
-        ),
-    ]);
-    let req = e.enable_action(string::utf8(b"swap"), swap, scenario.ctx());
-    e.complete_request(req);
     let e_id = e.id();
     let player_id = create_player(&mut scenario, &mut registry, &acl);
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id);
+    // Owner-configured swap: give a fuel from your ephemeral, get a lens from main.
+    owner_enable(
+        &mut scenario,
+        e_id,
+        b"swap",
+        action::new(vector[
+            access_cap::caller_requirement(),
+            inventory::withdraw_requirement(
+                name,
+                true,
+                option::some(FUEL),
+                option::none(),
+                option::none(),
+            ),
+            inventory::deposit_requirement(
+                name,
+                false,
+                option::some(FUEL),
+                option::none(),
+                option::none(),
+            ),
+            inventory::withdraw_requirement(
+                name,
+                false,
+                option::some(LENS),
+                option::none(),
+                option::none(),
+            ),
+            inventory::deposit_requirement(
+                name,
+                true,
+                option::some(LENS),
+                option::none(),
+                option::none(),
+            ),
+        ]),
+    );
 
     // Owner stocks a lens in main.
     ts::next_tx(&mut scenario, OWNER);
@@ -408,10 +452,16 @@ fun ephemeral_interaction_without_caller_aborts() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let mut e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 1000);
+    let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 1000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
     // Ephemeral action missing the caller requirement -> no recorded caller.
-    let req = e.enable_action(
-        string::utf8(b"eph_uncalled"),
+    owner_enable(
+        &mut scenario,
+        e_id,
+        b"eph_uncalled",
         action::new(vector[
             inventory::bridge_in_requirement(
                 unit_name(),
@@ -421,10 +471,10 @@ fun ephemeral_interaction_without_caller_aborts() {
                 option::none(),
             ),
         ]),
-        scenario.ctx(),
     );
-    e.complete_request(req);
 
+    ts::next_tx(&mut scenario, PLAYER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let mut req = e.interact(string::utf8(b"eph_uncalled"), scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL, scenario.ctx());
@@ -445,6 +495,7 @@ fun bridge_in_over_capacity_aborts() {
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -462,23 +513,26 @@ fun bridge_in_wrong_type_aborts() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let mut e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
-    enable(
-        &mut e,
-        b"bridge_fuel",
-        inventory::bridge_in_requirement(
-            unit_name(),
-            false,
-            option::some(FUEL),
-            option::none(),
-            option::none(),
-        ),
-        scenario.ctx(),
-    );
+    let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
     let e_id = e.id();
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
+    owner_enable(
+        &mut scenario,
+        e_id,
+        b"bridge_fuel",
+        action::new(vector[
+            access_cap::caller_requirement(),
+            inventory::bridge_in_requirement(
+                unit_name(),
+                false,
+                option::some(FUEL),
+                option::none(),
+                option::none(),
+            ),
+        ]),
+    );
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -504,6 +558,8 @@ fun uninstall_burns_all_inventories() {
     let _player_id = create_player(&mut scenario, &mut registry, &acl);
     e.share();
     ts::return_shared(registry);
+    ts::return_shared(acl);
+    configure_default_actions(&mut scenario, e_id);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -521,6 +577,7 @@ fun uninstall_burns_all_inventories() {
 
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let acl = take_acl(&scenario);
     let mut req = inventory::uninstall(&mut e, unit_name(), scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);

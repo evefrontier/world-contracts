@@ -161,7 +161,9 @@ public fun uninstall<T: store>(
     (m, req)
 }
 
-/// Expose a programmable `action` under `name`.
+/// Expose a programmable `action` under `name`. Owner-gated: only the entity's
+/// owner (holder of its `AccessCap`) may configure which actions exist and their
+/// requirements, so a requirement on an action is trusted by construction.
 public fun enable_action(
     entity: &mut Entity,
     name: String,
@@ -175,10 +177,13 @@ public fun enable_action(
     actions.insert(name, action);
 
     entity.lock();
-    request::new(option::some(entity.id.to_inner()), vector[])
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[access_cap::owner_requirement()],
+    )
 }
 
-/// Remove a previously-exposed action.
+/// Remove a previously-exposed action. Owner-gated, like `enable_action`.
 public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContext): Request {
     assert!(entity.version == VERSION, EWrongVersion);
 
@@ -187,7 +192,10 @@ public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContex
     let (_, _action) = actions.remove(&name);
 
     entity.lock();
-    request::new(option::some(entity.id.to_inner()), vector[])
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[access_cap::owner_requirement()],
+    )
 }
 
 /// Interact with a registered action, producing the `Request` to satisfy. A
