@@ -1,28 +1,21 @@
-/// Inventory module installed on an `Entity`.
+/// Inventory module installed on an `Entity`. Holds one `Inventory` (a balance
+/// area with its own volume cap) per accessor, keyed by entity id:
 ///
-/// Holds one `Inventory` (balance area with its own volume cap) per accessor,
-/// keyed by the id the caller's `AccessCap` authorises (`req.authorized_id()`):
+/// - **main** — keyed by the entity's own id, created at install.
+///   only the owner can add a main inv requirement on an action, so
+///   satisfying the action grants access to main inv. Lets an owner-configured swap
+///   run in one player-signed transaction with no owner cap at call time.
+/// - **ephemeral** — keyed by the caller's id (`req.authorized_id()`), created on
+///   first use, giving a player a personal space. Stop-gap until ship
+///   inventories are on-chain; removable without a schema change.
 ///
-/// - **main** — keyed by the entity's own id; the owner (a cap for this entity)
-///   operates here.
-/// - **ephemeral** — keyed by a non-owner's own entity id; lazily created so a
-///   player interacting with this entity has a personal, access-controlled space.
-///   A stop-gap until ship inventories are on-chain; removable without a schema
-///   change.
+/// Each requirement carries an `ephemeral` flag; the handler routes on it.
+/// Ephemeral requirements also need `access_cap::caller_requirement()` so the
+/// caller is recorded.
 ///
-/// The access-cap service (`access_cap::verify_caller`) records the caller
-/// mid-request and each op routes on it. Every inventory action must therefore
-/// carry `access_cap::caller_requirement()`.
-///
-/// # Item flow
-///
-/// Items exist at-rest as balances in an `ItemBag` and in-transit as standalone
-/// `Item` objects (see `inventory::item`):
-///
-/// - `game_item_to_chain_inventory` — mints a balance into the routed inventory.
-/// - `chain_item_to_game_inventory` — burns a balance from the routed inventory.
-/// - `withdraw` — moves a balance out as an `Item` object.
-/// - `deposit`  — returns an `Item` object into the routed inventory.
+/// Items are at-rest as balances in an `ItemBag` and in-transit as `Item`
+/// objects (see `inventory::item`): the two bridges mint/burn balances against
+/// the game, `withdraw`/`deposit` move balances out/in as `Item` objects.
 module inventory::inventory;
 
 use core::{
@@ -77,7 +70,10 @@ public struct StorageInventory has store {
 }
 
 /// Requirement config shared by deposit, withdraw, and bridge handlers.
+/// `ephemeral` selects the target: false = main, true = the caller's ephemeral
+/// inventory.
 public struct ItemRequirement has drop {
+    ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
@@ -137,11 +133,13 @@ public fun game_item_to_chain_inventory(
     ctx: &mut TxContext,
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
-    let authorized_id = req.authorized_id().destroy_or!(abort ENotAuthorized);
+    let entity_id = entity.id();
+    let caller = req.authorized_id();
     let (requirement, frame, storage) = take(entity, req, module_permit_bridge_in());
-    enforce_rule(&requirement, type_id, quantity);
-    storage.ensure_inventory(authorized_id, ctx);
-    storage.inventory_mut(authorized_id).mint_item(key, quantity, volume);
+    let ephemeral = enforce_rule(&requirement, type_id, quantity);
+    let inv_key = route_key(caller, entity_id, ephemeral);
+    storage.ensure_inventory(inv_key, ctx);
+    storage.inventory_mut(inv_key).mint_item(key, quantity, volume);
     req.enqueue(frame);
 }
 
@@ -155,11 +153,13 @@ public fun chain_item_to_game_inventory(
     ctx: &mut TxContext,
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
-    let authorized_id = req.authorized_id().destroy_or!(abort ENotAuthorized);
+    let entity_id = entity.id();
+    let caller = req.authorized_id();
     let (requirement, frame, storage) = take(entity, req, module_permit_bridge_out());
-    enforce_rule(&requirement, type_id, quantity);
-    storage.ensure_inventory(authorized_id, ctx);
-    storage.inventory_mut(authorized_id).burn_item(key, type_id, quantity);
+    let ephemeral = enforce_rule(&requirement, type_id, quantity);
+    let inv_key = route_key(caller, entity_id, ephemeral);
+    storage.ensure_inventory(inv_key, ctx);
+    storage.inventory_mut(inv_key).burn_item(key, type_id, quantity);
     req.enqueue(frame);
 }
 
@@ -168,11 +168,13 @@ public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut
     let type_id = item.type_id();
     let quantity = item.quantity();
     let tenant = entity.key().tenant();
-    let authorized_id = req.authorized_id().destroy_or!(abort ENotAuthorized);
+    let entity_id = entity.id();
+    let caller = req.authorized_id();
     let (requirement, frame, storage) = take(entity, req, module_permit_deposit());
-    enforce_rule(&requirement, type_id, quantity);
-    storage.ensure_inventory(authorized_id, ctx);
-    storage.inventory_mut(authorized_id).deposit_item(item, tenant);
+    let ephemeral = enforce_rule(&requirement, type_id, quantity);
+    let inv_key = route_key(caller, entity_id, ephemeral);
+    storage.ensure_inventory(inv_key, ctx);
+    storage.inventory_mut(inv_key).deposit_item(item, tenant);
     req.enqueue(frame);
 }
 
@@ -186,64 +188,71 @@ public fun withdraw(
     ctx: &mut TxContext,
 ): Item {
     let key = entity_key::new(type_id, entity.key().tenant());
-    let authorized_id = req.authorized_id().destroy_or!(abort ENotAuthorized);
+    let entity_id = entity.id();
+    let caller = req.authorized_id();
     let (requirement, frame, storage) = take(entity, req, module_permit_withdrawal());
-    enforce_rule(&requirement, type_id, quantity);
-    storage.ensure_inventory(authorized_id, ctx);
-    let item = storage.inventory_mut(authorized_id).withdraw_item(key, type_id, quantity, ctx);
+    let ephemeral = enforce_rule(&requirement, type_id, quantity);
+    let inv_key = route_key(caller, entity_id, ephemeral);
+    storage.ensure_inventory(inv_key, ctx);
+    let item = storage.inventory_mut(inv_key).withdraw_item(key, type_id, quantity, ctx);
     req.enqueue(frame);
     item
 }
 
-/// Build a bridge-in requirement targeting module `name`.
+/// Build a bridge-in requirement on module `name`. `ephemeral` selects the
+/// target: false = main, true = the caller's ephemeral inventory.
 public fun bridge_in_requirement(
     name: String,
+    ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(name),
-        BridgeIn(ItemRequirement { type_id, min_quantity, max_quantity }),
+        BridgeIn(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a bridge-out requirement targeting module `name`.
+/// Build a bridge-out requirement on module `name`. See `bridge_in_requirement`.
 public fun bridge_out_requirement(
     name: String,
+    ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(name),
-        BridgeOut(ItemRequirement { type_id, min_quantity, max_quantity }),
+        BridgeOut(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a deposit requirement targeting module `name`.
+/// Build a deposit requirement on module `name`. See `bridge_in_requirement`.
 public fun deposit_requirement(
     name: String,
+    ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(name),
-        Deposit(ItemRequirement { type_id, min_quantity, max_quantity }),
+        Deposit(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a withdraw requirement targeting module `name`.
+/// Build a withdraw requirement on module `name`. See `bridge_in_requirement`.
 public fun withdraw_requirement(
     name: String,
+    ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(name),
-        Withdrawal(ItemRequirement { type_id, min_quantity, max_quantity }),
+        Withdrawal(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
@@ -299,16 +308,34 @@ fun take<T: drop>(
     (requirement, frame, storage)
 }
 
-/// Decode the `ItemRequirement` config and assert the operation satisfies it.
-/// Mirrors the field order in `ItemRequirement`: type_id, min, max.
-fun enforce_rule(requirement: &Requirement, type_id: u64, quantity: u64) {
+fun rule(
+    ephemeral: bool,
+    type_id: Option<u64>,
+    min_quantity: Option<u64>,
+    max_quantity: Option<u64>,
+): ItemRequirement {
+    ItemRequirement { ephemeral, type_id, min_quantity, max_quantity }
+}
+
+/// Decode the `ItemRequirement` config, assert the operation satisfies it, and
+/// return the `ephemeral` target flag. Mirrors field order: ephemeral, type_id,
+/// min, max.
+fun enforce_rule(requirement: &Requirement, type_id: u64, quantity: u64): bool {
     let mut b = bcs::new(requirement.data());
+    let ephemeral = b.peel_bool();
     let allowed_type = b.peel_option_u64();
     let min_quantity = b.peel_option_u64();
     let max_quantity = b.peel_option_u64();
     allowed_type.do!(|t| assert!(type_id == t, EItemTypeNotAllowed));
     min_quantity.do!(|m| assert!(quantity >= m, EQuantityBelowMin));
     max_quantity.do!(|m| assert!(quantity <= m, EQuantityAboveMax));
+    ephemeral
+}
+
+/// Resolve the routing key: the entity's own id for main, or the recorded
+/// caller for an ephemeral target (aborts if no caller was recorded).
+fun route_key(caller: Option<ID>, entity_id: ID, ephemeral: bool): ID {
+    if (ephemeral) caller.destroy_or!(abort ENotAuthorized) else entity_id
 }
 
 /// Ensure an inventory exists for `authorized_id`, lazily creating an ephemeral
