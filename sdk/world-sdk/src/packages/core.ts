@@ -2,6 +2,7 @@ import { bcs } from '@mysten/sui/bcs'
 import type {
   Transaction,
   TransactionArgument,
+  TransactionObjectArgument,
   TransactionResult,
 } from '@mysten/sui/transactions'
 import { deriveObjectID } from '@mysten/sui/utils'
@@ -143,6 +144,117 @@ export function mintAccess(
   completeRequest(tx, config, entity, request)
 }
 
+/** Build a caller requirement: satisfied by any valid `AccessCap`, recording its holder. */
+export function callerRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::access_cap::caller_requirement`,
+  })
+}
+
+/** Satisfy an owner requirement on `request` by presenting the entity's `AccessCap`. */
+export function verifyOwner(
+  tx: Transaction,
+  config: WorldConfig,
+  request: TransactionArgument,
+  cap: string | TransactionArgument,
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::access_cap::verify`,
+    arguments: [request, capArg(tx, cap)],
+  })
+}
+
+/**
+ * Satisfy a caller requirement on `request` with any valid `AccessCap`, recording
+ * its entity as the request actor (drives inventory owner-vs-ephemeral routing).
+ */
+export function verifyCaller(
+  tx: Transaction,
+  config: WorldConfig,
+  request: TransactionArgument,
+  cap: string | TransactionArgument,
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::access_cap::verify_caller`,
+    arguments: [request, capArg(tx, cap)],
+  })
+}
+
+/** Satisfy a proximity requirement. `proof`/location hash defaults to empty. */
+export function verifyProximity(
+  tx: Transaction,
+  config: WorldConfig,
+  request: TransactionArgument,
+  proof: number[] = [],
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::location_service::verify_proximity`,
+    arguments: [request, tx.pure.vector('u8', proof)],
+  })
+}
+
+/** Open an interaction with a registered action, returning the `Request` to satisfy. */
+export function interact(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  action: string,
+): TransactionResult {
+  return tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::interact`,
+    arguments: [entity, tx.pure.string(action)],
+  })
+}
+
+/**
+ * Expose an action under `name` from `requirements` and close its owner-gated
+ * request with `ownerCap`. Requirements resolve in the order given.
+ */
+export function enableAction(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  name: string,
+  requirements: TransactionObjectArgument[],
+  ownerCap: string | TransactionArgument,
+): void {
+  const core = mvrName(config.env, CORE_PACKAGE)
+  const action = tx.moveCall({
+    target: `${core}::action::new`,
+    arguments: [
+      tx.makeMoveVec({
+        type: `${core}::requirement::Requirement`,
+        elements: requirements,
+      }),
+    ],
+  })
+  const request = tx.moveCall({
+    target: `${core}::entity::enable_action`,
+    arguments: [entity, tx.pure.string(name), action],
+  })
+  verifyOwner(tx, config, request, ownerCap)
+  completeRequest(tx, config, entity, request)
+}
+
+/** Remove a previously-exposed action, closing its owner-gated request. */
+export function disableAction(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  name: string,
+  ownerCap: string | TransactionArgument,
+): void {
+  const request = tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::disable_action`,
+    arguments: [entity, tx.pure.string(name)],
+  })
+  verifyOwner(tx, config, request, ownerCap)
+  completeRequest(tx, config, entity, request)
+}
+
 /** Add admins to the shared `AdminACL`. Signer must already be an admin. */
 export function addAdmins(
   tx: Transaction,
@@ -171,6 +283,10 @@ export function addSponsors(
       tx.pure.vector('address', sponsors),
     ],
   })
+}
+
+function capArg(tx: Transaction, cap: string | TransactionArgument) {
+  return typeof cap === 'string' ? tx.object(cap) : cap
 }
 
 function sharedRef(
