@@ -292,6 +292,15 @@ public fun inventory(storage: &StorageInventory, authorized_id: ID): &Inventory 
     &storage.inventories[authorized_id]
 }
 
+/// Current balance of `type_id` in the inventory routed to `authorized_id`
+/// (the entity's own id for main, a caller's id for ephemeral). 0 if that
+/// inventory does not exist yet. Read-only; for clients querying state.
+public fun balance_of(entity: &Entity, name: String, authorized_id: ID, type_id: u64): u64 {
+    let storage = storage(entity, name);
+    if (!storage.has_inventory(authorized_id)) return 0;
+    storage.inventory(authorized_id).items.balance(type_id)
+}
+
 // === Private Functions ===
 
 /// Borrow the installed module mid-interaction, popping the next requirement

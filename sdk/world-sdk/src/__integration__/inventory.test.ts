@@ -1,11 +1,8 @@
 import { fileURLToPath } from 'node:url'
-import 'dotenv/config'
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { createWorldClient } from '../client.js'
 import { loadWorldConfig } from '../config/load.js'
-import type { WorldConfig } from '../config/types.js'
 import {
   callerRequirement,
   completeRequest,
@@ -25,20 +22,21 @@ import {
   withdraw,
   withdrawRequirement,
 } from '../packages/inventory.js'
+import {
+  capObjectId,
+  expectSuccess,
+  readBalance,
+  requirePackage,
+  signer,
+} from './helpers.js'
 
-// Create a storage-unit entity, mint the owner cap to a plain address,
-// enable owner deposit/withdraw/bridge actions, then round-trip a balance:
-// bridge_in seeds it, withdraw yields an Item, deposit puts it back.
+// T1: exercise the inventory bindings in isolation. Create a storage-unit entity,
+// mint the owner cap to a plain address, enable owner deposit/withdraw/bridge
+// actions, then round-trip a balance: bridge_in seeds it, withdraw yields an Item,
+// deposit puts it back.
 const MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
 )
-
-const privateKey = process.env.SUI_PRIVATE_KEY
-if (!privateKey) {
-  throw new Error('SUI_PRIVATE_KEY is required (a funded localnet admin key)')
-}
-const keypair = Ed25519Keypair.fromSecretKey(privateKey)
-const signer = keypair.toSuiAddress()
 
 const UNIT = 'SU-01'
 const FUEL = 88834n
@@ -47,11 +45,6 @@ const VOL = 2n
 describe('inventory owner round-trip (localnet)', () => {
   const config = loadWorldConfig(MANIFEST)
   const client = createWorldClient({ config })
-
-  let inventoryId: string
-  beforeAll(() => {
-    inventoryId = requirePackage(config, 'inventory')
-  })
 
   it('bridges in, withdraws, and deposits back on the main inventory', async () => {
     const key = { id: 4200n, tenant: 'inventory-t1' }
@@ -149,69 +142,15 @@ describe('inventory owner round-trip (localnet)', () => {
     deposit(runTx, config, e, dReq, item)
     completeRequest(runTx, config, e, dReq)
 
-    const run = await expectSuccess(client, runTx, { showEvents: true })
+    await expectSuccess(client, runTx)
 
-    const quantities = eventQuantities(run.events ?? [], inventoryId)
-    expect(quantities.ItemMinted).toEqual([100])
-    expect(quantities.ItemWithdrawn).toEqual([20])
-    expect(quantities.ItemDeposited).toEqual([20])
+    // Net main balance: 100 in, 20 out, 20 back = 100.
+    const main = await readBalance(client, config, {
+      entity: entityId,
+      name: UNIT,
+      authorizedId: entityId,
+      typeId: FUEL,
+    })
+    expect(main).toBe(100n)
   })
 })
-
-async function expectSuccess(
-  client: ReturnType<typeof createWorldClient>,
-  transaction: Transaction,
-  options: { showObjectChanges?: boolean; showEvents?: boolean } = {},
-) {
-  const result = await client.signAndExecuteTransaction({
-    signer: keypair,
-    transaction,
-    options: { showEffects: true, ...options },
-  })
-  expect(
-    result.effects?.status?.status,
-    result.effects?.status?.error ?? '',
-  ).toBe('success')
-  await client.waitForTransaction({ digest: result.digest })
-  return result
-}
-
-function capObjectId(
-  minted: Awaited<ReturnType<typeof expectSuccess>>,
-  coreId: string,
-): string {
-  const cap = minted.objectChanges?.find(
-    (c) =>
-      c.type === 'created' &&
-      c.objectType === `${coreId}::access_cap::AccessCap`,
-  )
-  const id = (cap as { objectId?: string })?.objectId
-  if (!id) throw new Error('minted AccessCap not found in object changes')
-  return id
-}
-
-function eventQuantities(
-  events: { type: string; parsedJson?: unknown }[],
-  inventoryId: string,
-): Record<string, number[]> {
-  const out: Record<string, number[]> = {
-    ItemMinted: [],
-    ItemWithdrawn: [],
-    ItemDeposited: [],
-  }
-  for (const ev of events) {
-    for (const name of Object.keys(out)) {
-      if (ev.type === `${inventoryId}::item::${name}`) {
-        const q = Number((ev.parsedJson as { quantity: string }).quantity)
-        out[name].push(q)
-      }
-    }
-  }
-  return out
-}
-
-function requirePackage(config: WorldConfig, pkg: string): string {
-  const id = config.packageOverrides?.[pkg]
-  if (!id) throw new Error(`localnet config must supply the ${pkg} package id`)
-  return id
-}

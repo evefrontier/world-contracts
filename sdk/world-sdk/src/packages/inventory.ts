@@ -147,6 +147,34 @@ export function createStorageUnit(
   shareEntity(tx, config, entity)
 }
 
+export interface BalanceOfArgs {
+  name: string
+  authorizedId: string
+  typeId: bigint
+}
+
+/**
+ * Read the balance of `typeId` in the inventory routed to `authorizedId` (the
+ * entity's own id for main, a caller's id for ephemeral). Read-only; run under
+ * `devInspectTransactionBlock` and decode the returned `u64`.
+ */
+export function balanceOf(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  args: BalanceOfArgs,
+): TransactionResult {
+  return tx.moveCall({
+    target: `${pkg(config)}::inventory::balance_of`,
+    arguments: [
+      entity,
+      tx.pure.string(args.name),
+      tx.pure.address(args.authorizedId),
+      tx.pure.u64(args.typeId),
+    ],
+  })
+}
+
 export interface BridgeInArgs {
   typeId: bigint
   quantity: bigint

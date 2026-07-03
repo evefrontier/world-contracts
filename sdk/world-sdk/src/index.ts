@@ -46,7 +46,9 @@ export {
   verifyProximity,
 } from './packages/core.js'
 export {
+  type BalanceOfArgs,
   type BridgeInArgs,
+  balanceOf,
   bridgeInRequirement,
   bridgeOutRequirement,
   type CreateStorageUnitArgs,
