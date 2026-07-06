@@ -29,7 +29,7 @@ import {
   signer,
 } from './helpers.js'
 
-// T2: a non-owner player brings items into their ephemeral inventory and
+// A non-owner player brings items into their ephemeral inventory and
 // withdraws, using their own (character) caller cap. Ephemeral is keyed by the
 // cap's entity, so the player's balance changes while main stays untouched.
 const MANIFEST = fileURLToPath(

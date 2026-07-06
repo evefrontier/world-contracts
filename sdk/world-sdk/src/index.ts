@@ -28,6 +28,8 @@ export {
 export {
   addAdmins,
   addSponsors,
+  borrowAccess,
+  type CapObjectRef,
   callerRequirement,
   completeRequest,
   deriveObjectId,
@@ -39,6 +41,8 @@ export {
   interact,
   type MintAccessArgs,
   mintAccess,
+  ownerRequirement,
+  returnAccess,
   shareEntity,
   verifyAdmin,
   verifyCaller,

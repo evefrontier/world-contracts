@@ -30,7 +30,7 @@ import {
   signer,
 } from './helpers.js'
 
-// T1: exercise the inventory bindings in isolation. Create a storage-unit entity,
+// Exercise the inventory bindings in isolation. Create a storage-unit entity,
 // mint the owner cap to a plain address, enable owner deposit/withdraw/bridge
 // actions, then round-trip a balance: bridge_in seeds it, withdraw yields an Item,
 // deposit puts it back.

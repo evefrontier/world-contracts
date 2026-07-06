@@ -72,6 +72,17 @@ export async function readBalance(
   return BigInt(bcs.u64().parse(Uint8Array.from(rv[0])))
 }
 
+/** Current object ref (id, version, digest) — for building a receiving arg. */
+export async function getObjectRef(
+  client: WorldClient,
+  id: string,
+): Promise<{ objectId: string; version: string; digest: string }> {
+  const res = await client.getObject({ id })
+  const data = res.data
+  if (!data) throw new Error(`object ${id} not found`)
+  return { objectId: data.objectId, version: data.version, digest: data.digest }
+}
+
 export function requirePackage(config: WorldConfig, pkg: string): string {
   const id = config.packageOverrides?.[pkg]
   if (!id) throw new Error(`localnet config must supply the ${pkg} package id`)

@@ -154,6 +154,16 @@ export function callerRequirement(
   })
 }
 
+/** Build an owner requirement: satisfied only by the target entity's own `AccessCap`. */
+export function ownerRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::access_cap::owner_requirement`,
+  })
+}
+
 /** Satisfy an owner requirement on `request` by presenting the entity's `AccessCap`. */
 export function verifyOwner(
   tx: Transaction,
@@ -253,6 +263,46 @@ export function disableAction(
   })
   verifyOwner(tx, config, request, ownerCap)
   completeRequest(tx, config, entity, request)
+}
+
+export interface CapObjectRef {
+  objectId: string
+  version: string | number
+  digest: string
+}
+
+/**
+ * Borrow an `AccessCap` parked on `character`, presenting `entityCap` (the
+ * character's own cap). `cap` is the parked cap's current object ref (fetch it
+ * fresh — its version changes each borrow/return). Returns the `[cap, receipt]`
+ * tuple; pass both to `returnAccess` (or the cap+receipt to
+ * `access_cap::transfer_with_receipt`) before the transaction ends.
+ */
+export function borrowAccess(
+  tx: Transaction,
+  config: WorldConfig,
+  character: TransactionArgument,
+  entityCap: string | TransactionArgument,
+  cap: CapObjectRef,
+): TransactionResult {
+  return tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::borrow_access`,
+    arguments: [character, capArg(tx, entityCap), tx.receivingRef(cap)],
+  })
+}
+
+/** Put a borrowed cap back on `character`, consuming its receipt. */
+export function returnAccess(
+  tx: Transaction,
+  config: WorldConfig,
+  character: TransactionArgument,
+  cap: TransactionArgument,
+  receipt: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::return_access`,
+    arguments: [character, cap, receipt],
+  })
 }
 
 /** Add admins to the shared `AdminACL`. Signer must already be an admin. */

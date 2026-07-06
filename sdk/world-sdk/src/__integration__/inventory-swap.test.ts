@@ -31,7 +31,7 @@ import {
   signer,
 } from './helpers.js'
 
-// T3: owner configures a multi-requirement swap (give a fuel from your ephemeral,
+// Owner configures a multi-requirement swap (give a fuel from your ephemeral,
 // get a lens from main). A player executes the whole swap in one PTB with one
 // signer — no owner cap at call time, since the requirements are owner-trusted.
 const MANIFEST = fileURLToPath(
@@ -160,7 +160,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     completeRequest(stockTx, config, se, stockReq)
     await expectSuccess(client, stockTx)
 
-    // Player brings a fuel into their ephemeral, then swaps — one signer, one PTB.
+    // Player brings a fuel into their ephemeral, then swaps.
     const runTx = new Transaction()
     const e = runTx.object(suId)
     const playerCap = runTx.object(playerCapId)
