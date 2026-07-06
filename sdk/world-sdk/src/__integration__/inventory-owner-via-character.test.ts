@@ -190,7 +190,10 @@ describe('inventory owner-access via Character', () => {
       id: suCapId,
       options: { showOwner: true },
     })
-    const owner = capObj.data?.owner as { ObjectOwner?: string } | undefined
-    expect(owner?.ObjectOwner).toBe(characterId)
+    const owner = capObj.data?.owner as
+      | { ObjectOwner?: string; AddressOwner?: string }
+      | undefined
+    const parkedOn = owner?.ObjectOwner ?? owner?.AddressOwner
+    expect(parkedOn).toBe(characterId)
   })
 })

@@ -12,6 +12,12 @@ import type { SharedObjectRef, WorldConfig } from '../config/types.js'
 
 const CORE_PACKAGE = 'core'
 
+function requirementTypeTag(config: WorldConfig): string {
+  const prefix =
+    config.packageOverrides?.[CORE_PACKAGE] ?? mvrName(config.env, CORE_PACKAGE)
+  return `${prefix}::requirement::Requirement`
+}
+
 /** Must match `core::entity_key::EntityKey` in Move. */
 const ENTITY_KEY_MODULE = 'entity_key'
 const ENTITY_KEY_STRUCT = 'EntityKey'
@@ -232,11 +238,12 @@ export function enableAction(
   ownerCap: string | TransactionArgument,
 ): void {
   const core = mvrName(config.env, CORE_PACKAGE)
+  const requirementType = requirementTypeTag(config)
   const action = tx.moveCall({
     target: `${core}::action::new`,
     arguments: [
       tx.makeMoveVec({
-        type: `${core}::requirement::Requirement`,
+        type: requirementType,
         elements: requirements,
       }),
     ],
