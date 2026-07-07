@@ -27,7 +27,23 @@ RUN apt-get -o Acquire::Retries=3 update \
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 ENV PATH="/root/.local/bin:/root/.suiup/bin:${PATH}"
-RUN curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh \
+
+# Install suiup from a pinned release rather than piping its install.sh. The
+# upstream installer resolves its own latest version by grepping the GitHub API
+# with a sed that assumes pretty-printed JSON; when the API returns compact JSON
+# (which a GitHub Actions build hit -- the API doesn't guarantee formatting) the
+# whole JSON blob becomes the "version" and the download URL breaks ("curl: (3)
+# nested brace in URL"). Pinning the release avoids that call entirely and makes
+# the image reproducible; the arch suffix keeps it correct for amd64 and arm64.
+ARG SUIUP_VERSION=v0.0.13
+RUN case "$(uname -m)" in \
+        x86_64) suiup_arch=x86_64 ;; \
+        aarch64 | arm64) suiup_arch=arm64 ;; \
+        *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/MystenLabs/suiup/releases/download/${SUIUP_VERSION}/suiup-Linux-musl-${suiup_arch}.tar.gz" -o /tmp/suiup.tar.gz \
+    && tar -xzf /tmp/suiup.tar.gz -C /usr/local/bin suiup \
+    && rm /tmp/suiup.tar.gz \
     && echo y | suiup install "sui@${SUI_VERSION}" \
     && sui --version
 
