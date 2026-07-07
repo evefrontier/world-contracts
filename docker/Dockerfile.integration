@@ -45,7 +45,8 @@ RUN case "$(uname -m)" in \
     && tar -xzf /tmp/suiup.tar.gz -C /usr/local/bin suiup \
     && rm /tmp/suiup.tar.gz \
     && echo y | suiup install "sui@${SUI_VERSION}" \
-    && sui --version
+    && sui --version \
+    && rm -rf /root/.cache/suiup
 
 WORKDIR /app
 ENV SUI_CONFIG_DIR=/root/.sui
