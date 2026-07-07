@@ -1,5 +1,14 @@
 
-FROM mysten/sui-tools:testnet-v1.64.0 AS dependency-stage
+# mysten/sui-tools has no multi-arch manifest: amd64 lives under the plain tag,
+# arm64 under a separate "-arm64" tag. Declare both and let BuildKit pick the one
+# matching the build's TARGETARCH (base-amd64 / base-arm64), so a native arm64
+# build (Apple Silicon) gets a real arm64 base instead of an emulated amd64 one.
+ARG SUI_TOOLS_VERSION=testnet-v1.64.0
+FROM mysten/sui-tools:${SUI_TOOLS_VERSION} AS base-amd64
+FROM mysten/sui-tools:${SUI_TOOLS_VERSION}-arm64 AS base-arm64
+
+ARG TARGETARCH
+FROM base-${TARGETARCH} AS dependency-stage
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

@@ -22,6 +22,8 @@ Images are on **GitHub Container Registry**:
 
 Tags line up with releases (e.g. version numbers, `latest`). Check this repo’s **Packages** on GitHub for what’s available.
 
+These images are published as **multi-arch manifests** (`linux/amd64` + `linux/arm64`), so Docker automatically pulls the variant matching your machine. On **Apple Silicon** that means a native `arm64` image — drop any `DOCKER_DEFAULT_PLATFORM=linux/amd64` override or `--platform linux/amd64` flag, which would otherwise force the slower emulated amd64 image.
+
 ## Object IDs on your machine (`extracted-object-ids.json`)
 
 Tests need the **package and object IDs** that exist on this chain. The image ships that list as JSON.
