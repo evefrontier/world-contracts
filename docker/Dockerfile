@@ -48,12 +48,22 @@ FROM dependency-stage AS lint-stage
 RUN pnpm run fmt:check
 
 FROM dependency-stage AS build-stage
-# Build all Move contracts in parallel
-RUN find contracts -maxdepth 1 -mindepth 1 -type d | \
+# Build all Move contracts in parallel. The first `sui` invocation creates
+# ~/.sui/{client.yaml,sui.aliases}; running several in parallel (xargs -P 4)
+# makes concurrent first-runs race and corrupt those files ("EOF while parsing
+# a value", "Cannot deserialize aliases file"), which fails the build
+# nondeterministically. Build one package serially first to create the config,
+# then build them all in parallel against the now-existing config.
+RUN set -eu; \
+    first="$(find contracts -maxdepth 1 -mindepth 1 -type d | head -n1)"; \
+    sui move build --path "$first"; \
+    find contracts -maxdepth 1 -mindepth 1 -type d | \
     xargs -P 4 -I {} sui move build --path {}
 
 FROM build-stage AS test-stage
-# Run all tests in parallel
+# Run all tests in parallel. Safe to parallelize: the Sui config was already
+# created in build-stage and is inherited via this FROM, so there is no
+# concurrent first-run config race here.
 RUN find contracts -maxdepth 1 -mindepth 1 -type d | \
     xargs -P 4 -I {} sui move test --path {}
 
