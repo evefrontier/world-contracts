@@ -41,35 +41,39 @@ fi
 # ---------- start local node ----------
 echo "[ci] Creating data directory..."
 mkdir -p /data/sui-localnet
-
-echo "[ci] Running sui genesis..."
-sui genesis --working-dir /data/sui-localnet --with-faucet
-
-echo "[ci] Copying fullnode.yaml to data directory..."
 cp /fullnode.yaml /data/sui-localnet/fullnode.yaml
 
-echo "[ci] Starting local Sui node..."
-sui start --network.config /data/sui-localnet --with-faucet &
+echo "[ci] Starting local Sui node (fresh genesis + faucet)..."
+sui start --force-regenesis --with-faucet --network.config /data/sui-localnet &
 NODE_PID=$!
 trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
 
 echo "[ci] Waiting for RPC on port 9000..."
-rpc_ready() {
+for i in $(seq 1 60); do
   curl -sf -X POST http://127.0.0.1:9000 \
     -H "Content-Type: application/json" \
-    -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' > /dev/null 2>&1
-}
-for i in $(seq 1 30); do
-  rpc_ready && break
-  if [ "$i" -eq 30 ]; then
+    -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' > /dev/null 2>&1 && break
+  if [ "$i" -eq 60 ]; then
     echo "[ci] ERROR: RPC did not become ready" >&2
     kill "$NODE_PID" 2>/dev/null || true
     exit 1
   fi
   sleep 1
 done
-sleep 2
 echo "[ci] RPC ready."
+
+# Sui 1.75+: RPC up does not mean the faucet gas pool is ready yet.
+echo "[ci] Waiting for faucet on port 9123..."
+for i in $(seq 1 60); do
+  curl -sf http://127.0.0.1:9123/ > /dev/null 2>&1 && break
+  if [ "$i" -eq 60 ]; then
+    echo "[ci] ERROR: Faucet did not become ready" >&2
+    kill "$NODE_PID" 2>/dev/null || true
+    exit 1
+  fi
+  sleep 1
+done
+echo "[ci] Faucet ready."
 
 # ---------- fund accounts ----------
 printf 'y\n' | sui client switch --env localnet 2>/dev/null || true
@@ -79,7 +83,7 @@ for alias in ADMIN PLAYER_A PLAYER_B; do
   for attempt in 1 2 3; do
     sui client faucet 2>&1 && break
     [ "$attempt" -eq 3 ] && { echo "[ci] Faucet failed for $alias" >&2; exit 1; }
-    sleep 2
+    sleep 5
   done
 done
 sui client switch --address ADMIN
