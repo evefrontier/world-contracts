@@ -3,8 +3,8 @@
 FROM docker.io/library/ubuntu:24.04
 
 # Sui version/network: testnet, devnet, mainnet, or a version tag.
-# Must match Move.toml/Move.lock rev (e.g. testnet-v1.66.2) so the CLI can parse the lockfile.
-ARG SUI_VERSION=testnet-v1.66.2
+# Must match Move.toml/Move.lock rev (e.g. testnet-v1.75.1) so the CLI can parse the lockfile.
+ARG SUI_VERSION=testnet-v1.75.1
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Retry apt fetches; --fix-missing for archive 404s on rotated packages (e.g. python3.12).
@@ -37,9 +37,9 @@ ENV PATH="/root/.local/bin:/root/.suiup/bin:${PATH}"
 # the image reproducible; the arch suffix keeps it correct for amd64 and arm64.
 ARG SUIUP_VERSION=v0.0.13
 RUN case "$(uname -m)" in \
-        x86_64) suiup_arch=x86_64 ;; \
-        aarch64 | arm64) suiup_arch=arm64 ;; \
-        *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+    x86_64) suiup_arch=x86_64 ;; \
+    aarch64 | arm64) suiup_arch=arm64 ;; \
+    *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
     esac \
     && curl -fsSL "https://github.com/MystenLabs/suiup/releases/download/${SUIUP_VERSION}/suiup-Linux-musl-${suiup_arch}.tar.gz" -o /tmp/suiup.tar.gz \
     && tar -xzf /tmp/suiup.tar.gz -C /usr/local/bin suiup \

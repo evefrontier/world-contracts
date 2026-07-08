@@ -3,7 +3,7 @@
 # arm64 under a separate "-arm64" tag. Declare both and let BuildKit pick the one
 # matching the build's TARGETARCH (base-amd64 / base-arm64), so a native arm64
 # build (Apple Silicon) gets a real arm64 base instead of an emulated amd64 one.
-ARG SUI_TOOLS_VERSION=testnet-v1.64.0
+ARG SUI_TOOLS_VERSION=testnet-v1.75.1
 FROM mysten/sui-tools:${SUI_TOOLS_VERSION} AS base-amd64
 FROM mysten/sui-tools:${SUI_TOOLS_VERSION}-arm64 AS base-arm64
 

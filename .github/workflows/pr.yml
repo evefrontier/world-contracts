@@ -7,6 +7,7 @@ on:
 
 env:
   CONTRACTS_DIR: contracts
+  SUI_TOOLS_VERSION: testnet-v1.75.1
 
 jobs:
   lint:
@@ -46,7 +47,7 @@ jobs:
           docker run --rm \
             -v $(pwd):/app \
             -w /app \
-            mysten/sui-tools:testnet \
+            mysten/sui-tools:${{ env.SUI_TOOLS_VERSION }} \
             sui move build --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }} --lint
 
   build:
@@ -64,7 +65,7 @@ jobs:
           docker run --rm \
             -v $(pwd):/app \
             -w /app \
-            mysten/sui-tools:testnet \
+            mysten/sui-tools:${{ env.SUI_TOOLS_VERSION }} \
             sui move build --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
 
   test:
@@ -82,5 +83,5 @@ jobs:
           docker run --rm \
             -v $(pwd):/app \
             -w /app \
-            mysten/sui-tools:testnet \
+            mysten/sui-tools:${{ env.SUI_TOOLS_VERSION }} \
             sui move test --path ${{ env.CONTRACTS_DIR }}/${{ matrix.package }}
