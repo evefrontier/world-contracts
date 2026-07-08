@@ -42,3 +42,19 @@ Small JSON with a `network` name and two groups of IDs:
 - **`builder`** — the builder extension package id and related caps/config ids.
 
 Your services or tests read these hex IDs when calling the chain (e.g. which package to target, which objects to pass into transactions).
+
+## Integration image (localnet from scratch)
+
+Build and run the same flow as CI (genesis, deploy, integration tests):
+
+```bash
+docker build -f docker/Dockerfile.integration -t world-integration .
+docker run --rm -v "$(pwd):/app" -w /app -e CI=true world-integration test
+```
+
+On macOS, remove `node_modules` before `docker run` if you have run `pnpm install` on the host. The bind mount would otherwise bring Darwin `esbuild` binaries into the Linux container and publish scripts will fail. CI is unaffected (fresh checkout, no host `node_modules`).
+
+```bash
+rm -rf node_modules
+docker run --rm -v "$(pwd):/app" -w /app -e CI=true world-integration test
+```
