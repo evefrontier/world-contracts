@@ -9,6 +9,20 @@ INIT_MARKER="$SUI_CFG/.initialized"
 APP_ENV="/app/.env"
 APP_ENV_EXAMPLE="/app/env.example"
 
+request_faucet_gas() {
+  local addr="$1"
+  local probe_file code
+  probe_file=$(mktemp)
+  code=$(curl -s -o "$probe_file" -w '%{http_code}' -X POST "http://127.0.0.1:9123/v2/gas" \
+    -H 'Content-Type: application/json' \
+    -d "{\"FixedAmountRequest\":{\"recipient\":\"${addr}\"}}" 2>/dev/null || echo "000")
+  rm -f "$probe_file"
+  case "$code" in
+    200|201) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # ---------- first-run: create keys ----------
 if [ ! -f "$INIT_MARKER" ]; then
   echo "[ci] First run — initialising keys..."
@@ -41,15 +55,20 @@ fi
 # ---------- start local node ----------
 echo "[ci] Creating data directory..."
 mkdir -p /data/sui-localnet
-cp /fullnode.yaml /data/sui-localnet/fullnode.yaml
 
-echo "[ci] Starting local Sui node (fresh genesis + faucet)..."
-sui start --force-regenesis --with-faucet --network.config /data/sui-localnet &
+echo "[ci] Running sui genesis..."
+sui genesis -f --working-dir /data/sui-localnet --with-faucet
+
+# Use genesis-generated fullnode.yaml; overwriting it breaks faucet tx execution on Sui 1.75.
+
+echo "[ci] Starting local Sui node..."
+sui start --network.config /data/sui-localnet --with-faucet &
 NODE_PID=$!
 trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
 
 echo "[ci] Waiting for RPC on port 9000..."
 for i in $(seq 1 60); do
+  kill -0 "$NODE_PID" 2>/dev/null || { echo "[ci] ERROR: Sui node exited unexpectedly" >&2; exit 1; }
   curl -sf -X POST http://127.0.0.1:9000 \
     -H "Content-Type: application/json" \
     -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' > /dev/null 2>&1 && break
@@ -62,26 +81,41 @@ for i in $(seq 1 60); do
 done
 echo "[ci] RPC ready."
 
-# Sui 1.75+: RPC up does not mean the faucet gas pool is ready yet.
-echo "[ci] Waiting for faucet on port 9123..."
-for i in $(seq 1 60); do
-  curl -sf http://127.0.0.1:9123/ > /dev/null 2>&1 && break
-  if [ "$i" -eq 60 ]; then
-    echo "[ci] ERROR: Faucet did not become ready" >&2
+# Wait until the chain is producing checkpoints and the faucet can execute a real transfer.
+echo "[ci] Waiting for faucet to dispense gas..."
+admin_addr=$(sui keytool export --key-identity ADMIN --json 2>/dev/null | jq -r '.key.suiAddress')
+for i in $(seq 1 120); do
+  kill -0 "$NODE_PID" 2>/dev/null || { echo "[ci] ERROR: Sui node exited unexpectedly" >&2; exit 1; }
+  if request_faucet_gas "$admin_addr"; then
+    checkpoint=$(curl -s -X POST http://127.0.0.1:9000 \
+      -H "Content-Type: application/json" \
+      -d '{"jsonrpc":"2.0","method":"sui_getLatestCheckpointSequenceNumber","id":1}' \
+      | jq -r '.result // "0"')
+    echo "[ci] Faucet ready (checkpoint=${checkpoint})."
+    break
+  fi
+  if [ "$i" -eq 120 ]; then
+    echo "[ci] ERROR: Faucet did not dispense gas" >&2
     kill "$NODE_PID" 2>/dev/null || true
     exit 1
   fi
-  sleep 1
+  sleep 2
 done
-echo "[ci] Faucet ready."
 
 # ---------- fund accounts ----------
 printf 'y\n' | sui client switch --env localnet 2>/dev/null || true
 echo "[ci] Funding accounts from faucet..."
 for alias in ADMIN PLAYER_A PLAYER_B; do
-  sui client switch --address "$alias"
+  addr=$(sui keytool export --key-identity "$alias" --json 2>/dev/null | jq -r '.key.suiAddress')
+  if [ "$alias" = "ADMIN" ]; then
+    echo "[ci] Funded $alias ($addr) during readiness probe"
+    continue
+  fi
   for attempt in 1 2 3; do
-    sui client faucet 2>&1 && break
+    if request_faucet_gas "$addr"; then
+      echo "[ci] Funded $alias ($addr)"
+      break
+    fi
     [ "$attempt" -eq 3 ] && { echo "[ci] Faucet failed for $alias" >&2; exit 1; }
     sleep 5
   done
