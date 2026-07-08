@@ -45,8 +45,7 @@ mkdir -p /data/sui-localnet
 echo "[ci] Running sui genesis..."
 sui genesis --working-dir /data/sui-localnet --with-faucet
 
-echo "[ci] Copying fullnode.yaml to data directory..."
-cp /fullnode.yaml /data/sui-localnet/fullnode.yaml
+# Genesis writes fullnode.yaml; overwriting it breaks faucet tx execution on Sui 1.75.
 
 echo "[ci] Starting local Sui node..."
 sui start --network.config /data/sui-localnet --with-faucet &
@@ -54,13 +53,10 @@ NODE_PID=$!
 trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
 
 echo "[ci] Waiting for RPC on port 9000..."
-rpc_ready() {
+for i in $(seq 1 30); do
   curl -sf -X POST http://127.0.0.1:9000 \
     -H "Content-Type: application/json" \
-    -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' > /dev/null 2>&1
-}
-for i in $(seq 1 30); do
-  rpc_ready && break
+    -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' > /dev/null 2>&1 && break
   if [ "$i" -eq 30 ]; then
     echo "[ci] ERROR: RPC did not become ready" >&2
     kill "$NODE_PID" 2>/dev/null || true
