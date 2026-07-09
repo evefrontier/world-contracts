@@ -1,0 +1,30 @@
+{
+  "_comment": "TEST-ONLY well-known keys baked into the world-contracts snapshot image. These private keys are PUBLIC and committed on purpose so downstream builders/services can act on the pre-deployed contracts. NEVER use these accounts on a real/public network or fund them with real assets",
+  "accounts": {
+    "governor": {
+      "role": "Deploys the contracts and owns the GovernorCap.",
+      "address": "0xcb77ca2dc01819602e2f89774d7ac2574c7913562f9c1576e51e6f2ba61925bd",
+      "privateKey": "suiprivkey1qpppu2z48dr7xzzax47wpe2z5xd7uka5v823kydmu8jrh799q7f5uk09amz"
+    },
+    "admin": {
+      "role": "Owns the builder AdminCap, registered as server address, and is an admin in the AdminACL.",
+      "address": "0x2cec7e1911f1d95838d68d64124faaf01b4d492942f11bf7e4c6a37df9fffa6d",
+      "privateKey": "suiprivkey1qz20s9zeyhyj9zh0r7800t3q7aj7rel8h27v958z0ddsxdgehtqlw2mmk89"
+    },
+    "sponsor": {
+      "role": "Sponsor with lots of SUI (coin balance + address balance)",
+      "address": "0x4cbd72cbc2b80721bcd08fbcc7e1ee8fb2ae070b800855d2f6f9a264b81f81b9",
+      "privateKey": "suiprivkey1qpvmq2zh83uezwr8hl6ft7gahrp7ugr92car8pwv8awccjzhs9r3k257k3h"
+    },
+    "player": {
+      "role": "Player A (PLAYER_A) that owns a character on the baked chain.",
+      "address": "0x9a9f6b4def31aeb6b58e8694def775dab5b3cd493ef03dc8e6d65db50ef2e72e",
+      "privateKey": "suiprivkey1qre8d4j577wc54kxly57yx62mhacxsj5uw6lc9ymkse9yvv8n8ezqtgrmaz"
+    },
+    "player_b": {
+      "role": "Player B (PLAYER_B) for second-player integration and builder extension scripts.",
+      "address": "0xaedf8c880a42b8e6dd99e9303c146f45e242acc4c5ddb4c04420669fa9411969",
+      "privateKey": "suiprivkey1qp6htvlvnle9hwzqxp0kwdvdmkelr9lk923fyg79mjaczkssd7wlqwqen2a"
+    }
+  }
+}
