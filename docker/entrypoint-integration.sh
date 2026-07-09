@@ -179,6 +179,9 @@ if [ $# -eq 1 ]; then
   pnpm install --frozen-lockfile
   pnpm deploy-world localnet
   pnpm run configure-world localnet
+
+  echo "[ci] Switching to ADMIN for builder deployment..."
+  sui client switch --address ADMIN >/dev/null
   pnpm deploy-builder-ext localnet
 
   if [ "$1" = "test" ]; then
