@@ -11,7 +11,7 @@
 module core::entity;
 
 use core::{
-    access_cap,
+    access_cap::{Self, AccessCap, ReturnReceipt},
     action::Action,
     admin_service,
     entity_key::{Self, EntityKey},
@@ -21,7 +21,7 @@ use core::{
     request::{Self, Request}
 };
 use std::{internal::Permit, string::String};
-use sui::{derived_object, dynamic_field as df, event, vec_map::{Self, VecMap}};
+use sui::{derived_object, dynamic_field as df, event, transfer::Receiving, vec_map::{Self, VecMap}};
 
 // === Errors ===
 
@@ -121,6 +121,25 @@ public fun mint_access(
     )
 }
 
+/// Borrow an `AccessCap` parked on this entity (object-owned). `entity_cap` must
+/// be this entity's own cap, proving the caller owns it. Returns the parked cap
+/// and a non-droppable receipt that must be consumed by `return_access` or
+/// `access_cap::transfer_with_receipt`.
+public fun borrow_access(
+    entity: &mut Entity,
+    entity_cap: &AccessCap,
+    ticket: Receiving<AccessCap>,
+): (AccessCap, ReturnReceipt) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    access_cap::borrow(&mut entity.id, entity_cap, ticket)
+}
+
+/// Put a borrowed cap back on this entity, consuming the receipt.
+public fun return_access(entity: &mut Entity, cap: AccessCap, receipt: ReturnReceipt) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    access_cap::return_to(&mut entity.id, cap, receipt)
+}
+
 /// Install module state `T` under `name`. The `Permit<T>` proves the caller's
 /// package authored `T`. Returns a `Request` the transaction must complete.
 public fun install<T: store>(
@@ -161,7 +180,9 @@ public fun uninstall<T: store>(
     (m, req)
 }
 
-/// Expose a programmable `action` under `name`.
+/// Expose a programmable `action` under `name`. Owner-gated: only the entity's
+/// owner (holder of its `AccessCap`) may configure which actions exist and their
+/// requirements, so a requirement on an action is trusted by construction.
 public fun enable_action(
     entity: &mut Entity,
     name: String,
@@ -175,10 +196,13 @@ public fun enable_action(
     actions.insert(name, action);
 
     entity.lock();
-    request::new(option::some(entity.id.to_inner()), vector[])
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[access_cap::owner_requirement()],
+    )
 }
 
-/// Remove a previously-exposed action.
+/// Remove a previously-exposed action. Owner-gated, like `enable_action`.
 public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContext): Request {
     assert!(entity.version == VERSION, EWrongVersion);
 
@@ -187,7 +211,10 @@ public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContex
     let (_, _action) = actions.remove(&name);
 
     entity.lock();
-    request::new(option::some(entity.id.to_inner()), vector[])
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[access_cap::owner_requirement()],
+    )
 }
 
 /// Interact with a registered action, producing the `Request` to satisfy. A

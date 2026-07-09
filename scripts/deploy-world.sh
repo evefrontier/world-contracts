@@ -5,8 +5,8 @@
 # Usage: ./scripts/deploy-world.sh [localnet|dev|test|uat|live] [deploy|publish|upgrade]
 source "$(dirname "$0")/lib.sh"
 
-# Packages in dependency order (character depends on core).
-PACKAGES=(core character)
+# Packages in dependency order (character and inventory depend on core).
+PACKAGES=(core character inventory)
 
 setup
 ENV=$(get_env "${1:-}")

@@ -2,6 +2,7 @@
 module core::core_tests;
 
 use core::{
+    access_cap::{Self, AccessCap},
     action,
     admin_service::{Self, AdminACL},
     entity,
@@ -39,7 +40,6 @@ fun end_to_end_flow() {
     ts::next_tx(&mut scenario, @0xA);
     let acl = take_acl(&scenario);
     let mut e = claim_test_entity(&mut scenario, &acl);
-    let ctx = scenario.ctx();
 
     // Install a module (admin-gated), then close out the install request.
     let mut req = e.install(
@@ -47,20 +47,32 @@ fun end_to_end_flow() {
         Counter { value: 0 },
         1,
         internal::permit<Counter>(),
-        ctx,
+        scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, &acl, ctx);
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     assert!(e.has_module(string::utf8(b"counter")));
 
-    // Expose an action carrying one module-scoped requirement.
+    // Mint the owner cap so the owner can configure actions.
+    let mut req = e.mint_access(@0xA, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+
+    // Owner exposes an action carrying one module-scoped requirement, then runs it.
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
     let action = action::new(vector[increment_requirement(b"counter")]);
-    let req = e.enable_action(string::utf8(b"increment"), action, ctx);
+    let mut req = e.enable_action(string::utf8(b"increment"), action, scenario.ctx());
+    access_cap::verify(&mut req, &cap);
     e.complete_request(req);
 
     // Interact: satisfy the injected proximity requirement first, then borrow the
     // module by requirement, satisfy it, and mutate.
-    let mut req = e.interact(string::utf8(b"increment"), ctx);
+    let mut req = e.interact(string::utf8(b"increment"), scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
     let counter = e.module_mut<Counter>(&req, internal::permit<Counter>()).inner_mut();
     let (_requirement, frame) = req.take_next<Bump>(internal::permit<Bump>());
@@ -68,8 +80,8 @@ fun end_to_end_flow() {
     req.enqueue(frame);
     e.complete_request(req);
 
-    e.share();
-    ts::return_shared(acl);
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
     scenario.end();
 }
 
@@ -81,24 +93,34 @@ fun cannot_complete_with_pending_requirement() {
     ts::next_tx(&mut scenario, @0xA);
     let acl = take_acl(&scenario);
     let mut e = claim_test_entity(&mut scenario, &acl);
-    let ctx = scenario.ctx();
 
     let mut req = e.install(
         string::utf8(b"counter"),
         Counter { value: 0 },
         1,
         internal::permit<Counter>(),
-        ctx,
+        scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, &acl, ctx);
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
 
+    let mut req = e.mint_access(@0xA, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
     let action = action::new(vector[increment_requirement(b"counter")]);
-    let req = e.enable_action(string::utf8(b"increment"), action, ctx);
+    let mut req = e.enable_action(string::utf8(b"increment"), action, scenario.ctx());
+    access_cap::verify(&mut req, &cap);
     e.complete_request(req);
 
     // Try to complete without satisfying the requirement.
-    let req = e.interact(string::utf8(b"increment"), ctx);
+    let req = e.interact(string::utf8(b"increment"), scenario.ctx());
     e.complete_request(req);
 
     abort
