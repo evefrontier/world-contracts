@@ -24,9 +24,10 @@ services:
       - 9123:9123
       - 9125:9125
     volumes:
-      # Host folder for object IDs. On first start the container copies the baked JSON from the
-      # image into this mount (see entrypoint-snapshot-image.sh), so the file appears on the host
-      # at ../deployments/localnet-snapshot/extracted-object-ids.json. Needs :rw for that seed step.
+      # Host folder for the baked artifacts. On first start the container copies the baked JSON
+      # files from the image into this mount (see entrypoint-snapshot-image.sh), so they appear on
+      # the host at ../deployments/localnet-snapshot/{extracted-object-ids,accounts}.json. Needs
+      # :rw for that seed step.
       - ../deployments/localnet-snapshot:/data/deployment:rw
     environment:
       POSTGRES_CONNECTION_STRING: "postgres://postgres:postgres@postgres:5432/postgres"
