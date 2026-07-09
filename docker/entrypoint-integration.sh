@@ -93,8 +93,8 @@ faucet_once() {
 
 FAUCET_GRANTS="${FAUCET_GRANTS:-5}"
 SPONSOR_FAUCET_GRANTS="${SPONSOR_FAUCET_GRANTS:-50}"
-echo "[ci] Funding GOVERNOR, ADMIN, PLAYER from faucet ($FAUCET_GRANTS grants each)..."
-for alias in GOVERNOR ADMIN PLAYER; do
+echo "[ci] Funding GOVERNOR, ADMIN, PLAYER, PLAYER_B from faucet ($FAUCET_GRANTS grants each)..."
+for alias in GOVERNOR ADMIN PLAYER PLAYER_B; do
   for _ in $(seq 1 "$FAUCET_GRANTS"); do
     faucet_once "$alias" || exit 1
     sleep 1
@@ -139,13 +139,15 @@ GOVERNOR_ADDRESS=$(get_address GOVERNOR)
 ADMIN_ADDRESS=$(get_address ADMIN)
 SPONSOR_ADDRESS=$(get_address SPONSOR)
 PLAYER_ADDRESS=$(get_address PLAYER)
+PLAYER_B_ADDRESS=$(get_address PLAYER_B)
 GOVERNOR_PRIVATE_KEY=$(get_key GOVERNOR)
 ADMIN_PRIVATE_KEY=$(get_key ADMIN)
 SPONSOR_PRIVATE_KEY=$(get_key SPONSOR)
 PLAYER_PRIVATE_KEY=$(get_key PLAYER)
+PLAYER_B_PRIVATE_KEY=$(get_key PLAYER_B)
 
-for var in GOVERNOR_ADDRESS ADMIN_ADDRESS SPONSOR_ADDRESS PLAYER_ADDRESS \
-           GOVERNOR_PRIVATE_KEY ADMIN_PRIVATE_KEY SPONSOR_PRIVATE_KEY PLAYER_PRIVATE_KEY; do
+for var in GOVERNOR_ADDRESS ADMIN_ADDRESS SPONSOR_ADDRESS PLAYER_ADDRESS PLAYER_B_ADDRESS \
+           GOVERNOR_PRIVATE_KEY ADMIN_PRIVATE_KEY SPONSOR_PRIVATE_KEY PLAYER_PRIVATE_KEY PLAYER_B_PRIVATE_KEY; do
   require_val "$var" "${!var}"
 done
 
@@ -158,7 +160,7 @@ if [ -f "$APP_ENV_EXAMPLE" ]; then
       -e "s|^GOVERNOR_PRIVATE_KEY=.*|GOVERNOR_PRIVATE_KEY=$GOVERNOR_PRIVATE_KEY|" \
       -e "s|^ADMIN_PRIVATE_KEY=.*|ADMIN_PRIVATE_KEY=$ADMIN_PRIVATE_KEY|" \
       -e "s|^PLAYER_A_PRIVATE_KEY=.*|PLAYER_A_PRIVATE_KEY=$PLAYER_PRIVATE_KEY|" \
-      -e "s|^PLAYER_B_PRIVATE_KEY=.*|PLAYER_B_PRIVATE_KEY=$ADMIN_PRIVATE_KEY|" \
+      -e "s|^PLAYER_B_PRIVATE_KEY=.*|PLAYER_B_PRIVATE_KEY=$PLAYER_B_PRIVATE_KEY|" \
   > "$APP_ENV"
   echo "[ci] .env written."
 else
@@ -187,9 +189,8 @@ if [ $# -eq 1 ]; then
   elif [ "$1" = "snapshot" ]; then
     echo "[ci] Building snapshot image..."
 
-    # create-character reads SUI_NETWORK from .env (localnet) and assigns a
-    # character to PLAYER_A = the player key.
-    echo "[ci] Seeding a character for the player..."
+    # create-character reads PLAYER_A/PLAYER_B from .env and seeds both characters.
+    echo "[ci] Seeding characters for PLAYER and PLAYER_B..."
     DELAY_SECONDS="${DELAY_SECONDS:-3}" pnpm create-character \
       || { echo "[ci] ERROR: failed to seed player character" >&2; exit 1; }
 

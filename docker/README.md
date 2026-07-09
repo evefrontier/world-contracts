@@ -51,12 +51,13 @@ Builders and service tests need to **act as** the accounts that exist on the bak
 
 > ⚠️ **Test keys only.** These private keys are committed and public on purpose. They exist solely to drive the local snapshot chain. **Never** use these accounts on a real/public network or fund them with real assets.
 
-Four **distinct** accounts (`sponsor` is deliberately different from `governor`, `admin`, and `player`):
+Four **distinct** roles (`sponsor` is deliberately different from `governor`, `admin`, and the players):
 
 - **`governor`** — deployed the contracts; owns the `GovernorCap`.
 - **`admin`** — owns the builder `AdminCap`, is the registered server address, and is an admin in the `AdminACL`.
 - **`sponsor`** — has lots of SUI, both a coin balance and an [address balance](https://docs.sui.io/onchain-finance/asset-custody/address-balances/) (EF-17526); added to the `AdminACL`.
-- **`player`** — already owns a character on the baked chain.
+- **`player`** — player A (`PLAYER_A`); owns a character on the baked chain.
+- **`player_b`** — player B (`PLAYER_B`); second player for multi-user scripts and builder extensions.
 
 Each entry has an `address` and a `privateKey` (Sui bech32 `suiprivkey1…`), ready to import with `sui keytool import` or load directly in the TS SDK. The same keys are committed at [`docker/genesis/accounts.json`](genesis/accounts.json).
 

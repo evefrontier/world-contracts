@@ -17,9 +17,14 @@
       "privateKey": "suiprivkey1qpvmq2zh83uezwr8hl6ft7gahrp7ugr92car8pwv8awccjzhs9r3k257k3h"
     },
     "player": {
-      "role": "Player that already owns a character on the baked chain.",
+      "role": "Player A (PLAYER_A) that owns a character on the baked chain.",
       "address": "0x9a9f6b4def31aeb6b58e8694def775dab5b3cd493ef03dc8e6d65db50ef2e72e",
       "privateKey": "suiprivkey1qre8d4j577wc54kxly57yx62mhacxsj5uw6lc9ymkse9yvv8n8ezqtgrmaz"
+    },
+    "player_b": {
+      "role": "Player B (PLAYER_B) for second-player integration and builder extension scripts.",
+      "address": "0xaedf8c880a42b8e6dd99e9303c146f45e242acc4c5ddb4c04420669fa9411969",
+      "privateKey": "suiprivkey1qp6htvlvnle9hwzqxp0kwdvdmkelr9lk923fyg79mjaczkssd7wlqwqen2a"
     }
   }
 }
