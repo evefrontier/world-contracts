@@ -11,7 +11,7 @@
 module core::entity;
 
 use core::{
-    access_cap,
+    access_cap::{Self, AccessCap, ReturnReceipt},
     action::Action,
     admin_service,
     entity_key::{Self, EntityKey},
@@ -21,7 +21,7 @@ use core::{
     request::{Self, Request}
 };
 use std::{internal::Permit, string::String};
-use sui::{derived_object, dynamic_field as df, event, vec_map::{Self, VecMap}};
+use sui::{derived_object, dynamic_field as df, event, transfer::Receiving, vec_map::{Self, VecMap}};
 
 // === Errors ===
 
@@ -119,6 +119,25 @@ public fun mint_access(
         option::some(entity.id.to_inner()),
         vector[admin_service::admin_requirement()],
     )
+}
+
+/// Borrow an `AccessCap` parked on this entity (object-owned). `entity_cap` must
+/// be this entity's own cap, proving the caller owns it. Returns the parked cap
+/// and a non-droppable receipt that must be consumed by `return_access` or
+/// `access_cap::transfer_with_receipt`.
+public fun borrow_access(
+    entity: &mut Entity,
+    entity_cap: &AccessCap,
+    ticket: Receiving<AccessCap>,
+): (AccessCap, ReturnReceipt) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    access_cap::borrow(&mut entity.id, entity_cap, ticket)
+}
+
+/// Put a borrowed cap back on this entity, consuming the receipt.
+public fun return_access(entity: &mut Entity, cap: AccessCap, receipt: ReturnReceipt) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    access_cap::return_to(&mut entity.id, cap, receipt)
 }
 
 /// Install module state `T` under `name`. The `Permit<T>` proves the caller's
