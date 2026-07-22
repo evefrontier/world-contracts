@@ -35,7 +35,7 @@ These are two independent systems and stay independent on-chain.
 ## Decision 1 — Lazy settlement is the source of truth; a keeper only pokes
 
 Fuel and charge are derived from `(rate, elapsed_since_last_settle)` on any transaction
-that touches the entity not live countdowns. No on-chain burn or trickle-charge thread.
+that touches the entity, not live countdowns. No on-chain burn or trickle-charge thread.
 
 Every power-relevant handler starts with `settle(power, clock)`: advance fuel and
 charge for the elapsed window, then stamp `last_settled_ms`.
@@ -45,7 +45,8 @@ shutdown is timely. **Correctness never depends on it** if it never runs, the
 next player tx settles the full gap. Treat on-chain fuel/charge as stale until
 settled (or settle client-side from the same inputs).
 
-This mean clients should not depend on on-chain data.
+Clients must treat on-chain fuel/charge as stale until settled (or derive locally
+from the same rates and timestamps).
 
 **Alternatives considered:**
 
@@ -80,7 +81,7 @@ public struct Power has store {
 }
 ```
 
-Fuel Tank, Power Gen, and Capacitor stay **separate installable modules** each
+Fuel Tank, Power Gen, and Capacitor stay **separate installable modules**; each
 holds its own attributes. Online/install `+=` into Power's totals; offline/remove
 `-=`. Settle reads a handful of `u64`s — **no walk over heterogeneous modules**
 (Move cannot do that cleanly).
@@ -118,8 +119,7 @@ truth for the `-=` on offline/remove.
 
 ## Decision 4 — Fuel is a single-type pooled scalar, not inventory
 
-Assumptions (v1): fuel in the tank is not tradeable, and once deposited it is
-burned not ithdrawable.
+Assumptions (v1): fuel in the tank is not tradeable, and once deposited it is burned not withdrawable.
 
 Deposit consumes a fuel `Item` and adds `quantity` to `Power.fuel_qty`, capped by
 sum of online Fuel Tank capacity. The tank module contributes **capacity only**.
@@ -214,10 +214,11 @@ fuel_needed       = served_load * elapsed / factor
 
 - **Fuel lasts** (`fuel_needed ≤ fuel_qty`): burn it; charge `+= admitted_recharge * elapsed`
   (capped at `total_capacity`).
-- **Fuel dies mid-window**: `t_dry = fuel_qty * factor / served_load`.
+- **Fuel dies mid-window** (`served_load > 0`): `t_dry = fuel_qty * factor / served_load`.
   - `[0, t_dry]` — gens run, recharge admitted, fuel burns to 0.
   - `[t_dry, elapsed]` — grid dead; battery covers `total_draw_mw`
     (`charge −= total_draw_mw * (elapsed − t_dry)`, floored at 0).
+  If `served_load = 0`, skip the mid-window split: no burn and no `t_dry`.
 
 Empty pool (`fuel_type_id = None`): no burn; battery alone covers draw until `charge = 0`.
 
@@ -260,7 +261,7 @@ Temporary shape. Left open (not decided here):
 
 - **New shared object `PowerConfig`** (`grid_draw` by type_id, `fuel_factor` by
   fuel type_id), admin-managed.
-- **`Module<Power>` is a required singleton** for any entity that consumes power
+- **`Module<Power>` is a required singleton** for any entity that consumes power;
   it must exist before Fuel Tank / Power Gen / Capacitor can register contributions.
 - **Grid draw is fixed at online-time** — re-tuning `PowerConfig.grid_draw` affects
   a live module only after it re-onlines.
