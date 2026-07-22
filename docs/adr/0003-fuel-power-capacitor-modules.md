@@ -73,9 +73,11 @@ public struct Power has store {
     // running-total ceilings (summed from online contributions)
     total_output_mw: u64,     // sum of online Power Gens
     total_draw_mw: u64,       // sum of online grid reservations
+    
     total_capacity: u64,      // sum of online Capacitors
-    total_recharge: u64,      // sum of online Capacitors' recharge rate
+    total_recharge_mw: u64,   // sum of online Capacitors' rechargeRateRatio * capacity
     total_discharge: u64,     // sum of online Capacitors' discharge limit
+    
 }
 ```
 
@@ -106,9 +108,17 @@ truth for the `-=` on offline/remove.
 
 - Online a Power Gen: `total_output_mw += gen.output`.
 - Online a consumer: `total_draw_mw += resolved_grid_draw` (see Decision 5).
-- Online a Capacitor: `total_capacity += cap`, `total_recharge += rate`,
-  `total_discharge += limit`.
-- Offline / remove: the symmetric `-=`.
+- Online a Capacitor: `total_capacity += cap`, `total_discharge += limit`,
+  `total_recharge_mw += rechargeRateRatio * cap`.
+- Offline / remove: the symmetric `-=` for all three above.
+
+**Recharge is summed, per-instance.** Each Capacitor authors its own
+`rechargeRateRatio`; its recharge contribution is
+`rechargeRateRatio × capacitorCapacity`, computed from the module's own
+attributes at online-time , not a `PowerConfig` lookup. 
+Two identical Capacitors double both `total_capacity` and `total_recharge_mw`
+together, so fill time is unchanged; a higher-quality Capacitor has a higher ratio and fills faster.
+Different Capacitor types can be Online concurrently; each contributes independently.
 
 **Alternatives considered:**
 
@@ -205,7 +215,7 @@ comes from config (Decision 4), so `settle` takes `PowerConfig`:
 factor            = PowerConfig.fuel_factor[fuel_type_id]
 elapsed           = now − last_settled_ms
 headroom          = max(0, total_output_mw − total_draw_mw)
-admitted_recharge = min(total_recharge, headroom)   // spare grid only
+admitted_recharge = min(total_recharge_mw, headroom) // spare grid only
 served_load       = min(total_draw_mw + admitted_recharge, total_output_mw)
 fuel_needed       = served_load * elapsed / factor
 ```
