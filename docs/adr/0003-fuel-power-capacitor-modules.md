@@ -32,26 +32,24 @@ These are two independent systems and stay independent on-chain.
 
 ---
 
-## Decision 1 — Lazy settlement is the source of truth; a keeper only pokes
+## Decision 1 — Lazy settlement is the source of truth. No Cron Jobs
 
-Fuel and charge are derived from `(rate, elapsed_since_last_settle)` on any transaction
-that touches the entity, not live countdowns. No on-chain burn or trickle-charge thread.
+Fuel and charge are derived from `(rate, elapsed_since_last_settle)` when a
+transaction touches the entity not live countdowns. No on-chain burn or
+trickle-charge thread.
 
-Every power-relevant handler starts with `settle(power, clock)`: advance fuel and
-charge for the elapsed window, then stamp `last_settled_ms`.
+Every power-relevant handler starts with `settle(power, clock)`: advance fuel
+and charge for the elapsed window, then stamp `last_settled_ms`.
 
-An **off-chain keeper** may poke a public `settle` so indexers stay fresh and
-shutdown is timely. **Correctness never depends on it** if it never runs, the
-next player tx settles the full gap. Treat on-chain fuel/charge as stale until
-settled (or settle client-side from the same inputs).
+A public view function calculated the value based on the same settle math (Decision 7). 
+Callers get a live `fuel_qty`/`charge` via dry-run, no gas, no write.
 
-Clients must treat on-chain fuel/charge as stale until settled (or derive locally
-from the same rates and timestamps).
+Raw object fields stay stale between touches for indexers that don't call the
+view is expected, not a correctness issue.
 
 **Alternatives considered:**
 
-- **Pure lazy, no keeper.** Simplest. Rejected: fuel-out only becomes visible on
-  the next touch; indexers and other players see stale power indefinitely.
+- **Pure lazy, no keeper, no view.** Rejected: no live read without a write.
 - **Keeper is authoritative.** Rejected: correctness would depend on off-chain
   liveness and a gas payer.
 
@@ -66,11 +64,11 @@ public struct Power has store {
     last_settled_ms: u64,     // burn-clock anchor
 
     // pooled fuel
-    fuel_qty: u64,              // pooled fuel remaining
-    fuel_type_id: Option<u64>,  // which fuel is loaded; None when empty
+    fuel_qty_at_last_settle: u64,  // pooled fuel remaining, as of last_settled_ms
+    fuel_type_id: Option<u64>,     // which fuel is loaded; None when empty
 
     // battery stock
-    charge: u64,              // pooled battery stored energy
+    charge_at_last_settle: u64,   // pooled battery stored energy, as of last_settled_ms
 
     // running-total ceilings (summed from online contributions)
     total_output_mw: u64,     // sum of online Power Gens
@@ -121,7 +119,7 @@ truth for the `-=` on offline/remove.
 
 Assumptions (v1): fuel in the tank is not tradeable, and once deposited it is burned not withdrawable.
 
-Deposit consumes a fuel `Item` and adds `quantity` to `Power.fuel_qty`, capped by
+Deposit consumes a fuel `Item` and adds `quantity` to `Power.fuel_qty_at_last_settle`, capped by
 sum of online Fuel Tank capacity. The tank module contributes **capacity only**.
 
 **One fuel type at a time.** `fuel_type_id` is set on first deposit into an empty
@@ -238,14 +236,13 @@ shortfall until `charge = 0`, and after that **every power-requiring action fail
 (`EInsufficientPower`) until refuel. No per-module shed writes, no ordering.
 Recovery is a refuel followed by re-online.
 
-The interim keeper (Decision 1) predicts the shutdown timestamp from
-`(last_settled_ms, fuel_qty, served_load, PowerConfig.fuel_factor[fuel_type_id])` and pokes `settle` at
-that time so shutdown is *timely* for indexers/UX.
+There is no proactive shutdown signal. The crossing to `charge = 0` is only
+visible when something next touches the entity a real tx (which settles,
+then fails with `EInsufficientPower`) or a call to the view function
+(Decision 1) after the fact. Nothing predicts or announces the exact moment
+it happens.
 
 Temporary shape. Left open (not decided here):
-
-- **Cron-triggered hard shutdown** — keeper flips modules Offline at predicted
-  zero. Still lazy-correct underneath.
 - **Deterministic smallest-draw-first shedding** — game-design rule; needs the
   contribution ledger (Decision 2 rejected alt).
 
@@ -265,8 +262,6 @@ Temporary shape. Left open (not decided here):
   it must exist before Fuel Tank / Power Gen / Capacitor can register contributions.
 - **Grid draw is fixed at online-time** — re-tuning `PowerConfig.grid_draw` affects
   a live module only after it re-onlines.
-- **A go-services keeper** should schedule `settle` pokes at predicted fuel-out for
-  timely shutdown; the contracts remain correct without it.
 - **Charge cost lives with each calling module**, so adding a new powered behavior
   does not touch Power or a central table.
 
