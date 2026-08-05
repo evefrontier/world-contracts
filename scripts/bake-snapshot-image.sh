@@ -37,8 +37,8 @@ METADATA_LABELS="${METADATA_LABELS:-}"
 
 CIDS=()
 cleanup() {
-    for cid in "${CIDS[@]:-}"; do
-        [ -n "$cid" ] && docker rm "$cid" >/dev/null 2>&1 || true
+    for cid in ${CIDS[@]+"${CIDS[@]}"}; do
+        docker rm "$cid" >/dev/null 2>&1 || true
     done
 }
 trap cleanup EXIT
