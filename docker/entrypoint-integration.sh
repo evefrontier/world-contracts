@@ -2,8 +2,8 @@
 # Integration / snapshot entrypoint for Dockerfile.integration.
 #
 # Brings up a DETERMINISTIC local Sui node: predefined, genesis-funded accounts
-# (derived from the public test mnemonic in /genesis/accounts.json), deploys the
-# world packages, then dispatches on the mode argument:
+# (the public test keys in /genesis/accounts.json), deploys the world packages,
+# then dispatches on the mode argument:
 #
 #   test       run the SDK integration tests against the freshly deployed chain
 #   snapshot   bake the chain state for the downstream snapshot image
@@ -19,7 +19,9 @@ DATA_DIR="/data/sui-localnet"
 GENESIS_DIR="/genesis"
 GENESIS_CONFIG="$GENESIS_DIR/genesis-config.yaml"
 ACCOUNTS_JSON="$GENESIS_DIR/accounts.json"
+STAGE_DIR="/opt/world-contracts"
 RPC_URL="http://127.0.0.1:9000"
+KEY_SCHEME="ed25519"
 
 log() { echo "[integration] $*"; }
 
@@ -58,28 +60,25 @@ active_env: localnet
 active_address: ~
 EOF
 
-MNEMONIC="$(jq -r '.mnemonic' "$ACCOUNTS_JSON")"
-SCHEME="$(jq -r '.scheme' "$ACCOUNTS_JSON")"
-if [ -z "$MNEMONIC" ] || [ "$MNEMONIC" = "null" ]; then
-  log "ERROR: no mnemonic in $ACCOUNTS_JSON"; exit 1
-fi
-
-log "Importing predefined accounts from mnemonic (scheme: $SCHEME)..."
+log "Importing predefined accounts from $ACCOUNTS_JSON..."
 declare -A ADDR
-while IFS=$'\t' read -r alias path; do
-  sui keytool import "$MNEMONIC" "$SCHEME" "$path" --alias "$alias" >/dev/null 2>&1 \
+declare -A PRIVKEY
+while IFS=$'\t' read -r alias key expected; do
+  sui keytool import "$key" "$KEY_SCHEME" --alias "$alias" >/dev/null 2>&1 \
     || { log "ERROR: failed to import $alias"; exit 1; }
   ADDR[$alias]="$(sui keytool export --key-identity "$alias" --json | jq -r '.key.suiAddress')"
+  PRIVKEY[$alias]="$key"
+  # The committed address is what downstream reads out of accounts.json, so a
+  # key/address mismatch must fail the bake rather than ship a misleading file.
+  if [ "${ADDR[$alias]}" != "$expected" ]; then
+    log "ERROR: $alias key derives ${ADDR[$alias]}, but accounts.json says $expected"; exit 1
+  fi
   log "  $alias -> ${ADDR[$alias]}"
-done < <(jq -r '.accounts[] | [.alias, .derivationPath] | @tsv' "$ACCOUNTS_JSON")
+done < <(jq -r '.accounts | to_entries[] | [.key, .value.privateKey, .value.address] | @tsv' "$ACCOUNTS_JSON")
 
 sui client switch --address "${ADDR[ADMIN]}" >/dev/null
 export WORLD_ADMIN_ADDRESS="${ADDR[ADMIN]}"
-SUI_PRIVATE_KEY="$(sui keytool export --key-identity ADMIN --json | jq -r '.exportedPrivateKey')"
-if [ -z "$SUI_PRIVATE_KEY" ] || [ "$SUI_PRIVATE_KEY" = "null" ]; then
-  log "ERROR: failed to export ADMIN private key"; exit 1
-fi
-export SUI_PRIVATE_KEY
+export SUI_PRIVATE_KEY="${PRIVKEY[ADMIN]}"
 
 # ── 2. Deterministic genesis ─────────────────────────────────────────────────
 GAS_PER_COIN="${GENESIS_GAS_PER_COIN:-30000000000000000}"
@@ -88,10 +87,10 @@ mkdir -p "$DATA_DIR"
 {
   cat "$GENESIS_CONFIG"
   echo "accounts:"
-  while IFS=$'\t' read -r alias _; do
+  while IFS= read -r alias; do
     printf '  - address: "%s"\n    gas_amounts: [%s, %s, %s]\n' \
       "${ADDR[$alias]}" "$GAS_PER_COIN" "$GAS_PER_COIN" "$GAS_PER_COIN"
-  done < <(jq -r '.accounts[] | [.alias, .derivationPath] | @tsv' "$ACCOUNTS_JSON")
+  done < <(jq -r '.accounts | keys_unsorted[]' "$ACCOUNTS_JSON")
 } > "$GENESIS_RUNTIME_CONFIG"
 
 log "Generating genesis from $GENESIS_RUNTIME_CONFIG (funding ${#ADDR[@]} accounts)"
@@ -140,9 +139,10 @@ case "$MODE" in
   snapshot)
     log "Baking snapshot: stopping node cleanly..."
     stop_node
-    log "Staging world.json for runtime host seeding..."
-    mkdir -p /opt/world-contracts
-    cp deployments/localnet/world.json /opt/world-contracts/world.json
+    log "Staging world.json + accounts.json for runtime host seeding..."
+    mkdir -p "$STAGE_DIR"
+    cp deployments/localnet/world.json "$STAGE_DIR/world.json"
+    cp "$ACCOUNTS_JSON" "$STAGE_DIR/accounts.json"
     log "Swapping in the snapshot-image entrypoint..."
     mv /entrypoint-snapshot-image.sh /entrypoint.sh
     chmod +x /entrypoint.sh

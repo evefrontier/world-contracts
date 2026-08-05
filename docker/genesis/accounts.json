@@ -1,27 +1,25 @@
 {
-  "mnemonic": "test test test test test test test test test test test junk",
-  "scheme": "ed25519",
-  "note": "NON-SECRET, localnet-only",
-  "accounts": [
-    {
-      "alias": "ADMIN",
-      "derivationPath": "m/44'/784'/0'/0'/0'",
-      "address": "0xc88ef07b9b8b2fc3b7daad9478f4e1337f01792e2eab9c3794494e610636026e"
+  "_comment": "TEST-ONLY well-known keys for the localnet genesis baked into the world-contracts snapshot image. Derived from the public test mnemonic 'test test test test test test test test test test test junk' (ed25519, m/44'/784'/<account>'/0'/0'). These private keys are PUBLIC and committed on purpose so downstream builders/services can act on the pre-deployed contracts. NEVER use these accounts on a real/public network or fund them with real assets.",
+  "accounts": {
+    "ADMIN": {
+      "role": "Deploys the world packages and is an admin in the AdminACL.",
+      "address": "0xc88ef07b9b8b2fc3b7daad9478f4e1337f01792e2eab9c3794494e610636026e",
+      "privateKey": "suiprivkey1qrna7zx5a9xfr0ljh6uwc2nnwu3up6uhl9nr2y5cfufhyzjuqr8mkqymtvk"
     },
-    {
-      "alias": "PLAYER_A",
-      "derivationPath": "m/44'/784'/1'/0'/0'",
-      "address": "0x31e57c79ce7793434b5f607d19832d74821bbeca30596b99eb27050c36b543a7"
+    "PLAYER_A": {
+      "role": "Genesis-funded test player, used by the SDK integration tests.",
+      "address": "0x31e57c79ce7793434b5f607d19832d74821bbeca30596b99eb27050c36b543a7",
+      "privateKey": "suiprivkey1qzgyvl08hhzqw5gu6gn87tn9cv7svces6t3e980eudvys92utmcwzd9htvv"
     },
-    {
-      "alias": "PLAYER_B",
-      "derivationPath": "m/44'/784'/2'/0'/0'",
-      "address": "0x7d6c4056c17e8415feb89311d8a512aa8401942fc4aa5c86a0c77e37701f22db"
+    "PLAYER_B": {
+      "role": "Genesis-funded test player.",
+      "address": "0x7d6c4056c17e8415feb89311d8a512aa8401942fc4aa5c86a0c77e37701f22db",
+      "privateKey": "suiprivkey1qp5er54gj0892rvhd6ydydh6ez9d8xq9enjkgx0xtecffz87979jxplkquy"
     },
-    {
-      "alias": "PLAYER_C",
-      "derivationPath": "m/44'/784'/3'/0'/0'",
-      "address": "0x0b04a30158a022c1159efde4ffae99d12505e1653ef98e3a14799ed5c92d0d02"
+    "PLAYER_C": {
+      "role": "Genesis-funded test player.",
+      "address": "0x0b04a30158a022c1159efde4ffae99d12505e1653ef98e3a14799ed5c92d0d02",
+      "privateKey": "suiprivkey1qrufcqvrq8a8rr0tn6tuwkh4zuvlwr8p4l3yg97mwfxa5vgg6fx7qu5tjfp"
     }
-  ]
+  }
 }

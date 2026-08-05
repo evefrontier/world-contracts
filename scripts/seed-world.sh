@@ -13,10 +13,10 @@ DELAY_SECONDS="${DELAY_SECONDS:-${2:-5}}"
 
 # Populated when seed steps exist (e.g. create test characters on-chain).
 # TODO(seed): add `create:character` here so the snapshot image ships with a
-# character on-chain. Blocked on two wiring gaps in create-character.ts:
-#   1. it reads SUI_PRIVATE_KEY, which the bake never exports (it imports
-#      accounts by mnemonic) — export a funded key before this runs.
-#   2. it hardcodes deployments/localnet/world.json — drive it off SUI_NETWORK.
+# character on-chain. Blocked on one wiring gap in create-character.ts: it
+# hardcodes deployments/localnet/world.json — drive it off SUI_NETWORK. (Keys are
+# available: the bake exports ADMIN as SUI_PRIVATE_KEY, and the player keys are in
+# docker/genesis/accounts.json.)
 commands=(
 )
 

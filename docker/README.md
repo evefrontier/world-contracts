@@ -19,8 +19,9 @@ Every deploy writes `deployments/<network>/world.json` — the manifest (chainId
 package ids, shared objects) the SDK and downstream read.
 
 The localnet uses a [deterministic genesis](genesis/): four accounts
-(`ADMIN`, `PLAYER_A/B/C`) derived from a public test mnemonic and funded at
-genesis, identical every run.
+(`ADMIN`, `PLAYER_A/B/C`) whose public test keys are committed in
+[`genesis/accounts.json`](genesis/accounts.json) and funded at genesis,
+identical every run.
 
 ## Integration tests
 
@@ -39,10 +40,16 @@ docker compose -f docker/docker-compose-snapshot-image.yml up
 ```
 
 Runs a pre-baked chain (with Postgres for indexer + GraphQL) without deploying
-anything. `world.json` is copied to the host at
-`deployments/localnet-snapshot/world.json`. Ports: `9000` RPC · `9123` faucet ·
+anything. `world.json` and `accounts.json` are copied to the host at
+`deployments/localnet-snapshot/`. Ports: `9000` RPC · `9123` faucet ·
 `9125` GraphQL. Bake one with
 [`../scripts/bake-snapshot-image.sh`](../scripts/bake-snapshot-image.sh).
+
+`accounts.json` is [`genesis/accounts.json`](genesis/accounts.json) copied out at
+bake time: the `role`, `address` and bech32 `privateKey` (`suiprivkey1…`, what
+`Ed25519Keypair.fromSecretKey` takes) of every genesis account, so downstream
+consumers can sign as `ADMIN` or any player. These keys are public test keys —
+never use them on a real network or fund them with real assets.
 
 > **No world state yet.** The snapshot ships the *deployed* packages but an
 > *empty* world — `seed-world.sh` is currently a no-op, so there are no
