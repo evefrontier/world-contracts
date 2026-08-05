@@ -2,9 +2,8 @@
 # Deterministic localnet genesis PARAMETERS for world-contracts Docker images.
 #
 # This file holds only the genesis tuning. The `accounts:` funding block is NOT
-# here — the integration entrypoint appends it at runtime from the addresses it
-# derives out of accounts.json (the single source of truth for the mnemonic,
-# derivation paths, and resulting addresses). 
+# here — the integration entrypoint appends it at runtime from the addresses in
+# accounts.json (the single source of truth for the test keys and addresses).
 ssfn_config_info: ~
 validator_config_info: ~
 parameters:
