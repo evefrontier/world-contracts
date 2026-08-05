@@ -10,6 +10,10 @@ TAG="${TAG:-${GITHUB_REF_NAME:-local}}"
 BAKER_IMAGE="${BAKER_IMAGE:-${IMAGE_NAME}-snapshot:baker}"
 OUT_IMAGE="${REGISTRY}/${OWNER}/${IMAGE_NAME}:${TAG}"
 
+# Requires a buildx builder + QEMU binfmt handlers registered on the host
+# (the release-image job already sets both up before calling this script).
+PLATFORMS=(amd64 arm64)
+
 if [ -z "$OWNER" ]; then
     echo "ERROR: OWNER is empty. Set OWNER or GITHUB_REPOSITORY_OWNER." >&2
     exit 1
@@ -31,27 +35,15 @@ fi
 METADATA_TAGS="${METADATA_TAGS:-}"
 METADATA_LABELS="${METADATA_LABELS:-}"
 
+CIDS=()
 cleanup() {
-    if [ -n "${CID:-}" ]; then
-        docker rm "$CID" >/dev/null 2>&1 || true
-    fi
+    for cid in ${CIDS[@]+"${CIDS[@]}"}; do
+        docker rm "$cid" >/dev/null 2>&1 || true
+    done
 }
 trap cleanup EXIT
 
-# 1) Build the baker image (should run chain + deploy + exit 0)
-docker build -f docker/Dockerfile.integration -t "$BAKER_IMAGE" .
-
-# 2) Run bake container (mount workspace so pnpm install / deploy scripts can run)
-CID="$(docker run -d -v "$(pwd):/app" -w /app -e CI=true "$BAKER_IMAGE" snapshot)"
-
-# 3) Wait for it to finish
-STATUS="$(docker wait "$CID")"
-if [ "$STATUS" != "0" ]; then
-    docker logs "$CID" >&2 || true
-    exit 1
-fi
-
-# 4) Commit baked filesystem into an image
+# Build the --change LABEL args once; identical labels apply to every arch.
 commit_args=()
 if [ -n "$METADATA_LABELS" ]; then
     while IFS= read -r label; do
@@ -73,16 +65,53 @@ if [ -n "$METADATA_LABELS" ]; then
     done <<<"$METADATA_LABELS"
 fi
 
-IMAGE_ID="$(docker commit "${commit_args[@]}" "$CID")"
+IMAGE_IDS=()
 
-# 5) Tag + push
+for i in "${!PLATFORMS[@]}"; do
+    arch="${PLATFORMS[$i]}"
+    echo "==> Baking ${arch} snapshot"
+
+    # 1) Build the baker image for this arch (should run chain + deploy + exit 0).
+    #    arm64 runs under QEMU emulation on an amd64 runner.
+    baker_tag="${BAKER_IMAGE}-${arch}"
+    docker buildx build --platform "linux/${arch}" -f docker/Dockerfile.integration -t "$baker_tag" --load .
+
+    # 2) Run bake container (mount workspace so pnpm install / deploy scripts can run)
+    cid="$(docker run -d --platform "linux/${arch}" -v "$(pwd):/app" -w /app -e CI=true "$baker_tag" snapshot)"
+    CIDS+=("$cid")
+
+    # 3) Wait for it to finish
+    status="$(docker wait "$cid")"
+    if [ "$status" != "0" ]; then
+        docker logs "$cid" >&2 || true
+        exit 1
+    fi
+
+    # 4) Commit baked filesystem into an image
+    IMAGE_IDS[$i]="$(docker commit ${commit_args[@]+"${commit_args[@]}"} "$cid")"
+done
+
+# 5) Tag + push each arch, then join them into one multi-arch manifest per ref.
+push_and_join() {
+    local ref="$1"
+    local arch_refs=()
+
+    for i in "${!PLATFORMS[@]}"; do
+        local arch="${PLATFORMS[$i]}"
+        local arch_ref="${ref}-snapshot-${arch}"
+        docker tag "${IMAGE_IDS[$i]}" "$arch_ref"
+        docker push "$arch_ref"
+        arch_refs+=("$arch_ref")
+    done
+
+    docker buildx imagetools create -t "${ref}-snapshot" "${arch_refs[@]}"
+}
+
 if [ -n "$METADATA_TAGS" ]; then
     while IFS= read -r ref; do
         [ -z "$ref" ] && continue
-        docker tag "$IMAGE_ID" "${ref}-snapshot"
-        docker push "${ref}-snapshot"
+        push_and_join "$ref"
     done <<<"$METADATA_TAGS"
 else
-    docker tag "$IMAGE_ID" "${OUT_IMAGE}-snapshot"
-    docker push "${OUT_IMAGE}-snapshot"
+    push_and_join "$OUT_IMAGE"
 fi
