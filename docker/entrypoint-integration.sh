@@ -2,8 +2,9 @@
 # Integration / snapshot entrypoint for Dockerfile.integration.
 #
 # Brings up a DETERMINISTIC local Sui node: predefined, genesis-funded accounts
-# (the public test keys in /genesis/accounts.json), deploys the world packages,
-# then dispatches on the mode argument:
+# (signed for by the well-known test private keys committed in
+# /genesis/accounts.json), deploys the world packages, then dispatches on the
+# mode argument:
 #
 #   test       run the SDK integration tests against the freshly deployed chain
 #   snapshot   bake the chain state for the downstream snapshot image
