@@ -50,7 +50,9 @@ const VERSION: u64 = 1;
 
 // === Structs ===
 
-public struct ModuleKey(String) has copy, drop, store;
+public struct ModuleKey(
+    String,
+) has copy, drop, store; // TODO : This can be a module id (u64) instead of a string
 public struct ActionsKey() has copy, drop, store;
 public struct InFlight() has copy, drop, store;
 

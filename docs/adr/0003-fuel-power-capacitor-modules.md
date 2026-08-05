@@ -241,10 +241,11 @@ install/online/offline settles first.
 ## Decision 8 — Fuel-out shutdown is coarse in v1; ordered shedding deferred
 
 When fuel and battery charge are both exhausted, there is no thread to flip modules
-Offline. Shutdown is **lazy and coarse**: the grid collapses, the battery covers the
-shortfall until `charge = 0`, and after that **every power-requiring action fails**
-(`EInsufficientPower`) until refuel. No per-module shed writes, no ordering.
-Recovery is a refuel followed by re-online.
+Offline. Shutdown is **lazy and coarse**: after fuel-out, gens contribute 0 and the
+battery pays the **full** online `total_draw_mw` until `charge = 0` (same load the
+gens were serving — not a concurrent remainder beyond gen output). After that
+**every power-requiring action fails** (`EInsufficientPower`) until refuel. No
+per-module shed writes, no ordering. Recovery is a refuel followed by re-online.
 
 There is no proactive shutdown signal. The crossing to `charge = 0` is only
 visible when something next touches the entity a real tx (which settles,
