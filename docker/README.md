@@ -54,16 +54,16 @@ committed on purpose and are therefore public — never use these accounts on a
 real network or fund them with real assets.
 
 Bake also runs [`../scripts/seed-world.sh`](../scripts/seed-world.sh), which
-creates one character per `PLAYER_A/B/C` using the fixed ids in
-[`../test-resources.json`](../test-resources.json) (`tenant: "local"`). Those
-characters live in the baked chain DB. Object ids are deterministic:
-
+creates resources  using the fixed ids in [`../test-resources.json`](../test-resources.json)
+(`tenant: "local"`). Those entities live in the baked chain DB. Object ids are deterministic
 ```ts
 const config = loadWorldConfig("deployments/localnet-snapshot/world.json");
-deriveObjectId(config, { id: 900000001n, tenant: "local" });
+deriveObjectId(config, { id: 900000001n, tenant: "local" }); // character
+deriveObjectId(config, { id: 888800006n, tenant: "local" }); // storage unit itemId
 ```
 
-Use the ids from `test-resources.json`.
+`typeId` in `test-resources.json` is seed metadata for consumers (not an
+on-chain create arg). Use the ids from that file.
 
 ## Release image
 

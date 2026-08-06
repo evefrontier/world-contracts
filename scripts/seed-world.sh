@@ -15,6 +15,7 @@ DELAY_SECONDS="${DELAY_SECONDS:-${2:-5}}"
 # Package scripts under @evefrontier/world-sdk
 commands=(
   seed:characters
+  seed:storage-units
 )
 
 echo "Seeding world on $ENV: ${#commands[@]} steps with ${DELAY_SECONDS}s delay..."

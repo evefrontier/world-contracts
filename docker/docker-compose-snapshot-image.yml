@@ -1,8 +1,9 @@
 # This is an example of how to use the snapshot image to start a localnet with indexer and graphql.
 #
-# The snapshot includes deployed packages plus seeded PLAYER_A/B/C characters
-# (see repo-root test-resources.json). On start the container copies world.json,
-# accounts.json, and test-resources.json into the host mount.
+# The snapshot includes deployed packages, seeded resources
+# (see repo-root test-resources.json). On start the
+# container copies world.json, accounts.json, and test-resources.json into the
+# host mount.
 
 services:
   postgres:

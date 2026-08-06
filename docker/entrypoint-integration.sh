@@ -140,7 +140,7 @@ rm -rf contracts/*/build
 log "Deploying world to localnet..."
 ./scripts/deploy-world.sh localnet
 
-log "Seeding world (characters for PLAYER_A/B/C)..."
+log "Seeding world ..."
 ./scripts/seed-world.sh localnet
 
 # ── 5. Mode dispatch ─────────────────────────────────────────────────────────
