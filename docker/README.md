@@ -41,8 +41,8 @@ docker compose -f docker/docker-compose-snapshot-image.yml up
 ```
 
 Runs a pre-baked chain (with Postgres for indexer + GraphQL) without deploying
-anything. `world.json` and `accounts.json` are copied to the host at
-`deployments/localnet-snapshot/`. Ports: `9000` RPC · `9123` faucet ·
+anything. `world.json`, `accounts.json`, and `test-resources.json` are copied to
+the host at `deployments/localnet-snapshot/`. Ports: `9000` RPC · `9123` faucet ·
 `9125` GraphQL. Bake one with
 [`../scripts/bake-snapshot-image.sh`](../scripts/bake-snapshot-image.sh).
 
@@ -53,10 +53,17 @@ consumers can sign as `ADMIN`, `SPONSOR`, or any player. These private keys are
 committed on purpose and are therefore public — never use these accounts on a
 real network or fund them with real assets.
 
-> **No world state yet.** The snapshot ships the *deployed* packages but an
-> *empty* world — `seed-world.sh` is currently a no-op, so there are no
-> characters or other entities on-chain. Seeding (e.g. a baked test character)
-> is tracked as a TODO in `seed-world.sh` for a later PR.
+Bake also runs [`../scripts/seed-world.sh`](../scripts/seed-world.sh), which
+creates resources  using the fixed ids in [`../test-resources.json`](../test-resources.json)
+(`tenant: "local"`). Those entities live in the baked chain DB. Object ids are deterministic
+```ts
+const config = loadWorldConfig("deployments/localnet-snapshot/world.json");
+deriveObjectId(config, { id: 900000001n, tenant: "local" }); // character
+deriveObjectId(config, { id: 888800006n, tenant: "local" }); // storage unit itemId
+```
+
+`typeId` in `test-resources.json` is seed metadata for consumers (not an
+on-chain create arg). Use the ids from that file.
 
 ## Release image
 

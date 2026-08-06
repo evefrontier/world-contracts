@@ -4,7 +4,7 @@ set -euo pipefail
 DATA_DIR="/data/sui-localnet"
 SEED_SRC_DIR="/opt/world-contracts"   # baked at bake time, never mounted
 SEED_DST_DIR="/data/deployment"       # host bind mount target
-SEED_FILES=(world.json accounts.json)
+SEED_FILES=(world.json accounts.json test-resources.json)
 
 if [ -z "${POSTGRES_CONNECTION_STRING:-}" ]; then
     echo "ERROR: POSTGRES_CONNECTION_STRING is not set" >&2
