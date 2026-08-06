@@ -79,6 +79,7 @@ done < <(jq -r '.accounts | to_entries[] | [.key, .value.privateKey, .value.addr
 
 sui client switch --address "${ADDR[ADMIN]}" >/dev/null
 export WORLD_ADMIN_ADDRESS="${ADDR[ADMIN]}"
+export SPONSOR_ADDRESSES="${ADDR[SPONSOR]}"
 export SUI_PRIVATE_KEY="${PRIVKEY[ADMIN]}"
 
 # ── 2. Deterministic genesis ─────────────────────────────────────────────────

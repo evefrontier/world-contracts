@@ -29,11 +29,11 @@ function addresses(name: string): string[] {
     .filter((a) => a.length > 0)
 }
 
-const admins = addresses('ADMIN_ADDRESS')
+const admins = addresses('ADMIN_ADDRESSES')
 const sponsors = addresses('SPONSOR_ADDRESSES')
 
 if (admins.length === 0 && sponsors.length === 0) {
-  console.log('no ADMIN_ADDRESS or SPONSOR_ADDRESSES set; nothing to do.')
+  console.log('no ADMIN_ADDRESSES or SPONSOR_ADDRESSES set; nothing to do.')
   process.exit(0)
 }
 

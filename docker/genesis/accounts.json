@@ -6,6 +6,11 @@
       "address": "0xc88ef07b9b8b2fc3b7daad9478f4e1337f01792e2eab9c3794494e610636026e",
       "privateKey": "suiprivkey1qrna7zx5a9xfr0ljh6uwc2nnwu3up6uhl9nr2y5cfufhyzjuqr8mkqymtvk"
     },
+    "SPONSOR": {
+      "role": "Genesis-funded gas sponsor in the AdminACL. Simulates production: admin signs, sponsor submits.",
+      "address": "0x39bcd38753b817f58463f3a5c0ca153145bef9c6676bd021adf85da369483854",
+      "privateKey": "suiprivkey1qrze5w958d7fm9jut2zamlacslwekath4va7jfm8u3cmj8v9x7g46neqky8"
+    },
     "PLAYER_A": {
       "role": "Genesis-funded test player, used by the SDK integration tests.",
       "address": "0x31e57c79ce7793434b5f607d19832d74821bbeca30596b99eb27050c36b543a7",
