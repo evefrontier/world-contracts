@@ -1,4 +1,4 @@
-# 3. Fuel, Power Gen, and Capacitor modules — lazy-settled power on a singleton aggregate
+# 3. Fuel, Power Gen, and Capacitor modules lazy-settled power on a singleton aggregate
 
 - **Status:** Proposed
 
@@ -32,7 +32,7 @@ These are two independent systems and stay independent on-chain.
 
 ---
 
-## Decision 1 — Lazy settlement is the source of truth. No Cron Jobs
+## Decision 1 : Lazy settlement is the source of truth. No Cron Jobs
 
 Fuel and charge are derived from `(rate, elapsed_since_last_settle)` when a
 transaction touches the entity not live countdowns. No on-chain burn or
@@ -53,7 +53,7 @@ view is expected, not a correctness issue.
 - **Keeper is authoritative.** Rejected: correctness would depend on off-chain
   liveness and a gas payer.
 
-## Decision 2 — One singleton `Module<Power>` owns the pools and the clock
+## Decision 2 : One singleton `Module<Power>` owns the pools and the clock
 
 One `Module<Power>` per Entity at a fixed name (`"power"`), like `identity` on a
 Character. It owns the fuel pool, battery charge, burn clock, and running-total
@@ -100,7 +100,7 @@ reservoir.
   module-owned data; not needed while shedding is coarse. Migration path if
   ordered shedding lands.
 
-## Decision 3 — Contributions are running scalar totals
+## Decision 3 : Contributions are running scalar totals
 
 Power holds only the **sums** (Decision 2). Each `Module<PowerGen>` /
 `Module<FuelTank>` / `Module<Capacitor>` owns its attributes and is the source of
@@ -125,7 +125,7 @@ Different Capacitor types can be Online concurrently; each contributes independe
 - **Contribution list inside Power.** Totals always re-derivable. Rejected for v1:
   extra storage/iteration we don't need while shedding is coarse.
 
-## Decision 4 — Fuel is a single-type pooled scalar, not inventory
+## Decision 4 : Fuel is a single-type pooled scalar, not inventory
 
 Assumptions (v1): fuel in the tank is not tradeable, and once deposited it is burned not withdrawable.
 
@@ -146,7 +146,7 @@ not **how much** power gens produce.
   does not map cleanly onto whole-item counts. Withdraw-unburned is a future
   option, not v1.
 
-## Decision 5 — Grid draw is keyed by type_id; charge cost by the calling function
+## Decision 5 : Grid draw is keyed by type_id; charge cost by the calling function
 
 Two cost systems, two homes:
 
@@ -171,7 +171,7 @@ Handlers may apply a situational multiplier (e.g. d-scan vs scan angle).
 - **Central `charge_cost` table keyed by action_id.** Rejected: no stable on-chain
   key for "a function"; cost belongs with the behavior that spends it.
 
-## Decision 6 — Power is a Requirement; three cost kinds; online/offline are Actions
+## Decision 6 : Power is a Requirement; three cost kinds; online/offline are Actions
 
 Power composes as a `Requirement` (like `Deposit` / `Proximity`), checked by the
 Power handler after settle.
@@ -203,7 +203,7 @@ reservation is `+=` / `-=`.
 - **Online/offline as plain owner-gated entries.** Rejected: hardcodes access
   control and breaks "every behavior is an exposed action."
 
-## Decision 7 — Settlement is two-phase (pre-dry / post-dry)
+## Decision 7 : Settlement is two-phase (pre-dry / post-dry)
 
 Recharge burns fuel. Fuel can run out mid-interval, so `settle` splits the window
 at dry-out — otherwise a late poke mis-charges the battery.
