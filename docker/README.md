@@ -56,9 +56,14 @@ real network or fund them with real assets.
 Bake also runs [`../scripts/seed-world.sh`](../scripts/seed-world.sh), which
 creates one character per `PLAYER_A/B/C` using the fixed ids in
 [`../test-resources.json`](../test-resources.json) (`tenant: "local"`). Those
-characters live in the baked chain DB. Object ids are deterministic — derive with
-`deriveObjectId(world.json, { id, tenant: "local" })` using the ids from
-`test-resources.json`.
+characters live in the baked chain DB. Object ids are deterministic:
+
+```ts
+const config = loadWorldConfig("deployments/localnet-snapshot/world.json");
+deriveObjectId(config, { id: 900000001n, tenant: "local" });
+```
+
+Use the ids from `test-resources.json`.
 
 ## Release image
 

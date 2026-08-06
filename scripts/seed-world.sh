@@ -12,8 +12,9 @@ export SUI_NETWORK="$ENV"
 
 DELAY_SECONDS="${DELAY_SECONDS:-${2:-5}}"
 
+# Package scripts under @evefrontier/world-sdk
 commands=(
-  "--filter @evefrontier/world-sdk seed:characters"
+  seed:characters
 )
 
 echo "Seeding world on $ENV: ${#commands[@]} steps with ${DELAY_SECONDS}s delay..."
@@ -24,7 +25,7 @@ for i in "${!commands[@]}"; do
 
   echo
   echo "==> Step ${step}/${#commands[@]}: ${cmd}"
-  pnpm ${cmd}
+  pnpm --filter @evefrontier/world-sdk "${cmd}"
 
   if [[ "${step}" -lt "${#commands[@]}" ]]; then
     sleep "${DELAY_SECONDS}"
