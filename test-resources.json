@@ -1,0 +1,9 @@
+{
+  "tenant": "local",
+  "tribeId": 1,
+  "character": {
+    "PLAYER_A": 900000001,
+    "PLAYER_B": 900000002,
+    "PLAYER_C": 900000003
+  }
+}

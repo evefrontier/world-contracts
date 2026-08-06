@@ -140,7 +140,7 @@ rm -rf contracts/*/build
 log "Deploying world to localnet..."
 ./scripts/deploy-world.sh localnet
 
-log "Seeding world (no-op until seed steps are added to seed-world.sh)..."
+log "Seeding world (characters for PLAYER_A/B/C)..."
 ./scripts/seed-world.sh localnet
 
 # ── 5. Mode dispatch ─────────────────────────────────────────────────────────
@@ -153,10 +153,11 @@ case "$MODE" in
   snapshot)
     log "Baking snapshot: stopping node cleanly..."
     stop_node
-    log "Staging world.json + accounts.json for runtime host seeding..."
+    log "Staging world.json + accounts.json + test-resources.json for runtime host seeding..."
     mkdir -p "$STAGE_DIR"
     cp deployments/localnet/world.json "$STAGE_DIR/world.json"
     cp "$ACCOUNTS_JSON" "$STAGE_DIR/accounts.json"
+    cp test-resources.json "$STAGE_DIR/test-resources.json"
     log "Swapping in the snapshot-image entrypoint..."
     mv /entrypoint-snapshot-image.sh /entrypoint.sh
     chmod +x /entrypoint.sh

@@ -1,7 +1,8 @@
 # This is an example of how to use the snapshot image to start a localnet with indexer and graphql.
 #
-# NOTE: the snapshot ships the deployed packages but an EMPTY world — no characters
-# or other entities on-chain yet (seed-world.sh is a no-op). Seeding is a TODO.
+# The snapshot includes deployed packages plus seeded PLAYER_A/B/C characters
+# (see repo-root test-resources.json). On start the container copies world.json,
+# accounts.json, and test-resources.json into the host mount.
 
 services:
   postgres:
@@ -28,7 +29,7 @@ services:
       - 9125:9125
     volumes:
       # Host folder for the deployment artifacts. On start the container copies the baked
-      # world.json (manifest) and accounts.json (test keys) from the image into this mount
+      # world.json, accounts.json, and test-resources.json from the image into this mount
       # (see entrypoint-snapshot-image.sh), so they appear on the host under
       # ../deployments/localnet-snapshot/. Needs :rw for that.
       - ../deployments/localnet-snapshot:/data/deployment:rw
