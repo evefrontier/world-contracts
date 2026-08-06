@@ -83,20 +83,23 @@ export SUI_PRIVATE_KEY="${PRIVKEY[ADMIN]}"
 
 # ── 2. Deterministic genesis ─────────────────────────────────────────────────
 GAS_PER_COIN="${GENESIS_GAS_PER_COIN:-30000000000000000}"
+GAS_RESERVE="${GENESIS_GAS_RESERVE:-$GAS_PER_COIN}"
+TOTAL_FUNDING=$((GAS_PER_COIN * 3))
+ADDRESS_BALANCE_AMOUNT=$((TOTAL_FUNDING - GAS_RESERVE))
 GENESIS_RUNTIME_CONFIG="/tmp/genesis-config.runtime.yaml"
 mkdir -p "$DATA_DIR"
 {
   cat "$GENESIS_CONFIG"
   echo "accounts:"
   while IFS= read -r alias; do
-    printf '  - address: "%s"\n    gas_amounts: [%s, %s, %s]\n' \
-      "${ADDR[$alias]}" "$GAS_PER_COIN" "$GAS_PER_COIN" "$GAS_PER_COIN"
+    printf '  - address: "%s"\n    gas_amounts: [%s]\n' \
+      "${ADDR[$alias]}" "$TOTAL_FUNDING"
   done < <(jq -r '.accounts | keys_unsorted[]' "$ACCOUNTS_JSON")
 } > "$GENESIS_RUNTIME_CONFIG"
 
 log "Generating genesis from $GENESIS_RUNTIME_CONFIG (funding ${#ADDR[@]} accounts)"
 sui genesis --from-config "$GENESIS_RUNTIME_CONFIG" --working-dir "$DATA_DIR" --with-faucet -f
-cp /fullnode.yaml "$DATA_DIR/fullnode.yaml"
+# Genesis writes its own fullnode.yaml; overwriting it breaks faucet tx execution.
 
 # ── 3. Start node ────────────────────────────────────────────────────────────
 log "Starting local Sui node..."
@@ -113,6 +116,15 @@ for i in $(seq 1 60); do
 done
 sleep 2
 log "RPC ready."
+
+# ── 3.5 Move surplus funds into address balance ──────────────────────────────
+log "Moving surplus into address balance for ${#ADDR[@]} accounts (keeping $GAS_RESERVE MIST as owned gas each)..."
+for alias in "${!ADDR[@]}"; do
+  sui client switch --address "${ADDR[$alias]}" >/dev/null
+  sui client send-funds --to "${ADDR[$alias]}" --amount "$ADDRESS_BALANCE_AMOUNT" --gas-budget 100000000 \
+    || { log "ERROR: send-funds failed for $alias"; exit 1; }
+done
+sui client switch --address "${ADDR[ADMIN]}" >/dev/null
 
 # ── 4. Install deps, deploy world, seed ──────────────────────────────────────
 cd /app

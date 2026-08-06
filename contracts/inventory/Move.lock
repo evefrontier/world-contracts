@@ -4,38 +4,14 @@
 [move]
 version = 4
 
-[pinned.dev.MoveStdlib]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "b124567746b3a78a7e294ac2de265f693401ec9d" }
-use_environment = "dev"
-manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
-deps = {}
-
-[pinned.dev.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "b124567746b3a78a7e294ac2de265f693401ec9d" }
-use_environment = "dev"
-manifest_digest = "EA4322ACAE0C2B0A69CD8FC8EF734EB455BDC48311D529D9687CECBE1B3F6C68"
-deps = { MoveStdlib = "MoveStdlib" }
-
-[pinned.dev.core]
-source = { local = "../core" }
-use_environment = "dev"
-manifest_digest = "D57897BC535122CD3CB949AFE1637D27C48ECACE7AA4A38C0E6217E4903C5510"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
-[pinned.dev.inventory]
-source = { root = true }
-use_environment = "dev"
-manifest_digest = "C9F5662B88EC27D4EDC3A17419B2DD98AA33F04F755FC7BC996546A84D83EA2F"
-deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
-
 [pinned.testnet.MoveStdlib]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "b124567746b3a78a7e294ac2de265f693401ec9d" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "b9149cbf0b2cb9ae5ed830407a9b48c7ae3fd36c" }
 use_environment = "testnet"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
 [pinned.testnet.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "b124567746b3a78a7e294ac2de265f693401ec9d" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "b9149cbf0b2cb9ae5ed830407a9b48c7ae3fd36c" }
 use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
 deps = { MoveStdlib = "MoveStdlib" }
