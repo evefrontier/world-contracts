@@ -36,12 +36,15 @@ The compose file mounts a host folder onto `/data/deployment` in the container. 
 
 **What’s in the file**
 
-Small JSON with a `network` name and two groups of IDs:
+Small JSON with a `network` name and three groups of IDs:
 
 - **`world`** — the published world package id and important shared objects (governor cap, registries, config objects, etc.).
 - **`builder`** — the builder extension package id and related caps/config ids.
+- **`assets`** — the EVE token package id plus `currencyId`, `treasuryId`, `adminCapId`, and `metadataCapId`. Coin type is `${packageId}::EVE::EVE`.
 
 Your services or tests read these hex IDs when calling the chain (e.g. which package to target, which objects to pass into transactions).
+
+The snapshot also finalizes EVE and funds **`admin`** with **10M EVE**
 
 ## Accounts and keys on your machine (`accounts.json`)
 
@@ -51,13 +54,14 @@ Builders and service tests need to **act as** the accounts that exist on the bak
 
 > ⚠️ **Test keys only.** These private keys are committed and public on purpose. They exist solely to drive the local snapshot chain. **Never** use these accounts on a real/public network or fund them with real assets.
 
-Four **distinct** roles (`sponsor` is deliberately different from `governor`, `admin`, and the players):
+Distinct roles (`sponsor` is deliberately different from `governor`, `admin`, and the players):
 
 - **`governor`** — deployed the contracts; owns the `GovernorCap`.
 - **`admin`** — owns the builder `AdminCap`, is the registered server address, and is an admin in the `AdminACL`.
 - **`sponsor`** — has lots of SUI, both a coin balance and an [address balance](https://docs.sui.io/onchain-finance/asset-custody/address-balances/) (EF-17526); added to the `AdminACL`.
 - **`player`** — player A (`PLAYER_A`); owns a character on the baked chain.
 - **`player_b`** — player B (`PLAYER_B`); second player for multi-user scripts and builder extensions.
+- **`exchange`** — holds the baked **10M EVE** balance for exchange / economy integration.
 
 Each entry has an `address` and a `privateKey` (Sui bech32 `suiprivkey1…`), ready to import with `sui keytool import` or load directly in the TS SDK. The same keys are committed at [`docker/genesis/accounts.json`](genesis/accounts.json).
 

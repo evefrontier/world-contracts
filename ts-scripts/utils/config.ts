@@ -17,6 +17,13 @@ export type ExtractedObjectIds = {
         extensionConfigId: string;
         adminCapId?: string;
     };
+    assets?: {
+        packageId: string;
+        currencyId: string;
+        treasuryId: string;
+        adminCapId: string;
+        metadataCapId: string;
+    };
 };
 
 export type WorldConfig = {

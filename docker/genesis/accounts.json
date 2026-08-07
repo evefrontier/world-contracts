@@ -25,6 +25,11 @@
       "role": "Player B (PLAYER_B) for second-player integration and builder extension scripts.",
       "address": "0xaedf8c880a42b8e6dd99e9303c146f45e242acc4c5ddb4c04420669fa9411969",
       "privateKey": "suiprivkey1qp6htvlvnle9hwzqxp0kwdvdmkelr9lk923fyg79mjaczkssd7wlqwqen2a"
+    },
+    "exchange": {
+      "role": "Holds the baked EVE token balance (10M EVE) for exchange / economy integration tests.",
+      "address": "0xc877d3fb9418aecbf660b7a4e5da5ce67041814dfd0df141058a2b6d2537d998",
+      "privateKey": "suiprivkey1qqsd0fl6dx5rhurfea7d7ta77hx3lnug2g8l8et8cf5xn3ssvd705aqznfj"
     }
   }
 }
