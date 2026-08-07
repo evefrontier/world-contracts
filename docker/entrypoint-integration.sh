@@ -53,7 +53,11 @@ echo "[ci] Creating data directory..."
 mkdir -p /data/sui-localnet
 
 echo "[ci] Running sui genesis..."
-sui genesis --working-dir /data/sui-localnet --with-faucet
+if [ "${1:-}" = "snapshot" ]; then
+  sui genesis --working-dir /data/sui-localnet --with-faucet --epoch-duration-ms 30000
+else
+  sui genesis --working-dir /data/sui-localnet --with-faucet
+fi
 
 # Genesis writes fullnode.yaml; overwriting it breaks faucet tx execution on Sui 1.75.
 
@@ -209,6 +213,20 @@ if [ $# -eq 1 ]; then
     echo "[ci] Seeding characters for PLAYER and PLAYER_B..."
     DELAY_SECONDS="${DELAY_SECONDS:-3}" pnpm create-character \
       || { echo "[ci] ERROR: failed to seed player character" >&2; exit 1; }
+
+    echo "[ci] Waiting for epoch >= 1..."
+    for i in $(seq 1 60); do
+      epoch="$(curl -sf -X POST http://127.0.0.1:9000 \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"suix_getLatestSuiSystemState","params":[]}' \
+        | jq -r '.result.epoch // 0')"
+      [ "$epoch" -ge 1 ] && break
+      sleep 2
+    done
+    if [ "${epoch:-0}" -lt 1 ]; then
+      echo "[ci] ERROR: timed out waiting for epoch >= 1" >&2
+      exit 1
+    fi
 
     echo "[ci] Shutting down node..."
     if kill -0 "$NODE_PID" 2>/dev/null; then
