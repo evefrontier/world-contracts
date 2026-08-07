@@ -10,7 +10,7 @@ setup
 ENV=$(get_env "${1:-}")
 shift || true
 PKGS=("$@")
-[ ${#PKGS[@]} -eq 0 ] && PKGS=(core character inventory)
+[ ${#PKGS[@]} -eq 0 ] && PKGS=(core character inventory freight)
 
 if [[ "$ENV" == "localnet" ]]; then
     echo "reset-published: localnet has no committed Published.toml" >&2

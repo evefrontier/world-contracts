@@ -50,6 +50,12 @@ export {
   verifyProximity,
 } from './packages/core.js'
 export {
+  dropoff,
+  dropoffRequirement,
+  pickup,
+  pickupRequirement,
+} from './packages/freight.js'
+export {
   type BalanceOfArgs,
   type BridgeInArgs,
   balanceOf,

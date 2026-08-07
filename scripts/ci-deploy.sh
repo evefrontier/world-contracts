@@ -6,7 +6,7 @@ source "$(dirname "$0")/lib.sh"
 : "${TARGET_ENV:?}" "${MODE:?}" "${NET:?}" "${COMMIT:?}" "${DEPLOYER_KEY:?}" "${VERSION:?}"
 
 # Packages in dependency order, matching deploy-world.sh.
-PACKAGES="core character inventory"
+PACKAGES="core character inventory freight"
 
 # Run a step, or just print it under DRY_RUN=1.
 run() {
