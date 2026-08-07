@@ -3,8 +3,8 @@
 /// Rifts are created and managed solely by gameplay servers (authorized sponsors).
 /// Players have no OwnerCap and therefore no on-chain path to create or modify them.
 /// Authorized sponsors may announce mining via `mining_started` (event-only) to enable
-/// PvP interference; `broadcast_location` remains available to persist plaintext coords
-/// in `LocationRegistry`. The mining lifecycle itself is enforced off-chain.
+/// PvP interference, or persist plaintext coords via `broadcast_location`.
+/// The mining lifecycle itself is enforced off-chain.
 module world::rift;
 
 use std::string::String;
@@ -52,7 +52,6 @@ public struct MiningStarted has copy, drop {
     rift_key: TenantItemId,
     character_id: ID,
     character_key: TenantItemId,
-    character_address: address,
     solarsystem: u64,
     x: String,
     y: String,
@@ -145,12 +144,12 @@ public fun broadcast_location(
     });
 }
 
-/// Announces that mining has started at a rift. Emits `MiningStarted` only; does not
-/// write coordinates into `LocationRegistry`.
+/// Announces that mining has started at a rift. Emits `MiningStarted`;
 public fun mining_started(
-    rift: &Rift,
+    registry: &ObjectRegistry,
     character: &Character,
     admin_acl: &AdminACL,
+    item_id: u64,
     solarsystem: u64,
     x: String,
     y: String,
@@ -158,13 +157,21 @@ public fun mining_started(
     ctx: &TxContext,
 ) {
     admin_acl.verify_sponsor(ctx);
+    assert!(item_id != 0, ERiftItemIdEmpty);
+
+    let tenant = character.tenant();
+    let rift_key = in_game_id::create_key(item_id, tenant);
+    assert!(registry.object_exists(rift_key), ERiftAlreadyExists);
+
+    let rift_id = object::id_from_address(
+        derived_object::derive_address(object::id(registry), rift_key),
+    );
 
     event::emit(MiningStarted {
-        rift_id: object::id(rift),
-        rift_key: rift.key,
+        rift_id,
+        rift_key,
         character_id: character.id(),
         character_key: character.key(),
-        character_address: character.character_address(),
         solarsystem,
         x,
         y,
