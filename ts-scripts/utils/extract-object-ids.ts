@@ -1,7 +1,7 @@
 /**
- * Extract world (and optional builder) object IDs from publish output JSON files
- * and write them to deployments/<network>/world-object-ids.json.
- * Run once after deploying world (and optionally builder extension).
+ * Extract world (and optional builder / assets) object IDs from publish output JSON files
+ * and write them to deployments/<network>/extracted-object-ids.json.
+ * Run once after deploying world (and optionally builder extension / assets).
  */
 import "dotenv/config";
 import * as fs from "node:fs";
@@ -21,6 +21,7 @@ import { MODULE as extensionModule } from "../builder_extension/modules";
 import { getExtractedObjectIdsPath } from "./world-object-ids";
 
 const DEFAULT_NETWORK = "localnet";
+const ASSETS_MODULE = "EVE";
 
 function getGovernorAddress(): string {
     const governorPrivateKey = process.env.GOVERNOR_PRIVATE_KEY || process.env.ADMIN_PRIVATE_KEY;
@@ -112,20 +113,73 @@ function extractBuilderIds(
     };
 }
 
+function extractAssetsIds(
+    assetsPath: string,
+    governorAddress: string
+): ExtractedObjectIds["assets"] {
+    const resolved = resolvePublishOutputPath(assetsPath);
+    if (!fs.existsSync(resolved)) return undefined;
+
+    const { objectChanges } = readPublishOutputFile(resolved);
+    const packageId = getPublishedPackageId(objectChanges);
+    const eveType = typeName(packageId, ASSETS_MODULE, "EVE");
+
+    // Prefer owner-scoped matches; fall back to type-only (single instance per publish).
+    const currencyId = findCreatedObjectId(
+        objectChanges,
+        `0x2::coin_registry::Currency<${eveType}>`
+    );
+    const metadataCapId =
+        findCreatedObjectId(objectChanges, `0x2::coin_registry::MetadataCap<${eveType}>`, {
+            addressOwner: governorAddress,
+        }) ?? findCreatedObjectId(objectChanges, `0x2::coin_registry::MetadataCap<${eveType}>`);
+    const treasuryId =
+        findCreatedObjectId(objectChanges, typeName(packageId, ASSETS_MODULE, "EveTreasury"), {
+            addressOwner: governorAddress,
+        }) ?? findCreatedObjectId(objectChanges, typeName(packageId, ASSETS_MODULE, "EveTreasury"));
+    const adminCapId =
+        findCreatedObjectId(objectChanges, typeName(packageId, ASSETS_MODULE, "AdminCap"), {
+            addressOwner: governorAddress,
+        }) ?? findCreatedObjectId(objectChanges, typeName(packageId, ASSETS_MODULE, "AdminCap"));
+
+    if (!currencyId || !metadataCapId || !treasuryId || !adminCapId) {
+        throw new Error(
+            [
+                "Assets publish output missing required EVE objects:",
+                `  currencyId=${currencyId ?? "missing"}`,
+                `  metadataCapId=${metadataCapId ?? "missing"}`,
+                `  treasuryId=${treasuryId ?? "missing"}`,
+                `  adminCapId=${adminCapId ?? "missing"}`,
+            ].join("\n")
+        );
+    }
+
+    return {
+        packageId,
+        currencyId,
+        treasuryId,
+        adminCapId,
+        metadataCapId,
+    };
+}
+
 function main() {
     const network = process.env.SUI_NETWORK ?? DEFAULT_NETWORK;
     const worldPath =
         process.env.WORLD_PUBLISH_OUTPUT ?? `./deployments/${network}/world_package.json`;
     const builderPath =
         process.env.BUILDER_PUBLISH_OUTPUT ?? `./deployments/${network}/builder_package.json`;
+    const assetsPath =
+        process.env.ASSETS_PUBLISH_OUTPUT ?? `./deployments/${network}/assets_package.json`;
     const outPath = getExtractedObjectIdsPath(network);
 
     const governorAddress = getGovernorAddress();
 
     const world = extractWorldIds(worldPath, governorAddress);
     const builder = extractBuilderIds(builderPath, governorAddress);
+    const assets = extractAssetsIds(assetsPath, governorAddress);
 
-    const output: ExtractedObjectIds = { network, world, builder };
+    const output: ExtractedObjectIds = { network, world, builder, assets };
 
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");

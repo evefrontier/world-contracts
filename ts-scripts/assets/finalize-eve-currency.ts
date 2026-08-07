@@ -5,30 +5,30 @@
  *
  * Usage:
  *   EVE_CURRENCY_OBJECT_ID=0x... ASSETS_PACKAGE_ID=0x... npx tsx ts-scripts/assets/finalize-eve-currency.ts
- * Or set those in .env. Use the Currency<EVE> object ID (owner 0xc), not the Coin or other objects.
+ * Or set those in .env / rely on deployments/<network>/extracted-object-ids.json after extract-object-ids.
  */
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { createClient, keypairFromPrivateKey } from "../utils/client";
+import { loadExtractedObjectIds } from "../utils/helper";
+import type { Network } from "../utils/config";
 
 const COIN_REGISTRY_ID = "0xc";
 
 async function main() {
-    const currencyObjectId = process.env.EVE_CURRENCY_OBJECT_ID;
-    const packageId = process.env.ASSETS_PACKAGE_ID;
+    const network = (process.env.SUI_NETWORK ?? "localnet") as Network;
+    const extracted = loadExtractedObjectIds(network);
+
+    const currencyObjectId = process.env.EVE_CURRENCY_OBJECT_ID || extracted?.assets?.currencyId;
+    const packageId = process.env.ASSETS_PACKAGE_ID || extracted?.assets?.packageId;
 
     if (!currencyObjectId || !packageId) {
         console.error(
-            "SET the environment variables EVE_CURRENCY_OBJECT_ID and ASSETS_PACKAGE_ID."
+            "Set EVE_CURRENCY_OBJECT_ID and ASSETS_PACKAGE_ID, or run extract-object-ids after deploying assets."
         );
         process.exit(1);
     }
 
-    const network = (process.env.SUI_NETWORK ?? "testnet") as
-        | "localnet"
-        | "testnet"
-        | "devnet"
-        | "mainnet";
     const client = createClient(network);
     const privateKey = process.env.GOVERNOR_PRIVATE_KEY;
     if (!privateKey) {

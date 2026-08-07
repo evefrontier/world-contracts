@@ -36,12 +36,15 @@ The compose file mounts a host folder onto `/data/deployment` in the container. 
 
 **What’s in the file**
 
-Small JSON with a `network` name and two groups of IDs:
+Small JSON with a `network` name and three groups of IDs:
 
 - **`world`** — the published world package id and important shared objects (governor cap, registries, config objects, etc.).
 - **`builder`** — the builder extension package id and related caps/config ids.
+- **`assets`** — the EVE token package id plus `currencyId`, `treasuryId`, `adminCapId`, and `metadataCapId`. Coin type is `${packageId}::EVE::EVE`.
 
 Your services or tests read these hex IDs when calling the chain (e.g. which package to target, which objects to pass into transactions).
+
+The snapshot also finalizes EVE and funds **`admin`** with **10M EVE**
 
 ## Accounts and keys on your machine (`accounts.json`)
 

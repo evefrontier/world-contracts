@@ -192,6 +192,15 @@ if [ $# -eq 1 ]; then
   elif [ "$1" = "snapshot" ]; then
     echo "[ci] Building snapshot image..."
 
+    echo "[ci] Switching to GOVERNOR for assets (EVE) deployment..."
+    sui client switch --address GOVERNOR >/dev/null
+    pnpm deploy-assets localnet \
+      || { echo "[ci] ERROR: failed to deploy assets / finalize EVE" >&2; exit 1; }
+
+    echo "[ci] Funding ADMIN with 10M EVE..."
+    RECIPIENT="$ADMIN_ADDRESS" AMOUNT=10000000 pnpm transfer-eve \
+      || { echo "[ci] ERROR: failed to transfer EVE to ADMIN" >&2; exit 1; }
+
     # create-character reads PLAYER_A/PLAYER_B from .env and seeds both characters.
     echo "[ci] Seeding characters for PLAYER and PLAYER_B..."
     DELAY_SECONDS="${DELAY_SECONDS:-3}" pnpm create-character \
