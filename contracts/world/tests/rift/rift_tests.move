@@ -5,16 +5,18 @@ use std::{string::utf8, unit_test::assert_eq};
 use sui::test_scenario as ts;
 use world::{
     access::{Self, AdminACL},
+    character::{Self, Character},
     location::{Self, LocationRegistry},
     object_registry::ObjectRegistry,
     rift::{Self, Rift},
-    test_helpers::{Self, governor, admin, tenant}
+    test_helpers::{Self, governor, admin, tenant, user_a}
 };
 
 const LOCATION_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const INVALID_HASH: vector<u8> = x"deadbeef";
 const RIFT_ITEM_ID: u64 = 9001;
+const CHARACTER_ITEM_ID: u32 = 1001;
 
 fun setup(ts: &mut ts::Scenario) {
     test_helpers::setup_world(ts);
@@ -40,6 +42,29 @@ fun spawn_and_share_rift(ts: &mut ts::Scenario, item_id: u64): ID {
         rift_id
     };
     rift_id
+}
+
+fun create_and_share_character(ts: &mut ts::Scenario, item_id: u32): ID {
+    ts::next_tx(ts, admin());
+    {
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
+        let character = character::create_character(
+            &mut registry,
+            &admin_acl,
+            item_id,
+            tenant(),
+            100,
+            user_a(),
+            utf8(b"miner"),
+            ts.ctx(),
+        );
+        let character_id = object::id(&character);
+        character.share_character(&admin_acl, ts.ctx());
+        ts::return_shared(admin_acl);
+        ts::return_shared(registry);
+        character_id
+    }
 }
 
 #[test]
@@ -112,6 +137,76 @@ fun test_broadcast_location() {
         ts::return_shared(location_registry);
     };
 
+    ts::end(ts);
+}
+
+#[test]
+fun test_mining_started() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let rift_id = spawn_and_share_rift(&mut ts, RIFT_ITEM_ID);
+    let character_id = create_and_share_character(&mut ts, CHARACTER_ITEM_ID);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+        rift::mining_started(
+            &rift,
+            &character,
+            &admin_acl,
+            42,
+            utf8(b"100"),
+            utf8(b"200"),
+            utf8(b"300"),
+            ts.ctx(),
+        );
+        ts::return_shared(admin_acl);
+        ts::return_shared(character);
+        ts::return_shared(rift);
+    };
+
+    // Event-only announce: coordinates must not be persisted in LocationRegistry.
+    ts::next_tx(&mut ts, admin());
+    {
+        let location_registry = ts::take_shared<LocationRegistry>(&ts);
+        let coords = location::get_location(&location_registry, rift_id);
+        assert!(option::is_none(&coords), 0);
+        ts::return_shared(location_registry);
+    };
+
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = access::EUnauthorizedSponsor)]
+fun test_mining_started_unauthorized_sponsor() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let rift_id = spawn_and_share_rift(&mut ts, RIFT_ITEM_ID);
+    let character_id = create_and_share_character(&mut ts, CHARACTER_ITEM_ID);
+
+    ts::next_tx(&mut ts, @0xF);
+    let rift = ts::take_shared_by_id<Rift>(&ts, rift_id);
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
+    let admin_acl = ts::take_shared<AdminACL>(&ts);
+    rift::mining_started(
+        &rift,
+        &character,
+        &admin_acl,
+        42,
+        utf8(b"100"),
+        utf8(b"200"),
+        utf8(b"300"),
+        ts.ctx(),
+    );
+
+    ts::return_shared(admin_acl);
+    ts::return_shared(character);
+    ts::return_shared(rift);
     ts::end(ts);
 }
 

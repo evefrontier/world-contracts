@@ -2,14 +2,16 @@
 ///
 /// Rifts are created and managed solely by gameplay servers (authorized sponsors).
 /// Players have no OwnerCap and therefore no on-chain path to create or modify them.
-/// Authorized sponsors may broadcast the plaintext location on-chain (e.g. when mining begins)
-/// to enable PvP interference; the mining lifecycle itself is enforced off-chain.
+/// Authorized sponsors may announce mining via `mining_started` (event-only) to enable
+/// PvP interference; `broadcast_location` remains available to persist plaintext coords
+/// in `LocationRegistry`. The mining lifecycle itself is enforced off-chain.
 module world::rift;
 
 use std::string::String;
 use sui::{derived_object, event};
 use world::{
     access::AdminACL,
+    character::Character,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location, LocationRegistry},
     object_registry::ObjectRegistry
@@ -39,6 +41,18 @@ public struct RiftLocationBroadcastEvent has copy, drop {
     rift_id: ID,
     rift_key: TenantItemId,
     location_hash: vector<u8>,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+}
+
+public struct MiningStarted has copy, drop {
+    rift_id: ID,
+    rift_key: TenantItemId,
+    character_id: ID,
+    character_key: TenantItemId,
+    character_address: address,
     solarsystem: u64,
     x: String,
     y: String,
@@ -124,6 +138,33 @@ public fun broadcast_location(
         rift_id,
         rift_key: rift.key,
         location_hash,
+        solarsystem,
+        x,
+        y,
+        z,
+    });
+}
+
+/// Announces that mining has started at a rift. Emits `MiningStarted` only; does not
+/// write coordinates into `LocationRegistry`.
+public fun mining_started(
+    rift: &Rift,
+    character: &Character,
+    admin_acl: &AdminACL,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
+
+    event::emit(MiningStarted {
+        rift_id: object::id(rift),
+        rift_key: rift.key,
+        character_id: character.id(),
+        character_key: character.key(),
+        character_address: character.character_address(),
         solarsystem,
         x,
         y,
