@@ -19,13 +19,12 @@ async function main() {
     const extracted = loadExtractedObjectIds(network);
 
     const packageId = process.env.ASSETS_PACKAGE_ID || extracted?.assets?.packageId;
-    const recipient =
-        process.env.RECIPIENT || process.env.ASSET_HOLDER || process.env.ADMIN_ADDRESS;
+    const recipient = process.env.RECIPIENT;
     const amountStr = process.env.AMOUNT ?? "1";
 
     if (!packageId || !recipient) {
         console.error(
-            "Set ASSETS_PACKAGE_ID (or deploy assets + extract-object-ids) and RECIPIENT (or ADMIN_ADDRESS)."
+            "Set ASSETS_PACKAGE_ID (or deploy assets + extract-object-ids) and RECIPIENT."
         );
         process.exit(1);
     }
