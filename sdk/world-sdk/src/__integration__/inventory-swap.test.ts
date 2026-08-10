@@ -1,8 +1,5 @@
-import { fileURLToPath } from 'node:url'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
-import { createWorldClient } from '../client.js'
-import { loadWorldConfig } from '../config/load.js'
 import { createCharacter } from '../packages/character.js'
 import {
   callerRequirement,
@@ -10,7 +7,6 @@ import {
   deriveObjectId,
   enableAction,
   interact,
-  mintAccess,
   verifyCaller,
   verifyProximity,
 } from '../packages/core.js'
@@ -24,28 +20,23 @@ import {
   withdrawRequirement,
 } from '../packages/inventory.js'
 import {
-  capObjectId,
   expectSuccess,
+  loadLocalnetWorld,
+  mintAccessCap,
   readBalance,
-  requirePackage,
   signer,
 } from './helpers.js'
 
 // Owner configures a multi-requirement swap (give a fuel from your ephemeral,
 // get a lens from main). A player executes the whole swap in one PTB with one
 // signer — no owner cap at call time, since the requirements are owner-trusted.
-const MANIFEST = fileURLToPath(
-  new URL('../../../../deployments/localnet/world.json', import.meta.url),
-)
-
 const UNIT = 'SU-03'
 const FUEL = 88834n
 const LENS = 55n
 const VOL = 2n
 
 describe('inventory owner-configured swap (localnet)', () => {
-  const config = loadWorldConfig(MANIFEST)
-  const client = createWorldClient({ config })
+  const { config, client } = loadLocalnetWorld()
 
   it('swaps a player fuel for a main lens in one player-signed PTB', async () => {
     const suKey = { id: 4400n, tenant: 'inventory-t3' }
@@ -69,27 +60,16 @@ describe('inventory owner-configured swap (localnet)', () => {
     })
     await expectSuccess(client, setupTx)
 
-    const coreId = requirePackage(config, 'core')
-    const ownerMint = new Transaction()
-    mintAccess(ownerMint, config, {
+    const ownerCapId = await mintAccessCap(client, config, {
       entity: suId,
       owner: signer,
       transferable: true,
     })
-    const ownerCapId = capObjectId(
-      await expectSuccess(client, ownerMint, { showObjectChanges: true }),
-      coreId,
-    )
-    const playerMint = new Transaction()
-    mintAccess(playerMint, config, {
+    const playerCapId = await mintAccessCap(client, config, {
       entity: characterId,
       owner: signer,
       transferable: false,
     })
-    const playerCapId = capObjectId(
-      await expectSuccess(client, playerMint, { showObjectChanges: true }),
-      coreId,
-    )
 
     // Owner enables the main and ephemeral bridge_in actions plus the swap.
     const enableTx = new Transaction()

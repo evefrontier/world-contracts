@@ -1,8 +1,5 @@
-import { fileURLToPath } from 'node:url'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
-import { createWorldClient } from '../client.js'
-import { loadWorldConfig } from '../config/load.js'
 import { createCharacter } from '../packages/character.js'
 import {
   borrowAccess,
@@ -10,7 +7,6 @@ import {
   deriveObjectId,
   enableAction,
   interact,
-  mintAccess,
   ownerRequirement,
   returnAccess,
   verifyOwner,
@@ -26,28 +22,23 @@ import {
   withdrawRequirement,
 } from '../packages/inventory.js'
 import {
-  capObjectId,
   expectSuccess,
   getObjectRef,
+  loadLocalnetWorld,
+  mintAccessCap,
   readBalance,
-  requirePackage,
   signer,
 } from './helpers.js'
 
 // The SU owner cap is parked on a Character. To use the owner path, borrow
 // the cap from the Character inside a PTB, run owner-gated deposit/withdraw on the
 // SU, then return the cap — all in one player-signed transaction.
-const MANIFEST = fileURLToPath(
-  new URL('../../../../deployments/localnet/world.json', import.meta.url),
-)
-
 const UNIT = 'SU-05'
 const FUEL = 88834n
 const VOL = 2n
 
 describe('inventory owner-access via Character', () => {
-  const config = loadWorldConfig(MANIFEST)
-  const client = createWorldClient({ config })
+  const { config, client } = loadLocalnetWorld()
 
   it('borrows the parked SU cap, runs the owner path, and returns it', async () => {
     const suKey = { id: 4500n, tenant: 'inventory-t5' }
@@ -71,29 +62,18 @@ describe('inventory owner-access via Character', () => {
     })
     await expectSuccess(client, setupTx)
 
-    const coreId = requirePackage(config, 'core')
     // The player's own (soulbound) character cap.
-    const charMint = new Transaction()
-    mintAccess(charMint, config, {
+    const charCapId = await mintAccessCap(client, config, {
       entity: characterId,
       owner: signer,
       transferable: false,
     })
-    const charCapId = capObjectId(
-      await expectSuccess(client, charMint, { showObjectChanges: true }),
-      coreId,
-    )
     // The SU owner cap, minted straight onto the character object (object-owned).
-    const suMint = new Transaction()
-    mintAccess(suMint, config, {
+    const suCapId = await mintAccessCap(client, config, {
       entity: suId,
       owner: characterId,
       transferable: true,
     })
-    const suCapId = capObjectId(
-      await expectSuccess(client, suMint, { showObjectChanges: true }),
-      coreId,
-    )
 
     // Setup PTB: borrow the parked cap to enable the owner-gated actions, return it.
     const enableTx = new Transaction()

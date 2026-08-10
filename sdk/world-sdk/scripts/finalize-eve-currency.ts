@@ -1,6 +1,5 @@
 /**
  * Finalize EVE currency registration in the CoinRegistry (0xc).
- * Run after publishing the currency package (deploy-currency.sh does this).
  *
  * Usage:
  *   ENV=localnet pnpm --filter @evefrontier/world-sdk finalize:eve
@@ -16,12 +15,6 @@ import { loadScriptContext } from './context.js'
 const COIN_REGISTRY_ID = '0xc'
 const CURRENCY_PACKAGE = 'currency'
 
-interface CreatedChange {
-  type: 'created'
-  objectId: string
-  objectType: string
-}
-
 interface Manifest {
   chainId: string
   packages: Record<string, { publishedAt: string }>
@@ -29,88 +22,72 @@ interface Manifest {
   mvr?: Record<string, unknown>
 }
 
-function readManifest(path: string): Manifest {
-  if (!existsSync(path)) throw new Error(`missing manifest: ${path}`)
-  return JSON.parse(readFileSync(path, 'utf8')) as Manifest
-}
-
-function writeManifest(path: string, manifest: Manifest): void {
-  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`)
-}
-
-function currencyIdFromPublish(deployDir: string, packageId: string): string {
-  const path = join(deployDir, `${CURRENCY_PACKAGE}.publish.json`)
-  if (!existsSync(path)) throw new Error(`missing publish output: ${path}`)
-  const { objectChanges } = JSON.parse(readFileSync(path, 'utf8')) as {
-    objectChanges?: CreatedChange[]
-  }
-  const eveType = `${packageId}::EVE::EVE`
-  const currencyType = `0x2::coin_registry::Currency<${eveType}>`
-  const created = (objectChanges ?? []).find(
-    (c) => c.type === 'created' && c.objectType === currencyType,
+function createdCurrency(
+  objectChanges: Array<{
+    type: string
+    objectId?: string
+    objectType?: string
+    owner?: unknown
+  }>,
+  currencyType: string,
+): { objectId: string; owner: unknown } {
+  const created = objectChanges.find(
+    (c) => c.type === 'created' && c.objectType === currencyType && c.objectId,
   )
-  if (!created) throw new Error(`Currency<EVE> not found in ${path}`)
-  return created.objectId
-}
-
-function sharedVersion(owner: unknown): string | undefined {
-  if (typeof owner !== 'object' || owner === null || !('Shared' in owner)) {
-    return undefined
+  if (!created?.objectId) {
+    throw new Error(`Currency not found in object changes: ${currencyType}`)
   }
-  const v = (owner as { Shared?: { initial_shared_version?: number | string } })
-    .Shared?.initial_shared_version
-  if (v === undefined || v === null) return undefined
-  return String(v)
+  return { objectId: created.objectId, owner: created.owner }
 }
 
 async function main(): Promise<void> {
   const { deployEnv, repoRoot, manifestPath, client, keypair } =
     loadScriptContext()
   const deployDir = join(repoRoot, 'deployments', deployEnv)
-  const manifest = readManifest(manifestPath)
-
-  if (manifest.sharedObjects[EVE_CURRENCY]) {
-    console.log(`sharedObjects.${EVE_CURRENCY} already set; skipping finalize.`)
-    return
-  }
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest
 
   const packageId = manifest.packages[CURRENCY_PACKAGE]?.publishedAt
   if (!packageId) {
     throw new Error(`world.json missing packages.${CURRENCY_PACKAGE}`)
   }
 
-  const currencyObjectId = currencyIdFromPublish(deployDir, packageId)
   const coinType = `${packageId}::EVE::EVE`
   const currencyType = `0x2::coin_registry::Currency<${coinType}>`
-  const sender = keypair.getPublicKey().toSuiAddress()
 
-  const res = await client.getObject({
-    id: currencyObjectId,
-    options: { showOwner: true },
-  })
-  if (!res.data) {
-    throw new Error(`Currency object not found: ${currencyObjectId}`)
-  }
-
-  const alreadyShared = sharedVersion(res.data.owner)
-  if (alreadyShared !== undefined) {
-    manifest.sharedObjects[EVE_CURRENCY] = {
-      id: currencyObjectId,
-      initialSharedVersion: alreadyShared,
-      type: currencyType,
-    }
-    writeManifest(manifestPath, manifest)
-    console.log(
-      `Currency already shared; wrote sharedObjects.${EVE_CURRENCY}=${currencyObjectId}`,
-    )
+  if (manifest.sharedObjects[EVE_CURRENCY]?.type === currencyType) {
+    console.log(`sharedObjects.${EVE_CURRENCY} already set; skipping.`)
     return
   }
 
+  const publishPath = join(deployDir, `${CURRENCY_PACKAGE}.publish.json`)
+  if (!existsSync(publishPath)) {
+    throw new Error(`missing publish output: ${publishPath}`)
+  }
+  const { objectChanges: publishChanges } = JSON.parse(
+    readFileSync(publishPath, 'utf8'),
+  ) as {
+    objectChanges?: Array<{
+      type: string
+      objectId?: string
+      objectType?: string
+    }>
+  }
+  const { objectId: currencyObjectId } = createdCurrency(
+    publishChanges ?? [],
+    currencyType,
+  )
+
+  const res = await client.getObject({ id: currencyObjectId })
+  if (!res.data) {
+    throw new Error(`Currency object not found: ${currencyObjectId}`)
+  }
   const { objectId, version, digest } = res.data
+
   const tx = new Transaction()
-  tx.setSender(sender)
+  tx.setSender(keypair.getPublicKey().toSuiAddress())
   tx.moveCall({
-    target: `${packageId}::EVE::complete_registration`,
+    target: '0x2::coin_registry::finalize_registration',
+    typeArguments: [coinType],
     arguments: [
       tx.object(COIN_REGISTRY_ID),
       tx.receivingRef({ objectId, version, digest }),
@@ -120,7 +97,7 @@ async function main(): Promise<void> {
   const result = await client.signAndExecuteTransaction({
     transaction: tx,
     signer: keypair,
-    options: { showEffects: true },
+    options: { showObjectChanges: true, showEffects: true },
   })
 
   if (result.effects?.status?.status !== 'success') {
@@ -128,25 +105,34 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  const after = await client.getObject({
-    id: currencyObjectId,
-    options: { showOwner: true },
-  })
-  const versionAfter = sharedVersion(after.data?.owner)
-  if (versionAfter === undefined) {
-    throw new Error('Currency did not become shared after finalize')
-  }
+  // finalize_registration deletes the receiving Currency and creates a shared one.
+  const shared = createdCurrency(
+    (result.objectChanges ?? []) as Array<{
+      type: string
+      objectId?: string
+      objectType?: string
+      owner?: unknown
+    }>,
+    currencyType,
+  )
+  const initialSharedVersion = String(
+    (
+      shared.owner as {
+        Shared: { initial_shared_version: number | string }
+      }
+    ).Shared.initial_shared_version,
+  )
 
   manifest.sharedObjects[EVE_CURRENCY] = {
-    id: currencyObjectId,
-    initialSharedVersion: versionAfter,
+    id: shared.objectId,
+    initialSharedVersion,
     type: currencyType,
   }
-  writeManifest(manifestPath, manifest)
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
   console.log('EVE currency finalized in CoinRegistry.')
   console.log('Digest:', result.digest)
-  console.log(`sharedObjects.${EVE_CURRENCY}=${currencyObjectId}`)
+  console.log(`sharedObjects.${EVE_CURRENCY}=${shared.objectId}`)
 }
 
 main().catch((e) => {

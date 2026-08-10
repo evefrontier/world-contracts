@@ -1,29 +1,25 @@
-import { fileURLToPath } from 'node:url'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
-import { createWorldClient } from '../client.js'
-import { loadWorldConfig } from '../config/load.js'
 import { eveCurrency } from '../config/shared-objects.js'
 import { eveCoinType, transferEve } from '../packages/currency.js'
-import { expectSuccess, requirePackage, signer } from './helpers.js'
+import {
+  expectSuccess,
+  loadLocalnetWorld,
+  requirePackage,
+  signer,
+} from './helpers.js'
 
 // Requires deploy-currency.sh (finalize:eve) so world.json has eveCurrency and
 // the deployer holds the init EVE allocation.
-const MANIFEST = fileURLToPath(
-  new URL('../../../../deployments/localnet/world.json', import.meta.url),
-)
-
 const AMOUNT_RAW = 1_000_000_000n // 1 EVE
 
 describe('EVE currency (localnet)', () => {
-  const config = loadWorldConfig(MANIFEST)
-  const client = createWorldClient({ config })
+  const { config, client } = loadLocalnetWorld()
 
   it('finalize left Currency shared and recorded in the manifest', async () => {
-    requirePackage(config, 'currency')
+    const packageId = requirePackage(config, 'currency')
     const ref = eveCurrency(config)
-    const packageId = config.packageOverrides!.currency!
     expect(ref.type).toBe(
       `0x2::coin_registry::Currency<${packageId}::EVE::EVE>`,
     )

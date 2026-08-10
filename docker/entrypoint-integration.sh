@@ -137,6 +137,9 @@ pnpm install --frozen-lockfile
 log "Cleaning stale Move build artifacts..."
 rm -rf contracts/*/build
 
+log "Cleaning stale localnet deploy artifacts..."
+rm -rf deployments/localnet
+
 log "Deploying world to localnet..."
 ./scripts/deploy-world.sh localnet
 
