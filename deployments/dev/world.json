@@ -12,6 +12,12 @@
       "publishedAt": "0x448021d038a5f2215a56a038c0e3365126fa57ab17c9fd218306fcf890fdf206",
       "upgradeCap": "0x852459772f5e49fd627bf10ccf08d0abbe7756a96f6e87e3933b85b4479b0e28",
       "version": 1
+    },
+    "currency": {
+      "originalId": "0xf1a80370c3a125ab9cb4d97b70f560d36ed0171b8f05baccd7ce30216b8e4416",
+      "publishedAt": "0xf1a80370c3a125ab9cb4d97b70f560d36ed0171b8f05baccd7ce30216b8e4416",
+      "upgradeCap": "0xce3810670b1712b0849a17da869945bd3a6f991544eab626ad929c8c8d4c67b6",
+      "version": 1
     }
   },
   "sharedObjects": {
@@ -24,6 +30,11 @@
       "id": "0x05f82527689acdb15424908ed39c43035f4b475d1a796b61f455e395ef3a4b10",
       "initialSharedVersion": "916054511",
       "type": "0xe0eca341fbf45a229e476e2ef9c30fe6c78ab45608fd7fbc52de5063306e3c3a::admin_service::AdminACL"
+    },
+    "eveCurrency": {
+      "id": "0x2a7e185223842c8a302c4443604cd0698cf4017269ab1043ccdba97dc1eeb848",
+      "initialSharedVersion": "78396487",
+      "type": "0x2::coin_registry::Currency<0xf1a80370c3a125ab9cb4d97b70f560d36ed0171b8f05baccd7ce30216b8e4416::EVE::EVE>"
     }
   },
   "mvr": {
