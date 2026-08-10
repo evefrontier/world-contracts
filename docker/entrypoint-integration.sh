@@ -149,6 +149,17 @@ log "Deploying currency to localnet..."
 log "Seeding world ..."
 ./scripts/seed-world.sh localnet
 
+fund_exchange_eve() {
+  if [ -z "${ADDR[EXCHANGE]:-}" ]; then
+    log "ERROR: EXCHANGE account missing from accounts.json"
+    exit 1
+  fi
+  local amount="${EXCHANGE_EVE_AMOUNT:-10000000}"
+  log "Transferring ${amount} EVE to EXCHANGE (${ADDR[EXCHANGE]})..."
+  ENV=localnet RECIPIENT="${ADDR[EXCHANGE]}" AMOUNT="$amount" \
+    pnpm --filter @evefrontier/world-sdk transfer:eve
+}
+
 # ── 5. Mode dispatch ─────────────────────────────────────────────────────────
 case "$MODE" in
   test)
@@ -157,6 +168,7 @@ case "$MODE" in
     log "Integration tests passed."
     ;;
   snapshot)
+    fund_exchange_eve
     log "Baking snapshot: stopping node cleanly..."
     stop_node
     log "Staging world.json + accounts.json + test-resources.json for runtime host seeding..."
@@ -170,6 +182,7 @@ case "$MODE" in
     log "Snapshot baked. The container is now ready to be committed."
     ;;
   "")
+    fund_exchange_eve
     log "Localnet ready at $RPC_URL with the world deployed. Leaving node running."
     wait "$NODE_PID"
     ;;
