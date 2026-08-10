@@ -1,5 +1,5 @@
 /// EVE token is the native token of the EVE Frontier game.
-module assets::EVE;
+module currency::EVE;
 
 use std::string;
 use sui::{balance::{Self, Balance}, coin, coin_registry::{Self, Currency, MetadataCap}};

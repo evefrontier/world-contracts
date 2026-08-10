@@ -1,6 +1,6 @@
 /**
  * Finalize EVE currency registration in the CoinRegistry (0xc).
- * Run after publishing the assets package (deploy-world.sh does this).
+ * Run after publishing the currency package (deploy-currency.sh does this).
  *
  * Usage:
  *   ENV=localnet pnpm --filter @evefrontier/world-sdk finalize:eve
@@ -14,7 +14,7 @@ import type { SharedObjectRef } from '../src/config/types.js'
 import { loadScriptContext } from './context.js'
 
 const COIN_REGISTRY_ID = '0xc'
-const ASSETS_PACKAGE = 'assets'
+const CURRENCY_PACKAGE = 'currency'
 
 interface CreatedChange {
   type: 'created'
@@ -39,7 +39,7 @@ function writeManifest(path: string, manifest: Manifest): void {
 }
 
 function currencyIdFromPublish(deployDir: string, packageId: string): string {
-  const path = join(deployDir, `${ASSETS_PACKAGE}.publish.json`)
+  const path = join(deployDir, `${CURRENCY_PACKAGE}.publish.json`)
   if (!existsSync(path)) throw new Error(`missing publish output: ${path}`)
   const { objectChanges } = JSON.parse(readFileSync(path, 'utf8')) as {
     objectChanges?: CreatedChange[]
@@ -74,9 +74,9 @@ async function main(): Promise<void> {
     return
   }
 
-  const packageId = manifest.packages[ASSETS_PACKAGE]?.publishedAt
+  const packageId = manifest.packages[CURRENCY_PACKAGE]?.publishedAt
   if (!packageId) {
-    throw new Error(`world.json missing packages.${ASSETS_PACKAGE}`)
+    throw new Error(`world.json missing packages.${CURRENCY_PACKAGE}`)
   }
 
   const currencyObjectId = currencyIdFromPublish(deployDir, packageId)
@@ -120,32 +120,25 @@ async function main(): Promise<void> {
   const result = await client.signAndExecuteTransaction({
     transaction: tx,
     signer: keypair,
-    options: { showEffects: true, showObjectChanges: true },
+    options: { showEffects: true },
   })
-  await client.waitForTransaction({ digest: result.digest })
 
   if (result.effects?.status?.status !== 'success') {
     console.error('Finalize failed:', result.effects?.status)
     process.exit(1)
   }
 
-  const sharedCurrency = (result.objectChanges ?? []).find(
-    (c) =>
-      c.type === 'created' &&
-      c.objectType === currencyType &&
-      sharedVersion(c.owner) !== undefined,
-  )
-  if (!sharedCurrency || sharedCurrency.type !== 'created') {
-    throw new Error('Currency did not become shared after finalize')
-  }
-  const sharedId = sharedCurrency.objectId
-  const versionAfter = sharedVersion(sharedCurrency.owner)
+  const after = await client.getObject({
+    id: currencyObjectId,
+    options: { showOwner: true },
+  })
+  const versionAfter = sharedVersion(after.data?.owner)
   if (versionAfter === undefined) {
     throw new Error('Currency did not become shared after finalize')
   }
 
   manifest.sharedObjects[EVE_CURRENCY] = {
-    id: sharedId,
+    id: currencyObjectId,
     initialSharedVersion: versionAfter,
     type: currencyType,
   }
@@ -153,7 +146,7 @@ async function main(): Promise<void> {
 
   console.log('EVE currency finalized in CoinRegistry.')
   console.log('Digest:', result.digest)
-  console.log(`sharedObjects.${EVE_CURRENCY}=${sharedId}`)
+  console.log(`sharedObjects.${EVE_CURRENCY}=${currencyObjectId}`)
 }
 
 main().catch((e) => {

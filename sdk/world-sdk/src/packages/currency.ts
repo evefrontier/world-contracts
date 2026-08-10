@@ -5,17 +5,17 @@ import type {
 import { mvrName } from '../config/env.js'
 import type { WorldConfig } from '../config/types.js'
 
-const ASSETS_PACKAGE = 'assets'
+const CURRENCY_PACKAGE = 'currency'
 
-export function assetsPackage(config: WorldConfig): string {
+export function currencyPackage(config: WorldConfig): string {
   return (
-    config.packageOverrides?.[ASSETS_PACKAGE] ??
-    mvrName(config.env, ASSETS_PACKAGE)
+    config.packageOverrides?.[CURRENCY_PACKAGE] ??
+    mvrName(config.env, CURRENCY_PACKAGE)
   )
 }
 
 export function eveCoinType(config: WorldConfig): string {
-  return `${assetsPackage(config)}::EVE::EVE`
+  return `${currencyPackage(config)}::EVE::EVE`
 }
 
 export interface TransferEveArgs {

@@ -1,7 +1,7 @@
 #[test_only]
-module assets::EVE_tests;
+module currency::EVE_tests;
 
-use assets::EVE::{Self, AdminCap, EveTreasury, EVE as EVEToken};
+use currency::EVE::{Self, AdminCap, EveTreasury, EVE as EVEToken};
 use std::unit_test::assert_eq;
 use sui::{coin, test_scenario as ts};
 

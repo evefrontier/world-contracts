@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Deploy the world Move packages (core, then character/inventory/assets) to a deployment env.
+# Deploy the world Move packages (core, then character/inventory) to a deployment env.
+# Currency is separate: ./scripts/deploy-currency.sh
 # Assumes the target node is already running (for localnet, start it separately).
 #
 # Usage: ./scripts/deploy-world.sh [localnet|dev|test|uat|live] [deploy|publish|upgrade]
 source "$(dirname "$0")/lib.sh"
 
-# Packages in dependency order (character and inventory depend on core; assets is independent).
-PACKAGES=(core character inventory assets)
+# Packages in dependency order (character and inventory depend on core).
+PACKAGES=(core character inventory)
 
 setup
 ENV=$(get_env "${1:-}")
@@ -44,10 +45,6 @@ done
 
 CHAIN_ID=$(sui client chain-identifier)
 pnpm exec tsx ts-scripts/build-manifest.ts "$DEPLOY_DIR" "$ENV" "$CHAIN_ID" "${PACKAGES[@]}"
-
-# Finalize EVE Currency in CoinRegistry and record sharedObjects.eveCurrency.
-echo "Finalizing EVE currency for $ENV ..."
-ENV="$ENV" pnpm --filter @evefrontier/world-sdk finalize:eve
 
 # Seed the AdminACL from ADMIN_ADDRESSES / SPONSOR_ADDRESSES in the env
 echo "Configuring admins/sponsors for $ENV ..."

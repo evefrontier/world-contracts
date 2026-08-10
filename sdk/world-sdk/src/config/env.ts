@@ -24,6 +24,10 @@ export function envProfile(env: Env): EnvProfile {
 }
 
 // e.g. mvrName("dev", "core") -> "@evefrontier/world-core-dev"
+// currency is special-cased: mvrName("dev", "currency") -> "@evefrontier/currency-dev"
 export function mvrName(env: Env, pkg: string): string {
+  if (pkg === 'currency') {
+    return `${MVR_ORG}/currency${envProfile(env).suffix}`
+  }
   return `${MVR_ORG}/world-${pkg}${envProfile(env).suffix}`
 }

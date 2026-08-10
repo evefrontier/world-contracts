@@ -175,7 +175,8 @@ function main(): void {
 
   const manifest: Manifest = {
     chainId,
-    packages: {},
+    // Preserve packages from prior deploys (world vs currency are separate).
+    packages: { ...(existing.packages ?? {}) },
     sharedObjects: existing.sharedObjects ?? {},
     ...(existing.mvr ? { mvr: existing.mvr } : {}),
   }

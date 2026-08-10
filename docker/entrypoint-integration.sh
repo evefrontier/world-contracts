@@ -140,6 +140,9 @@ rm -rf contracts/*/build
 log "Deploying world to localnet..."
 ./scripts/deploy-world.sh localnet
 
+log "Deploying currency to localnet..."
+./scripts/deploy-currency.sh localnet
+
 log "Seeding world ..."
 ./scripts/seed-world.sh localnet
 

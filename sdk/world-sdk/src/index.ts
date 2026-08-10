@@ -24,12 +24,6 @@ export type {
   WorldConfig,
 } from './config/types.js'
 export {
-  assetsPackage,
-  eveCoinType,
-  type TransferEveArgs,
-  transferEve,
-} from './packages/assets.js'
-export {
   type CreateCharacterArgs,
   createCharacter,
 } from './packages/character.js'
@@ -57,6 +51,12 @@ export {
   verifyOwner,
   verifyProximity,
 } from './packages/core.js'
+export {
+  currencyPackage,
+  eveCoinType,
+  type TransferEveArgs,
+  transferEve,
+} from './packages/currency.js'
 export {
   type BalanceOfArgs,
   type BridgeInArgs,

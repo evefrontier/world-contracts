@@ -7,7 +7,7 @@
  */
 import { Transaction } from '@mysten/sui/transactions'
 import 'dotenv/config'
-import { eveCoinType, transferEve } from '../src/packages/assets.js'
+import { eveCoinType, transferEve } from '../src/packages/currency.js'
 import { loadScriptContext } from './context.js'
 
 const EVE_DECIMALS = 9
