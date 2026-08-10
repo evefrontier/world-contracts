@@ -36,6 +36,11 @@
       "name": "@evefrontier/world-character-dev",
       "packageInfo": "0xfa6461befb4c8fc983beefd540fbcb5edb10036f0a69f6aa63fd766671bc519f",
       "appCap": "0xc97feaba0f682fa7f7265db18a6911c379afdc3c1cd1f316c296cd924e2c2c65"
+    },
+    "currency": {
+      "name": "@evefrontier/currency-dev",
+      "packageInfo": "0x961eed2270f23b450cabb19c7997c84ee31fb69fe1680dbcb911f2735a56fb2b",
+      "appCap": "0x9ee31fe49ae9bf615220177e440d6e61c928941b3c0f8a22c76bf270b5d29e5b"
     }
   }
 }
