@@ -61,6 +61,8 @@ const UPGRADE_CAP_TYPE = '0x2::package::UpgradeCap'
 // (package-id agnostic) -> stable manifest key the SDK looks up (sdk shared-objects.ts).
 // Anything not listed is intentionally not surfaced (e.g. per-entity runtime objects).
 // Each new singleton needs a line here. Keep in sync with the SDK constant.
+// Note: eveCurrency is NOT listed — Currency is only shared after
+// sdk/world-sdk/scripts/finalize-eve-currency.ts patches world.json.
 // TODO: drop this map and key sharedObjects by full `pkg::module::Struct` once the SDK
 // lookup API moves from objectRegistry(config) to sharedObject(config, "module::Struct").
 const SHARED_OBJECT_KEYS: Record<string, string> = {

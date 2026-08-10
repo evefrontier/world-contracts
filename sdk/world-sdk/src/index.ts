@@ -11,6 +11,8 @@ export { getWorldConfig } from './config/presets.js'
 export {
   ADMIN_ACL,
   adminAcl,
+  EVE_CURRENCY,
+  eveCurrency,
   OBJECT_REGISTRY,
   objectRegistry,
   requireSharedObject,
@@ -21,6 +23,12 @@ export type {
   SharedObjectRef,
   WorldConfig,
 } from './config/types.js'
+export {
+  assetsPackage,
+  eveCoinType,
+  type TransferEveArgs,
+  transferEve,
+} from './packages/assets.js'
 export {
   type CreateCharacterArgs,
   createCharacter,

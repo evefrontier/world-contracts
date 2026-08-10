@@ -31,8 +31,9 @@ docker build -f docker/Dockerfile.integration -t world-integration .
 docker run --rm -v "$(pwd):/app" -w /app -e CI=true world-integration test
 ```
 
-Brings up the localnet, deploys `core` + `character`, runs the SDK integration
-suite. Pass no argument instead of `test` to just leave the node running.
+Brings up the localnet, deploys world packages (`core`, `character`, `inventory`,
+`assets`), finalizes EVE currency, runs the SDK integration suite. Pass no
+argument instead of `test` to just leave the node running.
 
 ## Snapshot image
 
