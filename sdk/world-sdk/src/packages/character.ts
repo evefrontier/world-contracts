@@ -25,6 +25,7 @@ export function createCharacter(
   const [character, claimReq] = entityNew(tx, config, {
     inGameId: args.inGameId,
     tenant: args.tenant,
+    locationHash: [],
   })
   verifyAdmin(tx, config, claimReq)
   completeRequest(tx, config, character, claimReq)

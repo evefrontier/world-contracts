@@ -119,6 +119,7 @@ export function uninstallInventory(
 export interface CreateStorageUnitArgs {
   inGameId: bigint
   tenant: string
+  locationHash: number[]
   name: string
   mainCapacity: bigint
   ephemeralCapacity: bigint
@@ -136,6 +137,7 @@ export function createStorageUnit(
   const [entity, claimReq] = entityNew(tx, config, {
     inGameId: args.inGameId,
     tenant: args.tenant,
+    locationHash: args.locationHash,
   })
   verifyAdmin(tx, config, claimReq)
   completeRequest(tx, config, entity, claimReq)

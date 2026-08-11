@@ -7,7 +7,7 @@ use core::{
     admin_service,
     entity,
     location_service,
-    test_helpers::{setup, take_acl, create_entity}
+    test_helpers::{setup, take_acl, create_entity, location_hash}
 };
 use std::string;
 use sui::test_scenario as ts;
@@ -115,7 +115,7 @@ fun verify_passes_with_matching_cap() {
         let mut e = ts::take_shared<entity::Entity>(&scenario);
         let cap = ts::take_from_sender<AccessCap>(&scenario);
         let mut req = e.interact(string::utf8(OWNER_ACTION), scenario.ctx());
-        location_service::verify_proximity(&mut req, vector[]);
+        location_service::verify_proximity(&mut req, location_hash());
         access_cap::verify(&mut req, &cap);
         assert!(req.authorized_id() == option::some(cap.entity()));
         e.complete_request(req);
@@ -139,7 +139,7 @@ fun verify_caller_records_owner_authorized_id() {
         let mut e = ts::take_shared<entity::Entity>(&scenario);
         let cap = ts::take_from_sender<AccessCap>(&scenario);
         let mut req = e.interact(string::utf8(CALLER_ACTION), scenario.ctx());
-        location_service::verify_proximity(&mut req, vector[]);
+        location_service::verify_proximity(&mut req, location_hash());
         access_cap::verify_caller(&mut req, &cap);
         assert!(req.authorized_id() == option::some(entity_id));
         e.complete_request(req);
@@ -196,7 +196,7 @@ fun verify_caller_records_non_owner_authorized_id() {
         let mut e1 = ts::take_shared_by_id<entity::Entity>(&scenario, one);
         let cap = ts::take_from_sender<AccessCap>(&scenario);
         let mut req = e1.interact(string::utf8(CALLER_ACTION), scenario.ctx());
-        location_service::verify_proximity(&mut req, vector[]);
+        location_service::verify_proximity(&mut req, location_hash());
         access_cap::verify_caller(&mut req, &cap);
         assert!(req.authorized_id() == option::some(two));
         assert!(two != one);
@@ -252,7 +252,7 @@ fun verify_aborts_with_wrong_entity_cap() {
     let mut e1 = ts::take_shared_by_id<entity::Entity>(&scenario, one);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e1.interact(string::utf8(OWNER_ACTION), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     access_cap::verify(&mut req, &cap);
 
     abort

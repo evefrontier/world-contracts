@@ -9,7 +9,7 @@ use core::{
     location_service,
     object_registry::ObjectRegistry,
     requirement::Requirement,
-    test_helpers::{claim, setup, take_acl, take_registry}
+    test_helpers::{claim, claim_character, location_hash, setup, take_acl, take_registry}
 };
 use inventory::{inventory, item::Item};
 use std::string::{Self, String};
@@ -144,7 +144,7 @@ fun configure_default_actions(scenario: &mut ts::Scenario, e_id: ID) {
 /// Create a separate "character" entity and mint a soulbound cap to PLAYER.
 /// Returns the character entity id (the key its ephemeral inventory routes to).
 fun create_player(scenario: &mut ts::Scenario, registry: &mut ObjectRegistry, acl: &AdminACL): ID {
-    let mut character = claim(registry, acl, 2, scenario.ctx());
+    let mut character = claim_character(registry, acl, 2, scenario.ctx());
     let mut req = character.mint_access(PLAYER, false, scenario.ctx());
     admin_service::verify_admin(&mut req, acl, scenario.ctx());
     character.complete_request(req);
@@ -165,7 +165,7 @@ fun bridge_in(
     vol: u64,
 ) {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     access_cap::verify_caller(&mut req, cap);
     inventory::game_item_to_chain_inventory(e, &mut req, type_id, qty, vol, scenario.ctx());
     e.complete_request(req);
@@ -180,7 +180,7 @@ fun bridge_out(
     qty: u64,
 ) {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     access_cap::verify_caller(&mut req, cap);
     inventory::chain_item_to_game_inventory(e, &mut req, type_id, qty, scenario.ctx());
     e.complete_request(req);
@@ -194,7 +194,7 @@ fun deposit(
     item: Item,
 ) {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     access_cap::verify_caller(&mut req, cap);
     inventory::deposit(e, &mut req, item, scenario.ctx());
     e.complete_request(req);
@@ -209,7 +209,7 @@ fun withdraw(
     qty: u64,
 ): Item {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     access_cap::verify_caller(&mut req, cap);
     let item = inventory::withdraw(e, &mut req, type_id, qty, scenario.ctx());
     e.complete_request(req);
@@ -313,7 +313,7 @@ fun main_inv_interaction_without_caller() {
     ts::next_tx(&mut scenario, PLAYER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let mut req = e.interact(string::utf8(b"public_bridge"), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL, scenario.ctx());
     e.complete_request(req);
 
@@ -425,7 +425,7 @@ fun swap_moves_between_main_and_ephemeral_single_signer() {
     bridge_in(&mut scenario, &mut e, &player_cap, b"eph_bridge_in", FUEL, 1, VOL);
 
     let mut req = e.interact(string::utf8(b"swap"), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     access_cap::verify_caller(&mut req, &player_cap);
     let fuel = inventory::withdraw(&mut e, &mut req, FUEL, 1, scenario.ctx()); // from ephemeral
     inventory::deposit(&mut e, &mut req, fuel, scenario.ctx()); // into main
@@ -476,7 +476,7 @@ fun ephemeral_interaction_without_caller_aborts() {
     ts::next_tx(&mut scenario, PLAYER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let mut req = e.interact(string::utf8(b"eph_uncalled"), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL, scenario.ctx());
 
     abort
@@ -538,7 +538,7 @@ fun bridge_in_wrong_type_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_fuel"), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     access_cap::verify_caller(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL + 1, 10, VOL, scenario.ctx());
 

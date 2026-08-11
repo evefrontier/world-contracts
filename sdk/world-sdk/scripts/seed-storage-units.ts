@@ -7,6 +7,7 @@ import { loadSeedFiles } from './seed-files.js'
 const UNIT_NAME = 'SU'
 const MAIN_CAPACITY = 1000n
 const EPHEMERAL_CAPACITY = 100n
+const LOCATION_HASH = Array.from(new TextEncoder().encode('loc'))
 
 const { repoRoot, config, client, keypair } = loadScriptContext()
 const { resources, accounts } = loadSeedFiles(repoRoot)
@@ -38,6 +39,7 @@ for (const [, unit] of entries) {
   createStorageUnit(createTx, config, {
     inGameId: BigInt(unit.itemId),
     tenant: resources.tenant,
+    locationHash: LOCATION_HASH,
     name: UNIT_NAME,
     mainCapacity: MAIN_CAPACITY,
     ephemeralCapacity: EPHEMERAL_CAPACITY,

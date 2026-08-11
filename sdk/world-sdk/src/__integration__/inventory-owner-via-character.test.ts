@@ -28,6 +28,7 @@ import {
   mintAccessCap,
   readBalance,
   signer,
+  TEST_LOCATION_HASH,
 } from './helpers.js'
 
 // The SU owner cap is parked on a Character. To use the owner path, borrow
@@ -50,6 +51,7 @@ describe('inventory owner-access via Character', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
+      locationHash: TEST_LOCATION_HASH,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 100n,
@@ -128,7 +130,7 @@ describe('inventory owner-access via Character', () => {
       const su = runTx.object(suId)
 
       const inReq = interact(runTx, config, su, 'bridge_in')
-      verifyProximity(runTx, config, inReq)
+      verifyProximity(runTx, config, inReq, TEST_LOCATION_HASH)
       verifyOwner(runTx, config, inReq, suCap)
       gameItemToChain(runTx, config, su, inReq, {
         typeId: FUEL,
@@ -138,7 +140,7 @@ describe('inventory owner-access via Character', () => {
       completeRequest(runTx, config, su, inReq)
 
       const wReq = interact(runTx, config, su, 'withdraw')
-      verifyProximity(runTx, config, wReq)
+      verifyProximity(runTx, config, wReq, TEST_LOCATION_HASH)
       verifyOwner(runTx, config, wReq, suCap)
       const item = withdraw(runTx, config, su, wReq, {
         typeId: FUEL,
@@ -147,7 +149,7 @@ describe('inventory owner-access via Character', () => {
       completeRequest(runTx, config, su, wReq)
 
       const dReq = interact(runTx, config, su, 'deposit')
-      verifyProximity(runTx, config, dReq)
+      verifyProximity(runTx, config, dReq, TEST_LOCATION_HASH)
       verifyOwner(runTx, config, dReq, suCap)
       deposit(runTx, config, su, dReq, item)
       completeRequest(runTx, config, su, dReq)

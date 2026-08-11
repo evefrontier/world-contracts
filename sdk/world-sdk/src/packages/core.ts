@@ -60,7 +60,8 @@ export function deriveObjectId(
 export interface EntityNewArgs {
   inGameId: bigint
   tenant: string
-  locationHash?: number[]
+  /** Empty for principals (Character); non-empty for structures. */
+  locationHash: number[]
 }
 
 /**
@@ -79,7 +80,7 @@ export function entityNew(
       sharedRef(tx, objectRegistry(config), true),
       tx.pure.u64(args.inGameId),
       tx.pure.string(args.tenant),
-      tx.pure.vector('u8', args.locationHash ?? []),
+      tx.pure.vector('u8', args.locationHash),
     ],
   })
 }
@@ -199,12 +200,12 @@ export function verifyCaller(
   })
 }
 
-/** Satisfy a proximity requirement. `proof`/location hash defaults to empty. */
+/** Satisfy a proximity requirement injected when the entity has a location hash. */
 export function verifyProximity(
   tx: Transaction,
   config: WorldConfig,
   request: TransactionArgument,
-  proof: number[] = [],
+  proof: number[],
 ): void {
   tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::location_service::verify_proximity`,

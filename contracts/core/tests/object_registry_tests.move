@@ -91,7 +91,7 @@ fun claim_marks_key_existing() {
         let key = entity_key::new(99, tenant());
         let precomputed = object::id_from_address(registry.derive_id(key));
 
-        let (mut e, mut req) = entity::new(&mut registry, 99, tenant(), vector[]);
+        let (mut e, mut req) = entity::new(&mut registry, 99, tenant(), b"loc");
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
         e.complete_request(req);
 

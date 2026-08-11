@@ -8,7 +8,7 @@ use core::{
     entity::{Self, Entity},
     location_service,
     object_registry::ObjectRegistry,
-    test_helpers::{claim, setup, take_acl, take_registry}
+    test_helpers::{claim, claim_character, location_hash, setup, take_acl, take_registry}
 };
 use metadata::metadata::{Self, MetadataChanged};
 use std::string;
@@ -52,7 +52,7 @@ fun create_character(
     registry: &mut ObjectRegistry,
     acl: &AdminACL,
 ): ID {
-    let character = claim(registry, acl, 2, scenario.ctx());
+    let character = claim_character(registry, acl, 2, scenario.ctx());
     let character_id = character.id();
     character.share();
     character_id
@@ -112,7 +112,7 @@ fun edit_via_character(
     let (owner_cap, receipt) = character.borrow_access(&char_cap, ticket);
 
     let mut req = e.interact(string::utf8(b"edit_metadata"), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     access_cap::verify(&mut req, &owner_cap);
     metadata::edit(
         &mut e,

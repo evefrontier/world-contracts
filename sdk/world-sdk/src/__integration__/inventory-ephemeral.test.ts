@@ -23,6 +23,7 @@ import {
   mintAccessCap,
   readBalance,
   signer,
+  TEST_LOCATION_HASH,
 } from './helpers.js'
 
 // A non-owner player brings items into their ephemeral inventory and
@@ -46,6 +47,7 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
+      locationHash: TEST_LOCATION_HASH,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 1000n,
@@ -104,7 +106,7 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     const playerCap = runTx.object(playerCapId)
 
     const inReq = interact(runTx, config, e, 'eph_bridge_in')
-    verifyProximity(runTx, config, inReq)
+    verifyProximity(runTx, config, inReq, TEST_LOCATION_HASH)
     verifyCaller(runTx, config, inReq, playerCap)
     gameItemToChain(runTx, config, e, inReq, {
       typeId: FUEL,
@@ -114,7 +116,7 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     completeRequest(runTx, config, e, inReq)
 
     const outReq = interact(runTx, config, e, 'eph_withdraw')
-    verifyProximity(runTx, config, outReq)
+    verifyProximity(runTx, config, outReq, TEST_LOCATION_HASH)
     verifyCaller(runTx, config, outReq, playerCap)
     const item = withdraw(runTx, config, e, outReq, {
       typeId: FUEL,

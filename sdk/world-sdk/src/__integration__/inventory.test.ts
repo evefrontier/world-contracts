@@ -24,6 +24,7 @@ import {
   mintAccessCap,
   readBalance,
   signer,
+  TEST_LOCATION_HASH,
 } from './helpers.js'
 
 // Exercise the inventory bindings in isolation. Create a storage-unit entity,
@@ -46,6 +47,7 @@ describe('inventory owner round-trip (localnet)', () => {
     createStorageUnit(createTx, config, {
       inGameId: key.id,
       tenant: key.tenant,
+      locationHash: TEST_LOCATION_HASH,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 100n,
@@ -104,7 +106,7 @@ describe('inventory owner round-trip (localnet)', () => {
     const c = runTx.object(capId)
 
     const bridgeReqObj = interact(runTx, config, e, 'bridge_in')
-    verifyProximity(runTx, config, bridgeReqObj)
+    verifyProximity(runTx, config, bridgeReqObj, TEST_LOCATION_HASH)
     verifyCaller(runTx, config, bridgeReqObj, c)
     gameItemToChain(runTx, config, e, bridgeReqObj, {
       typeId: FUEL,
@@ -114,7 +116,7 @@ describe('inventory owner round-trip (localnet)', () => {
     completeRequest(runTx, config, e, bridgeReqObj)
 
     const wReq = interact(runTx, config, e, 'withdraw')
-    verifyProximity(runTx, config, wReq)
+    verifyProximity(runTx, config, wReq, TEST_LOCATION_HASH)
     verifyCaller(runTx, config, wReq, c)
     const item = withdraw(runTx, config, e, wReq, {
       typeId: FUEL,
@@ -123,7 +125,7 @@ describe('inventory owner round-trip (localnet)', () => {
     completeRequest(runTx, config, e, wReq)
 
     const dReq = interact(runTx, config, e, 'deposit')
-    verifyProximity(runTx, config, dReq)
+    verifyProximity(runTx, config, dReq, TEST_LOCATION_HASH)
     verifyCaller(runTx, config, dReq, c)
     deposit(runTx, config, e, dReq, item)
     completeRequest(runTx, config, e, dReq)

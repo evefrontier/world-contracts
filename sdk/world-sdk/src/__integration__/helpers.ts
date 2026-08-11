@@ -10,6 +10,8 @@ import type { WorldConfig } from '../config/types.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
 
+export const TEST_LOCATION_HASH = Array.from(new TextEncoder().encode('loc'))
+
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
 )

@@ -9,7 +9,7 @@ use core::{
     location_service,
     request,
     requirement::{Self, Requirement},
-    test_helpers::{setup, take_registry, take_acl, claim}
+    test_helpers::{setup, take_registry, take_acl, claim, location_hash, tenant}
 };
 use std::string;
 use sui::test_scenario as ts;
@@ -70,14 +70,49 @@ fun end_to_end_flow() {
     access_cap::verify(&mut req, &cap);
     e.complete_request(req);
 
-    // Interact: satisfy the injected proximity requirement first, then borrow the
-    // module by requirement, satisfy it, and mutate.
+    // Interact: satisfy injected proximity, then borrow the module and mutate.
     let mut req = e.interact(string::utf8(b"increment"), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    location_service::verify_proximity(&mut req, location_hash());
     let counter = e.module_mut<Counter>(&req, internal::permit<Counter>()).inner_mut();
     let (_requirement, frame) = req.take_next<Bump>(internal::permit<Bump>());
     counter.value = counter.value + 1;
     req.enqueue(frame);
+    e.complete_request(req);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test]
+fun interact_injects_proximity_when_location_set() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let (mut e, mut req) = entity::new(&mut registry, 1, tenant(), b"loc");
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    let mut req = e.mint_access(@0xA, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(string::utf8(b"noop"), action::new(vector[]), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+
+    let mut req = e.interact(string::utf8(b"noop"), scenario.ctx());
+    location_service::verify_proximity(&mut req, b"loc");
     e.complete_request(req);
 
     ts::return_to_sender(&scenario, cap);

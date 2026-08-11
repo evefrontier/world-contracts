@@ -26,6 +26,7 @@ import {
   loadLocalnetWorld,
   mintAccessCap,
   signer,
+  TEST_LOCATION_HASH,
 } from './helpers.js'
 
 // Entity owner cap is parked on a Character. Borrow it to enable/edit, then return.
@@ -43,6 +44,7 @@ describe('metadata owner-access via Character', () => {
       const [entity, claimReq] = entityNew(setupTx, config, {
         inGameId: entityKey.id,
         tenant: entityKey.tenant,
+        locationHash: TEST_LOCATION_HASH,
       })
       verifyAdmin(setupTx, config, claimReq)
       completeRequest(setupTx, config, entity, claimReq)
@@ -106,7 +108,7 @@ describe('metadata owner-access via Character', () => {
       )
       const e = editTx.object(entityId)
       const req = interact(editTx, config, e, 'edit_metadata')
-      verifyProximity(editTx, config, req)
+      verifyProximity(editTx, config, req, TEST_LOCATION_HASH)
       verifyOwner(editTx, config, req, entityCap)
       editMetadata(editTx, config, e, req, {
         name: 'Beta',

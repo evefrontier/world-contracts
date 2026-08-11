@@ -1,4 +1,5 @@
-/// Proximity requirement injected by `entity::interact`.
+/// Proximity requirement injected by `entity::interact` when the entity has a
+/// non-empty `location_hash`.
 ///
 /// An interaction may only proceed when the caller proves they are within range
 /// of the entity. v1 uses an exact match between the supplied proof and the
@@ -27,8 +28,8 @@ public fun proximity_requirement(location_hash: vector<u8>): Requirement {
     requirement::from_config(option::none(), Proximity(location_hash))
 }
 
-/// Satisfy the next (proximity) requirement on `request`. Aborts unless `proof`
-/// matches the required location hash.
+/// Satisfy the next (proximity) requirement on `request`. `proof` is the
+/// interactor location; aborts unless it equals the target entity's hash.
 public fun verify_proximity(request: &mut Request, proof: vector<u8>) {
     // TODO: Replace hash equality with server-signed LocationProof verification
     // (authorized server registry, player == sender, target hash, deadline, sig_verify).

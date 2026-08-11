@@ -25,6 +25,7 @@ import {
   mintAccessCap,
   readBalance,
   signer,
+  TEST_LOCATION_HASH,
 } from './helpers.js'
 
 // Owner configures a multi-requirement swap (give a fuel from your ephemeral,
@@ -48,6 +49,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
+      locationHash: TEST_LOCATION_HASH,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 1000n,
@@ -130,7 +132,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     const stockTx = new Transaction()
     const se = stockTx.object(suId)
     const stockReq = interact(stockTx, config, se, 'bridge_in')
-    verifyProximity(stockTx, config, stockReq)
+    verifyProximity(stockTx, config, stockReq, TEST_LOCATION_HASH)
     verifyCaller(stockTx, config, stockReq, stockTx.object(ownerCapId))
     gameItemToChain(stockTx, config, se, stockReq, {
       typeId: LENS,
@@ -146,7 +148,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     const playerCap = runTx.object(playerCapId)
 
     const inReq = interact(runTx, config, e, 'eph_bridge_in')
-    verifyProximity(runTx, config, inReq)
+    verifyProximity(runTx, config, inReq, TEST_LOCATION_HASH)
     verifyCaller(runTx, config, inReq, playerCap)
     gameItemToChain(runTx, config, e, inReq, {
       typeId: FUEL,
@@ -156,7 +158,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     completeRequest(runTx, config, e, inReq)
 
     const swapReq = interact(runTx, config, e, 'swap')
-    verifyProximity(runTx, config, swapReq)
+    verifyProximity(runTx, config, swapReq, TEST_LOCATION_HASH)
     verifyCaller(runTx, config, swapReq, playerCap)
     const fuel = withdraw(runTx, config, e, swapReq, {
       typeId: FUEL,

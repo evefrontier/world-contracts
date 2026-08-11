@@ -59,7 +59,7 @@ public struct Entity has key {
     version: u64,
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
-    /// Location hash injected as a proximity requirement on every interaction.
+    /// Location hash; when non-empty, injected as a proximity requirement on interact.
     location_hash: vector<u8>,
 }
 
@@ -217,20 +217,20 @@ public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContex
     )
 }
 
-/// Interact with a registered action, producing the `Request` to satisfy. A
-/// proximity requirement for the entity's location is injected ahead of the
-/// action's own requirements, so it must be resolved first.
+/// Interact with a registered action, producing the `Request` to satisfy. When
+/// the entity has a location, proximity is injected first; the caller proves
+/// with the interactor's location (e.g. ship). Characters (empty hash) skip it.
 public fun interact(entity: &mut Entity, action: String, _ctx: &mut TxContext): Request {
     assert!(entity.version == VERSION, EWrongVersion);
 
     let actions: &VecMap<String, Action> = df::borrow(&entity.id, ActionsKey());
     assert!(actions.contains(&action), EUnknownAction);
-    let request = actions
-        .get(&action)
-        .to_request(
-            option::some(entity.id.to_inner()),
-            vector[location_service::proximity_requirement(entity.location_hash)],
-        );
+    let pre = if (entity.location_hash.is_empty()) {
+        vector[]
+    } else {
+        vector[location_service::proximity_requirement(entity.location_hash)]
+    };
+    let request = actions.get(&action).to_request(option::some(entity.id.to_inner()), pre);
 
     entity.lock();
     request

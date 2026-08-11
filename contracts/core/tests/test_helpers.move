@@ -11,10 +11,14 @@ use sui::test_scenario as ts;
 
 const ADMIN: address = @0xA;
 const TENANT: vector<u8> = b"test";
+const LOCATION_HASH: vector<u8> = b"loc";
 
 public fun admin(): address { ADMIN }
 
 public fun tenant(): String { string::utf8(TENANT) }
+
+/// Default non-empty location used by structure/test entities.
+public fun location_hash(): vector<u8> { LOCATION_HASH }
 
 /// Init the object registry and admin service, seeding the deployer as admin.
 public fun setup(scenario: &mut ts::Scenario) {
@@ -30,20 +34,40 @@ public fun take_registry(scenario: &ts::Scenario): ObjectRegistry {
     ts::take_shared<ObjectRegistry>(scenario)
 }
 
-/// Claim and admin-approve an entity, returning it unlocked (not shared).
+/// Claim a located entity (structure) with the default test location hash.
 public fun claim(
     registry: &mut ObjectRegistry,
     acl: &AdminACL,
     id: u64,
     ctx: &mut TxContext,
 ): Entity {
-    let (mut e, mut req) = entity::new(registry, id, tenant(), vector[]);
+    claim_at(registry, acl, id, location_hash(), ctx)
+}
+
+/// Claim a character with empty location hash (no proximity on interact).
+public fun claim_character(
+    registry: &mut ObjectRegistry,
+    acl: &AdminACL,
+    id: u64,
+    ctx: &mut TxContext,
+): Entity {
+    claim_at(registry, acl, id, vector[], ctx)
+}
+
+public fun claim_at(
+    registry: &mut ObjectRegistry,
+    acl: &AdminACL,
+    id: u64,
+    location_hash: vector<u8>,
+    ctx: &mut TxContext,
+): Entity {
+    let (mut e, mut req) = entity::new(registry, id, tenant(), location_hash);
     admin_service::verify_admin(&mut req, acl, ctx);
     e.complete_request(req);
     e
 }
 
-/// Claim, admin-approve, and share an entity in an ADMIN tx, returning its id.
+/// Claim, admin-approve, and share a located entity in an ADMIN tx, returning its id.
 public fun create_entity(scenario: &mut ts::Scenario, id: u64): ID {
     ts::next_tx(scenario, ADMIN);
     let mut registry = take_registry(scenario);
