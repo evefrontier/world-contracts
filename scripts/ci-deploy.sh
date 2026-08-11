@@ -7,7 +7,7 @@ source "$(dirname "$0")/ci-deploy-lib.sh"
 : "${TARGET_ENV:?}" "${MODE:?}" "${NET:?}" "${COMMIT:?}" "${DEPLOYER_KEY:?}" "${VERSION:?}"
 
 # Packages in dependency order, matching deploy-world.sh.
-PACKAGES=(core character inventory)
+PACKAGES=(core character inventory metadata)
 
 setup
 ci_bootstrap_keys

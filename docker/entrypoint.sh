@@ -44,7 +44,7 @@ sui client switch --address "$DEPLOYER_ADDRESS"
 echo ""
 
 # ── Deploy world ─────────────────────────────────────────────────────────────
-# Deploys core + character to the target network and writes the deployment
+# Deploys core + character + inventory + metadata to the target network and writes the deployment
 # manifest. MVR publishing is intentionally out of scope here (separate
 # workstream); this image only publishes the packages on-chain.
 echo "======================================"

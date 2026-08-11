@@ -77,3 +77,10 @@ export {
   withdraw,
   withdrawRequirement,
 } from './packages/inventory.js'
+export {
+  editMetadata,
+  editRequirement,
+  installMetadata,
+  type MetadataFields,
+  uninstallMetadata,
+} from './packages/metadata.js'
