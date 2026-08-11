@@ -36,7 +36,7 @@ wait_for_epoch() {
     epoch="$(curl -sf -X POST "$RPC_URL" \
       -H "Content-Type: application/json" \
       -d '{"jsonrpc":"2.0","id":1,"method":"suix_getLatestSuiSystemState","params":[]}' \
-      | jq -r '.result.epoch // 0')"
+      | jq -r '(.result.epoch // 0) | tonumber' || echo 0)"
     [ "$epoch" -ge "$min_epoch" ] && break
     sleep 2
   done
@@ -121,7 +121,7 @@ mkdir -p "$DATA_DIR"
 
 # Snapshot mode needs short epochs so we can reach epoch >= 1 before sealing.
 if [ "$MODE" = "snapshot" ]; then
-  sed -i 's/epoch_duration_ms: .*/epoch_duration_ms: 30000/' "$GENESIS_RUNTIME_CONFIG"
+  sed -i 's/^\([[:space:]]*\)epoch_duration_ms: .*/\1epoch_duration_ms: 30000/' "$GENESIS_RUNTIME_CONFIG"
   log "Snapshot mode: epoch_duration_ms overridden to 30000"
 fi
 
