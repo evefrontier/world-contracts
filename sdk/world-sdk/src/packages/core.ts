@@ -353,7 +353,7 @@ function sharedRef(
 ) {
   return tx.sharedObjectRef({
     objectId: ref.id,
-    initialSharedVersion: ref.initialSharedVersion,
+    initialSharedVersion: ref.initialSharedVersion ?? 0,
     mutable,
   })
 }

@@ -34,10 +34,6 @@ describe('EVE currency (localnet)', () => {
       owner && typeof owner === 'object' && 'Shared' in owner,
       'Currency is not shared (finalize incomplete?)',
     ).toBe(true)
-    const version = (
-      owner as { Shared: { initial_shared_version: number | string } }
-    ).Shared.initial_shared_version
-    expect(String(version)).toBe(String(ref.initialSharedVersion))
   })
 
   it('transferEve moves balance to a recipient', async () => {

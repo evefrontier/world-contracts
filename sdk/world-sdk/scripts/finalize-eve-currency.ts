@@ -22,22 +22,21 @@ interface Manifest {
   mvr?: Record<string, unknown>
 }
 
-function createdCurrency(
+function createdCurrencyId(
   objectChanges: Array<{
     type: string
     objectId?: string
     objectType?: string
-    owner?: unknown
   }>,
   currencyType: string,
-): { objectId: string; owner: unknown } {
+): string {
   const created = objectChanges.find(
     (c) => c.type === 'created' && c.objectType === currencyType && c.objectId,
   )
   if (!created?.objectId) {
     throw new Error(`Currency not found in object changes: ${currencyType}`)
   }
-  return { objectId: created.objectId, owner: created.owner }
+  return created.objectId
 }
 
 async function main(): Promise<void> {
@@ -72,10 +71,7 @@ async function main(): Promise<void> {
       objectType?: string
     }>
   }
-  const { objectId: currencyObjectId } = createdCurrency(
-    publishChanges ?? [],
-    currencyType,
-  )
+  const currencyObjectId = createdCurrencyId(publishChanges ?? [], currencyType)
 
   const res = await client.getObject({ id: currencyObjectId })
   if (!res.data) {
@@ -106,33 +102,24 @@ async function main(): Promise<void> {
   }
 
   // finalize_registration deletes the receiving Currency and creates a shared one.
-  const shared = createdCurrency(
+  const sharedId = createdCurrencyId(
     (result.objectChanges ?? []) as Array<{
       type: string
       objectId?: string
       objectType?: string
-      owner?: unknown
     }>,
     currencyType,
   )
-  const initialSharedVersion = String(
-    (
-      shared.owner as {
-        Shared: { initial_shared_version: number | string }
-      }
-    ).Shared.initial_shared_version,
-  )
 
   manifest.sharedObjects[EVE_CURRENCY] = {
-    id: shared.objectId,
-    initialSharedVersion,
+    id: sharedId,
     type: currencyType,
   }
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
   console.log('EVE currency finalized in CoinRegistry.')
   console.log('Digest:', result.digest)
-  console.log(`sharedObjects.${EVE_CURRENCY}=${shared.objectId}`)
+  console.log(`sharedObjects.${EVE_CURRENCY}=${sharedId}`)
 }
 
 main().catch((e) => {

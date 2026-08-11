@@ -14,9 +14,6 @@ export function parseSharedObjectRef(
 ): SharedObjectRef {
   const ref = value as Partial<SharedObjectRef> | undefined
   if (!ref?.id) throw new Error(`${label}: missing id`)
-  if (ref.initialSharedVersion === undefined) {
-    throw new Error(`${label}: missing initialSharedVersion`)
-  }
   if (!ref.type) throw new Error(`${label}: missing type`)
   return ref as SharedObjectRef
 }
