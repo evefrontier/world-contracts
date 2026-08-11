@@ -88,6 +88,7 @@ jobs:
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/app" \
+            -v "${{ github.workspace }}/docker/entrypoint-integration.sh:/entrypoint.sh:ro" \
             -w /app \
             -e CI=true \
             "$IMAGE" test

@@ -130,18 +130,36 @@ sui genesis --from-config "$GENESIS_RUNTIME_CONFIG" --working-dir "$DATA_DIR" --
 # Genesis writes its own fullnode.yaml; overwriting it breaks faucet tx execution.
 
 # ── 3. Start node ────────────────────────────────────────────────────────────
-log "Starting local Sui node..."
-sui start --network.config "$DATA_DIR" --with-faucet &
+NODE_LOG="$DATA_DIR/node.log"
+START_ARGS=(--network.config "$DATA_DIR")
+if [ "$MODE" != "test" ]; then
+  START_ARGS+=(--with-faucet)
+fi
+log "Starting local Sui node (${START_ARGS[*]})..."
+sui start "${START_ARGS[@]}" >"$NODE_LOG" 2>&1 &
 NODE_PID=$!
 trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
 
 log "Waiting for RPC at $RPC_URL ..."
-for i in $(seq 1 60); do
-  curl -sf -X POST "$RPC_URL" -H 'Content-Type: application/json' \
-    -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' >/dev/null 2>&1 && break
-  if [ "$i" -eq 60 ]; then log "ERROR: RPC did not become ready"; exit 1; fi
+ready=0
+for i in $(seq 1 120); do
+  if ! kill -0 "$NODE_PID" 2>/dev/null; then
+    log "ERROR: node exited before RPC was ready"
+    tail -n 100 "$NODE_LOG" || true
+    exit 1
+  fi
+  if curl -sf -X POST "$RPC_URL" -H 'Content-Type: application/json' \
+    -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
   sleep 1
 done
+if [ "$ready" -ne 1 ]; then
+  log "ERROR: RPC did not become ready"
+  tail -n 100 "$NODE_LOG" || true
+  exit 1
+fi
 sleep 2
 log "RPC ready."
 
