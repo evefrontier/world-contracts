@@ -238,12 +238,7 @@ fun uninstall_without_module_aborts() {
     let acl = take_acl(&scenario);
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
 
-    let mut req = metadata::uninstall(&mut e, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
+    let _req = metadata::uninstall(&mut e, scenario.ctx());
 
-    e.share();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
-    scenario.end();
+    abort
 }
