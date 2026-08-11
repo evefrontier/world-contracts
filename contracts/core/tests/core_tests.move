@@ -9,7 +9,7 @@ use core::{
     location_service,
     request,
     requirement::{Self, Requirement},
-    test_helpers::{setup, take_registry, take_acl, claim, location_hash, tenant}
+    test_helpers::{setup, take_registry, take_acl, claim, claim_character, location_hash, tenant}
 };
 use std::string;
 use sui::test_scenario as ts;
@@ -118,6 +118,69 @@ fun interact_injects_proximity_when_location_set() {
     ts::return_to_sender(&scenario, cap);
     ts::return_shared(e);
     scenario.end();
+}
+
+#[test]
+fun interact_skips_proximity_when_location_empty() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim_character(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.mint_access(@0xA, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(string::utf8(b"noop"), action::new(vector[]), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+
+    // Empty location_hash: no proximity requirement — complete without verify_proximity.
+    let req = e.interact(string::utf8(b"noop"), scenario.ctx());
+    e.complete_request(req);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = request::ENoRequirements)]
+fun verify_proximity_aborts_when_location_empty() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim_character(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.mint_access(@0xA, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(string::utf8(b"noop"), action::new(vector[]), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+
+    let mut req = e.interact(string::utf8(b"noop"), scenario.ctx());
+    location_service::verify_proximity(&mut req, vector[]);
+
+    abort
 }
 
 #[test, expected_failure(abort_code = request::ERequestNotComplete)]

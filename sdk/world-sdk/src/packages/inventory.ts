@@ -119,6 +119,7 @@ export function uninstallInventory(
 export interface CreateStorageUnitArgs {
   inGameId: bigint
   tenant: string
+  /** Non-empty so `interact` injects proximity. */
   locationHash: number[]
   name: string
   mainCapacity: bigint
