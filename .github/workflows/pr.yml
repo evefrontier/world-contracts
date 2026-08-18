@@ -70,7 +70,8 @@ jobs:
       contents: read
       packages: read
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/world-integration:latest
+      # Pin publish SHA (not :latest). Bump after a successful Publish Integration Image run.
+      IMAGE: ghcr.io/${{ github.repository_owner }}/world-integration:aec7339a037adb3c7c80621a0b450b1cb800aa85
     steps:
       - uses: actions/checkout@v5
 
@@ -89,5 +90,6 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/app" \
             -w /app \
+            --entrypoint /app/docker/entrypoint-integration.sh \
             -e CI=true \
             "$IMAGE" test
