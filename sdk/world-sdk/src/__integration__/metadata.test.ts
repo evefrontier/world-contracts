@@ -118,14 +118,9 @@ describe('metadata owner-access via Character', () => {
     }
     await expectSuccess(client, editTx)
 
-    const capObj = await client.getObject({
-      id: entityCapId,
-      options: { showOwner: true },
-    })
-    const owner = capObj.data?.owner as
-      | { ObjectOwner?: string; AddressOwner?: string }
-      | undefined
-    const parkedOn = owner?.ObjectOwner ?? owner?.AddressOwner
-    expect(parkedOn).toBe(characterId)
+    const { object: capObj } = await client.getObject({ objectId: entityCapId })
+    expect(capObj.owner.ObjectOwner ?? capObj.owner.AddressOwner).toBe(
+      characterId,
+    )
   })
 })

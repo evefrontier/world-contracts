@@ -1,12 +1,7 @@
 import { fileURLToPath } from 'node:url'
-import {
-  getJsonRpcFullnodeUrl,
-  type SuiJsonRpcClient,
-} from '@mysten/sui/jsonRpc'
 import 'dotenv/config'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
-import { createWorldClient } from '../src/client.js'
-import { envProfile } from '../src/config/env.js'
+import { createWorldClient, type WorldClient } from '../src/client.js'
 import { loadWorldConfig } from '../src/config/load.js'
 import type { Env, WorldConfig } from '../src/config/types.js'
 
@@ -18,7 +13,7 @@ export interface ScriptContext {
   repoRoot: string
   manifestPath: string
   config: WorldConfig
-  client: SuiJsonRpcClient
+  client: WorldClient
   keypair: Ed25519Keypair
 }
 
@@ -41,9 +36,8 @@ export function loadScriptContext(): ScriptContext {
   const keypair = Ed25519Keypair.fromSecretKey(privateKey)
 
   const config = loadWorldConfig(manifestPath)
-  const rpcUrl =
-    env === 'local' ? undefined : getJsonRpcFullnodeUrl(envProfile(env).network)
-  const client = createWorldClient({ config, rpcUrl })
+  const grpcUrl = process.env.SUI_GRPC_URL || process.env.SUI_RPC_URL
+  const client = createWorldClient({ config, grpcUrl })
 
   return { deployEnv, env, repoRoot, manifestPath, config, client, keypair }
 }

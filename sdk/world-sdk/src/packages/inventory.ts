@@ -156,7 +156,7 @@ export interface BalanceOfArgs {
 /**
  * Read the balance of `typeId` in the inventory routed to `authorizedId` (the
  * entity's own id for main, a caller's id for ephemeral). Read-only; run under
- * `devInspectTransactionBlock` and decode the returned `u64`.
+ * `simulateTransaction` and decode the returned `u64`.
  */
 export function balanceOf(
   tx: Transaction,

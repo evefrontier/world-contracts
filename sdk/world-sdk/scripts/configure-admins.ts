@@ -1,4 +1,5 @@
 import { Transaction } from '@mysten/sui/transactions'
+import { signAndExecute } from '../src/client.js'
 import { addAdmins, addSponsors } from '../src/packages/core.js'
 import { loadScriptContext } from './context.js'
 
@@ -22,18 +23,12 @@ const tx = new Transaction()
 if (admins.length > 0) addAdmins(tx, config, admins)
 if (sponsors.length > 0) addSponsors(tx, config, sponsors)
 
-const res = await client.signAndExecuteTransaction({
+const res = await signAndExecute(client, {
   signer: keypair,
   transaction: tx,
-  options: { showEffects: true },
 })
 
-const status = res.effects?.status
-console.log('status:', status?.status, status?.error ?? '')
+console.log('digest:', res.digest)
 console.log(
   `admins added: ${admins.length}, sponsors added: ${sponsors.length}`,
 )
-
-if (status?.status !== 'success') {
-  process.exitCode = 1
-}

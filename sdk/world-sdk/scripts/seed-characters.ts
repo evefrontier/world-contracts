@@ -1,4 +1,5 @@
 import { Transaction } from '@mysten/sui/transactions'
+import { signAndExecute } from '../src/client.js'
 import { createCharacter } from '../src/packages/character.js'
 import { deriveObjectId } from '../src/packages/core.js'
 import { loadScriptContext } from './context.js'
@@ -28,14 +29,12 @@ for (const alias of PLAYER_ALIASES) {
   })
 }
 
-const res = await client.signAndExecuteTransaction({
+const res = await signAndExecute(client, {
   signer: keypair,
   transaction: tx,
-  options: { showEffects: true, showObjectChanges: true },
 })
 
-const status = res.effects?.status
-console.log('status:', status?.status, status?.error ?? '')
+console.log('digest:', res.digest)
 for (const alias of PLAYER_ALIASES) {
   const key = {
     id: BigInt(resources.character[alias]),
@@ -44,8 +43,4 @@ for (const alias of PLAYER_ALIASES) {
   console.log(
     `${alias}: id=${key.id} owner=${accounts.accounts[alias].address} objectId=${deriveObjectId(config, key)}`,
   )
-}
-
-if (status?.status !== 'success') {
-  process.exitCode = 1
 }

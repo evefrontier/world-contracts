@@ -30,19 +30,21 @@ describe('createCharacter (localnet)', () => {
       owner: ADMIN,
     })
 
-    // devInspect only needs a sender address; must be an admin for this call.
-    const res = await client.devInspectTransactionBlock({
-      sender: ADMIN,
-      transactionBlock: tx,
+    // Simulate only needs a sender address; must be an admin for this call.
+    tx.setSender(ADMIN)
+    const res = await client.simulateTransaction({
+      transaction: tx,
+      include: { effects: true },
     })
+    if (res.$kind !== 'Transaction') {
+      throw new Error(
+        res.FailedTransaction.status.error?.message ?? 'simulation failed',
+      )
+    }
 
-    expect(res.effects?.status?.status, res.effects?.status?.error ?? '').toBe(
-      'success',
-    )
-
-    const created = (res.effects?.created ?? []).map(
-      (c) => c.reference.objectId,
-    )
+    const created = res.Transaction.effects.changedObjects
+      .filter((o) => o.idOperation === 'Created')
+      .map((o) => o.objectId)
     expect(created).toContain(deriveObjectId(config, key))
   })
 })
