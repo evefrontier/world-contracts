@@ -1,4 +1,4 @@
-ARG SUI_VERSION=testnet-v1.74.0
+ARG SUI_VERSION=testnet-v1.75.1
 ARG PNPM_VERSION=9
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 

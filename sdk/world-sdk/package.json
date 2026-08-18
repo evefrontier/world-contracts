@@ -29,7 +29,8 @@
         "test:watch": "vitest",
         "test:integration": "vitest run --config vitest.integration.config.ts",
         "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run build",
-        "create:character": "tsx scripts/create-character.ts",
+        "seed:characters": "tsx scripts/seed-characters.ts",
+        "seed:storage-units": "tsx scripts/seed-storage-units.ts",
         "configure:admins": "tsx scripts/configure-admins.ts"
     },
     "peerDependencies": {

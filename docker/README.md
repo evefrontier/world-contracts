@@ -18,9 +18,11 @@ edit in `pr.yml`.
 Every deploy writes `deployments/<network>/world.json` — the manifest (chainId,
 package ids, shared objects) the SDK and downstream read.
 
-The localnet uses a [deterministic genesis](genesis/): four accounts
-(`ADMIN`, `PLAYER_A/B/C`) derived from a public test mnemonic and funded at
-genesis, identical every run.
+The localnet uses a [deterministic genesis](genesis/): five accounts
+(`ADMIN`, `SPONSOR`, `PLAYER_A/B/C`) whose well-known test **private** keys are
+committed in [`genesis/accounts.json`](genesis/accounts.json) and funded at
+genesis (owned gas + address balance), identical every run. Deploy whitelists
+`SPONSOR` on the AdminACL via `SPONSOR_ADDRESSES`.
 
 ## Integration tests
 
@@ -39,15 +41,29 @@ docker compose -f docker/docker-compose-snapshot-image.yml up
 ```
 
 Runs a pre-baked chain (with Postgres for indexer + GraphQL) without deploying
-anything. `world.json` is copied to the host at
-`deployments/localnet-snapshot/world.json`. Ports: `9000` RPC · `9123` faucet ·
+anything. `world.json`, `accounts.json`, and `test-resources.json` are copied to
+the host at `deployments/localnet-snapshot/`. Ports: `9000` RPC · `9123` faucet ·
 `9125` GraphQL. Bake one with
 [`../scripts/bake-snapshot-image.sh`](../scripts/bake-snapshot-image.sh).
 
-> **No world state yet.** The snapshot ships the *deployed* packages but an
-> *empty* world — `seed-world.sh` is currently a no-op, so there are no
-> characters or other entities on-chain. Seeding (e.g. a baked test character)
-> is tracked as a TODO in `seed-world.sh` for a later PR.
+`accounts.json` is [`genesis/accounts.json`](genesis/accounts.json) copied out at
+bake time: the `role`, `address` and bech32 `privateKey` (`suiprivkey1…`, what
+`Ed25519Keypair.fromSecretKey` takes) of every genesis account, so downstream
+consumers can sign as `ADMIN`, `SPONSOR`, or any player. These private keys are
+committed on purpose and are therefore public — never use these accounts on a
+real network or fund them with real assets.
+
+Bake also runs [`../scripts/seed-world.sh`](../scripts/seed-world.sh), which
+creates resources  using the fixed ids in [`../test-resources.json`](../test-resources.json)
+(`tenant: "local"`). Those entities live in the baked chain DB. Object ids are deterministic
+```ts
+const config = loadWorldConfig("deployments/localnet-snapshot/world.json");
+deriveObjectId(config, { id: 900000001n, tenant: "local" }); // character
+deriveObjectId(config, { id: 888800006n, tenant: "local" }); // storage unit itemId
+```
+
+`typeId` in `test-resources.json` is seed metadata for consumers (not an
+on-chain create arg). Use the ids from that file.
 
 ## Release image
 

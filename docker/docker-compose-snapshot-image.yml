@@ -1,7 +1,9 @@
 # This is an example of how to use the snapshot image to start a localnet with indexer and graphql.
 #
-# NOTE: the snapshot ships the deployed packages but an EMPTY world — no characters
-# or other entities on-chain yet (seed-world.sh is a no-op). Seeding is a TODO.
+# The snapshot includes deployed packages, seeded resources
+# (see repo-root test-resources.json). On start the
+# container copies world.json, accounts.json, and test-resources.json into the
+# host mount.
 
 services:
   postgres:
@@ -15,7 +17,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,9 +29,10 @@ services:
       - 9123:9123
       - 9125:9125
     volumes:
-      # Host folder for the deployment manifest. On start the container copies the baked
-      # world.json from the image into this mount (see entrypoint-snapshot-image.sh), so it
-      # appears on the host at ../deployments/localnet-snapshot/world.json. Needs :rw for that.
+      # Host folder for the deployment artifacts. On start the container copies the baked
+      # world.json, accounts.json, and test-resources.json from the image into this mount
+      # (see entrypoint-snapshot-image.sh), so they appear on the host under
+      # ../deployments/localnet-snapshot/. Needs :rw for that.
       - ../deployments/localnet-snapshot:/data/deployment:rw
     environment:
       POSTGRES_CONNECTION_STRING: "postgres://postgres:postgres@postgres:5432/postgres"
@@ -37,7 +40,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/rpc.discover > /dev/null"]
+      test: [ "CMD-SHELL", "curl -sf http://127.0.0.1:9000/rpc.discover > /dev/null" ]
       interval: 10s
       timeout: 5s
       retries: 5
