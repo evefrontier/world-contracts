@@ -48,8 +48,7 @@ public struct RiftLocationBroadcastEvent has copy, drop {
 }
 
 public struct MiningStarted has copy, drop {
-    rift_id: ID,
-    rift_key: TenantItemId,
+    rift_type_id: TenantItemId,
     character_id: ID,
     character_key: TenantItemId,
     solarsystem: u64,
