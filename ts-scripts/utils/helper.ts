@@ -214,8 +214,8 @@ export function readPublishOutputFile(filePath: string): { objectChanges: Publis
     const objectChanges = Array.isArray(parsed.objectChanges)
         ? parsed.objectChanges
         : Array.isArray(parsed.effects?.objectChanges)
-            ? parsed.effects.objectChanges
-            : undefined;
+          ? parsed.effects.objectChanges
+          : undefined;
 
     if (!objectChanges) {
         throw new Error(`Invalid publish output file (missing objectChanges[]): ${filePath}`);
