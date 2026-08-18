@@ -266,20 +266,17 @@ fun test_mining_started() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let rift_id = spawn_and_share_rift(&mut ts, RIFT_ITEM_ID);
     let character_id = create_and_share_character(&mut ts);
 
     ts::next_tx(&mut ts, admin());
     {
-        let registry = ts::take_shared<ObjectRegistry>(&ts);
         let character = ts::take_shared_by_id<Character>(&ts, character_id);
         let admin_acl = ts::take_shared<AdminACL>(&ts);
-        let location_registry = ts::take_shared<LocationRegistry>(&ts);
 
         rift::mining_started(
-            &registry,
             &character,
             &admin_acl,
+            tenant(),
             RIFT_ITEM_ID,
             42,
             utf8(b"100"),
@@ -288,47 +285,12 @@ fun test_mining_started() {
             ts.ctx(),
         );
 
-        let coords = location::get_location(&location_registry, rift_id);
-        assert!(option::is_none(&coords), 0);
-
-        ts::return_shared(location_registry);
         ts::return_shared(admin_acl);
         ts::return_shared(character);
-        ts::return_shared(registry);
     };
     let effects = ts::next_tx(&mut ts, admin());
     assert_eq!(ts::num_user_events(&effects), 1);
 
-    ts::end(ts);
-}
-
-#[test]
-#[expected_failure(abort_code = rift::ERiftAlreadyExists)]
-fun test_mining_started_rift_not_found() {
-    let mut ts = ts::begin(governor());
-    setup(&mut ts);
-
-    let character_id = create_and_share_character(&mut ts);
-
-    ts::next_tx(&mut ts, admin());
-    let registry = ts::take_shared<ObjectRegistry>(&ts);
-    let character = ts::take_shared_by_id<Character>(&ts, character_id);
-    let admin_acl = ts::take_shared<AdminACL>(&ts);
-    rift::mining_started(
-        &registry,
-        &character,
-        &admin_acl,
-        RIFT_ITEM_ID,
-        42,
-        utf8(b"100"),
-        utf8(b"200"),
-        utf8(b"300"),
-        ts.ctx(),
-    );
-
-    ts::return_shared(admin_acl);
-    ts::return_shared(character);
-    ts::return_shared(registry);
     ts::end(ts);
 }
 
@@ -338,17 +300,15 @@ fun test_mining_started_empty_item_id() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let _rift_id = spawn_and_share_rift(&mut ts, RIFT_ITEM_ID);
     let character_id = create_and_share_character(&mut ts);
 
     ts::next_tx(&mut ts, admin());
-    let registry = ts::take_shared<ObjectRegistry>(&ts);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_acl = ts::take_shared<AdminACL>(&ts);
     rift::mining_started(
-        &registry,
         &character,
         &admin_acl,
+        tenant(),
         0,
         42,
         utf8(b"100"),
@@ -359,7 +319,6 @@ fun test_mining_started_empty_item_id() {
 
     ts::return_shared(admin_acl);
     ts::return_shared(character);
-    ts::return_shared(registry);
     ts::end(ts);
 }
 
@@ -369,17 +328,15 @@ fun test_mining_started_unauthorized_sponsor() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 
-    let _rift_id = spawn_and_share_rift(&mut ts, RIFT_ITEM_ID);
     let character_id = create_and_share_character(&mut ts);
 
     ts::next_tx(&mut ts, @0xF);
-    let registry = ts::take_shared<ObjectRegistry>(&ts);
     let character = ts::take_shared_by_id<Character>(&ts, character_id);
     let admin_acl = ts::take_shared<AdminACL>(&ts);
     rift::mining_started(
-        &registry,
         &character,
         &admin_acl,
+        tenant(),
         RIFT_ITEM_ID,
         42,
         utf8(b"100"),
@@ -390,6 +347,5 @@ fun test_mining_started_unauthorized_sponsor() {
 
     ts::return_shared(admin_acl);
     ts::return_shared(character);
-    ts::return_shared(registry);
     ts::end(ts);
 }

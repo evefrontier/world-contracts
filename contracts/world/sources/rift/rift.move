@@ -143,12 +143,12 @@ public fun broadcast_location(
     });
 }
 
-/// Announces that mining has started at a rift. Emits `MiningStarted`;
+/// Announces that mining has started at a rift type. Emits `MiningStarted`.
 public fun mining_started(
-    registry: &ObjectRegistry,
     character: &Character,
     admin_acl: &AdminACL,
-    item_id: u64,
+    tenant: String,
+    rift_type_id: u64,
     solarsystem: u64,
     x: String,
     y: String,
@@ -156,19 +156,10 @@ public fun mining_started(
     ctx: &TxContext,
 ) {
     admin_acl.verify_sponsor(ctx);
-    assert!(item_id != 0, ERiftItemIdEmpty);
-
-    let tenant = character.tenant();
-    let rift_key = in_game_id::create_key(item_id, tenant);
-    assert!(registry.object_exists(rift_key), ERiftAlreadyExists);
-
-    let rift_id = object::id_from_address(
-        derived_object::derive_address(object::id(registry), rift_key),
-    );
+    assert!(rift_type_id != 0, ERiftItemIdEmpty);
 
     event::emit(MiningStarted {
-        rift_id,
-        rift_key,
+        rift_type_id: in_game_id::create_key(rift_type_id, tenant),
         character_id: character.id(),
         character_key: character.key(),
         solarsystem,
