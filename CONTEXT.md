@@ -26,10 +26,10 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   fixed struct fields, so new behavior never changes the base type. Created/claimed
   deterministically from the `ObjectRegistry`. A single Entity type plays one of two **roles**,
   not a fixed sub-type:
-  - **Structure** — a spatial, anchored Entity (gate, storage unit, turret) with a non-empty
-    `location_hash`, reachable via proximity.
-  - **Principal** — an Entity with no location (empty `location_hash`) that represents an
-    account-like actor and **owns AccessCaps** (a Character or a Tribe). See **Keychain**.
+  - **Structure** — a spatial Entity (gate, storage unit, turret, ship). Modules define
+    behavior; location is supplied at interact time, not stored on the Entity.
+  - **Principal** — an Entity that represents an account-like actor and **owns AccessCaps**
+    (a Character or a Tribe). See **Keychain**.
 - **Module** — typed state installed on an Entity ([`mod.move`](contracts/core/sources/mod.move)).
   `Module<T>` wraps a user-defined state `T` (e.g. `Module<Inventory>`) under a human-readable
   name, so one Entity can host several modules, even of the same type.
@@ -66,9 +66,10 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   Maps an in-game ID to exactly one on-chain object.
 - **ObjectRegistry** — shared object that derives and tracks Entity object IDs, guaranteeing one
   on-chain object per `EntityKey` ([`object_registry.move`](contracts/core/sources/object_registry.move)).
-- **Location service / Proximity** — a service that supplies a `Proximity` requirement, injected
-  by `interact` on every interaction so actions can require the user to be physically near the
-  structure ([`services/location_service.move`](contracts/core/sources/services/location_service.move)).
+- **Location service / Proximity** — `interact` injects a `Proximity` requirement carrying the
+  target location hash. The caller satisfies it with `verify_proximity` by supplying their
+  caller location hash (player, or the ship/structure they are boarded on). v1 is an exact match
+  ([`services/location_service.move`](contracts/core/sources/services/location_service.move)).
 
 ## Game modules
 

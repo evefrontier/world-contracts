@@ -129,8 +129,8 @@ describe('inventory owner-configured swap (localnet)', () => {
     // Owner stocks a lens in main.
     const stockTx = new Transaction()
     const se = stockTx.object(suId)
-    const stockReq = interact(stockTx, config, se, 'bridge_in')
-    verifyProximity(stockTx, config, stockReq)
+    const stockReq = interact(stockTx, config, se, 'bridge_in', [])
+    verifyProximity(stockTx, config, stockReq, [])
     verifyCaller(stockTx, config, stockReq, stockTx.object(ownerCapId))
     gameItemToChain(stockTx, config, se, stockReq, {
       typeId: LENS,
@@ -145,8 +145,8 @@ describe('inventory owner-configured swap (localnet)', () => {
     const e = runTx.object(suId)
     const playerCap = runTx.object(playerCapId)
 
-    const inReq = interact(runTx, config, e, 'eph_bridge_in')
-    verifyProximity(runTx, config, inReq)
+    const inReq = interact(runTx, config, e, 'eph_bridge_in', [])
+    verifyProximity(runTx, config, inReq, [])
     verifyCaller(runTx, config, inReq, playerCap)
     gameItemToChain(runTx, config, e, inReq, {
       typeId: FUEL,
@@ -155,8 +155,8 @@ describe('inventory owner-configured swap (localnet)', () => {
     })
     completeRequest(runTx, config, e, inReq)
 
-    const swapReq = interact(runTx, config, e, 'swap')
-    verifyProximity(runTx, config, swapReq)
+    const swapReq = interact(runTx, config, e, 'swap', [])
+    verifyProximity(runTx, config, swapReq, [])
     verifyCaller(runTx, config, swapReq, playerCap)
     const fuel = withdraw(runTx, config, e, swapReq, {
       typeId: FUEL,

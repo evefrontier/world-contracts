@@ -30,12 +30,11 @@ fun new_sets_initial_fields() {
     {
         let mut registry = take_registry(&scenario);
         let acl = take_acl(&scenario);
-        let (mut e, mut req) = entity::new(&mut registry, 1, tenant(), b"loc");
+        let (mut e, mut req) = entity::new(&mut registry, 1, tenant());
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
         e.complete_request(req);
 
         assert!(entity::version(&e) == 1);
-        assert!(entity::location_hash(&e) == b"loc");
         assert!(entity::key(&e).id() == 1);
         assert!(entity::key(&e).tenant() == tenant());
         assert!(!entity::has_module(&e, counter_name()));
@@ -316,7 +315,7 @@ fun interact_unknown_action_aborts() {
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
-    let req = e.interact(string::utf8(b"missing"), ctx);
+    let req = e.interact(string::utf8(b"missing"), vector[], ctx);
     e.complete_request(req);
 
     abort

@@ -127,8 +127,8 @@ describe('inventory owner-access via Character', () => {
       )
       const su = runTx.object(suId)
 
-      const inReq = interact(runTx, config, su, 'bridge_in')
-      verifyProximity(runTx, config, inReq)
+      const inReq = interact(runTx, config, su, 'bridge_in', [])
+      verifyProximity(runTx, config, inReq, [])
       verifyOwner(runTx, config, inReq, suCap)
       gameItemToChain(runTx, config, su, inReq, {
         typeId: FUEL,
@@ -137,8 +137,8 @@ describe('inventory owner-access via Character', () => {
       })
       completeRequest(runTx, config, su, inReq)
 
-      const wReq = interact(runTx, config, su, 'withdraw')
-      verifyProximity(runTx, config, wReq)
+      const wReq = interact(runTx, config, su, 'withdraw', [])
+      verifyProximity(runTx, config, wReq, [])
       verifyOwner(runTx, config, wReq, suCap)
       const item = withdraw(runTx, config, su, wReq, {
         typeId: FUEL,
@@ -146,8 +146,8 @@ describe('inventory owner-access via Character', () => {
       })
       completeRequest(runTx, config, su, wReq)
 
-      const dReq = interact(runTx, config, su, 'deposit')
-      verifyProximity(runTx, config, dReq)
+      const dReq = interact(runTx, config, su, 'deposit', [])
+      verifyProximity(runTx, config, dReq, [])
       verifyOwner(runTx, config, dReq, suCap)
       deposit(runTx, config, su, dReq, item)
       completeRequest(runTx, config, su, dReq)

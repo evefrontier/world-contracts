@@ -59,8 +59,6 @@ public struct Entity has key {
     version: u64,
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
-    /// Location hash injected as a proximity requirement on every interaction.
-    location_hash: vector<u8>,
 }
 
 // === Events ===
@@ -76,17 +74,12 @@ public struct EntityCreated has copy, drop {
 /// in-game ID can only ever back a single entity. Locked on return with an admin
 /// requirement: the caller must `admin_service::verify_admin` then
 /// `complete_request` before configuring the entity.
-public fun new(
-    registry: &mut ObjectRegistry,
-    id: u64,
-    tenant: String,
-    location_hash: vector<u8>,
-): (Entity, Request) {
+public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity, Request) {
     let key = entity_key::new(id, tenant);
     assert!(!registry.exists(key), EEntityAlreadyExists);
 
     let uid = derived_object::claim(registry.borrow_id(), key);
-    let mut entity = Entity { id: uid, version: VERSION, key, location_hash };
+    let mut entity = Entity { id: uid, version: VERSION, key };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
 
     event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
@@ -218,9 +211,14 @@ public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContex
 }
 
 /// Interact with a registered action, producing the `Request` to satisfy. A
-/// proximity requirement for the entity's location is injected ahead of the
+/// proximity requirement for `target_location_hash` is injected ahead of the
 /// action's own requirements, so it must be resolved first.
-public fun interact(entity: &mut Entity, action: String, _ctx: &mut TxContext): Request {
+public fun interact(
+    entity: &mut Entity,
+    action: String,
+    target_location_hash: vector<u8>,
+    _ctx: &mut TxContext,
+): Request {
     assert!(entity.version == VERSION, EWrongVersion);
 
     let actions: &VecMap<String, Action> = df::borrow(&entity.id, ActionsKey());
@@ -229,7 +227,7 @@ public fun interact(entity: &mut Entity, action: String, _ctx: &mut TxContext): 
         .get(&action)
         .to_request(
             option::some(entity.id.to_inner()),
-            vector[location_service::proximity_requirement(entity.location_hash)],
+            vector[location_service::proximity_requirement(target_location_hash)],
         );
 
     entity.lock();
@@ -286,10 +284,6 @@ public fun has_module_with_type<T: store>(entity: &Entity, name: String): bool {
 
 public fun version(entity: &Entity): u64 {
     entity.version
-}
-
-public fun location_hash(entity: &Entity): vector<u8> {
-    entity.location_hash
 }
 
 // === Private Functions ===
