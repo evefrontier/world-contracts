@@ -60,7 +60,6 @@ export function deriveObjectId(
 export interface EntityNewArgs {
   inGameId: bigint
   tenant: string
-  locationHash?: number[]
 }
 
 /**
@@ -79,7 +78,6 @@ export function entityNew(
       sharedRef(tx, objectRegistry(config), true),
       tx.pure.u64(args.inGameId),
       tx.pure.string(args.tenant),
-      tx.pure.vector('u8', args.locationHash ?? []),
     ],
   })
 }
@@ -199,16 +197,16 @@ export function verifyCaller(
   })
 }
 
-/** Satisfy a proximity requirement. `proof`/location hash defaults to empty. */
+/** Satisfy a proximity requirement. `callerLocationHash` must match the target baked at `interact`. */
 export function verifyProximity(
   tx: Transaction,
   config: WorldConfig,
   request: TransactionArgument,
-  proof: number[] = [],
+  callerLocationHash: number[],
 ): void {
   tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::location_service::verify_proximity`,
-    arguments: [request, tx.pure.vector('u8', proof)],
+    arguments: [request, tx.pure.vector('u8', callerLocationHash)],
   })
 }
 
@@ -218,10 +216,15 @@ export function interact(
   config: WorldConfig,
   entity: TransactionArgument,
   action: string,
+  targetLocationHash: number[],
 ): TransactionResult {
   return tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::entity::interact`,
-    arguments: [entity, tx.pure.string(action)],
+    arguments: [
+      entity,
+      tx.pure.string(action),
+      tx.pure.vector('u8', targetLocationHash),
+    ],
   })
 }
 

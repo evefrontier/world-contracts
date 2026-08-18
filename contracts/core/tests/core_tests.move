@@ -70,10 +70,10 @@ fun end_to_end_flow() {
     access_cap::verify(&mut req, &cap);
     e.complete_request(req);
 
-    // Interact: satisfy the injected proximity requirement first, then borrow the
-    // module by requirement, satisfy it, and mutate.
-    let mut req = e.interact(string::utf8(b"increment"), scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    // Interact: target location is baked into proximity; caller must match, then
+    // borrow the module by requirement, satisfy it, and mutate.
+    let mut req = e.interact(string::utf8(b"increment"), b"loc", scenario.ctx());
+    location_service::verify_proximity(&mut req, b"loc");
     let counter = e.module_mut<Counter>(&req, internal::permit<Counter>()).inner_mut();
     let (_requirement, frame) = req.take_next<Bump>(internal::permit<Bump>());
     counter.value = counter.value + 1;
@@ -120,8 +120,40 @@ fun cannot_complete_with_pending_requirement() {
     e.complete_request(req);
 
     // Try to complete without satisfying the requirement.
-    let req = e.interact(string::utf8(b"increment"), scenario.ctx());
+    let req = e.interact(string::utf8(b"increment"), b"loc", scenario.ctx());
     e.complete_request(req);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = location_service::EProximityMismatch)]
+fun interact_proximity_caller_mismatch_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let acl = take_acl(&scenario);
+    let mut e = claim_test_entity(&mut scenario, &acl);
+    let mut req = e.mint_access(@0xA, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(
+        string::utf8(b"noop"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+
+    let mut req = e.interact(string::utf8(b"noop"), b"dest", scenario.ctx());
+    location_service::verify_proximity(&mut req, b"src");
 
     abort
 }
