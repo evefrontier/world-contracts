@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import {
@@ -12,6 +11,7 @@ import {
 import { deriveObjectId } from "../utils/derive-object-id";
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
 import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { SuiClient, signAndExecute } from "../utils/client";
 
 /**
  * Updates fuel for a network node and handles fuel depletion if it occurs.
@@ -33,7 +33,7 @@ import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from
 async function updateFuel(
     networkNodeId: string,
     adminAcl: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
 ) {
@@ -96,10 +96,9 @@ async function updateFuel(
         arguments: [currentHotPotato],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showObjectChanges: true, showEffects: true },
     });
 
     // Get fuel quantity after update

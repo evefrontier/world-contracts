@@ -97,8 +97,7 @@ async function linkGates(
         keypair,
         adminKeypair,
         address,
-        adminAddress,
-        { showEffects: true, showObjectChanges: true, showEvents: true }
+        adminAddress
     );
 
     console.log("\nGates linked successfully!");

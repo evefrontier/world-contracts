@@ -1,7 +1,7 @@
 import "dotenv/config";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
+import { SuiClient, signAndExecute } from "../utils/client";
 import {
     getEnvConfig,
     handleError,
@@ -14,18 +14,17 @@ import {
 const WORLD_PACKAGE_LATEST = process.env.UPGRADED_WORLD_PACKAGE_ID || "";
 
 async function getOwnedJumpPermitId(
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     owner: string,
     worldPackageId: string
 ): Promise<string | null> {
     const type = `${worldPackageId}::${MODULES.GATE}::JumpPermit`;
-    const res = await client.getOwnedObjects({
+    const res = await client.listOwnedObjects({
         owner,
-        filter: { StructType: type },
+        type,
         limit: 1,
     });
-    const first = res.data?.[0]?.data;
-    return first?.objectId ?? null;
+    return res.objects[0]?.objectId ?? null;
 }
 
 async function deleteJumpPermit(ctx: ReturnType<typeof initializeContext>) {
@@ -48,10 +47,9 @@ async function deleteJumpPermit(ctx: ReturnType<typeof initializeContext>) {
         arguments: [tx.object(jumpPermitId)],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showEffects: true, showObjectChanges: true, showEvents: true },
     });
 
     console.log("JumpPermit deleted:", jumpPermitId);

@@ -11,6 +11,7 @@ import {
 import { CLOCK_OBJECT_ID, GAME_CHARACTER_ID, NWN_ITEM_ID } from "../utils/constants";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { getOwnerCap } from "./helper";
+import { signAndExecute } from "../utils/client";
 
 async function online(
     networkNodeId: string,
@@ -44,10 +45,9 @@ async function online(
         arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showObjectChanges: true, showEffects: true },
     });
 
     console.log("\n Network Node brought online successfully!");

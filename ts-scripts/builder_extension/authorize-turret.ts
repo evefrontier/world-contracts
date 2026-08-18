@@ -13,6 +13,7 @@ import {
 import { getOwnerCap } from "../turret/helper";
 import { requireBuilderPackageId } from "../utils/builder-extension";
 import { MODULE as extensionModule } from "./modules";
+import { signAndExecute } from "../utils/client";
 
 const builderPackageId = requireBuilderPackageId();
 
@@ -52,10 +53,9 @@ async function authorizeExtension(
         arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showEffects: true, showObjectChanges: true, showEvents: true },
     });
     console.log("Extension authorized. Auth type:", authType);
     console.log("Transaction digest:", result.digest);

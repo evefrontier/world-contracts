@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { hexToBytes } from "../utils/helper";
@@ -14,6 +13,7 @@ import {
     STORAGE_A_ITEM_ID,
 } from "../utils/constants";
 import { deriveObjectId } from "../utils/derive-object-id";
+import { SuiClient, signAndExecute } from "../utils/client";
 
 const MAX_CAPACITY = 1000000000000n;
 
@@ -23,7 +23,7 @@ async function createStorageUnit(
     typeId: bigint,
     itemId: bigint,
     adminAcl: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
 ) {
@@ -48,28 +48,21 @@ async function createStorageUnit(
         arguments: [storageUnit, tx.object(adminAcl)],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showEvents: true },
     });
 
     console.log("Transaction digest:", result.digest);
 
     const storageUnitEvent = result.events?.find((event) =>
-        event.type.endsWith("::storage_unit::StorageUnitCreatedEvent")
+        event.eventType.endsWith("::storage_unit::StorageUnitCreatedEvent")
     );
 
-    if (!storageUnitEvent?.parsedJson) {
+    if (!storageUnitEvent) {
         throw new Error("StorageUnitCreatedEvent not found in transaction result");
     }
-
-    const storageUnitId = (storageUnitEvent.parsedJson as { storage_unit_id: string })
-        .storage_unit_id;
-    console.log("Storage Unit Object Id: ", storageUnitId);
-
-    const ownerCapObjectId = (storageUnitEvent.parsedJson as { owner_cap_id: string }).owner_cap_id;
-    console.log("OwnerCap Object Id: ", ownerCapObjectId);
+    console.log("StorageUnitCreatedEvent:", storageUnitEvent.eventType);
 }
 
 async function main() {

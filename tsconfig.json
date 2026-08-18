@@ -8,8 +8,12 @@
     "moduleResolution": "Bundler",
     "esModuleInterop": true,
     "strict": true,
+    "types": [
+      "node"
+    ],
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "rootDir": "./ts-scripts",
     "outDir": "./dist"
   },
   "include": [

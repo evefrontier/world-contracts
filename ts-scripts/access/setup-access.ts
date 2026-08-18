@@ -3,8 +3,9 @@ import { Transaction } from "@mysten/sui/transactions";
 import { MODULES, Network } from "../utils/config";
 import { delay } from "../utils/delay";
 import { handleError, hydrateWorldConfig, initializeContext, requireEnv } from "../utils/helper";
+import { signAndExecute } from "../utils/client";
 
-function getSponsorAddresses(raw: string): string[] {
+function getAddresses(raw: string): string[] {
     return raw
         .split(",")
         .map((s) => s.trim().toLowerCase())
@@ -15,8 +16,8 @@ function getAccessSetupEnv() {
     const network = (process.env.SUI_NETWORK as Network) || "testnet";
     // during development, we use the same private key for governor and admin
     const governorKey = process.env.GOVERNOR_PRIVATE_KEY || requireEnv("ADMIN_PRIVATE_KEY");
-    const adminAddress = requireEnv("ADMIN_ADDRESS");
-    const sponsorAddresses = getSponsorAddresses(requireEnv("SPONSOR_ADDRESSES"));
+    const adminAddress = getAddresses(requireEnv("ADMIN_ADDRESS"));
+    const sponsorAddresses = getAddresses(requireEnv("SPONSOR_ADDRESSES"));
 
     return { network, governorKey, adminAddress, sponsorAddresses };
 }
@@ -52,15 +53,11 @@ async function setupAccess() {
             tx1.pure.address(adminAddress),
         ],
     });
-    const r1 = await client.signAndExecuteTransaction({
+    const r1 = await signAndExecute(client, {
         signer: keypair,
         transaction: tx1,
-        options: { showObjectChanges: true },
     });
     console.log("   Digest:", r1.digest);
-    if (r1.effects?.status?.status === "failure") {
-        throw new Error(`register_server_address failed: ${JSON.stringify(r1.effects.status)}`);
-    }
     await delay(5000);
 
     console.log(`2. add_sponsor_to_acl (${sponsorAddresses.length} sponsors, atomic)...`);
@@ -75,15 +72,11 @@ async function setupAccess() {
             ],
         });
     }
-    const r2 = await client.signAndExecuteTransaction({
+    const r2 = await signAndExecute(client, {
         signer: keypair,
         transaction: tx2,
-        options: { showObjectChanges: true },
     });
     console.log("   Digest:", r2.digest);
-    if (r2.effects?.status?.status === "failure") {
-        throw new Error(`add_sponsor_to_acl failed: ${JSON.stringify(r2.effects.status)}`);
-    }
 
     console.log("\n==== Access setup complete ====");
 }

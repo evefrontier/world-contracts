@@ -1,8 +1,8 @@
 import "dotenv/config";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { getConfig, MODULES } from "../utils/config";
 import { bcs } from "@mysten/sui/bcs";
 import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
+import { SuiClient } from "../utils/client";
 
 export interface AssemblyTypeInfo {
     id: string;
@@ -11,7 +11,7 @@ export interface AssemblyTypeInfo {
 
 export async function getFuelQuantity(
     networkNodeId: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<bigint | null> {
@@ -40,7 +40,7 @@ export async function getFuelQuantity(
 
 export async function getConnectedAssemblies(
     networkNodeId: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<string[] | null> {
@@ -69,7 +69,7 @@ export async function getConnectedAssemblies(
 
 export async function isNetworkNodeOnline(
     networkNodeId: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<boolean | null> {
@@ -97,7 +97,7 @@ export async function isNetworkNodeOnline(
 
 export async function getOwnerCap(
     networkNodeId: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<string | null> {
@@ -121,16 +121,13 @@ export async function getOwnerCap(
 
 export async function getAssemblyTypes(
     assemblyIds: string[],
-    client: SuiJsonRpcClient
+    client: SuiClient
 ): Promise<AssemblyTypeInfo[]> {
     return await Promise.all(
         assemblyIds.map(async (assemblyId) => {
             try {
-                const object = await client.getObject({
-                    id: assemblyId,
-                    options: { showType: true },
-                });
-                const type = object.data?.type;
+                const { object } = await client.getObject({ objectId: assemblyId });
+                const type = object.type;
 
                 // connected_assembly_ids can include multiple "assembly-like" structs,
                 // including `Gate` and `StorageUnit`, which require different Move entrypoints.

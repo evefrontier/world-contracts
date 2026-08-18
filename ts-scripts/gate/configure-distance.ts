@@ -9,6 +9,7 @@ import {
     parseBigIntArray,
 } from "../utils/helper";
 import { delay } from "../utils/delay";
+import { signAndExecute } from "../utils/client";
 
 async function setGateMaxDistanceByType(
     gateConfigId: string,
@@ -30,10 +31,9 @@ async function setGateMaxDistanceByType(
         ],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showEffects: true, showObjectChanges: true },
     });
 
     console.log("\nGate max distance updated!");

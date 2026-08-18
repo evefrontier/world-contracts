@@ -1,5 +1,5 @@
 import path from "node:path";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
+import type { SuiClient } from "./client";
 import { MODULES, WorldObjectIds } from "./config";
 import {
     resolvePublishOutputPath,
@@ -25,7 +25,7 @@ function getWorldPublishOutputPath(network: string): string {
 }
 
 export async function resolveWorldObjectIds(
-    _client: SuiJsonRpcClient,
+    _client: SuiClient,
     worldPackageId: string,
     governorAddress: string,
     network?: string

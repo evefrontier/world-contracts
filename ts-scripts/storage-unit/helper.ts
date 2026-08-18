@@ -1,11 +1,11 @@
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { getConfig, MODULES } from "../utils/config";
 import { bcs } from "@mysten/sui/bcs";
 import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
+import { SuiClient } from "../utils/client";
 
 export async function getOwnerCap(
     assemblyId: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     config: ReturnType<typeof getConfig>,
     senderAddress?: string
 ): Promise<string | null> {
