@@ -25,7 +25,9 @@ describe('EVE currency (localnet)', () => {
     )
 
     const { object } = await client.getObject({ objectId: ref.id })
-    expect(object.type).toBe(ref.type)
+    expect(object.type).toContain(
+      `::coin_registry::Currency<${packageId}::EVE::EVE>`,
+    )
     expect(
       object.owner.$kind,
       'Currency is not shared (finalize incomplete?)',
