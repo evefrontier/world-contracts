@@ -21,7 +21,7 @@ use world::{
 #[error(code = 0)]
 const ERiftAlreadyExists: vector<u8> = b"Rift with this ItemId already exists";
 #[error(code = 1)]
-const ERiftItemIdEmpty: vector<u8> = b"Rift ItemId is empty";
+const ERiftTypeIdEmpty: vector<u8> = b"Rift TypeId is empty";
 
 // === Structs ===
 public struct Rift has key {
@@ -156,7 +156,7 @@ public fun mining_started(
     ctx: &TxContext,
 ) {
     admin_acl.verify_sponsor(ctx);
-    assert!(rift_type_id != 0, ERiftItemIdEmpty);
+    assert!(rift_type_id != 0, ERiftTypeIdEmpty);
 
     event::emit(MiningStarted {
         rift_type_id: in_game_id::create_key(rift_type_id, tenant),
