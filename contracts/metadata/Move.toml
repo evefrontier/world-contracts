@@ -1,0 +1,14 @@
+[package]
+name = "metadata"
+edition = "2024"
+
+[dependencies]
+core = { local = "../core" }
+
+# Per-env deploy targets. dev/test/uat are independent deployments on the same
+# testnet chain (distinguished by name);
+[environments]
+dev = "4c78adac"
+test = "4c78adac"
+uat = "4c78adac"
+# live = "35834a8a"
