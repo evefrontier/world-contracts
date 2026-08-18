@@ -1,0 +1,11 @@
+[package]
+name = "currency"
+edition = "2024"
+
+[dependencies]
+
+[environments]
+dev = "4c78adac"
+test = "4c78adac"
+uat = "4c78adac"
+# live = "35834a8a"  # mainnet — deferred (R2)

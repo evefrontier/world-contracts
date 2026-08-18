@@ -14,9 +14,10 @@ export type CreateWorldClientOptions =
   | { config: WorldConfig; rpcUrl?: string }
 
 /**
- * A SuiJsonRpcClient wired to resolve `@evefrontier/world-*` MVR names: from the
- * registry on testnet/mainnet, from `packageOverrides` on local. Names in a
- * transaction's move calls resolve automatically when built/executed with it.
+ * A SuiJsonRpcClient wired to resolve `@evefrontier/world-*` (and
+ * `@evefrontier/currency*`) MVR names: from the registry on testnet/mainnet,
+ * from `packageOverrides` on local. Names in a transaction's move calls resolve
+ * automatically when built/executed with it.
  */
 export function createWorldClient(
   options: CreateWorldClientOptions,

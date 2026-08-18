@@ -1,15 +1,11 @@
-import { fileURLToPath } from 'node:url'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
-import { createWorldClient } from '../client.js'
-import { loadWorldConfig } from '../config/load.js'
 import {
   callerRequirement,
   completeRequest,
   deriveObjectId,
   enableAction,
   interact,
-  mintAccess,
   verifyCaller,
   verifyProximity,
 } from '../packages/core.js'
@@ -23,10 +19,10 @@ import {
   withdrawRequirement,
 } from '../packages/inventory.js'
 import {
-  capObjectId,
   expectSuccess,
+  loadLocalnetWorld,
+  mintAccessCap,
   readBalance,
-  requirePackage,
   signer,
 } from './helpers.js'
 
@@ -34,17 +30,12 @@ import {
 // mint the owner cap to a plain address, enable owner deposit/withdraw/bridge
 // actions, then round-trip a balance: bridge_in seeds it, withdraw yields an Item,
 // deposit puts it back.
-const MANIFEST = fileURLToPath(
-  new URL('../../../../deployments/localnet/world.json', import.meta.url),
-)
-
 const UNIT = 'SU-01'
 const FUEL = 88834n
 const VOL = 2n
 
 describe('inventory owner round-trip (localnet)', () => {
-  const config = loadWorldConfig(MANIFEST)
-  const client = createWorldClient({ config })
+  const { config, client } = loadLocalnetWorld()
 
   it('bridges in, withdraws, and deposits back on the main inventory', async () => {
     const key = { id: 4200n, tenant: 'inventory-t1' }
@@ -62,16 +53,11 @@ describe('inventory owner round-trip (localnet)', () => {
     await expectSuccess(client, createTx)
 
     // tx2: mint the (transferable) owner cap to a plain address — here the signer.
-    const mintTx = new Transaction()
-    mintAccess(mintTx, config, {
+    const capId = await mintAccessCap(client, config, {
       entity: entityId,
       owner: signer,
       transferable: true,
     })
-    const minted = await expectSuccess(client, mintTx, {
-      showObjectChanges: true,
-    })
-    const capId = capObjectId(minted, requirePackage(config, 'core'))
 
     // tx3: owner enables the three main-inventory actions.
     const enableTx = new Transaction()

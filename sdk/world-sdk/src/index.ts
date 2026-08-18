@@ -11,6 +11,8 @@ export { getWorldConfig } from './config/presets.js'
 export {
   ADMIN_ACL,
   adminAcl,
+  EVE_CURRENCY,
+  eveCurrency,
   OBJECT_REGISTRY,
   objectRegistry,
   requireSharedObject,
@@ -49,6 +51,12 @@ export {
   verifyOwner,
   verifyProximity,
 } from './packages/core.js'
+export {
+  currencyPackage,
+  eveCoinType,
+  type TransferEveArgs,
+  transferEve,
+} from './packages/currency.js'
 export {
   type BalanceOfArgs,
   type BridgeInArgs,

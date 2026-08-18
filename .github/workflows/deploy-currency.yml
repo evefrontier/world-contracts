@@ -1,8 +1,7 @@
-name: Deploy World
+name: Deploy Currency
 
-# Deploy/upgrade an already-built, tagged image to one environment.
-# workflow picks an image tag and ships exactly that artifact to a chosen env.
-# The same tag can go to many envs, and different envs can run different tags.
+# Deploy/upgrade the EVE currency package independently of world redeploys.
+# Same image-tag model as Deploy World; MVR names are @evefrontier/currency[-env].
 
 on:
   workflow_dispatch:
@@ -17,10 +16,10 @@ on:
         options: [dev, test, uat, live]
         required: true
       mode:
-        description: deploy (new publish + MVR set_network) or upgrade (existing lineage, target network only)
+        description: deploy (new publish + MVR set_network) or upgrade (existing lineage)
         type: choice
         options: [upgrade, deploy]
-        default: upgrade
+        default: deploy
         required: true
       version:
         description: On-chain version to record git metadata for (e.g. 1, 2)
@@ -29,8 +28,7 @@ on:
         required: true
 
 concurrency:
-  # Serialize per env; env-keyed records mean different envs don't collide.
-  group: deploy-${{ inputs.env }}
+  group: deploy-currency-${{ inputs.env }}
   cancel-in-progress: false
 
 env:
@@ -39,7 +37,7 @@ env:
 
 jobs:
   deploy:
-    name: Deploy ${{ inputs.image_tag }} to ${{ inputs.env }} (${{ inputs.mode }})
+    name: Currency ${{ inputs.image_tag }} → ${{ inputs.env }} (${{ inputs.mode }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.env }}
     permissions:
@@ -72,39 +70,32 @@ jobs:
       - name: Pull pinned image
         run: docker pull "${{ steps.cfg.outputs.image }}"
 
-      - name: Deploy / upgrade on-chain (+ MVR)
+      - name: Deploy / upgrade currency (+ MVR)
         env:
-          # On testnet the deployer also holds the AppCaps, so one key signs both
-          # the target-network steps and mainnet set_network.
           DEPLOYER_KEY: ${{ secrets.SUI_DEPLOYER_KEY }}
           APPCAP_KEY: ${{ secrets.SUI_APPCAP_KEY }}
           TARGET_ENV: ${{ inputs.env }}
           MODE: ${{ inputs.mode }}
           VERSION: ${{ inputs.version }}
           NET: ${{ steps.cfg.outputs.net }}
-          ADMIN_ADDRESSES: ${{ vars.ADMIN_ADDRESSES }}
-          SPONSOR_ADDRESSES: ${{ vars.SPONSOR_ADDRESSES }}
-          CONTAINER: deploy-${{ github.run_id }}-${{ github.run_attempt }}
+          CONTAINER: deploy-currency-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           env="${{ inputs.env }}"
           if [[ ! -f "deployments/$env/world.json" ]]; then
-            echo "ERROR: deployments/$env/world.json missing — needed for mvr.*.appCap" >&2
+            echo "ERROR: deployments/$env/world.json missing — needed for mvr.currency.appCap" >&2
             exit 1
           fi
           docker create --name "$CONTAINER" \
             -e CI=true \
             -e DEPLOYER_KEY -e APPCAP_KEY \
             -e TARGET_ENV -e MODE -e VERSION -e NET \
-            -e ADMIN_ADDRESSES -e SPONSOR_ADDRESSES \
             -e COMMIT="${{ github.sha }}" \
             --entrypoint bash \
             "${{ steps.cfg.outputs.image }}" \
-            -c "mkdir -p deployments/$env && cat /app/world.json.seed > deployments/$env/world.json && rm -f /app/world.json.seed && scripts/ci-deploy.sh"
+            -c "mkdir -p deployments/$env && cat /app/world.json.seed > deployments/$env/world.json && rm -f /app/world.json.seed && scripts/ci-deploy-currency.sh"
           docker cp "deployments/$env/world.json" "$CONTAINER:/app/world.json.seed"
           docker start -a "$CONTAINER"
 
-          # ci-deploy.sh exports the artifacts to commit; copy that
-          # dir out and lay them down where the next step expects them.
           tmp="$(mktemp -d)"
           docker cp "$CONTAINER:/app/deployments/$env/records/." "$tmp/"
           cp -r "$tmp/contracts/." contracts/
@@ -114,7 +105,7 @@ jobs:
 
       - name: Remove deploy container
         if: always()
-        run: docker rm -f "deploy-${{ github.run_id }}-${{ github.run_attempt }}" 2>/dev/null || true
+        run: docker rm -f "deploy-currency-${{ github.run_id }}-${{ github.run_attempt }}" 2>/dev/null || true
 
       - name: Open deployment records PR
         env:
@@ -123,21 +114,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A \
-            'contracts/*/Published.toml' \
+            'contracts/currency/Published.toml' \
             "deployments/${{ inputs.env }}/world.json"
           if git diff --cached --quiet; then
             echo "No record changes to commit."
             exit 0
           fi
-          branch="deploy-records/${{ inputs.env }}-${{ github.run_id }}"
-          title="deploy(${{ inputs.env }}): ${{ inputs.image_tag }}"
+          branch="deploy-currency-records/${{ inputs.env }}-${{ github.run_id }}"
+          title="deploy-currency(${{ inputs.env }}): ${{ inputs.image_tag }}"
           git commit -m "$title [skip ci]"
           git push origin "HEAD:${branch}"
-          # PR creation may be blocked by org policy; the records branch is
-          # already pushed, so print a link to open it.
           gh pr create \
             --base dev \
             --head "$branch" \
             --title "$title" \
-            --body "Automated deployment records for \`${{ inputs.env }}\` from image \`${{ inputs.image_tag }}\` (mode: ${{ inputs.mode }}, version: ${{ inputs.version }}, commit: ${{ github.sha }})." \
+            --body "Automated currency deployment records for \`${{ inputs.env }}\` from image \`${{ inputs.image_tag }}\` (mode: ${{ inputs.mode }}, version: ${{ inputs.version }}, commit: ${{ github.sha }})." \
             || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/dev...${branch}?expand=1"

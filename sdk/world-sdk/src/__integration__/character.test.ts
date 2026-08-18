@@ -8,14 +8,11 @@ import { createCharacter } from '../packages/character.js'
 import { deriveObjectId } from '../packages/core.js'
 
 // Integration: exercises the createCharacter binding against a running localnet.
-// Requires `pnpm deploy:localnet` (or equivalent) so deployments/localnet/world.json
-// exists and the chain is up. Run with: pnpm --filter @evefrontier/world-sdk test:integration
 const MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
 )
-// devInspectTransactionBlock only needs a sender address, no signing.
-const SENDER = process.env.WORLD_ADMIN_ADDRESS
-if (!SENDER) {
+const ADMIN = process.env.WORLD_ADMIN_ADDRESS
+if (!ADMIN) {
   throw new Error('WORLD_ADMIN_ADDRESS is required (an admin)')
 }
 
@@ -30,11 +27,12 @@ describe('createCharacter (localnet)', () => {
       inGameId: key.id,
       tenant: key.tenant,
       tribeId: 1,
-      owner: SENDER,
+      owner: ADMIN,
     })
 
+    // devInspect only needs a sender address; must be an admin for this call.
     const res = await client.devInspectTransactionBlock({
-      sender: SENDER,
+      sender: ADMIN,
       transactionBlock: tx,
     })
 

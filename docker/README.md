@@ -18,10 +18,11 @@ edit in `pr.yml`.
 Every deploy writes `deployments/<network>/world.json` — the manifest (chainId,
 package ids, shared objects) the SDK and downstream read.
 
-The localnet uses a [deterministic genesis](genesis/): five accounts
-(`ADMIN`, `SPONSOR`, `PLAYER_A/B/C`) whose well-known test **private** keys are
-committed in [`genesis/accounts.json`](genesis/accounts.json) and funded at
-genesis (owned gas + address balance), identical every run. Deploy whitelists
+The localnet uses a [deterministic genesis](genesis/): accounts in
+[`genesis/accounts.json`](genesis/accounts.json) (`ADMIN`, `SPONSOR`,
+`PLAYER_A/B/C`, `EXCHANGE`) funded at genesis (owned gas + address balance),
+identical every run. After currency deploy the deployer EVE allocation (10M) is
+transferred to `EXCHANGE` for snapshot / economy downstream. Deploy whitelists
 `SPONSOR` on the AdminACL via `SPONSOR_ADDRESSES`.
 
 ## Integration tests
@@ -31,7 +32,8 @@ docker build -f docker/Dockerfile.integration -t world-integration .
 docker run --rm -v "$(pwd):/app" -w /app -e CI=true world-integration test
 ```
 
-Brings up the localnet, deploys `core` + `character`, runs the SDK integration
+Brings up the localnet, deploys world packages (`core`, `character`, `inventory`),
+then `currency` (EVE) via a separate deploy script, runs the SDK integration
 suite. Pass no argument instead of `test` to just leave the node running.
 
 ## Snapshot image
@@ -48,10 +50,10 @@ the host at `deployments/localnet-snapshot/`. Ports: `9000` RPC · `9123` faucet
 
 `accounts.json` is [`genesis/accounts.json`](genesis/accounts.json) copied out at
 bake time: the `role`, `address` and bech32 `privateKey` (`suiprivkey1…`, what
-`Ed25519Keypair.fromSecretKey` takes) of every genesis account, so downstream
-consumers can sign as `ADMIN`, `SPONSOR`, or any player. These private keys are
-committed on purpose and are therefore public — never use these accounts on a
-real network or fund them with real assets.
+`Ed25519Keypair.fromSecretKey` takes) of every account, so downstream consumers
+can sign as `ADMIN`, `SPONSOR`, players, or read `EXCHANGE`’s EVE balance. These
+private keys are committed on purpose and are therefore public — never use these
+accounts on a real network or fund them with real assets.
 
 Bake also runs [`../scripts/seed-world.sh`](../scripts/seed-world.sh), which
 creates resources  using the fixed ids in [`../test-resources.json`](../test-resources.json)

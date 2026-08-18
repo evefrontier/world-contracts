@@ -25,6 +25,11 @@
       "role": "Genesis-funded test player.",
       "address": "0x0b04a30158a022c1159efde4ffae99d12505e1653ef98e3a14799ed5c92d0d02",
       "privateKey": "suiprivkey1qrufcqvrq8a8rr0tn6tuwkh4zuvlwr8p4l3yg97mwfxa5vgg6fx7qu5tjfp"
+    },
+    "EXCHANGE": {
+      "role": "Holds the baked EVE balance (deployer allocation) for exchange / economy integration via the snapshot image.",
+      "address": "0x794505429068fbf553f530fd1dcf69e9556988cc01bb971932c65ddaebaee086",
+      "privateKey": "suiprivkey1qpxrv37q8uwattjvtvfdf45clldyu0se3dlrr2geq54dmku5nq6rj7cst5z"
     }
   }
 }

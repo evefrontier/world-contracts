@@ -22,8 +22,17 @@ mvr_metadata_pkg() {
 }
 
 # Per-package, per-env MVR name: world-<pkg>-<env>; live drops the suffix.
+# currency is special-cased (no world- prefix): @evefrontier/currency[-env].
 mvr_name() {
     local pkg=$1 env=$2
+    if [[ "$pkg" == "currency" ]]; then
+        if [[ "$env" == "live" ]]; then
+            echo "$MVR_NAMESPACE/currency"
+        else
+            echo "$MVR_NAMESPACE/currency-$env"
+        fi
+        return
+    fi
     if [[ "$env" == "live" ]]; then
         echo "$MVR_NAMESPACE/world-$pkg"
     else

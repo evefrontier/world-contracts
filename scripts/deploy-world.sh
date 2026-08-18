@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Deploy the world Move packages (core, then character) to a deployment env.
+# Deploy the world Move packages (core, then character/inventory) to a deployment env.
+# Currency is separate: ./scripts/deploy-currency.sh
 # Assumes the target node is already running (for localnet, start it separately).
 #
 # Usage: ./scripts/deploy-world.sh [localnet|dev|test|uat|live] [deploy|publish|upgrade]

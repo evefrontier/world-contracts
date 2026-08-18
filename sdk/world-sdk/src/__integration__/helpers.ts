@@ -1,11 +1,18 @@
+import { fileURLToPath } from 'node:url'
 import 'dotenv/config'
 import { bcs } from '@mysten/sui/bcs'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
 import { expect } from 'vitest'
-import type { createWorldClient } from '../client.js'
+import { createWorldClient } from '../client.js'
+import { loadWorldConfig } from '../config/load.js'
 import type { WorldConfig } from '../config/types.js'
+import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
+
+export const LOCALNET_MANIFEST = fileURLToPath(
+  new URL('../../../../deployments/localnet/world.json', import.meta.url),
+)
 
 const privateKey = process.env.SUI_PRIVATE_KEY
 if (!privateKey) {
@@ -16,6 +23,14 @@ export const keypair = Ed25519Keypair.fromSecretKey(privateKey)
 export const signer = keypair.toSuiAddress()
 
 type WorldClient = ReturnType<typeof createWorldClient>
+
+export function loadLocalnetWorld(): {
+  config: WorldConfig
+  client: WorldClient
+} {
+  const config = loadWorldConfig(LOCALNET_MANIFEST)
+  return { config, client: createWorldClient({ config }) }
+}
 
 /** Sign, execute, assert success, and wait for the transaction to settle. */
 export async function expectSuccess(
@@ -49,6 +64,20 @@ export function capObjectId(
   const id = (cap as { objectId?: string })?.objectId
   if (!id) throw new Error('minted AccessCap not found in object changes')
   return id
+}
+
+/** Mint an AccessCap and return its object id. */
+export async function mintAccessCap(
+  client: WorldClient,
+  config: WorldConfig,
+  args: { entity: string; owner: string; transferable: boolean },
+): Promise<string> {
+  const tx = new Transaction()
+  mintAccess(tx, config, args)
+  return capObjectId(
+    await expectSuccess(client, tx, { showObjectChanges: true }),
+    requirePackage(config, 'core'),
+  )
 }
 
 /** Read the `type_id` balance of an inventory via `balance_of` (devInspect). */
