@@ -43,9 +43,7 @@ export function createWorldClient(
     'config' in options ? options.config : getWorldConfig(options.env)
   const profile = envProfile(config.env)
   const url =
-    options.grpcUrl ??
-    options.rpcUrl ??
-    DEFAULT_GRPC_URLS[profile.network]
+    options.grpcUrl ?? options.rpcUrl ?? DEFAULT_GRPC_URLS[profile.network]
   return new SuiGrpcClient({
     network: profile.network,
     baseUrl: url,
@@ -60,9 +58,7 @@ export function requireExecutedTx<
 ): SuiClientTypes.Transaction<Include> {
   if (result.FailedTransaction) {
     const error = result.FailedTransaction.status.error
-    throw new Error(
-      `Transaction failed: ${error?.message ?? 'unknown error'}`,
-    )
+    throw new Error(`Transaction failed: ${error?.message ?? 'unknown error'}`)
   }
   return result.Transaction
 }

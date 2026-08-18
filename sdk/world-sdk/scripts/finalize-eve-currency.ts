@@ -86,10 +86,7 @@ async function main(): Promise<void> {
   tx.moveCall({
     target: '0x2::coin_registry::finalize_registration',
     typeArguments: [coinType],
-    arguments: [
-      tx.object(COIN_REGISTRY_ID),
-      tx.receivingRef(currencyRef),
-    ],
+    arguments: [tx.object(COIN_REGISTRY_ID), tx.receivingRef(currencyRef)],
   })
 
   const result = await signAndExecute(client, {
@@ -100,7 +97,7 @@ async function main(): Promise<void> {
   const sharedId = result.effects.changedObjects.find(
     (o) =>
       o.idOperation === 'Created' &&
-      result.objectTypes[o.objectId] === currencyType,
+      result.objectTypes[o.objectId]?.includes('::coin_registry::Currency<'),
   )?.objectId
   if (!sharedId) {
     throw new Error(`Currency not found in object changes: ${currencyType}`)

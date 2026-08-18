@@ -4,10 +4,10 @@ import { bcs } from '@mysten/sui/bcs'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
 import {
-  type ExecutedTransaction,
-  type WorldClient,
   createWorldClient,
+  type ExecutedTransaction,
   signAndExecute,
+  type WorldClient,
 } from '../client.js'
 import { loadWorldConfig } from '../config/load.js'
 import type { WorldConfig } from '../config/types.js'
