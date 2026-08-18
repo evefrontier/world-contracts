@@ -124,6 +124,10 @@ export function initializeContext(network: Network, privateKey: string): Initial
     return { client, keypair, config, address };
 }
 
+export function eventTypeOf(event: { eventType?: string; type?: string }): string {
+    return event.eventType ?? event.type ?? "";
+}
+
 export function extractEvent<T = unknown>(
     result: {
         events?: Array<{
@@ -135,9 +139,7 @@ export function extractEvent<T = unknown>(
     eventTypeSuffix: string
 ): T | null {
     const events = result.events || [];
-    const event = events.find((event) =>
-        (event.eventType ?? event.type ?? "").endsWith(eventTypeSuffix)
-    );
+    const event = events.find((event) => eventTypeOf(event).endsWith(eventTypeSuffix));
     return (event?.parsedJson as T) || null;
 }
 

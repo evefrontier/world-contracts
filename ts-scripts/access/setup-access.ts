@@ -16,7 +16,7 @@ function getAccessSetupEnv() {
     const network = (process.env.SUI_NETWORK as Network) || "testnet";
     // during development, we use the same private key for governor and admin
     const governorKey = process.env.GOVERNOR_PRIVATE_KEY || requireEnv("ADMIN_PRIVATE_KEY");
-    const adminAddress = getAddresses(requireEnv("ADMIN_ADDRESS"));
+    const adminAddress = requireEnv("ADMIN_ADDRESS").trim().toLowerCase();
     const sponsorAddresses = getAddresses(requireEnv("SPONSOR_ADDRESSES"));
 
     return { network, governorKey, adminAddress, sponsorAddresses };

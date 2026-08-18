@@ -3,8 +3,14 @@ import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
-import { hexToBytes } from "../utils/helper";
-import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import {
+    eventTypeOf,
+    hexToBytes,
+    hydrateWorldConfig,
+    initializeContext,
+    handleError,
+    getEnvConfig,
+} from "../utils/helper";
 import {
     LOCATION_HASH,
     GAME_CHARACTER_ID,
@@ -56,13 +62,13 @@ async function createStorageUnit(
     console.log("Transaction digest:", result.digest);
 
     const storageUnitEvent = result.events?.find((event) =>
-        event.eventType.endsWith("::storage_unit::StorageUnitCreatedEvent")
+        eventTypeOf(event).endsWith("::storage_unit::StorageUnitCreatedEvent")
     );
 
     if (!storageUnitEvent) {
         throw new Error("StorageUnitCreatedEvent not found in transaction result");
     }
-    console.log("StorageUnitCreatedEvent:", storageUnitEvent.eventType);
+    console.log("StorageUnitCreatedEvent:", eventTypeOf(storageUnitEvent));
 }
 
 async function main() {

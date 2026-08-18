@@ -6,6 +6,7 @@ import { GAME_CHARACTER_ID, STORAGE_A_ITEM_ID, ITEM_A_TYPE_ID } from "../utils/c
 import { getOwnerCap } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import {
+    eventTypeOf,
     getEnvConfig,
     handleError,
     hydrateWorldConfig,
@@ -73,7 +74,7 @@ async function withdraw(
     console.log("Transaction digest:", result.digest);
 
     const withdrawEvent = result.events?.find((event) =>
-        event.eventType.endsWith("::inventory::ItemWithdrawnEventV2")
+        eventTypeOf(event).endsWith("::inventory::ItemWithdrawnEventV2")
     );
 
     if (!withdrawEvent) {

@@ -3,7 +3,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
-import { hexToBytes } from "../utils/helper";
+import { eventTypeOf, hexToBytes } from "../utils/helper";
 import {
     CLOCK_OBJECT_ID,
     GAME_CHARACTER_ID,
@@ -71,7 +71,7 @@ async function chainItemToGame(
     console.log("Transaction digest:", result.digest);
 
     const burnedEvent = result.events?.find((event) =>
-        event.eventType.endsWith("::inventory::ItemBurnedEvent")
+        eventTypeOf(event).endsWith("::inventory::ItemBurnedEvent")
     );
 
     console.log("burnedEvent:", burnedEvent);
