@@ -25,3 +25,4 @@ edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
 testnet_internal = "4c78adac"
 testnet_utopia = "4c78adac"
 testnet_stillness = "4c78adac"
+testnet_dev = "4c78adac"
