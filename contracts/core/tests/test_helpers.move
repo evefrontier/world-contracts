@@ -37,7 +37,7 @@ public fun claim(
     id: u64,
     ctx: &mut TxContext,
 ): Entity {
-    let (mut e, mut req) = entity::new(registry, id, tenant(), vector[]);
+    let (mut e, mut req) = entity::new(registry, id, tenant());
     admin_service::verify_admin(&mut req, acl, ctx);
     e.complete_request(req);
     e

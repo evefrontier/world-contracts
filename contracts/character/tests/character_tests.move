@@ -37,7 +37,7 @@ fun create_character(
     let mut registry = ts::take_shared<ObjectRegistry>(scenario);
     let acl = ts::take_shared<AdminACL>(scenario);
 
-    let (mut character, mut req) = entity::new(&mut registry, in_game_id, tenant, vector[]);
+    let (mut character, mut req) = entity::new(&mut registry, in_game_id, tenant);
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     character.complete_request(req);
 
@@ -69,7 +69,6 @@ fun create_installs_identity() {
         assert!(e.has_module(string::utf8(b"identity")));
         assert!(identity::tribe_id(&e) == TRIBE_ID);
         assert!(identity::owner(&e) == OWNER);
-        assert!(e.location_hash() == vector[]);
         assert!(e.key() == entity_key::new(IN_GAME_ID, tenant()));
         ts::return_shared(e);
     };
@@ -123,7 +122,7 @@ fun uninstall_without_identity_aborts() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut registry = ts::take_shared<ObjectRegistry>(&scenario);
     let acl = ts::take_shared<AdminACL>(&scenario);
-    let (mut e, mut req) = entity::new(&mut registry, IN_GAME_ID, tenant(), vector[]);
+    let (mut e, mut req) = entity::new(&mut registry, IN_GAME_ID, tenant());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
 

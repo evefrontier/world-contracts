@@ -103,8 +103,8 @@ describe('inventory owner round-trip (localnet)', () => {
     const e = runTx.object(entityId)
     const c = runTx.object(capId)
 
-    const bridgeReqObj = interact(runTx, config, e, 'bridge_in')
-    verifyProximity(runTx, config, bridgeReqObj)
+    const bridgeReqObj = interact(runTx, config, e, 'bridge_in', [])
+    verifyProximity(runTx, config, bridgeReqObj, [])
     verifyCaller(runTx, config, bridgeReqObj, c)
     gameItemToChain(runTx, config, e, bridgeReqObj, {
       typeId: FUEL,
@@ -113,8 +113,8 @@ describe('inventory owner round-trip (localnet)', () => {
     })
     completeRequest(runTx, config, e, bridgeReqObj)
 
-    const wReq = interact(runTx, config, e, 'withdraw')
-    verifyProximity(runTx, config, wReq)
+    const wReq = interact(runTx, config, e, 'withdraw', [])
+    verifyProximity(runTx, config, wReq, [])
     verifyCaller(runTx, config, wReq, c)
     const item = withdraw(runTx, config, e, wReq, {
       typeId: FUEL,
@@ -122,8 +122,8 @@ describe('inventory owner round-trip (localnet)', () => {
     })
     completeRequest(runTx, config, e, wReq)
 
-    const dReq = interact(runTx, config, e, 'deposit')
-    verifyProximity(runTx, config, dReq)
+    const dReq = interact(runTx, config, e, 'deposit', [])
+    verifyProximity(runTx, config, dReq, [])
     verifyCaller(runTx, config, dReq, c)
     deposit(runTx, config, e, dReq, item)
     completeRequest(runTx, config, e, dReq)

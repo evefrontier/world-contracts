@@ -103,8 +103,8 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     const e = runTx.object(suId)
     const playerCap = runTx.object(playerCapId)
 
-    const inReq = interact(runTx, config, e, 'eph_bridge_in')
-    verifyProximity(runTx, config, inReq)
+    const inReq = interact(runTx, config, e, 'eph_bridge_in', [])
+    verifyProximity(runTx, config, inReq, [])
     verifyCaller(runTx, config, inReq, playerCap)
     gameItemToChain(runTx, config, e, inReq, {
       typeId: FUEL,
@@ -113,8 +113,8 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     })
     completeRequest(runTx, config, e, inReq)
 
-    const outReq = interact(runTx, config, e, 'eph_withdraw')
-    verifyProximity(runTx, config, outReq)
+    const outReq = interact(runTx, config, e, 'eph_withdraw', [])
+    verifyProximity(runTx, config, outReq, [])
     verifyCaller(runTx, config, outReq, playerCap)
     const item = withdraw(runTx, config, e, outReq, {
       typeId: FUEL,
