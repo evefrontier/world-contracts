@@ -70,7 +70,8 @@ jobs:
       contents: read
       packages: read
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/world-integration:latest
+      # Pin digest (not :latest). Bump after a successful Publish Integration Image run.
+      IMAGE: ghcr.io/${{ github.repository_owner }}/world-integration@sha256:ce8595d462bb6a1228e3e570a91270dbfcb4bfdd6be3e4bb9aa2939ddd7e2151
     steps:
       - uses: actions/checkout@v5
 
