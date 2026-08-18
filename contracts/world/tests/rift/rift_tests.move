@@ -295,8 +295,8 @@ fun test_mining_started() {
 }
 
 #[test]
-#[expected_failure(abort_code = rift::ERiftItemIdEmpty)]
-fun test_mining_started_empty_item_id() {
+#[expected_failure(abort_code = rift::ERiftTypeIdEmpty)]
+fun test_mining_started_empty_type_id() {
     let mut ts = ts::begin(governor());
     setup(&mut ts);
 

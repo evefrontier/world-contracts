@@ -22,6 +22,8 @@ use world::{
 const ERiftAlreadyExists: vector<u8> = b"Rift with this ItemId already exists";
 #[error(code = 1)]
 const ERiftTypeIdEmpty: vector<u8> = b"Rift TypeId is empty";
+#[error(code = 2)]
+const ERiftItemIdEmpty: vector<u8> = b"Rift ItemId is empty";
 
 // === Structs ===
 public struct Rift has key {
