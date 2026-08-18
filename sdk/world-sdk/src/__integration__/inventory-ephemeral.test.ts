@@ -1,8 +1,5 @@
-import { fileURLToPath } from 'node:url'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
-import { createWorldClient } from '../client.js'
-import { loadWorldConfig } from '../config/load.js'
 import { createCharacter } from '../packages/character.js'
 import {
   callerRequirement,
@@ -10,7 +7,6 @@ import {
   deriveObjectId,
   enableAction,
   interact,
-  mintAccess,
   verifyCaller,
   verifyProximity,
 } from '../packages/core.js'
@@ -22,27 +18,22 @@ import {
   withdrawRequirement,
 } from '../packages/inventory.js'
 import {
-  capObjectId,
   expectSuccess,
+  loadLocalnetWorld,
+  mintAccessCap,
   readBalance,
-  requirePackage,
   signer,
 } from './helpers.js'
 
 // A non-owner player brings items into their ephemeral inventory and
 // withdraws, using their own (character) caller cap. Ephemeral is keyed by the
 // cap's entity, so the player's balance changes while main stays untouched.
-const MANIFEST = fileURLToPath(
-  new URL('../../../../deployments/localnet/world.json', import.meta.url),
-)
-
 const UNIT = 'SU-02'
 const FUEL = 88834n
 const VOL = 2n
 
 describe('inventory player ephemeral round-trip (localnet)', () => {
-  const config = loadWorldConfig(MANIFEST)
-  const client = createWorldClient({ config })
+  const { config, client } = loadLocalnetWorld()
 
   it('routes a player bridge_in/withdraw to ephemeral, leaving main untouched', async () => {
     const suKey = { id: 4300n, tenant: 'inventory-t2' }
@@ -68,27 +59,16 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     await expectSuccess(client, setupTx)
 
     // Mint the SU owner cap (to enable actions) and the player's character cap.
-    const coreId = requirePackage(config, 'core')
-    const ownerMint = new Transaction()
-    mintAccess(ownerMint, config, {
+    const ownerCapId = await mintAccessCap(client, config, {
       entity: suId,
       owner: signer,
       transferable: true,
     })
-    const ownerCapId = capObjectId(
-      await expectSuccess(client, ownerMint, { showObjectChanges: true }),
-      coreId,
-    )
-    const playerMint = new Transaction()
-    mintAccess(playerMint, config, {
+    const playerCapId = await mintAccessCap(client, config, {
       entity: characterId,
       owner: signer,
       transferable: false,
     })
-    const playerCapId = capObjectId(
-      await expectSuccess(client, playerMint, { showObjectChanges: true }),
-      coreId,
-    )
 
     // Owner enables the ephemeral bridge_in and withdraw actions.
     const enableTx = new Transaction()

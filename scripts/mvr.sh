@@ -89,7 +89,7 @@ cmd_set_network() {
     pkg_addr=$(pkg_field "$env" "$pkg" publishedAt)
     app_cap=$(mvr_get "$env" "$pkg" appCap)
     [[ -z "$pi_id"   ]] && { echo "ERROR: no packageInfo for $pkg/$env — run package-info first" >&2; exit 1; }
-    [[ -z "$app_cap" ]] && { echo "ERROR: no appCap for $pkg/$env — run set-appcap (from bootstrap register)" >&2; exit 1; }
+    [[ -z "$app_cap" ]] && { echo "ERROR: no appCap for $pkg/$env — run set-appcap (manual bootstrap)" >&2; exit 1; }
 
     ensure_client_env mainnet "$(get_rpc live)"
 

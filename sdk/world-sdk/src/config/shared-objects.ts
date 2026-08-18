@@ -5,6 +5,7 @@ import type { SharedObjectRef, WorldConfig } from './types.js'
 // (sharedObject(config, "module::Struct")) so new singletons need no constant here.
 export const OBJECT_REGISTRY = 'objectRegistry'
 export const ADMIN_ACL = 'adminAcl'
+export const EVE_CURRENCY = 'eveCurrency'
 
 /** Validate that an unknown value is a complete `SharedObjectRef`. */
 export function parseSharedObjectRef(
@@ -13,9 +14,6 @@ export function parseSharedObjectRef(
 ): SharedObjectRef {
   const ref = value as Partial<SharedObjectRef> | undefined
   if (!ref?.id) throw new Error(`${label}: missing id`)
-  if (ref.initialSharedVersion === undefined) {
-    throw new Error(`${label}: missing initialSharedVersion`)
-  }
   if (!ref.type) throw new Error(`${label}: missing type`)
   return ref as SharedObjectRef
 }
@@ -36,4 +34,8 @@ export function objectRegistry(config: WorldConfig): SharedObjectRef {
 
 export function adminAcl(config: WorldConfig): SharedObjectRef {
   return requireSharedObject(config, ADMIN_ACL)
+}
+
+export function eveCurrency(config: WorldConfig): SharedObjectRef {
+  return requireSharedObject(config, EVE_CURRENCY)
 }

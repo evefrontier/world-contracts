@@ -26,6 +26,27 @@ KEY_SCHEME="ed25519"
 
 log() { echo "[integration] $*"; }
 
+# Snapshot bake must reach epoch >= 1 so downstream tests that depend on
+# epoch-1 cases don't fail against a sealed epoch-0 chain.
+wait_for_epoch() {
+  local min_epoch="${1:-1}"
+  local epoch=0
+  log "Waiting for epoch >= ${min_epoch}..."
+  for i in $(seq 1 60); do
+    epoch="$(curl -sf -X POST "$RPC_URL" \
+      -H "Content-Type: application/json" \
+      -d '{"jsonrpc":"2.0","id":1,"method":"suix_getLatestSuiSystemState","params":[]}' \
+      | jq -r '(.result.epoch // 0) | tonumber' || echo 0)"
+    [ "$epoch" -ge "$min_epoch" ] && break
+    sleep 2
+  done
+  if [ "${epoch:-0}" -lt "$min_epoch" ]; then
+    log "ERROR: timed out waiting for epoch >= ${min_epoch}"
+    exit 1
+  fi
+  log "Epoch is ${epoch}."
+}
+
 # Graceful node shutdown so RocksDB flushes before the snapshot is committed.
 stop_node() {
   local timeout="${SHUTDOWN_TIMEOUT:-60}"
@@ -98,6 +119,12 @@ mkdir -p "$DATA_DIR"
   done < <(jq -r '.accounts | keys_unsorted[]' "$ACCOUNTS_JSON")
 } > "$GENESIS_RUNTIME_CONFIG"
 
+# Snapshot mode needs short epochs so we can reach epoch >= 1 before sealing.
+if [ "$MODE" = "snapshot" ]; then
+  sed -i 's/^\([[:space:]]*\)epoch_duration_ms: .*/\1epoch_duration_ms: 30000/' "$GENESIS_RUNTIME_CONFIG"
+  log "Snapshot mode: epoch_duration_ms overridden to 30000"
+fi
+
 log "Generating genesis from $GENESIS_RUNTIME_CONFIG (funding ${#ADDR[@]} accounts)"
 sui genesis --from-config "$GENESIS_RUNTIME_CONFIG" --working-dir "$DATA_DIR" --with-faucet -f
 # Genesis writes its own fullnode.yaml; overwriting it breaks faucet tx execution.
@@ -137,11 +164,28 @@ pnpm install --frozen-lockfile
 log "Cleaning stale Move build artifacts..."
 rm -rf contracts/*/build
 
+log "Cleaning stale localnet deploy artifacts..."
+rm -rf deployments/localnet
+
 log "Deploying world to localnet..."
 ./scripts/deploy-world.sh localnet
 
+log "Deploying currency to localnet..."
+./scripts/deploy-currency.sh localnet
+
 log "Seeding world ..."
 ./scripts/seed-world.sh localnet
+
+fund_exchange_eve() {
+  if [ -z "${ADDR[EXCHANGE]:-}" ]; then
+    log "ERROR: EXCHANGE account missing from accounts.json"
+    exit 1
+  fi
+  local amount="${EXCHANGE_EVE_AMOUNT:-10000000}"
+  log "Transferring ${amount} EVE to EXCHANGE (${ADDR[EXCHANGE]})..."
+  ENV=localnet RECIPIENT="${ADDR[EXCHANGE]}" AMOUNT="$amount" \
+    pnpm --filter @evefrontier/world-sdk transfer:eve
+}
 
 # ── 5. Mode dispatch ─────────────────────────────────────────────────────────
 case "$MODE" in
@@ -151,6 +195,8 @@ case "$MODE" in
     log "Integration tests passed."
     ;;
   snapshot)
+    fund_exchange_eve
+    wait_for_epoch 1
     log "Baking snapshot: stopping node cleanly..."
     stop_node
     log "Staging world.json + accounts.json + test-resources.json for runtime host seeding..."
@@ -164,6 +210,7 @@ case "$MODE" in
     log "Snapshot baked. The container is now ready to be committed."
     ;;
   "")
+    fund_exchange_eve
     log "Localnet ready at $RPC_URL with the world deployed. Leaving node running."
     wait "$NODE_PID"
     ;;

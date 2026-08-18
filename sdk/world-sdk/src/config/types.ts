@@ -4,7 +4,7 @@ export type Network = 'localnet' | 'testnet' | 'mainnet'
 
 export interface SharedObjectRef {
   id: string
-  initialSharedVersion: string
+  initialSharedVersion?: string
   type: string
 }
 

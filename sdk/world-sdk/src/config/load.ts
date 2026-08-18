@@ -36,6 +36,7 @@ export function loadWorldConfig(path: string): WorldConfig {
   if (!manifest.chainId) throw new Error(`${path}: missing chainId`)
 
   const sharedObjects = manifest.sharedObjects ?? {}
+  // eveCurrency is optional here: finalize:eve writes it after publish.
   for (const key of [OBJECT_REGISTRY, ADMIN_ACL]) {
     parseSharedObjectRef(sharedObjects[key], `${path}: sharedObjects.${key}`)
   }

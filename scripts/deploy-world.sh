@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Deploy the world Move packages (core, then character) to a deployment env.
+# Deploy the world Move packages (core, then character/inventory) to a deployment env.
+# Currency is separate: ./scripts/deploy-currency.sh
 # Assumes the target node is already running (for localnet, start it separately).
 #
 # Usage: ./scripts/deploy-world.sh [localnet|dev|test|uat|live] [deploy|publish|upgrade]
 source "$(dirname "$0")/lib.sh"
 
-# Packages in dependency order (character and inventory depend on core).
-PACKAGES=(core character inventory)
+# Packages in dependency order (character/inventory/metadata depend on core).
+PACKAGES=(core character inventory metadata)
 
 setup
 ENV=$(get_env "${1:-}")

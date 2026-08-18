@@ -11,6 +11,8 @@ export { getWorldConfig } from './config/presets.js'
 export {
   ADMIN_ACL,
   adminAcl,
+  EVE_CURRENCY,
+  eveCurrency,
   OBJECT_REGISTRY,
   objectRegistry,
   requireSharedObject,
@@ -50,6 +52,12 @@ export {
   verifyProximity,
 } from './packages/core.js'
 export {
+  currencyPackage,
+  eveCoinType,
+  type TransferEveArgs,
+  transferEve,
+} from './packages/currency.js'
+export {
   type BalanceOfArgs,
   type BridgeInArgs,
   balanceOf,
@@ -69,3 +77,10 @@ export {
   withdraw,
   withdrawRequirement,
 } from './packages/inventory.js'
+export {
+  editMetadata,
+  editRequirement,
+  installMetadata,
+  type MetadataFields,
+  uninstallMetadata,
+} from './packages/metadata.js'

@@ -130,7 +130,7 @@ public fun game_item_to_chain_inventory(
     req: &mut Request,
     type_id: u64,
     quantity: u64,
-    volume: u64,
+    volume: u64, // TODO: volume should be stored in static data module in the future
     ctx: &mut TxContext,
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
