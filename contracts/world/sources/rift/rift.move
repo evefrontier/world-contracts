@@ -2,14 +2,16 @@
 ///
 /// Rifts are created and managed solely by gameplay servers (authorized sponsors).
 /// Players have no OwnerCap and therefore no on-chain path to create or modify them.
-/// Authorized sponsors may broadcast the plaintext location on-chain (e.g. when mining begins)
-/// to enable PvP interference; the mining lifecycle itself is enforced off-chain.
+/// Authorized sponsors may announce mining via `mining_started` (event-only) to enable
+/// PvP interference, or persist plaintext coords via `broadcast_location`.
+/// The mining lifecycle itself is enforced off-chain.
 module world::rift;
 
 use std::string::String;
 use sui::{derived_object, event};
 use world::{
     access::AdminACL,
+    character::Character,
     in_game_id::{Self, TenantItemId},
     location::{Self, Location, LocationRegistry},
     object_registry::ObjectRegistry
@@ -20,6 +22,8 @@ use world::{
 const ERiftAlreadyExists: vector<u8> = b"Rift with this ItemId already exists";
 #[error(code = 1)]
 const ERiftItemIdEmpty: vector<u8> = b"Rift ItemId is empty";
+#[error(code = 2)]
+const ERiftTypeIdEmpty: vector<u8> = b"Rift TypeId is empty";
 
 // === Structs ===
 public struct Rift has key {
@@ -39,6 +43,16 @@ public struct RiftLocationBroadcastEvent has copy, drop {
     rift_id: ID,
     rift_key: TenantItemId,
     location_hash: vector<u8>,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+}
+
+public struct MiningStarted has copy, drop {
+    rift_type_id: TenantItemId,
+    character_id: ID,
+    character_key: TenantItemId,
     solarsystem: u64,
     x: String,
     y: String,
@@ -124,6 +138,32 @@ public fun broadcast_location(
         rift_id,
         rift_key: rift.key,
         location_hash,
+        solarsystem,
+        x,
+        y,
+        z,
+    });
+}
+
+/// Announces that mining has started at a rift type. Emits `MiningStarted`.
+public fun mining_started(
+    character: &Character,
+    admin_acl: &AdminACL,
+    tenant: String,
+    rift_type_id: u64,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+    ctx: &TxContext,
+) {
+    admin_acl.verify_sponsor(ctx);
+    assert!(rift_type_id != 0, ERiftTypeIdEmpty);
+
+    event::emit(MiningStarted {
+        rift_type_id: in_game_id::create_key(rift_type_id, tenant),
+        character_id: character.id(),
+        character_key: character.key(),
         solarsystem,
         x,
         y,

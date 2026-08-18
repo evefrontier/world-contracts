@@ -5,16 +5,18 @@ use std::{string::utf8, unit_test::assert_eq};
 use sui::test_scenario as ts;
 use world::{
     access::{Self, AdminACL},
+    character::{Self, Character},
     location::{Self, LocationRegistry},
     object_registry::ObjectRegistry,
     rift::{Self, Rift},
-    test_helpers::{Self, governor, admin, tenant}
+    test_helpers::{Self, governor, admin, tenant, user_a}
 };
 
 const LOCATION_HASH: vector<u8> =
     x"7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b7a8f3b2e9c4d1a6f5e8b2d9c3f7a1e5b";
 const INVALID_HASH: vector<u8> = x"deadbeef";
 const RIFT_ITEM_ID: u64 = 9001;
+const CHARACTER_ITEM_ID: u32 = 42;
 
 fun setup(ts: &mut ts::Scenario) {
     test_helpers::setup_world(ts);
@@ -40,6 +42,29 @@ fun spawn_and_share_rift(ts: &mut ts::Scenario, item_id: u64): ID {
         rift_id
     };
     rift_id
+}
+
+fun create_and_share_character(ts: &mut ts::Scenario): ID {
+    ts::next_tx(ts, admin());
+    {
+        let mut registry = ts::take_shared<ObjectRegistry>(ts);
+        let admin_acl = ts::take_shared<AdminACL>(ts);
+        let character = character::create_character(
+            &mut registry,
+            &admin_acl,
+            CHARACTER_ITEM_ID,
+            tenant(),
+            100,
+            user_a(),
+            utf8(b"miner"),
+            ts.ctx(),
+        );
+        let character_id = object::id(&character);
+        character.share_character(&admin_acl, ts.ctx());
+        ts::return_shared(admin_acl);
+        ts::return_shared(registry);
+        character_id
+    }
 }
 
 #[test]
@@ -233,5 +258,94 @@ fun test_broadcast_location_unauthorized_sponsor() {
     ts::return_shared(admin_acl);
     ts::return_shared(location_registry);
     ts::return_shared(rift);
+    ts::end(ts);
+}
+
+#[test]
+fun test_mining_started() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_and_share_character(&mut ts);
+
+    ts::next_tx(&mut ts, admin());
+    {
+        let character = ts::take_shared_by_id<Character>(&ts, character_id);
+        let admin_acl = ts::take_shared<AdminACL>(&ts);
+
+        rift::mining_started(
+            &character,
+            &admin_acl,
+            tenant(),
+            RIFT_ITEM_ID,
+            42,
+            utf8(b"100"),
+            utf8(b"200"),
+            utf8(b"300"),
+            ts.ctx(),
+        );
+
+        ts::return_shared(admin_acl);
+        ts::return_shared(character);
+    };
+    let effects = ts::next_tx(&mut ts, admin());
+    assert_eq!(ts::num_user_events(&effects), 1);
+
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = rift::ERiftTypeIdEmpty)]
+fun test_mining_started_empty_type_id() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_and_share_character(&mut ts);
+
+    ts::next_tx(&mut ts, admin());
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
+    let admin_acl = ts::take_shared<AdminACL>(&ts);
+    rift::mining_started(
+        &character,
+        &admin_acl,
+        tenant(),
+        0,
+        42,
+        utf8(b"100"),
+        utf8(b"200"),
+        utf8(b"300"),
+        ts.ctx(),
+    );
+
+    ts::return_shared(admin_acl);
+    ts::return_shared(character);
+    ts::end(ts);
+}
+
+#[test]
+#[expected_failure(abort_code = access::EUnauthorizedSponsor)]
+fun test_mining_started_unauthorized_sponsor() {
+    let mut ts = ts::begin(governor());
+    setup(&mut ts);
+
+    let character_id = create_and_share_character(&mut ts);
+
+    ts::next_tx(&mut ts, @0xF);
+    let character = ts::take_shared_by_id<Character>(&ts, character_id);
+    let admin_acl = ts::take_shared<AdminACL>(&ts);
+    rift::mining_started(
+        &character,
+        &admin_acl,
+        tenant(),
+        RIFT_ITEM_ID,
+        42,
+        utf8(b"100"),
+        utf8(b"200"),
+        utf8(b"300"),
+        ts.ctx(),
+    );
+
+    ts::return_shared(admin_acl);
+    ts::return_shared(character);
     ts::end(ts);
 }
