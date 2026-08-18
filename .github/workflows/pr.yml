@@ -70,7 +70,7 @@ jobs:
       contents: read
       packages: read
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/world-integration@sha256:d83b5816ca19c5f2720fc94d82866f322154b5801e4fe9ab8fd7bfa619fdce47
+      IMAGE: ghcr.io/${{ github.repository_owner }}/world-integration:latest
     steps:
       - uses: actions/checkout@v5
 
