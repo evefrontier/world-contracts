@@ -14,6 +14,7 @@ import { requireBuilderPackageId } from "../utils/builder-extension";
 import { getOwnerCap as getGateOwnerCap } from "../gate/helper";
 import { MODULE as extensionModule } from "./modules";
 import { delay, getDelayMs } from "../utils/delay";
+import { signAndExecute } from "../utils/client";
 
 const builderPackageId = requireBuilderPackageId();
 const characterItemId = GAME_CHARACTER_ID;
@@ -57,10 +58,9 @@ async function authoriseGate(
         arguments: [tx.object(characterId), gateOwnerCap!, receipt],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showEffects: true, showObjectChanges: true, showEvents: true },
     });
 
     console.log("\nExtension authorized successfully!");

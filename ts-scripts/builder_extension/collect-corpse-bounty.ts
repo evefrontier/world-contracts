@@ -94,8 +94,7 @@ async function collectCorpseBounty(
         keypair,
         adminKeypair,
         address,
-        adminAddress,
-        { showEffects: true, showObjectChanges: true, showEvents: true }
+        adminAddress
     );
 
     console.log("\nCorpse bounty collected + JumpPermit issued!");

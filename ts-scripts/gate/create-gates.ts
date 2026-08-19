@@ -20,6 +20,7 @@ import {
 } from "../utils/constants";
 import { delay, getDelayMs } from "../utils/delay";
 import { deriveObjectId } from "../utils/derive-object-id";
+import { signAndExecute } from "../utils/client";
 
 async function createGate(
     ctx: ReturnType<typeof initializeContext>,
@@ -52,10 +53,9 @@ async function createGate(
         arguments: [gate, tx.object(adminAcl)],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showEvents: true, showEffects: true, showObjectChanges: true },
     });
 
     const gateEvent = extractEvent<{ assembly_id: string; owner_cap_id: string }>(

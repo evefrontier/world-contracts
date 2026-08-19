@@ -11,6 +11,7 @@ import {
     requireEnv,
 } from "../utils/helper";
 import { getOwnerCap } from "./helper";
+import { signAndExecute } from "../utils/client";
 
 async function onlineTurret(
     turretId: string,
@@ -46,10 +47,9 @@ async function onlineTurret(
         arguments: [tx.object(characterId), ownerCap, receipt],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showEffects: true, showObjectChanges: true },
     });
     console.log("Turret brought online. Digest:", result.digest);
     return result;

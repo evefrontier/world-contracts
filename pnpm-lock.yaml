@@ -23,6 +23,9 @@ importers:
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
+      pnpm:
+        specifier: ^11.22.0
+        version: 11.22.0
       prettier:
         specifier: ^3.7.4
         version: 3.7.4
@@ -305,6 +308,11 @@ packages:
     resolution: {integrity: sha512-DKKrynuQRne0PNpEbzuEdHlYOMksHSUI8Zc9Unei5gTsMNA2/vMpoMz/yKba50pejK56qj98qM0SjYxAKi13gQ==}
     engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
 
+  pnpm@11.22.0:
+    resolution: {integrity: sha512-H/hwxMYTPf2I+yr8Rt0T1H8JyXlLQ4xv20fKmMrzvBY4HuC+k6CRuOOCTPAfiJ9G19niCRD7C+GrD7W6qA3WIQ==}
+    engines: {node: '>=22.13'}
+    hasBin: true
+
   poseidon-lite@0.2.1:
     resolution: {integrity: sha512-xIr+G6HeYfOhCuswdqcFpSX47SPhm0EpisWJ6h7fHlWwaVIvH3dLnejpatrtw6Xc6HaLrpq05y7VRfvDmDGIog==}
 
@@ -563,6 +571,8 @@ snapshots:
       - graphql
 
   graphql@16.12.0: {}
+
+  pnpm@11.22.0: {}
 
   poseidon-lite@0.2.1: {}
 

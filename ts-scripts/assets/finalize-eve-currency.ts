@@ -9,7 +9,7 @@
  */
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { createClient, keypairFromPrivateKey } from "../utils/client";
+import { createClient, keypairFromPrivateKey, signAndExecute } from "../utils/client";
 import { loadExtractedObjectIds } from "../utils/helper";
 import type { Network } from "../utils/config";
 
@@ -40,13 +40,12 @@ async function main() {
 
     const coinType = `${packageId}::EVE::EVE`;
 
-    const res = await client.getObject({ id: currencyObjectId });
-    if (!res.data) {
-        console.error("Currency object not found:", currencyObjectId, res.error ?? "");
-        process.exit(1);
-    }
-    const { objectId, version, digest } = res.data;
-    const currencyRef = { objectId, version, digest };
+    const { object } = await client.getObject({ objectId: currencyObjectId });
+    const currencyRef = {
+        objectId: object.objectId,
+        version: object.version,
+        digest: object.digest,
+    };
 
     const tx = new Transaction();
     tx.setSender(sender);
@@ -56,19 +55,13 @@ async function main() {
         arguments: [tx.object(COIN_REGISTRY_ID), tx.receivingRef(currencyRef)],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showObjectChanges: true, showEffects: true },
     });
 
-    if (result.effects?.status?.status === "success") {
-        console.log("EVE currency finalized in CoinRegistry.");
-        console.log("Digest:", result.digest);
-    } else {
-        console.error("Finalize failed:", result.effects?.status);
-        process.exit(1);
-    }
+    console.log("EVE currency finalized in CoinRegistry.");
+    console.log("Digest:", result.digest);
 }
 
 main().catch((e) => {

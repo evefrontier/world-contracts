@@ -10,6 +10,7 @@ import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
 import { Network } from "../utils/config";
 import { initializeContext, loadExtractedObjectIds, requireEnv } from "../utils/helper";
+import { signAndExecute } from "../utils/client";
 
 const EVE_DECIMALS = 9;
 const SCALE = 10n ** BigInt(EVE_DECIMALS);
@@ -55,13 +56,13 @@ async function main() {
     const coinType = `${packageId}::EVE::EVE`;
 
     // Assume the deployer has a single EVE coin object.
-    const coinsRes = await client.getCoins({
+    const coinsRes = await client.listCoins({
         owner: sender,
         coinType,
         limit: 1,
     });
 
-    const coin = coinsRes.data[0];
+    const coin = coinsRes.objects[0];
     if (!coin) {
         console.error("Deployer has no EVE coins.");
         process.exit(1);
@@ -75,22 +76,16 @@ async function main() {
 
     const tx = new Transaction();
     tx.setSender(sender);
-    const [toSend] = tx.splitCoins(tx.object(coin.coinObjectId), [amountRaw]);
+    const [toSend] = tx.splitCoins(tx.object(coin.objectId), [amountRaw]);
     tx.transferObjects([toSend], recipient);
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         signer: keypair,
         transaction: tx,
-        options: { showObjectChanges: true, showEffects: true },
     });
 
-    if (result.effects?.status?.status === "success") {
-        console.log(`Transferred ${amountEve} EVE to ${recipient}`);
-        console.log("Digest:", result.digest);
-    } else {
-        console.error("Transfer failed:", result.effects?.status);
-        process.exit(1);
-    }
+    console.log(`Transferred ${amountEve} EVE to ${recipient}`);
+    console.log("Digest:", result.digest);
 }
 
 main().catch((e) => {

@@ -1,5 +1,5 @@
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
+import type { SuiClient } from "./client";
 import { requireEnv } from "./helper";
 
 function resolveDevInspectSender(senderAddress?: string): string {
@@ -7,7 +7,7 @@ function resolveDevInspectSender(senderAddress?: string): string {
 }
 
 export async function devInspectMoveCallFirstReturnValueBytes(
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     params: {
         target: string;
         typeArguments?: string[];
@@ -16,24 +16,21 @@ export async function devInspectMoveCallFirstReturnValueBytes(
     }
 ): Promise<Uint8Array | null> {
     const tx = new Transaction();
+    tx.setSender(resolveDevInspectSender(params.senderAddress));
     tx.moveCall({
         target: params.target,
         typeArguments: params.typeArguments,
         arguments: params.arguments(tx),
     });
 
-    const result = await client.devInspectTransactionBlock({
-        sender: resolveDevInspectSender(params.senderAddress),
-        transactionBlock: tx,
+    const result = await client.simulateTransaction({
+        transaction: tx,
+        include: { commandResults: true, effects: true },
     });
 
-    if (result.effects?.status?.status !== "success") {
+    if (result.FailedTransaction) {
         return null;
     }
 
-    const returnValues = result.results?.[0]?.returnValues;
-    if (!returnValues?.length) return null;
-
-    const [valueBytes] = returnValues[0];
-    return Uint8Array.from(valueBytes);
+    return result.commandResults?.[0]?.returnValues?.[0]?.bcs ?? null;
 }

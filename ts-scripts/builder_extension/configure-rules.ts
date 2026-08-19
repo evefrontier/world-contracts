@@ -4,6 +4,7 @@ import { getEnvConfig, handleError, hydrateWorldConfig, initializeContext } from
 import { resolveBuilderGateExtensionIds } from "../utils/builder-extension";
 import { ITEM_A_TYPE_ID } from "../utils/constants";
 import { MODULE } from "./modules";
+import { signAndExecute } from "../utils/client";
 
 async function main() {
     console.log("============= Configure Builder Gate Rules ==============\n");
@@ -33,10 +34,9 @@ async function main() {
             ],
         });
 
-        const result = await client.signAndExecuteTransaction({
+        const result = await signAndExecute(client, {
             transaction: tx,
             signer: keypair,
-            options: { showEffects: true, showObjectChanges: true },
         });
 
         console.log("\nBuilder extension gate config updated!");

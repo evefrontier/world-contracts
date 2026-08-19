@@ -70,6 +70,7 @@
     "@mysten/sui": "^2.0.0",
     "@noble/hashes": "^1.8.0",
     "dotenv": "^17.2.3",
+    "pnpm": "^11.22.0",
     "prettier": "^3.7.4"
   },
   "author": "EVE Frontier",

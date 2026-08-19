@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { deriveObjectId } from "../utils/derive-object-id";
@@ -20,6 +19,7 @@ import {
     ITEM_A_ITEM_ID,
 } from "../utils/constants";
 import { getCharacterOwnerCap } from "../character/helper";
+import { SuiClient } from "../utils/client";
 
 async function gameItemToChain(
     storageUnit: string,
@@ -31,7 +31,7 @@ async function gameItemToChain(
     volume: bigint,
     quantity: number,
     adminAddress: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     playerKeypair: Ed25519Keypair,
     adminKeypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
@@ -75,8 +75,7 @@ async function gameItemToChain(
         playerKeypair,
         adminKeypair,
         playerAddress,
-        adminAddress,
-        { showEvents: true }
+        adminAddress
     );
 
     console.log("Transaction digest:", result.digest);

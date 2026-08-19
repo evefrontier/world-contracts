@@ -18,6 +18,7 @@ import {
     ASSEMBLY_ITEM_ID,
 } from "../utils/constants";
 import { deriveObjectId } from "../utils/derive-object-id";
+import { signAndExecute } from "../utils/client";
 
 async function createAssembly(
     characterObjectId: string,
@@ -49,10 +50,9 @@ async function createAssembly(
         arguments: [assembly, tx.object(adminAcl)],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showEvents: true },
     });
 
     const assemblyEvent = extractEvent<{ assembly_id: string; owner_cap_id: string }>(

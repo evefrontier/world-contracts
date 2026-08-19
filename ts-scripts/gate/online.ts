@@ -12,6 +12,7 @@ import { GAME_CHARACTER_ID, GATE_ITEM_ID_1, GATE_ITEM_ID_2, NWN_ITEM_ID } from "
 import { delay, getDelayMs } from "../utils/delay";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { getOwnerCap } from "./helper";
+import { signAndExecute } from "../utils/client";
 
 async function onlineGate(
     ctx: ReturnType<typeof initializeContext>,
@@ -54,10 +55,9 @@ async function onlineGate(
         arguments: [tx.object(characterObjectId), gateOwnerCap, receipt],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showObjectChanges: true, showEffects: true, showEvents: true },
     });
 
     console.log("\nGates brought online successfully!");

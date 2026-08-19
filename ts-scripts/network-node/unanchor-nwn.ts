@@ -1,12 +1,12 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import { getConnectedAssemblies, getAssemblyTypes } from "./helper";
 import { deriveObjectId } from "../utils/derive-object-id";
 import { NWN_ITEM_ID } from "../utils/constants";
 import { hydrateWorldConfig, initializeContext, handleError, getEnvConfig } from "../utils/helper";
+import { SuiClient, signAndExecute } from "../utils/client";
 
 const ORPHANED_OFFLINE_BY_KIND: Record<string, { module: string; functionName: string }> = {
     storage_unit: { module: MODULES.STORAGE_UNIT, functionName: "offline_orphaned_storage_unit" },
@@ -38,7 +38,7 @@ function getOrphanedOfflineCall(kind: string): { module: string; functionName: s
 async function unanchor(
     networkNodeId: string,
     adminAcl: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
 ) {
@@ -79,10 +79,9 @@ async function unanchor(
         arguments: [tx.object(networkNodeId), currentHotPotato, tx.object(adminAcl)],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showObjectChanges: true, showEffects: true },
     });
 
     console.log("Transaction digest:", result.digest);

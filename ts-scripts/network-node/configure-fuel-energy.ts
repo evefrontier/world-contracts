@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { getConfig, MODULES } from "../utils/config";
 import {
@@ -11,12 +10,13 @@ import {
     parseBigIntArray,
 } from "../utils/helper";
 import { delay } from "../utils/delay";
+import { SuiClient, signAndExecute } from "../utils/client";
 
 async function setFuelEfficiency(
     fuelTypeId: bigint,
     fuelEfficiency: bigint,
     adminAcl: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
 ) {
@@ -37,10 +37,9 @@ async function setFuelEfficiency(
         ],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showObjectChanges: true, showEffects: true },
     });
 
     console.log("\n Fuel efficiency set successfully!");
@@ -52,7 +51,7 @@ async function setEnergyConfig(
     assemblyTypeId: bigint,
     energyRequired: bigint,
     adminAcl: string,
-    client: SuiJsonRpcClient,
+    client: SuiClient,
     keypair: Ed25519Keypair,
     config: ReturnType<typeof getConfig>
 ) {
@@ -72,10 +71,9 @@ async function setEnergyConfig(
         ],
     });
 
-    const result = await client.signAndExecuteTransaction({
+    const result = await signAndExecute(client, {
         transaction: tx,
         signer: keypair,
-        options: { showObjectChanges: true, showEffects: true },
     });
 
     console.log("\n Energy configuration set successfully!");
