@@ -28,9 +28,9 @@ describe('mintAccess (localnet)', () => {
     })
     const created = await expectSuccess(client, createTx)
 
-    const createdIds = (created.effects?.created ?? []).map(
-      (c) => c.reference.objectId,
-    )
+    const createdIds = created.effects.changedObjects
+      .filter((o) => o.idOperation === 'Created')
+      .map((o) => o.objectId)
     expect(createdIds, `derived ${entityId} not among created`).toContain(
       entityId,
     )
@@ -41,15 +41,10 @@ describe('mintAccess (localnet)', () => {
       transferable: false,
     })
 
-    const capObj = await client.getObject({
-      id: capId,
-      options: { showOwner: true, showType: true },
-    })
+    const { object: capObj } = await client.getObject({ objectId: capId })
     const coreId = requirePackage(config, 'core')
-    expect(capObj.data?.type).toBe(`${coreId}::access_cap::AccessCap`)
-    const capOwner = (
-      capObj.data?.owner as { AddressOwner?: string } | undefined
-    )?.AddressOwner
-    expect(capOwner, 'cap not owned by the intended owner').toBe(signer)
+    expect(capObj.type).toBe(`${coreId}::access_cap::AccessCap`)
+    expect(capObj.owner.$kind).toBe('AddressOwner')
+    expect(capObj.owner.AddressOwner).toBe(signer)
   })
 })

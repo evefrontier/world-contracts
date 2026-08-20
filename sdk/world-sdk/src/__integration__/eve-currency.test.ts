@@ -24,50 +24,48 @@ describe('EVE currency (localnet)', () => {
       `0x2::coin_registry::Currency<${packageId}::EVE::EVE>`,
     )
 
-    const res = await client.getObject({
-      id: ref.id,
-      options: { showOwner: true, showType: true },
-    })
-    expect(res.data?.type).toBe(ref.type)
-    const owner = res.data?.owner
+    const { object } = await client.getObject({ objectId: ref.id })
+    expect(object.type).toContain(
+      `::coin_registry::Currency<${packageId}::EVE::EVE>`,
+    )
     expect(
-      owner && typeof owner === 'object' && 'Shared' in owner,
+      object.owner.$kind,
       'Currency is not shared (finalize incomplete?)',
-    ).toBe(true)
+    ).toBe('Shared')
   })
 
   it('transferEve moves balance to a recipient', async () => {
     const coinType = eveCoinType(config)
     const recipient = Ed25519Keypair.generate().toSuiAddress()
 
-    const coins = await client.getCoins({
+    const coins = await client.listCoins({
       owner: signer,
       coinType,
       limit: 1,
     })
-    const coin = coins.data[0]
+    const coin = coins.objects[0]
     expect(coin, 'deployer has no EVE after currency deploy').toBeDefined()
     expect(BigInt(coin.balance)).toBeGreaterThanOrEqual(AMOUNT_RAW)
 
     const before = BigInt(coin.balance)
     const tx = new Transaction()
     transferEve(tx, {
-      coin: coin.coinObjectId,
+      coin: coin.objectId,
       amountRaw: AMOUNT_RAW,
       recipient,
     })
     await expectSuccess(client, tx)
 
-    const recipientCoins = await client.getBalance({
+    const { balance: recipientBalance } = await client.getBalance({
       owner: recipient,
       coinType,
     })
-    expect(BigInt(recipientCoins.totalBalance)).toBe(AMOUNT_RAW)
+    expect(BigInt(recipientBalance.balance)).toBe(AMOUNT_RAW)
 
-    const senderBalance = await client.getBalance({
+    const { balance: senderBalance } = await client.getBalance({
       owner: signer,
       coinType,
     })
-    expect(BigInt(senderBalance.totalBalance)).toBe(before - AMOUNT_RAW)
+    expect(BigInt(senderBalance.balance)).toBe(before - AMOUNT_RAW)
   })
 })

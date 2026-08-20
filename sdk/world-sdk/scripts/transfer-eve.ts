@@ -7,6 +7,7 @@
  */
 import { Transaction } from '@mysten/sui/transactions'
 import 'dotenv/config'
+import { signAndExecute } from '../src/client.js'
 import { eveCoinType, transferEve } from '../src/packages/currency.js'
 import { loadScriptContext } from './context.js'
 
@@ -37,12 +38,12 @@ async function main(): Promise<void> {
   const sender = keypair.getPublicKey().toSuiAddress()
   const coinType = eveCoinType(config)
 
-  const coinsRes = await client.getCoins({
+  const coinsRes = await client.listCoins({
     owner: sender,
     coinType,
     limit: 1,
   })
-  const coin = coinsRes.data[0]
+  const coin = coinsRes.objects[0]
   if (!coin) {
     console.error('Deployer has no EVE coins.')
     process.exit(1)
@@ -56,24 +57,18 @@ async function main(): Promise<void> {
 
   const tx = new Transaction()
   transferEve(tx, {
-    coin: coin.coinObjectId,
+    coin: coin.objectId,
     amountRaw,
     recipient,
   })
 
-  const result = await client.signAndExecuteTransaction({
+  const result = await signAndExecute(client, {
     signer: keypair,
     transaction: tx,
-    options: { showEffects: true },
   })
 
-  if (result.effects?.status?.status === 'success') {
-    console.log(`Transferred ${amountEve} EVE to ${recipient}`)
-    console.log('Digest:', result.digest)
-  } else {
-    console.error('Transfer failed:', result.effects?.status)
-    process.exit(1)
-  }
+  console.log(`Transferred ${amountEve} EVE to ${recipient}`)
+  console.log('Digest:', result.digest)
 }
 
 main().catch((e) => {

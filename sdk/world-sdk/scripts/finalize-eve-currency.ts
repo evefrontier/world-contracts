@@ -8,6 +8,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Transaction } from '@mysten/sui/transactions'
 import 'dotenv/config'
+import { signAndExecute } from '../src/client.js'
 import { EVE_CURRENCY } from '../src/config/shared-objects.js'
 import type { SharedObjectRef } from '../src/config/types.js'
 import { loadScriptContext } from './context.js'
@@ -73,43 +74,34 @@ async function main(): Promise<void> {
   }
   const currencyObjectId = createdCurrencyId(publishChanges ?? [], currencyType)
 
-  const res = await client.getObject({ id: currencyObjectId })
-  if (!res.data) {
-    throw new Error(`Currency object not found: ${currencyObjectId}`)
+  const { object } = await client.getObject({ objectId: currencyObjectId })
+  const currencyRef = {
+    objectId: object.objectId,
+    version: object.version,
+    digest: object.digest,
   }
-  const { objectId, version, digest } = res.data
 
   const tx = new Transaction()
   tx.setSender(keypair.getPublicKey().toSuiAddress())
   tx.moveCall({
     target: '0x2::coin_registry::finalize_registration',
     typeArguments: [coinType],
-    arguments: [
-      tx.object(COIN_REGISTRY_ID),
-      tx.receivingRef({ objectId, version, digest }),
-    ],
+    arguments: [tx.object(COIN_REGISTRY_ID), tx.receivingRef(currencyRef)],
   })
 
-  const result = await client.signAndExecuteTransaction({
+  const result = await signAndExecute(client, {
     transaction: tx,
     signer: keypair,
-    options: { showObjectChanges: true, showEffects: true },
   })
 
-  if (result.effects?.status?.status !== 'success') {
-    console.error('Finalize failed:', result.effects?.status)
-    process.exit(1)
+  const sharedId = result.effects.changedObjects.find(
+    (o) =>
+      o.idOperation === 'Created' &&
+      result.objectTypes[o.objectId]?.includes('::coin_registry::Currency<'),
+  )?.objectId
+  if (!sharedId) {
+    throw new Error(`Currency not found in object changes: ${currencyType}`)
   }
-
-  // finalize_registration deletes the receiving Currency and creates a shared one.
-  const sharedId = createdCurrencyId(
-    (result.objectChanges ?? []) as Array<{
-      type: string
-      objectId?: string
-      objectType?: string
-    }>,
-    currencyType,
-  )
 
   manifest.sharedObjects[EVE_CURRENCY] = {
     id: sharedId,

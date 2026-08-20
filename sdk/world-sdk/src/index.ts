@@ -1,4 +1,11 @@
-export { type CreateWorldClientOptions, createWorldClient } from './client.js'
+export {
+  type CreateWorldClientOptions,
+  createWorldClient,
+  type ExecutedTransaction,
+  requireExecutedTx,
+  signAndExecute,
+  type WorldClient,
+} from './client.js'
 export {
   type EnvProfile,
   envProfile,
