@@ -21,6 +21,8 @@ const PLAYER: address = @0xC;
 const FUEL: u64 = 88834;
 const LENS: u64 = 55;
 const VOL: u64 = 2;
+const MODULE_ID: u64 = 0x51;
+const MODULE_ID_2: u64 = 0x52;
 
 fun unit_name(): String { string::utf8(b"SU-01") }
 
@@ -50,7 +52,14 @@ fun build_storage_unit(
 ): Entity {
     let mut e = claim(registry, acl, 1, scenario.ctx());
 
-    let mut req = inventory::install(&mut e, unit_name(), main_cap, eph_cap, scenario.ctx());
+    let mut req = inventory::install(
+        &mut e,
+        MODULE_ID,
+        option::some(unit_name()),
+        main_cap,
+        eph_cap,
+        scenario.ctx(),
+    );
     admin_service::verify_admin(&mut req, acl, scenario.ctx());
     e.complete_request(req);
 
@@ -79,61 +88,60 @@ fun configure_default_actions(scenario: &mut ts::Scenario, e_id: ID) {
     ts::next_tx(scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
-    let name = unit_name();
     let any = option::none();
     enable(
         &mut e,
         b"bridge_in",
-        inventory::bridge_in_requirement(name, false, any, any, any),
+        inventory::bridge_in_requirement(MODULE_ID, false, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"bridge_out",
-        inventory::bridge_out_requirement(name, false, any, any, any),
+        inventory::bridge_out_requirement(MODULE_ID, false, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"deposit",
-        inventory::deposit_requirement(name, false, any, any, any),
+        inventory::deposit_requirement(MODULE_ID, false, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"withdraw",
-        inventory::withdraw_requirement(name, false, any, any, any),
+        inventory::withdraw_requirement(MODULE_ID, false, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_bridge_in",
-        inventory::bridge_in_requirement(name, true, any, any, any),
+        inventory::bridge_in_requirement(MODULE_ID, true, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_bridge_out",
-        inventory::bridge_out_requirement(name, true, any, any, any),
+        inventory::bridge_out_requirement(MODULE_ID, true, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_deposit",
-        inventory::deposit_requirement(name, true, any, any, any),
+        inventory::deposit_requirement(MODULE_ID, true, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_withdraw",
-        inventory::withdraw_requirement(name, true, any, any, any),
+        inventory::withdraw_requirement(MODULE_ID, true, any, any, any),
         &cap,
         scenario.ctx(),
     );
@@ -219,11 +227,11 @@ fun withdraw(
 // === View helpers ===
 
 fun main_inv(e: &Entity): &inventory::Inventory {
-    inventory::inventory(inventory::storage(e, unit_name()), e.id())
+    inventory::inventory(inventory::storage(e, MODULE_ID), e.id())
 }
 
 fun eph_inv(e: &Entity, player_id: ID): &inventory::Inventory {
-    inventory::inventory(inventory::storage(e, unit_name()), player_id)
+    inventory::inventory(inventory::storage(e, MODULE_ID), player_id)
 }
 
 #[test]
@@ -236,10 +244,53 @@ fun install_reports_module_and_capacities() {
     let acl = take_acl(&scenario);
 
     let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
-    assert!(e.has_module(unit_name()));
+    assert!(e.has_module(MODULE_ID));
     assert!(main_inv(&e).capacity() == 1000);
     assert!(main_inv(&e).used() == 0);
-    assert!(inventory::ephemeral_capacity(inventory::storage(&e, unit_name())) == 100);
+    assert!(inventory::ephemeral_capacity(inventory::storage(&e, MODULE_ID)) == 100);
+
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test]
+fun install_two_inventories_on_one_entity() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+
+    let mut req = inventory::install(
+        &mut e,
+        MODULE_ID,
+        option::some(unit_name()),
+        1000,
+        100,
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    let mut req = inventory::install(
+        &mut e,
+        MODULE_ID_2,
+        option::some(string::utf8(b"SU-02")),
+        500,
+        50,
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    assert!(e.has_module(MODULE_ID));
+    assert!(e.has_module(MODULE_ID_2));
+    assert!(inventory::inventory(inventory::storage(&e, MODULE_ID), e.id()).capacity() == 1000);
+    assert!(inventory::inventory(inventory::storage(&e, MODULE_ID_2), e.id()).capacity() == 500);
 
     e.share();
     ts::return_shared(acl);
@@ -300,7 +351,7 @@ fun main_inv_interaction_without_caller() {
         b"public_bridge",
         action::new(vector[
             inventory::bridge_in_requirement(
-                unit_name(),
+                MODULE_ID,
                 false,
                 option::none(),
                 option::none(),
@@ -365,7 +416,6 @@ fun swap_moves_between_main_and_ephemeral_single_signer() {
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
     let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 1000);
-    let name = unit_name();
     let e_id = e.id();
     let player_id = create_player(&mut scenario, &mut registry, &acl);
     e.share();
@@ -380,28 +430,28 @@ fun swap_moves_between_main_and_ephemeral_single_signer() {
         action::new(vector[
             access_cap::caller_requirement(),
             inventory::withdraw_requirement(
-                name,
+                MODULE_ID,
                 true,
                 option::some(FUEL),
                 option::none(),
                 option::none(),
             ),
             inventory::deposit_requirement(
-                name,
+                MODULE_ID,
                 false,
                 option::some(FUEL),
                 option::none(),
                 option::none(),
             ),
             inventory::withdraw_requirement(
-                name,
+                MODULE_ID,
                 false,
                 option::some(LENS),
                 option::none(),
                 option::none(),
             ),
             inventory::deposit_requirement(
-                name,
+                MODULE_ID,
                 true,
                 option::some(LENS),
                 option::none(),
@@ -464,7 +514,7 @@ fun ephemeral_interaction_without_caller_aborts() {
         b"eph_uncalled",
         action::new(vector[
             inventory::bridge_in_requirement(
-                unit_name(),
+                MODULE_ID,
                 true,
                 option::none(),
                 option::none(),
@@ -525,7 +575,7 @@ fun bridge_in_wrong_type_aborts() {
         action::new(vector[
             access_cap::caller_requirement(),
             inventory::bridge_in_requirement(
-                unit_name(),
+                MODULE_ID,
                 false,
                 option::some(FUEL),
                 option::none(),
@@ -578,10 +628,10 @@ fun uninstall_burns_all_inventories() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let acl = take_acl(&scenario);
-    let mut req = inventory::uninstall(&mut e, unit_name(), scenario.ctx());
+    let mut req = inventory::uninstall(&mut e, MODULE_ID, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
-    assert!(!e.has_module(unit_name()));
+    assert!(!e.has_module(MODULE_ID));
 
     ts::return_shared(acl);
     ts::return_shared(e);

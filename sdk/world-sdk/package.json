@@ -38,6 +38,9 @@
     "peerDependencies": {
         "@mysten/sui": "^2.0.0"
     },
+    "dependencies": {
+        "@noble/hashes": "catalog:"
+    },
     "devDependencies": {
         "@mysten/sui": "catalog:",
         "@types/node": "catalog:",

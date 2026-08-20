@@ -28,6 +28,7 @@ import {
 // A non-owner player brings items into their ephemeral inventory and
 // withdraws, using their own (character) caller cap. Ephemeral is keyed by the
 // cap's entity, so the player's balance changes while main stays untouched.
+const MODULE_ID = 0x51n
 const UNIT = 'SU-02'
 const FUEL = 88834n
 const VOL = 2n
@@ -46,6 +47,7 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
+      moduleId: MODULE_ID,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 1000n,
@@ -81,7 +83,7 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
       'eph_bridge_in',
       [
         callerRequirement(enableTx, config),
-        bridgeInRequirement(enableTx, config, UNIT, { ephemeral: true }),
+        bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: true }),
       ],
       ownerCap,
     )
@@ -92,7 +94,7 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
       'eph_withdraw',
       [
         callerRequirement(enableTx, config),
-        withdrawRequirement(enableTx, config, UNIT, { ephemeral: true }),
+        withdrawRequirement(enableTx, config, MODULE_ID, { ephemeral: true }),
       ],
       ownerCap,
     )
@@ -127,13 +129,13 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
 
     const ephemeral = await readBalance(client, config, {
       entity: suId,
-      name: UNIT,
+      moduleId: MODULE_ID,
       authorizedId: characterId,
       typeId: FUEL,
     })
     const main = await readBalance(client, config, {
       entity: suId,
-      name: UNIT,
+      moduleId: MODULE_ID,
       authorizedId: suId,
       typeId: FUEL,
     })

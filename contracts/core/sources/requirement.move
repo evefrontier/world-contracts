@@ -1,19 +1,19 @@
 /// A typed rule attached to an `Action` and resolved through a `Request`.
 ///
 /// - `type_name` identifies which handler may satisfy it (e.g. `inventory::Deposit`).
-/// - `name` optionally targets an installed module (e.g. `some("storage unit (01)")`).
+/// - `module_id` optionally targets an installed module.
 /// - `data` is the BCS encoding of the rule's typed config.
 module core::requirement;
 
-use std::{bcs, string::String, type_name::{Self, TypeName}};
+use std::{bcs, type_name::{Self, TypeName}};
 
 // === Structs ===
 
 public struct Requirement has drop, store {
     // Identifies which handler type may satisfy this requirement.
     type_name: TypeName,
-    // Optional target module name; `None` when not module-scoped.
-    name: Option<String>,
+    // Optional target module id; `None` when not module-scoped.
+    module_id: Option<u64>,
     // BCS-encoded typed config the handler enforces.
     data: vector<u8>,
 }
@@ -23,11 +23,11 @@ public struct Requirement has drop, store {
 /// Build a requirement from a typed config `c`. The type identity is recorded
 /// from `T`, so only the package that defines `T` can later satisfy it, while
 /// `data` carries the BCS-encoded configuration the handler enforces.
-public fun from_config<T: drop>(name: Option<String>, c: T): Requirement {
+public fun from_config<T: drop>(module_id: Option<u64>, c: T): Requirement {
     Requirement {
         type_name: type_name::with_original_ids<T>(),
         data: bcs::to_bytes(&c),
-        name,
+        module_id,
     }
 }
 
@@ -44,8 +44,8 @@ public fun type_name(r: &Requirement): TypeName {
 
 /// The module this requirement targets, if any. `None` means the requirement
 /// is not module-scoped (e.g. an admin/sponsor approval).
-public fun module_name(r: &Requirement): Option<String> {
-    r.name
+public fun module_id(r: &Requirement): Option<u64> {
+    r.module_id
 }
 
 public fun data(r: &Requirement): vector<u8> {
@@ -57,7 +57,7 @@ public fun data(r: &Requirement): vector<u8> {
 public(package) fun clone(r: &Requirement): Requirement {
     Requirement {
         type_name: r.type_name,
-        name: r.name,
+        module_id: r.module_id,
         data: r.data,
     }
 }

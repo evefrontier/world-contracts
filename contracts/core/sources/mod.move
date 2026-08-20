@@ -1,18 +1,27 @@
 /// Thin wrapper around typed module state installed on an `Entity`.
-/// Adds a human-readable name and a version to the inner behavior type `T`.
+/// Adds an optional display name and a version to the inner behavior type `T`.
+/// Identity is the caller-supplied `module_id` (`u64`) used as the dynamic-field key, not `name`.
 module core::mod;
 
 use std::{internal::Permit, string::String};
+use sui::{bcs, hash};
 
 // === Structs ===
 
 public struct Module<T: store> has store {
     version: u64,
     inner: T,
-    name: String,
+    name: Option<String>,
 }
 
 // === Public Functions ===
+
+/// Deterministic slot for a well-known module name: first 8 bytes (LE) of
+/// `blake2b256(name)` as a `u64`.
+public fun id_from_name(name: vector<u8>): u64 {
+    let mut b = bcs::new(hash::blake2b256(&name));
+    b.peel_u64()
+}
 
 /// Unwrap the inner state. Requires a `Permit<T>`, so only `T`'s defining
 /// package can extract it.
@@ -35,13 +44,13 @@ public fun version<T: store>(m: &Module<T>): u64 {
     m.version
 }
 
-public fun name<T: store>(m: &Module<T>): String {
+public fun name<T: store>(m: &Module<T>): Option<String> {
     m.name
 }
 
 // === Package Functions ===
 
 /// Only `core::entity` may wrap module state.
-public(package) fun new<T: store>(name: String, inner: T, version: u64): Module<T> {
+public(package) fun new<T: store>(name: Option<String>, inner: T, version: u64): Module<T> {
     Module { version, inner, name }
 }

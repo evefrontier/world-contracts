@@ -33,6 +33,7 @@ import {
 // The SU owner cap is parked on a Character. To use the owner path, borrow
 // the cap from the Character inside a PTB, run owner-gated deposit/withdraw on the
 // SU, then return the cap — all in one player-signed transaction.
+const MODULE_ID = 0x51n
 const UNIT = 'SU-05'
 const FUEL = 88834n
 const VOL = 2n
@@ -50,6 +51,7 @@ describe('inventory owner-access via Character', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
+      moduleId: MODULE_ID,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 100n,
@@ -90,15 +92,15 @@ describe('inventory owner-access via Character', () => {
       for (const [name, req] of [
         [
           'bridge_in',
-          bridgeInRequirement(enableTx, config, UNIT, { ephemeral: false }),
+          bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
         ],
         [
           'withdraw',
-          withdrawRequirement(enableTx, config, UNIT, { ephemeral: false }),
+          withdrawRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
         ],
         [
           'deposit',
-          depositRequirement(enableTx, config, UNIT, { ephemeral: false }),
+          depositRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
         ],
       ] as const) {
         enableAction(
@@ -159,7 +161,7 @@ describe('inventory owner-access via Character', () => {
     // Main balance changed (0 -> 100) via the borrowed owner cap.
     const main = await readBalance(client, config, {
       entity: suId,
-      name: UNIT,
+      moduleId: MODULE_ID,
       authorizedId: suId,
       typeId: FUEL,
     })

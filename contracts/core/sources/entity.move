@@ -50,7 +50,7 @@ const VERSION: u64 = 1;
 
 // === Structs ===
 
-public struct ModuleKey(String) has copy, drop, store;
+public struct ModuleKey(u64) has copy, drop, store;
 public struct ActionsKey() has copy, drop, store;
 public struct InFlight() has copy, drop, store;
 
@@ -133,20 +133,22 @@ public fun return_access(entity: &mut Entity, cap: AccessCap, receipt: ReturnRec
     access_cap::return_to(&mut entity.id, cap, receipt)
 }
 
-/// Install module state `T` under `name`. The `Permit<T>` proves the caller's
-/// package authored `T`. Returns a `Request` the transaction must complete.
+/// Install module state `T` under `module_id`. `name` is an optional
+/// display label and is not unique. The `Permit<T>` proves the caller's package
+/// authored `T`. Returns a `Request` the transaction must complete.
 public fun install<T: store>(
     entity: &mut Entity,
-    name: String,
+    module_id: u64,
+    name: Option<String>,
     inner: T,
     version: u64,
     _: Permit<T>,
     _ctx: &mut TxContext,
 ): Request {
     assert!(entity.version == VERSION, EWrongVersion);
-    assert!(!df::exists_(&entity.id, ModuleKey(name)), EModuleExists);
+    assert!(!df::exists_(&entity.id, ModuleKey(module_id)), EModuleExists);
 
-    df::add(&mut entity.id, ModuleKey(name), mod::new(name, inner, version));
+    df::add(&mut entity.id, ModuleKey(module_id), mod::new(name, inner, version));
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
@@ -154,17 +156,17 @@ public fun install<T: store>(
     )
 }
 
-/// Remove module `name`, returning its wrapped state to the caller.
+/// Remove the module at `module_id`, returning its wrapped state to the caller.
 public fun uninstall<T: store>(
     entity: &mut Entity,
-    name: String,
+    module_id: u64,
     _: Permit<T>,
     _ctx: &mut TxContext,
 ): (Module<T>, Request) {
     assert!(entity.version == VERSION, EWrongVersion);
-    assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(name)), EModuleMissing);
+    assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(module_id)), EModuleMissing);
 
-    let m: Module<T> = df::remove(&mut entity.id, ModuleKey(name));
+    let m: Module<T> = df::remove(&mut entity.id, ModuleKey(module_id));
     entity.lock();
     let req = request::new(
         option::some(entity.id.to_inner()),
@@ -235,24 +237,24 @@ public fun interact(
 }
 
 /// Mutable access to a module, only valid mid-interaction. The target module
-/// name is read off the request's next requirement (not the caller's args), so
+/// id is read off the request's next requirement (not the caller's args), so
 /// a handler can never mutate the wrong module.
 public fun module_mut<T: store>(entity: &mut Entity, req: &Request, _: Permit<T>): &mut Module<T> {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(entity.is_locked(), ENotLocked);
     assert!(req.entity_id().is_some_and!(|id| id == entity.id.to_inner()), EWrongEntity);
 
-    let name = req.next().module_name().destroy_or!(abort ERequirementNotModuleScoped);
-    df::borrow_mut(&mut entity.id, ModuleKey(name))
+    let module_id = req.next().module_id().destroy_or!(abort ERequirementNotModuleScoped);
+    df::borrow_mut(&mut entity.id, ModuleKey(module_id))
 }
 
-/// Read-only access to a module by name. `Permit<T>` enforces that only the
+/// Read-only access to a module by `module_id`. `Permit<T>` enforces that only the
 /// package that authored `T` can read it; no lock is required since nothing
 /// is mutated.
-public fun module_ref<T: store>(entity: &Entity, name: String, _: Permit<T>): &Module<T> {
+public fun module_ref<T: store>(entity: &Entity, module_id: u64, _: Permit<T>): &Module<T> {
     assert!(entity.version == VERSION, EWrongVersion);
-    assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(name)), EModuleMissing);
-    df::borrow(&entity.id, ModuleKey(name))
+    assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(module_id)), EModuleMissing);
+    df::borrow(&entity.id, ModuleKey(module_id))
 }
 
 /// Complete a request against this entity and unlock it.
@@ -274,12 +276,12 @@ public fun key(entity: &Entity): EntityKey {
     entity.key
 }
 
-public fun has_module(entity: &Entity, name: String): bool {
-    df::exists_(&entity.id, ModuleKey(name))
+public fun has_module(entity: &Entity, module_id: u64): bool {
+    df::exists_(&entity.id, ModuleKey(module_id))
 }
 
-public fun has_module_with_type<T: store>(entity: &Entity, name: String): bool {
-    df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(name))
+public fun has_module_with_type<T: store>(entity: &Entity, module_id: u64): bool {
+    df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(module_id))
 }
 
 public fun version(entity: &Entity): u64 {

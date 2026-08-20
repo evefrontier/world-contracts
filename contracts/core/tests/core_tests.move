@@ -21,8 +21,12 @@ public struct Counter has store {
 /// Requirement marker satisfied by this test's handler.
 public struct Bump has drop {}
 
-fun increment_requirement(module_name: vector<u8>): Requirement {
-    requirement::from_config(option::some(string::utf8(module_name)), Bump {})
+fun increment_requirement(module_id: u64): Requirement {
+    requirement::from_config(option::some(module_id), Bump {})
+}
+
+fun counter_id(): u64 {
+    0xC0
 }
 
 fun claim_test_entity(scenario: &mut ts::Scenario, acl: &AdminACL): entity::Entity {
@@ -41,9 +45,12 @@ fun end_to_end_flow() {
     let acl = take_acl(&scenario);
     let mut e = claim_test_entity(&mut scenario, &acl);
 
+    let counter_id = counter_id();
+
     // Install a module (admin-gated), then close out the install request.
     let mut req = e.install(
-        string::utf8(b"counter"),
+        counter_id,
+        option::some(string::utf8(b"counter")),
         Counter { value: 0 },
         1,
         internal::permit<Counter>(),
@@ -51,7 +58,7 @@ fun end_to_end_flow() {
     );
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
-    assert!(e.has_module(string::utf8(b"counter")));
+    assert!(e.has_module(counter_id));
 
     // Mint the owner cap so the owner can configure actions.
     let mut req = e.mint_access(@0xA, false, scenario.ctx());
@@ -65,7 +72,7 @@ fun end_to_end_flow() {
     ts::next_tx(&mut scenario, @0xA);
     let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let action = action::new(vector[increment_requirement(b"counter")]);
+    let action = action::new(vector[increment_requirement(counter_id())]);
     let mut req = e.enable_action(string::utf8(b"increment"), action, scenario.ctx());
     access_cap::verify(&mut req, &cap);
     e.complete_request(req);
@@ -94,8 +101,11 @@ fun cannot_complete_with_pending_requirement() {
     let acl = take_acl(&scenario);
     let mut e = claim_test_entity(&mut scenario, &acl);
 
+    let counter_id = counter_id();
+
     let mut req = e.install(
-        string::utf8(b"counter"),
+        counter_id,
+        option::some(string::utf8(b"counter")),
         Counter { value: 0 },
         1,
         internal::permit<Counter>(),
@@ -114,7 +124,7 @@ fun cannot_complete_with_pending_requirement() {
     ts::next_tx(&mut scenario, @0xA);
     let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let action = action::new(vector[increment_requirement(b"counter")]);
+    let action = action::new(vector[increment_requirement(counter_id())]);
     let mut req = e.enable_action(string::utf8(b"increment"), action, scenario.ctx());
     access_cap::verify(&mut req, &cap);
     e.complete_request(req);

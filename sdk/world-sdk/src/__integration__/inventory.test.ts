@@ -30,6 +30,7 @@ import {
 // mint the owner cap to a plain address, enable owner deposit/withdraw/bridge
 // actions, then round-trip a balance: bridge_in seeds it, withdraw yields an Item,
 // deposit puts it back.
+const MODULE_ID = 0x51n
 const UNIT = 'SU-01'
 const FUEL = 88834n
 const VOL = 2n
@@ -46,6 +47,7 @@ describe('inventory owner round-trip (localnet)', () => {
     createStorageUnit(createTx, config, {
       inGameId: key.id,
       tenant: key.tenant,
+      moduleId: MODULE_ID,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 100n,
@@ -70,7 +72,7 @@ describe('inventory owner round-trip (localnet)', () => {
       'bridge_in',
       [
         callerRequirement(enableTx, config),
-        bridgeInRequirement(enableTx, config, UNIT, { ephemeral: false }),
+        bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
       ],
       cap,
     )
@@ -81,7 +83,7 @@ describe('inventory owner round-trip (localnet)', () => {
       'withdraw',
       [
         callerRequirement(enableTx, config),
-        withdrawRequirement(enableTx, config, UNIT, { ephemeral: false }),
+        withdrawRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
       ],
       cap,
     )
@@ -92,7 +94,7 @@ describe('inventory owner round-trip (localnet)', () => {
       'deposit',
       [
         callerRequirement(enableTx, config),
-        depositRequirement(enableTx, config, UNIT, { ephemeral: false }),
+        depositRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
       ],
       cap,
     )
@@ -133,7 +135,7 @@ describe('inventory owner round-trip (localnet)', () => {
     // Net main balance: 100 in, 20 out, 20 back = 100.
     const main = await readBalance(client, config, {
       entity: entityId,
-      name: UNIT,
+      moduleId: MODULE_ID,
       authorizedId: entityId,
       typeId: FUEL,
     })

@@ -24,6 +24,7 @@ const EModuleMissing: vector<u8> = b"Metadata module is not installed on this en
 // === Constants ===
 
 const VERSION: u64 = 1;
+const NAME: vector<u8> = b"metadata";
 
 // === Structs ===
 
@@ -59,14 +60,21 @@ public fun install(
 ): Request {
     let metadata = Metadata { name, description, url };
     emit_changed(entity, &metadata);
-    entity.install(module_name(), metadata, VERSION, module_permit(), ctx)
+    entity.install(
+        module_id(),
+        option::some(module_label()),
+        metadata,
+        VERSION,
+        module_permit(),
+        ctx,
+    )
 }
 
 /// Remove the metadata module, discarding its state. Aborts if missing.
 public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
-    assert!(entity.has_module_with_type<Metadata>(module_name()), EModuleMissing);
+    assert!(entity.has_module_with_type<Metadata>(module_id()), EModuleMissing);
 
-    let (m, req) = entity.uninstall<Metadata>(module_name(), module_permit(), ctx);
+    let (m, req) = entity.uninstall<Metadata>(module_id(), module_permit(), ctx);
     let Metadata { name: _, description: _, url: _ } = m.unwrap(module_permit());
     req
 }
@@ -98,9 +106,9 @@ public fun edit(
     frame.destroy_empty_frame();
 }
 
-/// Build an edit requirement targeting the fixed `"metadata"` module slot.
+/// Build an edit requirement targeting the metadata module slot.
 public fun edit_requirement(): Requirement {
-    requirement::from_config(option::some(module_name()), Edit())
+    requirement::from_config(option::some(module_id()), Edit())
 }
 
 // === View Functions ===
@@ -117,10 +125,14 @@ public fun url(entity: &Entity): String {
     borrow(entity).url
 }
 
+public fun module_id(): u64 {
+    mod::id_from_name(NAME)
+}
+
 // === Private Functions ===
 
 fun borrow(entity: &Entity): &Metadata {
-    let m: &Module<Metadata> = entity.module_ref(module_name(), module_permit());
+    let m: &Module<Metadata> = entity.module_ref(module_id(), module_permit());
     assert!(mod::version(m) == VERSION, EWrongVersion);
     m.inner()
 }
@@ -135,8 +147,8 @@ fun emit_changed(entity: &Entity, metadata: &Metadata) {
     });
 }
 
-fun module_name(): String {
-    string::utf8(b"metadata")
+fun module_label(): String {
+    string::utf8(NAME)
 }
 
 fun module_permit(): Permit<Metadata> {

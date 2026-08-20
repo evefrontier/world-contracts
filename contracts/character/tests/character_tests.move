@@ -6,6 +6,7 @@ use core::{
     admin_service::{Self, AdminACL},
     entity::{Self, Entity, EntityCreated},
     entity_key,
+    mod,
     object_registry::{Self, ObjectRegistry}
 };
 use std::string::{Self, String};
@@ -66,7 +67,8 @@ fun create_installs_identity() {
     ts::next_tx(&mut scenario, ADMIN);
     {
         let e = ts::take_shared<Entity>(&scenario);
-        assert!(e.has_module(string::utf8(b"identity")));
+        assert!(e.has_module(identity::module_id()));
+        assert!(identity::module_id() == mod::id_from_name(b"identity"));
         assert!(identity::tribe_id(&e) == TRIBE_ID);
         assert!(identity::owner(&e) == OWNER);
         assert!(e.key() == entity_key::new(IN_GAME_ID, tenant()));
@@ -105,7 +107,7 @@ fun uninstall_identity_removes_module() {
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
         e.complete_request(req);
 
-        assert!(!e.has_module(string::utf8(b"identity")));
+        assert!(!e.has_module(identity::module_id()));
         ts::return_shared(acl);
         ts::return_shared(e);
     };

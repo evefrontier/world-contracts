@@ -146,12 +146,11 @@ public fun verify_owner_cap(request: &mut Request) {
 }
 ```
 
-Module *identity* is enforced via the next requirement's `name`, read inside `entity::module_mut` —
-never trust a name passed as a handler argument:
+Module *identity* is enforced via the next requirement's `module_id`, read inside `entity::module_mut` —
 
 ```move
-let name = req.next().module_name().destroy_or!(abort ERequirementNotModuleScoped);
-df::borrow_mut(&mut entity.id, ModuleKey(name))
+let module_id = req.next().module_id().destroy_or!(abort ERequirementNotModuleScoped);
+df::borrow_mut(&mut entity.id, ModuleKey(module_id))
 ```
 
 ## Versioning
@@ -162,7 +161,7 @@ Modules pass their own `VERSION` at install time so they can upgrade independent
 ```move
 const VERSION: u64 = 1;
 assert!(e.version == VERSION, EWrongVersion);
-e.install("grid", Grid { .. }, VERSION, internal::permit(), ctx);
+e.install(module_id, option::some(b"grid".to_string()), Grid { .. }, VERSION, internal::permit(), ctx);
 ```
 
 ## Entity & dynamic fields
@@ -171,9 +170,10 @@ Keep `Entity` small; store modules/actions as dynamic fields keyed by **typed ke
 adding a module never changes the `Entity` type.
 
 ```move
-public struct ModuleKey(String) has copy, drop, store;
+public struct ModuleKey(u64) has copy, drop, store;
 public struct ActionsKey() has copy, drop, store;
-// df: ModuleKey(name) => Module<T>,  ActionsKey() => VecMap<String, Action>
+// df: ModuleKey(module_id) => Module<T>,  ActionsKey() => VecMap<String, Action>
+// well-known slots: id = first 8 bytes (LE) of blake2b256(name) via mod::id_from_name
 ```
 
 ## Requirements as BCS config
@@ -184,7 +184,7 @@ Use `type_name::with_original_ids<T>()` for stable type identity.
 
 ```move
 public struct Deposit(ItemRequirement) has drop;
-requirement::from_config(option::some(module_name), Deposit(rule)); // encode
+requirement::from_config(option::some(module_id), Deposit(rule)); // encode
 let req = parse_bcs_requirement(requirement.data());                // decode (mirror field order)
 ```
 

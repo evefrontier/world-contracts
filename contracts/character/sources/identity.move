@@ -19,6 +19,7 @@ const EModuleMissing: vector<u8> = b"Identity module is not installed on this en
 // === Constants ===
 
 const VERSION: u64 = 1;
+const NAME: vector<u8> = b"identity";
 
 // === Structs ===
 
@@ -37,6 +38,10 @@ public fun owner(entity: &Entity): address {
     borrow(entity).owner
 }
 
+public fun module_id(): u64 {
+    mod::id_from_name(NAME)
+}
+
 // === Public Functions ===
 
 /// Build and install the identity module on a character entity.
@@ -47,14 +52,21 @@ public fun install(
     ctx: &mut TxContext,
 ): Request {
     let identity = Identity { tribe_id, owner };
-    entity.install(module_name(), identity, VERSION, module_permit(), ctx)
+    entity.install(
+        module_id(),
+        option::some(module_label()),
+        identity,
+        VERSION,
+        module_permit(),
+        ctx,
+    )
 }
 
 /// Remove the identity module, discarding its state. Aborts if it was never installed.
 public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
-    assert!(entity.has_module_with_type<Identity>(module_name()), EModuleMissing);
+    assert!(entity.has_module_with_type<Identity>(module_id()), EModuleMissing);
 
-    let (m, req) = entity.uninstall<Identity>(module_name(), module_permit(), ctx);
+    let (m, req) = entity.uninstall<Identity>(module_id(), module_permit(), ctx);
     let Identity { tribe_id: _, owner: _ } = m.unwrap(module_permit());
     req
 }
@@ -62,13 +74,13 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
 // === Private Functions ===
 
 fun borrow(entity: &Entity): &Identity {
-    let m: &Module<Identity> = entity.module_ref(module_name(), module_permit());
+    let m: &Module<Identity> = entity.module_ref(module_id(), module_permit());
     assert!(mod::version(m) == VERSION, EWrongVersion);
     m.inner()
 }
 
-fun module_name(): String {
-    string::utf8(b"identity")
+fun module_label(): String {
+    string::utf8(NAME)
 }
 
 fun module_permit(): Permit<Identity> {

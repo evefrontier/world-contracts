@@ -58,6 +58,7 @@ export {
   verifyOwner,
   verifyProximity,
 } from './packages/core.js'
+export { moduleIdFromName } from './packages/module-id.js'
 export {
   currencyPackage,
   eveCoinType,
