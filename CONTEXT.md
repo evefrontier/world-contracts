@@ -78,7 +78,11 @@ assembly model into the v1 module shape.
 
 - **Character / Identity** — the player-character entity and its identity module
   ([`contracts/character/`](contracts/character/)). The first game module ported to v1.
-- *Planned (not yet built):* Inventory/storage, Access control, Fuel, Power, Transport, Weapon.
+- **Power** — the singleton aggregate module on an Entity that owns the fuel pool, the
+  battery charge pool, and the running-total power ceilings. **Fuel Tank**, **Power Gen**,
+  and **Capacitor** are separate installable modules whose numbers register into Power.
+  See [ADR-0003](docs/adr/0003-fuel-power-capacitor-modules.md).
+- *Planned (not yet built):* Inventory/storage, Access control, Transport, Weapon.
   Each becomes a Module type with its own Requirement types, handlers, and PTB templates.
 
 ## Client integration
