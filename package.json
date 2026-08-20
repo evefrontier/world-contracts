@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "contracts for eve frontier",
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@11.22.0",
   "scripts": {
     "build": "find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move build --path {}",
     "test": "find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move test --path {}",

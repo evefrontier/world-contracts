@@ -141,7 +141,8 @@ export function extractEvent<T = unknown>(
 ): T | null {
     const events = result.events || [];
     const event = events.find((event) => eventTypeOf(event).endsWith(eventTypeSuffix));
-    return ((event?.json ?? event?.parsedJson) as T) || null;
+    if (!event) return null;
+    return ((event.json ?? event.parsedJson) as T | undefined) ?? ({} as T);
 }
 
 export async function hydrateWorldConfig(ctx: InitializedContext): Promise<HydratedWorldConfig> {
