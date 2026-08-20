@@ -133,6 +133,7 @@ export function extractEvent<T = unknown>(
         events?: Array<{
             eventType?: string;
             type?: string;
+            json?: unknown;
             parsedJson?: unknown;
         }> | null;
     },
@@ -140,7 +141,7 @@ export function extractEvent<T = unknown>(
 ): T | null {
     const events = result.events || [];
     const event = events.find((event) => eventTypeOf(event).endsWith(eventTypeSuffix));
-    return (event?.parsedJson as T) || null;
+    return ((event?.json ?? event?.parsedJson) as T) || null;
 }
 
 export async function hydrateWorldConfig(ctx: InitializedContext): Promise<HydratedWorldConfig> {
@@ -214,8 +215,8 @@ export function readPublishOutputFile(filePath: string): { objectChanges: Publis
     const objectChanges = Array.isArray(parsed.objectChanges)
         ? parsed.objectChanges
         : Array.isArray(parsed.effects?.objectChanges)
-          ? parsed.effects.objectChanges
-          : undefined;
+            ? parsed.effects.objectChanges
+            : undefined;
 
     if (!objectChanges) {
         throw new Error(`Invalid publish output file (missing objectChanges[]): ${filePath}`);
