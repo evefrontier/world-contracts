@@ -58,7 +58,6 @@ export {
   verifyOwner,
   verifyProximity,
 } from './packages/core.js'
-export { moduleIdFromName } from './packages/module-id.js'
 export {
   currencyPackage,
   eveCoinType,
@@ -92,3 +91,4 @@ export {
   type MetadataFields,
   uninstallMetadata,
 } from './packages/metadata.js'
+export { moduleIdFromName } from './packages/module-id.js'

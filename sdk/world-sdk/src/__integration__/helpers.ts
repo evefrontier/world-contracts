@@ -79,7 +79,12 @@ export async function mintAccessCap(
 export async function readBalance(
   client: WorldClient,
   config: WorldConfig,
-  args: { entity: string; moduleId: bigint; authorizedId: string; typeId: bigint },
+  args: {
+    entity: string
+    moduleId: bigint
+    authorizedId: string
+    typeId: bigint
+  },
 ): Promise<bigint> {
   const tx = new Transaction()
   tx.setSender(signer)

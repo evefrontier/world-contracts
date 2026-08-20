@@ -92,11 +92,15 @@ describe('inventory owner-access via Character', () => {
       for (const [name, req] of [
         [
           'bridge_in',
-          bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
+          bridgeInRequirement(enableTx, config, MODULE_ID, {
+            ephemeral: false,
+          }),
         ],
         [
           'withdraw',
-          withdrawRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
+          withdrawRequirement(enableTx, config, MODULE_ID, {
+            ephemeral: false,
+          }),
         ],
         [
           'deposit',
