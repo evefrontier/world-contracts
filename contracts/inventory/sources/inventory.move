@@ -1,26 +1,17 @@
 /// Inventory module installed on an `Entity`. Holds one `Inventory` (a balance
 /// area with its own volume cap) per accessor, keyed by entity id:
 ///
-/// - **main** — keyed by the entity's own id, created at install. Only the owner
-///   can configure actions (`enable_action` is owner-gated), so a main
-///   requirement on an action is trusted by construction and satisfying the
-///   action grants access to main inv. Lets an owner-configured swap run in one
-///   player-signed transaction with no owner cap at call time.
-/// - **ephemeral** -  keyed by the caller's id (`req.authorized_id()`), created
-///   on first use. Ownership-based: items belong to that caller, parked on
-///   this entity.
+/// - **main** — entity's own id, created at install. Owner-configured actions
+///   grant access to it.
+/// - **ephemeral** — caller's id (`req.authorized_id()`), created on first use.
+///   Items belong to that caller, parked on this entity.
 ///
-/// Each requirement carries an `ephemeral` flag; the handler routes on it.
-/// Ephemeral requirements also need `access_cap::caller_requirement()` so the
-/// caller is recorded.
+/// Requirements carry an `ephemeral` flag; the handler routes on it. Ephemeral
+/// also needs `access_cap::caller_requirement()` so the caller is recorded.
 ///
-/// Items are at-rest in an `ItemBag` (non-singleton balances by `type_id`, singleton
-/// objects by `item_id`) and in-transit as `Item` objects (see
-/// `inventory::item`): the bridges mint/burn against the game, `withdraw`/
-/// `deposit` move items out/in. Each op takes `item_id` xor `quantity` the
-/// former pins a unique singleton instance, the latter is a non-singleton amount —
-/// so one function body serves both kinds; `deposit` needs neither since an
-/// `Item` already self-describes via `item::item_id`.
+/// At rest in an `ItemBag` (balances by `type_id`, singletons by `item_id`);
+/// in transit as `Item` objects. Bridges mint/burn against the game;
+/// `withdraw`/`deposit` move items out/in.
 module inventory::inventory;
 
 use core::{
