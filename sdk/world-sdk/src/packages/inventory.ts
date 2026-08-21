@@ -159,6 +159,12 @@ export interface BalanceOfArgs {
   typeId: bigint
 }
 
+export interface HasSingletonArgs {
+  moduleId: bigint
+  authorizedId: string
+  itemId: bigint
+}
+
 /**
  * Read the balance of `typeId` in the inventory routed to `authorizedId` (the
  * entity's own id for main, a caller's id for ephemeral). Read-only; run under
@@ -178,6 +184,36 @@ export function balanceOf(
       tx.pure.address(args.authorizedId),
       tx.pure.u64(args.typeId),
     ],
+  })
+}
+
+/**
+ * True if `itemId` is stored in the inventory routed to `authorizedId`.
+ * Read-only; run under `simulateTransaction` and decode the returned `bool`.
+ * Aborts if that inventory does not exist yet (main always does after install).
+ */
+export function hasSingleton(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  args: HasSingletonArgs,
+): TransactionResult {
+  const p = pkg(config)
+  const storage = tx.moveCall({
+    target: `${p}::inventory::storage`,
+    arguments: [entity, tx.pure.u64(args.moduleId)],
+  })
+  const inv = tx.moveCall({
+    target: `${p}::inventory::inventory`,
+    arguments: [storage, tx.pure.address(args.authorizedId)],
+  })
+  const items = tx.moveCall({
+    target: `${p}::inventory::items`,
+    arguments: [inv],
+  })
+  return tx.moveCall({
+    target: `${p}::item::has_singleton`,
+    arguments: [items, tx.pure.u64(args.itemId)],
   })
 }
 

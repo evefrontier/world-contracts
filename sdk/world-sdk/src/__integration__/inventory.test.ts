@@ -23,23 +23,25 @@ import {
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
+  readHasSingleton,
   signer,
 } from './helpers.js'
 
 // Exercise the inventory bindings in isolation. Create a storage-unit entity,
 // mint the owner cap to a plain address, enable owner deposit/withdraw/bridge
-// actions, then round-trip a balance: bridge_in seeds it, withdraw yields an Item,
-// deposit puts it back.
+// actions, then round-trip a fungible balance and a singleton Item.
 const MODULE_ID = 0x51n
 const UNIT = 'SU-01'
 const FUEL = 88834n
+const BLUEPRINT = 77n
 const VOL = 2n
+const BLUEPRINT_VOL = 500n
+const BLUEPRINT_ITEM = 1n
 
 describe('inventory owner round-trip (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
 
-  it('bridges in, withdraws, and deposits back on the main inventory', async () => {
-    const key = { id: 4200n, tenant: 'inventory-t1' }
+  async function setupOwnerUnit(key: { id: bigint; tenant: string }) {
     const entityId = deriveObjectId(config, key)
 
     // tx1: create + install + share the storage unit.
@@ -100,7 +102,15 @@ describe('inventory owner round-trip (localnet)', () => {
     )
     await expectSuccess(client, enableTx)
 
-    // tx4: bridge_in 100 -> withdraw 20 -> deposit the Item back, one signer.
+    return { entityId, capId }
+  }
+
+  it('bridges in, withdraws, and deposits back on the main inventory', async () => {
+    const { entityId, capId } = await setupOwnerUnit({
+      id: 4200n,
+      tenant: 'inventory-t1',
+    })
+
     const runTx = new Transaction()
     const e = runTx.object(entityId)
     const c = runTx.object(capId)
@@ -132,7 +142,6 @@ describe('inventory owner round-trip (localnet)', () => {
 
     await expectSuccess(client, runTx)
 
-    // Net main balance: 100 in, 20 out, 20 back = 100.
     const main = await readBalance(client, config, {
       entity: entityId,
       moduleId: MODULE_ID,
@@ -140,5 +149,59 @@ describe('inventory owner round-trip (localnet)', () => {
       typeId: FUEL,
     })
     expect(main).toBe(100n)
+  })
+
+  it('bridges in, withdraws, and deposits a singleton on the main inventory', async () => {
+    const { entityId, capId } = await setupOwnerUnit({
+      id: 4210n,
+      tenant: 'inventory-t1',
+    })
+
+    const runTx = new Transaction()
+    const e = runTx.object(entityId)
+    const c = runTx.object(capId)
+
+    const bridgeReqObj = interact(runTx, config, e, 'bridge_in', [])
+    verifyProximity(runTx, config, bridgeReqObj, [])
+    verifyCaller(runTx, config, bridgeReqObj, c)
+    gameItemToChain(runTx, config, e, bridgeReqObj, {
+      typeId: BLUEPRINT,
+      itemId: BLUEPRINT_ITEM,
+      volume: BLUEPRINT_VOL,
+    })
+    completeRequest(runTx, config, e, bridgeReqObj)
+
+    const wReq = interact(runTx, config, e, 'withdraw', [])
+    verifyProximity(runTx, config, wReq, [])
+    verifyCaller(runTx, config, wReq, c)
+    const item = withdraw(runTx, config, e, wReq, {
+      typeId: BLUEPRINT,
+      itemId: BLUEPRINT_ITEM,
+    })
+    completeRequest(runTx, config, e, wReq)
+
+    const dReq = interact(runTx, config, e, 'deposit', [])
+    verifyProximity(runTx, config, dReq, [])
+    verifyCaller(runTx, config, dReq, c)
+    deposit(runTx, config, e, dReq, item)
+    completeRequest(runTx, config, e, dReq)
+
+    await expectSuccess(client, runTx)
+
+    const present = await readHasSingleton(client, config, {
+      entity: entityId,
+      moduleId: MODULE_ID,
+      authorizedId: entityId,
+      itemId: BLUEPRINT_ITEM,
+    })
+    expect(present).toBe(true)
+
+    const asFungible = await readBalance(client, config, {
+      entity: entityId,
+      moduleId: MODULE_ID,
+      authorizedId: entityId,
+      typeId: BLUEPRINT,
+    })
+    expect(asFungible).toBe(0n)
   })
 })

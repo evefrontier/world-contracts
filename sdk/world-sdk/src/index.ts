@@ -67,6 +67,7 @@ export {
 export {
   type BalanceOfArgs,
   type BridgeInArgs,
+  type HasSingletonArgs,
   balanceOf,
   bridgeInRequirement,
   bridgeOutRequirement,
@@ -76,6 +77,7 @@ export {
   deposit,
   depositRequirement,
   gameItemToChain,
+  hasSingleton,
   type InstallInventoryArgs,
   type ItemAmount,
   type ItemRule,
