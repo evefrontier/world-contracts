@@ -190,7 +190,7 @@ export function balanceOf(
 /**
  * True if `itemId` is stored in the inventory routed to `authorizedId`.
  * Read-only; run under `simulateTransaction` and decode the returned `bool`.
- * Aborts if that inventory does not exist yet (main always does after install).
+ * False if that inventory does not exist yet.
  */
 export function hasSingleton(
   tx: Transaction,
@@ -198,22 +198,14 @@ export function hasSingleton(
   entity: TransactionArgument,
   args: HasSingletonArgs,
 ): TransactionResult {
-  const p = pkg(config)
-  const storage = tx.moveCall({
-    target: `${p}::inventory::storage`,
-    arguments: [entity, tx.pure.u64(args.moduleId)],
-  })
-  const inv = tx.moveCall({
-    target: `${p}::inventory::inventory`,
-    arguments: [storage, tx.pure.address(args.authorizedId)],
-  })
-  const items = tx.moveCall({
-    target: `${p}::inventory::items`,
-    arguments: [inv],
-  })
   return tx.moveCall({
-    target: `${p}::item::has_singleton`,
-    arguments: [items, tx.pure.u64(args.itemId)],
+    target: `${pkg(config)}::inventory::has_singleton`,
+    arguments: [
+      entity,
+      tx.pure.u64(args.moduleId),
+      tx.pure.address(args.authorizedId),
+      tx.pure.u64(args.itemId),
+    ],
   })
 }
 

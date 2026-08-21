@@ -134,7 +134,7 @@ export async function readHasSingleton(
       `has_singleton simulation failed: ${res.FailedTransaction.status.error?.message ?? ''}`,
     )
   }
-  const rv = res.commandResults.at(-1)?.returnValues[0]
+  const rv = res.commandResults[0]?.returnValues[0]
   if (!rv) throw new Error('has_singleton returned no value')
   return bcs.bool().parse(rv.bcs)
 }

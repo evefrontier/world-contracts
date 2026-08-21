@@ -839,21 +839,21 @@ fun owner_singleton_round_trip_main_inventory() {
 
     bridge_in_singleton(&mut scenario, &mut e, &cap, b"singleton_bridge_in", 1, SHIP, SHIP_VOL);
     assert!(main_inv(&e).used() == SHIP_VOL);
-    assert!(main_inv(&e).items().has_singleton(1));
+    assert!(inventory::has_singleton(&e, MODULE_ID, e.id(), 1));
 
     // Withdraw it as a standalone Item, distinct from any same-type non-singleton balance.
     let ship = withdraw_singleton(&mut scenario, &mut e, &cap, b"singleton_withdraw", 1, SHIP);
     assert!(ship.item_id() == option::some(1));
     assert!(ship.quantity() == 1);
-    assert!(!main_inv(&e).items().has_singleton(1));
+    assert!(!inventory::has_singleton(&e, MODULE_ID, e.id(), 1));
 
     // Deposit routes through the same `deposit` action non-singleton items use.
     deposit(&mut scenario, &mut e, &cap, b"deposit", ship);
-    assert!(main_inv(&e).items().has_singleton(1));
+    assert!(inventory::has_singleton(&e, MODULE_ID, e.id(), 1));
     assert!(main_inv(&e).used() == SHIP_VOL);
 
     bridge_out_singleton(&mut scenario, &mut e, &cap, b"singleton_bridge_out", 1, SHIP);
-    assert!(!main_inv(&e).items().has_singleton(1));
+    assert!(!inventory::has_singleton(&e, MODULE_ID, e.id(), 1));
     assert!(main_inv(&e).used() == 0);
 
     ts::return_to_sender(&scenario, cap);

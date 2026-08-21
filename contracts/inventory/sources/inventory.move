@@ -342,6 +342,14 @@ public fun balance_of(entity: &Entity, module_id: u64, authorized_id: ID, type_i
     storage.inventory(authorized_id).items.balance(type_id)
 }
 
+/// True if singleton `item_id` is stored in the inventory routed to
+/// `authorized_id`. False if that inventory does not exist yet.
+public fun has_singleton(entity: &Entity, module_id: u64, authorized_id: ID, item_id: u64): bool {
+    let storage = storage(entity, module_id);
+    if (!storage.has_inventory(authorized_id)) return false;
+    storage.inventory(authorized_id).items.has_singleton(item_id)
+}
+
 // === Private Functions ===
 
 /// Borrow the installed module mid-interaction, popping the next requirement
