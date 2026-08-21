@@ -7,11 +7,15 @@ use std::string;
 use sui::{event, test_scenario as ts};
 
 const FUEL: u64 = 100;
+const BLUE_PRINT: u64 = 200;
 const VOL: u64 = 10;
+const BLUE_PRINT_VOL: u64 = 500;
 
 fun tenant(): string::String { string::utf8(b"test") }
 
 fun fuel_key(): entity_key::EntityKey { entity_key::new(FUEL, tenant()) }
+
+fun blueprint_key(): entity_key::EntityKey { entity_key::new(BLUE_PRINT, tenant()) }
 
 fun withdraw_item(
     bag: &mut item::ItemBag,
@@ -137,4 +141,137 @@ fun merge_wrong_type_aborts() {
     item::merge(&mut a, b);
 
     abort
+}
+
+#[test]
+fun mint_singleton_stores_instance() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    assert!(item::has_singleton(&bag, 1));
+    assert!(item::singleton_volume(&bag, 1) == BLUE_PRINT_VOL);
+    assert!(!item::has_singleton(&bag, 2));
+
+    item::burn_all_and_destroy(bag, tenant());
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = item::EItemIdExists)]
+fun mint_singleton_duplicate_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+
+    abort
+}
+
+#[test]
+fun singleton_distinct_from_same_type_non_singleton() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    // A non-singleton balance and a singleton of the same `type_id` (BLUE_PRINT) coexist
+    // independently — minting one never touches the other.
+    item::mint(&mut bag, blueprint_key(), 5, VOL);
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+
+    assert!(item::balance(&bag, BLUE_PRINT) == 5);
+    assert!(item::has_singleton(&bag, 1));
+
+    item::burn(&mut bag, blueprint_key(), 5);
+    assert!(item::balance(&bag, BLUE_PRINT) == 0);
+    assert!(item::has_singleton(&bag, 1));
+
+    item::burn_all_and_destroy(bag, tenant());
+    scenario.end();
+}
+
+#[test]
+fun withdraw_singleton_then_deposit_round_trip() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+
+    let ship = item::withdraw_singleton(&mut bag, 1, blueprint_key());
+    assert!(!item::has_singleton(&bag, 1));
+    assert!(ship.item_id() == option::some(1));
+    assert!(ship.quantity() == 1);
+    assert!(ship.type_id() == BLUE_PRINT);
+    assert!(ship.volume() == BLUE_PRINT_VOL);
+
+    item::deposit(&mut bag, ship, tenant());
+    assert!(item::has_singleton(&bag, 1));
+    assert!(item::singleton_volume(&bag, 1) == BLUE_PRINT_VOL);
+
+    item::burn_all_and_destroy(bag, tenant());
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = item::EItemIdExists)]
+fun deposit_singleton_duplicate_id_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    let ship = item::withdraw_singleton(&mut bag, 1, blueprint_key());
+    // Re-mint the same id while the withdrawn copy is still in hand, then try
+    // to deposit it back — the bag already has id 1.
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    item::deposit(&mut bag, ship, tenant());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::EItemIdNotFound)]
+fun burn_singleton_absent_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::burn_singleton(&mut bag, 1, blueprint_key());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::EWrongType)]
+fun withdraw_singleton_wrong_type_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    let _ship = item::withdraw_singleton(&mut bag, 1, fuel_key());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::EIsSingleton)]
+fun split_singleton_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    let mut ship = item::withdraw_singleton(&mut bag, 1, blueprint_key());
+    let _piece = item::split(&mut ship, 1, scenario.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::EIsSingleton)]
+fun merge_singleton_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    item::mint_singleton(&mut bag, 2, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    let mut ship_a = item::withdraw_singleton(&mut bag, 1, blueprint_key());
+    let ship_b = item::withdraw_singleton(&mut bag, 2, blueprint_key());
+    item::merge(&mut ship_a, ship_b);
+
+    abort
+}
+
+#[test]
+fun burn_all_and_destroy_clears_singletons() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    item::mint_singleton(&mut bag, 1, blueprint_key(), BLUE_PRINT_VOL, scenario.ctx());
+    item::mint(&mut bag, fuel_key(), 10, VOL);
+
+    item::burn_all_and_destroy(bag, tenant());
+    assert!(event::events_by_type<item::ItemBurned>().length() == 2);
+    scenario.end();
 }

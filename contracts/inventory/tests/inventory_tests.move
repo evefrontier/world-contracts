@@ -11,7 +11,7 @@ use core::{
     requirement::Requirement,
     test_helpers::{claim, setup, take_acl, take_registry}
 };
-use inventory::{inventory, item::Item};
+use inventory::{inventory, item::{Self, Item}};
 use std::string::{Self, String};
 use sui::test_scenario as ts;
 
@@ -20,7 +20,9 @@ const OWNER: address = @0xB;
 const PLAYER: address = @0xC;
 const FUEL: u64 = 88834;
 const LENS: u64 = 55;
+const SHIP: u64 = 77;
 const VOL: u64 = 2;
+const SHIP_VOL: u64 = 500;
 const MODULE_ID: u64 = 0x51;
 const MODULE_ID_2: u64 = 0x52;
 
@@ -92,56 +94,98 @@ fun configure_default_actions(scenario: &mut ts::Scenario, e_id: ID) {
     enable(
         &mut e,
         b"bridge_in",
-        inventory::bridge_in_requirement(MODULE_ID, false, any, any, any),
+        inventory::bridge_in_requirement(MODULE_ID, false, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"bridge_out",
-        inventory::bridge_out_requirement(MODULE_ID, false, any, any, any),
+        inventory::bridge_out_requirement(MODULE_ID, false, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"deposit",
-        inventory::deposit_requirement(MODULE_ID, false, any, any, any),
+        inventory::deposit_requirement(MODULE_ID, false, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"withdraw",
-        inventory::withdraw_requirement(MODULE_ID, false, any, any, any),
+        inventory::withdraw_requirement(MODULE_ID, false, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_bridge_in",
-        inventory::bridge_in_requirement(MODULE_ID, true, any, any, any),
+        inventory::bridge_in_requirement(MODULE_ID, true, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_bridge_out",
-        inventory::bridge_out_requirement(MODULE_ID, true, any, any, any),
+        inventory::bridge_out_requirement(MODULE_ID, true, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_deposit",
-        inventory::deposit_requirement(MODULE_ID, true, any, any, any),
+        inventory::deposit_requirement(MODULE_ID, true, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"eph_withdraw",
-        inventory::withdraw_requirement(MODULE_ID, true, any, any, any),
+        inventory::withdraw_requirement(MODULE_ID, true, any, any, any, any),
+        &cap,
+        scenario.ctx(),
+    );
+    enable(
+        &mut e,
+        b"singleton_bridge_in",
+        inventory::bridge_in_requirement(MODULE_ID, false, any, any, any, any),
+        &cap,
+        scenario.ctx(),
+    );
+    enable(
+        &mut e,
+        b"singleton_bridge_out",
+        inventory::bridge_out_requirement(MODULE_ID, false, any, any, any, any),
+        &cap,
+        scenario.ctx(),
+    );
+    enable(
+        &mut e,
+        b"singleton_withdraw",
+        inventory::withdraw_requirement(MODULE_ID, false, any, any, any, any),
+        &cap,
+        scenario.ctx(),
+    );
+    enable(
+        &mut e,
+        b"eph_singleton_bridge_in",
+        inventory::bridge_in_requirement(MODULE_ID, true, any, any, any, any),
+        &cap,
+        scenario.ctx(),
+    );
+    enable(
+        &mut e,
+        b"eph_singleton_bridge_out",
+        inventory::bridge_out_requirement(MODULE_ID, true, any, any, any, any),
+        &cap,
+        scenario.ctx(),
+    );
+    enable(
+        &mut e,
+        b"eph_singleton_withdraw",
+        inventory::withdraw_requirement(MODULE_ID, true, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
@@ -175,7 +219,15 @@ fun bridge_in(
     let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
     access_cap::verify_caller(&mut req, cap);
-    inventory::game_item_to_chain_inventory(e, &mut req, type_id, qty, vol, scenario.ctx());
+    inventory::game_item_to_chain_inventory(
+        e,
+        &mut req,
+        type_id,
+        option::none(),
+        option::some(qty),
+        vol,
+        scenario.ctx(),
+    );
     e.complete_request(req);
 }
 
@@ -190,7 +242,14 @@ fun bridge_out(
     let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
     access_cap::verify_caller(&mut req, cap);
-    inventory::chain_item_to_game_inventory(e, &mut req, type_id, qty, scenario.ctx());
+    inventory::chain_item_to_game_inventory(
+        e,
+        &mut req,
+        type_id,
+        option::none(),
+        option::some(qty),
+        scenario.ctx(),
+    );
     e.complete_request(req);
 }
 
@@ -219,7 +278,83 @@ fun withdraw(
     let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
     access_cap::verify_caller(&mut req, cap);
-    let item = inventory::withdraw(e, &mut req, type_id, qty, scenario.ctx());
+    let item = inventory::withdraw(
+        e,
+        &mut req,
+        type_id,
+        option::none(),
+        option::some(qty),
+        scenario.ctx(),
+    );
+    e.complete_request(req);
+    item
+}
+
+fun bridge_in_singleton(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    cap: &AccessCap,
+    action: vector<u8>,
+    item_id: u64,
+    type_id: u64,
+    vol: u64,
+) {
+    let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
+    location_service::verify_proximity(&mut req, vector[]);
+    access_cap::verify_caller(&mut req, cap);
+    inventory::game_item_to_chain_inventory(
+        e,
+        &mut req,
+        type_id,
+        option::some(item_id),
+        option::none(),
+        vol,
+        scenario.ctx(),
+    );
+    e.complete_request(req);
+}
+
+fun bridge_out_singleton(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    cap: &AccessCap,
+    action: vector<u8>,
+    item_id: u64,
+    type_id: u64,
+) {
+    let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
+    location_service::verify_proximity(&mut req, vector[]);
+    access_cap::verify_caller(&mut req, cap);
+    inventory::chain_item_to_game_inventory(
+        e,
+        &mut req,
+        type_id,
+        option::some(item_id),
+        option::none(),
+        scenario.ctx(),
+    );
+    e.complete_request(req);
+}
+
+fun withdraw_singleton(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    cap: &AccessCap,
+    action: vector<u8>,
+    item_id: u64,
+    type_id: u64,
+): Item {
+    let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
+    location_service::verify_proximity(&mut req, vector[]);
+    access_cap::verify_caller(&mut req, cap);
+    let item = inventory::withdraw(
+        e,
+        &mut req,
+        type_id,
+        option::some(item_id),
+        option::none(),
+        scenario.ctx(),
+    );
     e.complete_request(req);
     item
 }
@@ -356,6 +491,7 @@ fun main_inv_interaction_without_caller() {
                 option::none(),
                 option::none(),
                 option::none(),
+                option::none(),
             ),
         ]),
     );
@@ -365,7 +501,15 @@ fun main_inv_interaction_without_caller() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let mut req = e.interact(string::utf8(b"public_bridge"), vector[], scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
-    inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL, scenario.ctx());
+    inventory::game_item_to_chain_inventory(
+        &mut e,
+        &mut req,
+        FUEL,
+        option::none(),
+        option::some(10),
+        VOL,
+        scenario.ctx(),
+    );
     e.complete_request(req);
 
     assert!(main_inv(&e).items().balance(FUEL) == 10);
@@ -435,11 +579,13 @@ fun swap_moves_between_main_and_ephemeral_single_signer() {
                 option::some(FUEL),
                 option::none(),
                 option::none(),
+                option::none(),
             ),
             inventory::deposit_requirement(
                 MODULE_ID,
                 false,
                 option::some(FUEL),
+                option::none(),
                 option::none(),
                 option::none(),
             ),
@@ -449,11 +595,13 @@ fun swap_moves_between_main_and_ephemeral_single_signer() {
                 option::some(LENS),
                 option::none(),
                 option::none(),
+                option::none(),
             ),
             inventory::deposit_requirement(
                 MODULE_ID,
                 true,
                 option::some(LENS),
+                option::none(),
                 option::none(),
                 option::none(),
             ),
@@ -477,9 +625,23 @@ fun swap_moves_between_main_and_ephemeral_single_signer() {
     let mut req = e.interact(string::utf8(b"swap"), vector[], scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
     access_cap::verify_caller(&mut req, &player_cap);
-    let fuel = inventory::withdraw(&mut e, &mut req, FUEL, 1, scenario.ctx()); // from ephemeral
+    let fuel = inventory::withdraw(
+        &mut e,
+        &mut req,
+        FUEL,
+        option::none(),
+        option::some(1),
+        scenario.ctx(),
+    ); // from ephemeral
     inventory::deposit(&mut e, &mut req, fuel, scenario.ctx()); // into main
-    let lens = inventory::withdraw(&mut e, &mut req, LENS, 1, scenario.ctx()); // from main
+    let lens = inventory::withdraw(
+        &mut e,
+        &mut req,
+        LENS,
+        option::none(),
+        option::some(1),
+        scenario.ctx(),
+    ); // from main
     inventory::deposit(&mut e, &mut req, lens, scenario.ctx()); // into ephemeral
     e.complete_request(req);
 
@@ -519,6 +681,7 @@ fun ephemeral_interaction_without_caller_aborts() {
                 option::none(),
                 option::none(),
                 option::none(),
+                option::none(),
             ),
         ]),
     );
@@ -527,7 +690,15 @@ fun ephemeral_interaction_without_caller_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let mut req = e.interact(string::utf8(b"eph_uncalled"), vector[], scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
-    inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL, scenario.ctx());
+    inventory::game_item_to_chain_inventory(
+        &mut e,
+        &mut req,
+        FUEL,
+        option::none(),
+        option::some(10),
+        VOL,
+        scenario.ctx(),
+    );
 
     abort
 }
@@ -580,6 +751,7 @@ fun bridge_in_wrong_type_aborts() {
                 option::some(FUEL),
                 option::none(),
                 option::none(),
+                option::none(),
             ),
         ]),
     );
@@ -590,7 +762,15 @@ fun bridge_in_wrong_type_aborts() {
     let mut req = e.interact(string::utf8(b"bridge_fuel"), vector[], scenario.ctx());
     location_service::verify_proximity(&mut req, vector[]);
     access_cap::verify_caller(&mut req, &cap);
-    inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL + 1, 10, VOL, scenario.ctx());
+    inventory::game_item_to_chain_inventory(
+        &mut e,
+        &mut req,
+        FUEL + 1,
+        option::none(),
+        option::some(10),
+        VOL,
+        scenario.ctx(),
+    );
 
     abort
 }
@@ -636,4 +816,168 @@ fun uninstall_burns_all_inventories() {
     ts::return_shared(acl);
     ts::return_shared(e);
     scenario.end();
+}
+
+#[test]
+fun owner_singleton_round_trip_main_inventory() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+
+    bridge_in_singleton(&mut scenario, &mut e, &cap, b"singleton_bridge_in", 1, SHIP, SHIP_VOL);
+    assert!(main_inv(&e).used() == SHIP_VOL);
+    assert!(main_inv(&e).items().has_singleton(1));
+
+    // Withdraw it as a standalone Item, distinct from any same-type non-singleton balance.
+    let ship = withdraw_singleton(&mut scenario, &mut e, &cap, b"singleton_withdraw", 1, SHIP);
+    assert!(ship.item_id() == option::some(1));
+    assert!(ship.quantity() == 1);
+    assert!(!main_inv(&e).items().has_singleton(1));
+
+    // Deposit routes through the same `deposit` action non-singleton items use.
+    deposit(&mut scenario, &mut e, &cap, b"deposit", ship);
+    assert!(main_inv(&e).items().has_singleton(1));
+    assert!(main_inv(&e).used() == SHIP_VOL);
+
+    bridge_out_singleton(&mut scenario, &mut e, &cap, b"singleton_bridge_out", 1, SHIP);
+    assert!(!main_inv(&e).items().has_singleton(1));
+    assert!(main_inv(&e).used() == 0);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test]
+fun player_singleton_ephemeral_inventory() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 1000);
+    let e_id = e.id();
+    let player_id = create_player(&mut scenario, &mut registry, &acl);
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id);
+
+    ts::next_tx(&mut scenario, PLAYER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+
+    bridge_in_singleton(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"eph_singleton_bridge_in",
+        1,
+        SHIP,
+        SHIP_VOL,
+    );
+    assert!(eph_inv(&e, player_id).items().has_singleton(1));
+    assert!(main_inv(&e).items().has_singleton(1) == false);
+
+    bridge_out_singleton(&mut scenario, &mut e, &cap, b"eph_singleton_bridge_out", 1, SHIP);
+    assert!(!eph_inv(&e, player_id).items().has_singleton(1));
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = item::EItemIdExists)]
+fun bridge_in_singleton_duplicate_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    bridge_in_singleton(&mut scenario, &mut e, &cap, b"singleton_bridge_in", 1, SHIP, SHIP_VOL);
+    bridge_in_singleton(&mut scenario, &mut e, &cap, b"singleton_bridge_in", 1, SHIP, SHIP_VOL);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = inventory::EItemIdNotAllowed)]
+fun withdraw_pinned_to_wrong_item_id_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    bridge_in_singleton(&mut scenario, &mut e, &cap, b"singleton_bridge_in", 1, SHIP, SHIP_VOL);
+    bridge_in_singleton(&mut scenario, &mut e, &cap, b"singleton_bridge_in", 2, SHIP, SHIP_VOL);
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+
+    // Owner pins a withdraw action to exactly item id 1 ("withdraw this ship").
+    owner_enable(
+        &mut scenario,
+        e_id,
+        b"withdraw_ship_1",
+        action::new(vector[
+            inventory::withdraw_requirement(
+                MODULE_ID,
+                false,
+                option::some(SHIP),
+                option::some(1),
+                option::none(),
+                option::none(),
+            ),
+        ]),
+    );
+
+    // Item id 2 exists in the same inventory but isn't the pinned instance.
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let mut req = e.interact(string::utf8(b"withdraw_ship_1"), vector[], scenario.ctx());
+    location_service::verify_proximity(&mut req, vector[]);
+    let _ship = inventory::withdraw(
+        &mut e,
+        &mut req,
+        SHIP,
+        option::some(2),
+        option::none(),
+        scenario.ctx(),
+    );
+
+    abort
 }
