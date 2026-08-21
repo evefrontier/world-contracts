@@ -24,13 +24,13 @@ function requirement(
   tx: Transaction,
   config: WorldConfig,
   fn: string,
-  name: string,
+  moduleId: bigint,
   rule: ItemRule,
 ): TransactionResult {
   return tx.moveCall({
     target: `${pkg(config)}::inventory::${fn}`,
     arguments: [
-      tx.pure.string(name),
+      tx.pure.u64(moduleId),
       tx.pure.bool(rule.ephemeral),
       tx.pure.option('u64', rule.typeId ?? null),
       tx.pure.option('u64', rule.minQuantity ?? null),
@@ -42,41 +42,42 @@ function requirement(
 export function bridgeInRequirement(
   tx: Transaction,
   config: WorldConfig,
-  name: string,
+  moduleId: bigint,
   rule: ItemRule,
 ): TransactionResult {
-  return requirement(tx, config, 'bridge_in_requirement', name, rule)
+  return requirement(tx, config, 'bridge_in_requirement', moduleId, rule)
 }
 
 export function bridgeOutRequirement(
   tx: Transaction,
   config: WorldConfig,
-  name: string,
+  moduleId: bigint,
   rule: ItemRule,
 ): TransactionResult {
-  return requirement(tx, config, 'bridge_out_requirement', name, rule)
+  return requirement(tx, config, 'bridge_out_requirement', moduleId, rule)
 }
 
 export function depositRequirement(
   tx: Transaction,
   config: WorldConfig,
-  name: string,
+  moduleId: bigint,
   rule: ItemRule,
 ): TransactionResult {
-  return requirement(tx, config, 'deposit_requirement', name, rule)
+  return requirement(tx, config, 'deposit_requirement', moduleId, rule)
 }
 
 export function withdrawRequirement(
   tx: Transaction,
   config: WorldConfig,
-  name: string,
+  moduleId: bigint,
   rule: ItemRule,
 ): TransactionResult {
-  return requirement(tx, config, 'withdraw_requirement', name, rule)
+  return requirement(tx, config, 'withdraw_requirement', moduleId, rule)
 }
 
 export interface InstallInventoryArgs {
-  name: string
+  moduleId: bigint
+  name?: string | null
   mainCapacity: bigint
   ephemeralCapacity: bigint
 }
@@ -92,7 +93,8 @@ export function installInventory(
     target: `${pkg(config)}::inventory::install`,
     arguments: [
       entity,
-      tx.pure.string(args.name),
+      tx.pure.u64(args.moduleId),
+      tx.pure.option('string', args.name ?? null),
       tx.pure.u64(args.mainCapacity),
       tx.pure.u64(args.ephemeralCapacity),
     ],
@@ -101,16 +103,16 @@ export function installInventory(
   completeRequest(tx, config, entity, request)
 }
 
-/** Remove the inventory module `name`, closing its admin-gated request. */
+/** Remove the inventory module `moduleId`, closing its admin-gated request. */
 export function uninstallInventory(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
-  name: string,
+  moduleId: bigint,
 ): void {
   const request = tx.moveCall({
     target: `${pkg(config)}::inventory::uninstall`,
-    arguments: [entity, tx.pure.string(name)],
+    arguments: [entity, tx.pure.u64(moduleId)],
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
@@ -119,7 +121,8 @@ export function uninstallInventory(
 export interface CreateStorageUnitArgs {
   inGameId: bigint
   tenant: string
-  name: string
+  moduleId: bigint
+  name?: string | null
   mainCapacity: bigint
   ephemeralCapacity: bigint
 }
@@ -140,6 +143,7 @@ export function createStorageUnit(
   verifyAdmin(tx, config, claimReq)
   completeRequest(tx, config, entity, claimReq)
   installInventory(tx, config, entity, {
+    moduleId: args.moduleId,
     name: args.name,
     mainCapacity: args.mainCapacity,
     ephemeralCapacity: args.ephemeralCapacity,
@@ -148,7 +152,7 @@ export function createStorageUnit(
 }
 
 export interface BalanceOfArgs {
-  name: string
+  moduleId: bigint
   authorizedId: string
   typeId: bigint
 }
@@ -168,7 +172,7 @@ export function balanceOf(
     target: `${pkg(config)}::inventory::balance_of`,
     arguments: [
       entity,
-      tx.pure.string(args.name),
+      tx.pure.u64(args.moduleId),
       tx.pure.address(args.authorizedId),
       tx.pure.u64(args.typeId),
     ],

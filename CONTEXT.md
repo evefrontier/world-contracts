@@ -31,8 +31,11 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   - **Principal** — an Entity that represents an account-like actor and **owns AccessCaps**
     (a Character or a Tribe). See **Keychain**.
 - **Module** — typed state installed on an Entity ([`mod.move`](contracts/core/sources/mod.move)).
-  `Module<T>` wraps a user-defined state `T` (e.g. `Module<Inventory>`) under a human-readable
-  name, so one Entity can host several modules, even of the same type.
+  `Module<T>` wraps a user-defined state `T` (e.g. `Module<Inventory>`) under a caller-supplied
+  `u64`, so one Entity can host several modules, even of the same type. An optional display
+  `name` may be stored on the wrapper; it is not unique and is not used for targeting.
+  Well-known singletons (identity, metadata) derive their id as the first 8 bytes (LE) of
+  `blake2b256(name)`.
 - **Action** — a named, ordered list of Requirements an Entity exposes
   ([`action.move`](contracts/core/sources/action.move)). It carries no logic of its own; it
   only describes what must be satisfied. (Stored reversed internally so `pop_back` yields
@@ -44,7 +47,7 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   mid-transaction (dynamic follow-ups).
 - **Requirement** — a single typed rule instance on an Action
   ([`requirement.move`](contracts/core/sources/requirement.move)). Carries `type_name` (which
-  handler may satisfy it, e.g. `inventory::Deposit`), an optional module `name` (which installed
+  handler may satisfy it, e.g. `inventory::Deposit`), an optional module `u64` id (which installed
   module it targets), and `data` (BCS-encoded config). Handlers prove ownership of the rule type
   via a package-private `internal::Permit<T>`.
 

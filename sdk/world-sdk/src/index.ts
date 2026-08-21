@@ -91,3 +91,4 @@ export {
   type MetadataFields,
   uninstallMetadata,
 } from './packages/metadata.js'
+export { moduleIdFromName } from './packages/module-id.js'

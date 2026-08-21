@@ -15,6 +15,10 @@ public struct Counter has store {
     value: u64,
 }
 
+fun counter_id(): u64 {
+    0xC0
+}
+
 fun counter_name(): string::String {
     string::utf8(b"counter")
 }
@@ -37,7 +41,7 @@ fun new_sets_initial_fields() {
         assert!(entity::version(&e) == 1);
         assert!(entity::key(&e).id() == 1);
         assert!(entity::key(&e).tenant() == tenant());
-        assert!(!entity::has_module(&e, counter_name()));
+        assert!(!entity::has_module(&e, counter_id()));
 
         entity::share(e);
         ts::return_shared(acl);
@@ -96,7 +100,8 @@ fun install_adds_module() {
     let ctx = scenario.ctx();
 
     let mut req = e.install(
-        counter_name(),
+        counter_id(),
+        option::some(counter_name()),
         Counter { value: 0 },
         1,
         internal::permit<Counter>(),
@@ -105,8 +110,8 @@ fun install_adds_module() {
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    assert!(e.has_module(counter_name()));
-    assert!(e.has_module_with_type<Counter>(counter_name()));
+    assert!(e.has_module(counter_id()));
+    assert!(e.has_module_with_type<Counter>(counter_id()));
 
     entity::share(e);
     ts::return_shared(acl);
@@ -126,7 +131,8 @@ fun install_duplicate_module_aborts() {
     let ctx = scenario.ctx();
 
     let mut req = e.install(
-        counter_name(),
+        counter_id(),
+        option::some(counter_name()),
         Counter { value: 0 },
         1,
         internal::permit<Counter>(),
@@ -135,7 +141,14 @@ fun install_duplicate_module_aborts() {
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    let req = e.install(counter_name(), Counter { value: 1 }, 1, internal::permit<Counter>(), ctx);
+    let req = e.install(
+        counter_id(),
+        option::some(counter_name()),
+        Counter { value: 1 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
     e.complete_request(req);
 
     abort
@@ -153,7 +166,8 @@ fun uninstall_removes_and_returns_module() {
     let ctx = scenario.ctx();
 
     let mut req = e.install(
-        counter_name(),
+        counter_id(),
+        option::some(counter_name()),
         Counter { value: 9 },
         1,
         internal::permit<Counter>(),
@@ -162,11 +176,11 @@ fun uninstall_removes_and_returns_module() {
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    let (m, mut req) = e.uninstall<Counter>(counter_name(), internal::permit<Counter>(), ctx);
+    let (m, mut req) = e.uninstall<Counter>(counter_id(), internal::permit<Counter>(), ctx);
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    assert!(!e.has_module(counter_name()));
+    assert!(!e.has_module(counter_id()));
     let Counter { value } = m.unwrap(internal::permit<Counter>());
     assert!(value == 9);
 
@@ -187,9 +201,54 @@ fun uninstall_missing_module_aborts() {
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
-    let (_m, _req) = e.uninstall<Counter>(counter_name(), internal::permit<Counter>(), ctx);
+    let (_m, _req) = e.uninstall<Counter>(counter_id(), internal::permit<Counter>(), ctx);
 
     abort
+}
+
+#[test]
+fun install_two_modules_of_same_type() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+    let second_id = 0xC1;
+
+    let mut req = e.install(
+        counter_id(),
+        option::some(counter_name()),
+        Counter { value: 0 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    let mut req = e.install(
+        second_id,
+        option::some(string::utf8(b"counter-2")),
+        Counter { value: 1 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    assert!(e.has_module_with_type<Counter>(counter_id()));
+    assert!(e.has_module_with_type<Counter>(second_id));
+    assert!(e.module_ref<Counter>(counter_id(), internal::permit<Counter>()).inner().value == 0);
+    assert!(e.module_ref<Counter>(second_id, internal::permit<Counter>()).inner().value == 1);
+
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
 }
 
 // === Actions ===

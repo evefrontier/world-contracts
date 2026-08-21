@@ -89,11 +89,13 @@ public struct Withdrawal(ItemRequirement) has drop;
 
 // === Public Functions ===
 
-/// Build and install the storage module under `name` with independent main and
-/// ephemeral volume capacities.
+/// Build and install the storage module under `module_id` with
+/// independent main and ephemeral volume capacities. `name` is an optional
+/// display label and is not unique.
 public fun install(
     entity: &mut Entity,
-    name: String,
+    module_id: u64,
+    name: Option<String>,
     main_capacity: u64,
     ephemeral_capacity: u64,
     ctx: &mut TxContext,
@@ -105,17 +107,17 @@ public fun install(
         Inventory { capacity: main_capacity, used: 0, items: item::new_bag(ctx) },
     );
     let storage = StorageInventory { ephemeral_capacity, inventories };
-    entity.install(name, storage, VERSION, module_permit(), ctx)
+    entity.install(module_id, name, storage, VERSION, module_permit(), ctx)
 }
 
 /// Remove the storage module. Aborts if it was never installed. Burns every
 /// inventory's balances (emitting `ItemBurned` per type) so the game client is
 /// notified.
-public fun uninstall(entity: &mut Entity, name: String, ctx: &mut TxContext): Request {
-    assert!(entity.has_module_with_type<StorageInventory>(name), EModuleMissing);
+public fun uninstall(entity: &mut Entity, module_id: u64, ctx: &mut TxContext): Request {
+    assert!(entity.has_module_with_type<StorageInventory>(module_id), EModuleMissing);
 
     let tenant = entity.key().tenant();
-    let (inv_module, req) = entity.uninstall<StorageInventory>(name, module_permit(), ctx);
+    let (inv_module, req) = entity.uninstall<StorageInventory>(module_id, module_permit(), ctx);
     let StorageInventory { ephemeral_capacity: _, inventories } = inv_module.unwrap(
         module_permit(),
     );
@@ -200,68 +202,68 @@ public fun withdraw(
     item
 }
 
-/// Build a bridge-in requirement on module `name`. `ephemeral` selects the
+/// Build a bridge-in requirement on module `module_id`. `ephemeral` selects the
 /// target: false = main, true = the caller's ephemeral inventory.
 public fun bridge_in_requirement(
-    name: String,
+    module_id: u64,
     ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
-        option::some(name),
+        option::some(module_id),
         BridgeIn(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a bridge-out requirement on module `name`. See `bridge_in_requirement`.
+/// Build a bridge-out requirement on module `module_id`. See `bridge_in_requirement`.
 public fun bridge_out_requirement(
-    name: String,
+    module_id: u64,
     ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
-        option::some(name),
+        option::some(module_id),
         BridgeOut(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a deposit requirement on module `name`. See `bridge_in_requirement`.
+/// Build a deposit requirement on module `module_id`. See `bridge_in_requirement`.
 public fun deposit_requirement(
-    name: String,
+    module_id: u64,
     ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
-        option::some(name),
+        option::some(module_id),
         Deposit(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a withdraw requirement on module `name`. See `bridge_in_requirement`.
+/// Build a withdraw requirement on module `module_id`. See `bridge_in_requirement`.
 public fun withdraw_requirement(
-    name: String,
+    module_id: u64,
     ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
-        option::some(name),
+        option::some(module_id),
         Withdrawal(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
 // === View Functions ===
 
-/// Read the installed storage state by module `name`.
-public fun storage(entity: &Entity, name: String): &StorageInventory {
-    let m: &Module<StorageInventory> = entity.module_ref(name, module_permit());
+/// Read the installed storage state by `module_id`.
+public fun storage(entity: &Entity, module_id: u64): &StorageInventory {
+    let m: &Module<StorageInventory> = entity.module_ref(module_id, module_permit());
     assert!(mod::version(m) == VERSION, EWrongVersion);
     m.inner()
 }
@@ -295,8 +297,8 @@ public fun inventory(storage: &StorageInventory, authorized_id: ID): &Inventory 
 /// Current balance of `type_id` in the inventory routed to `authorized_id`
 /// (the entity's own id for main, a caller's id for ephemeral). 0 if that
 /// inventory does not exist yet. Read-only; for clients querying state.
-public fun balance_of(entity: &Entity, name: String, authorized_id: ID, type_id: u64): u64 {
-    let storage = storage(entity, name);
+public fun balance_of(entity: &Entity, module_id: u64, authorized_id: ID, type_id: u64): u64 {
+    let storage = storage(entity, module_id);
     if (!storage.has_inventory(authorized_id)) return 0;
     storage.inventory(authorized_id).items.balance(type_id)
 }

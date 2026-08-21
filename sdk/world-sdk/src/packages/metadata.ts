@@ -53,7 +53,7 @@ export function uninstallMetadata(
   completeRequest(tx, config, entity, request)
 }
 
-/** Build an edit requirement targeting the fixed `"metadata"` module slot. */
+/** Build an edit requirement targeting the metadata module slot. */
 export function editRequirement(
   tx: Transaction,
   config: WorldConfig,

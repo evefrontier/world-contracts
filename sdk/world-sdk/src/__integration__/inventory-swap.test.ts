@@ -30,6 +30,7 @@ import {
 // Owner configures a multi-requirement swap (give a fuel from your ephemeral,
 // get a lens from main). A player executes the whole swap in one PTB with one
 // signer — no owner cap at call time, since the requirements are owner-trusted.
+const MODULE_ID = 0x51n
 const UNIT = 'SU-03'
 const FUEL = 88834n
 const LENS = 55n
@@ -48,6 +49,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
+      moduleId: MODULE_ID,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 1000n,
@@ -82,7 +84,7 @@ describe('inventory owner-configured swap (localnet)', () => {
       'bridge_in',
       [
         callerRequirement(enableTx, config),
-        bridgeInRequirement(enableTx, config, UNIT, { ephemeral: false }),
+        bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
       ],
       ownerCap,
     )
@@ -93,7 +95,7 @@ describe('inventory owner-configured swap (localnet)', () => {
       'eph_bridge_in',
       [
         callerRequirement(enableTx, config),
-        bridgeInRequirement(enableTx, config, UNIT, { ephemeral: true }),
+        bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: true }),
       ],
       ownerCap,
     )
@@ -105,19 +107,19 @@ describe('inventory owner-configured swap (localnet)', () => {
       'swap',
       [
         callerRequirement(enableTx, config),
-        withdrawRequirement(enableTx, config, UNIT, {
+        withdrawRequirement(enableTx, config, MODULE_ID, {
           ephemeral: true,
           typeId: FUEL,
         }),
-        depositRequirement(enableTx, config, UNIT, {
+        depositRequirement(enableTx, config, MODULE_ID, {
           ephemeral: false,
           typeId: FUEL,
         }),
-        withdrawRequirement(enableTx, config, UNIT, {
+        withdrawRequirement(enableTx, config, MODULE_ID, {
           ephemeral: false,
           typeId: LENS,
         }),
-        depositRequirement(enableTx, config, UNIT, {
+        depositRequirement(enableTx, config, MODULE_ID, {
           ephemeral: true,
           typeId: LENS,
         }),
@@ -175,7 +177,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     const read = (authorizedId: string, typeId: bigint) =>
       readBalance(client, config, {
         entity: suId,
-        name: UNIT,
+        moduleId: MODULE_ID,
         authorizedId,
         typeId,
       })
