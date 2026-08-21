@@ -228,7 +228,13 @@ public(package) fun mint_singleton(
 ) {
     assert!(!bag.singletons.contains(item_id), EItemIdExists);
     let type_id = entity_key::id(&game_id);
-    let item = Item { id: object::new(ctx), item_id: option::some(item_id), type_id, quantity: 1, volume };
+    let item = Item {
+        id: object::new(ctx),
+        item_id: option::some(item_id),
+        type_id,
+        quantity: 1,
+        volume,
+    };
     bag.singletons.push_back(item_id, item);
     event::emit(ItemMinted { game_id, quantity: 1 });
 }

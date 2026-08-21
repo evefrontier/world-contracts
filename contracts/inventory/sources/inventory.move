@@ -514,7 +514,11 @@ fun burn_singleton_item(inv: &mut Inventory, item_id: u64, game_id: entity_key::
 }
 
 /// Withdraw a singleton from an inventory as its standalone `Item`, freeing its volume.
-fun withdraw_singleton_item(inv: &mut Inventory, item_id: u64, game_id: entity_key::EntityKey): Item {
+fun withdraw_singleton_item(
+    inv: &mut Inventory,
+    item_id: u64,
+    game_id: entity_key::EntityKey,
+): Item {
     let volume = inv.items.singleton_volume(item_id);
     let item = inv.items.withdraw_singleton(item_id, game_id);
     inv.used = inv.used - volume;
