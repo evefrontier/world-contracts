@@ -16,6 +16,7 @@ function pkg(config: WorldConfig): string {
 export interface ItemRule {
   ephemeral: boolean
   typeId?: bigint | null
+  itemId?: bigint | null
   minQuantity?: bigint | null
   maxQuantity?: bigint | null
 }
@@ -33,6 +34,7 @@ function requirement(
       tx.pure.u64(moduleId),
       tx.pure.bool(rule.ephemeral),
       tx.pure.option('u64', rule.typeId ?? null),
+      tx.pure.option('u64', rule.itemId ?? null),
       tx.pure.option('u64', rule.minQuantity ?? null),
       tx.pure.option('u64', rule.maxQuantity ?? null),
     ],
@@ -181,11 +183,12 @@ export function balanceOf(
 
 export interface BridgeInArgs {
   typeId: bigint
-  quantity: bigint
+  itemId?: bigint | null
+  quantity?: bigint | null
   volume: bigint
 }
 
-/** Game-to-chain bridge: mint a balance into the caller's routed inventory. */
+/** Game-to-chain bridge: mint into the caller's routed inventory. */
 export function gameItemToChain(
   tx: Transaction,
   config: WorldConfig,
@@ -199,7 +202,8 @@ export function gameItemToChain(
       entity,
       request,
       tx.pure.u64(args.typeId),
-      tx.pure.u64(args.quantity),
+      tx.pure.option('u64', args.itemId ?? null),
+      tx.pure.option('u64', args.quantity ?? null),
       tx.pure.u64(args.volume),
     ],
   })
@@ -207,10 +211,11 @@ export function gameItemToChain(
 
 export interface ItemAmount {
   typeId: bigint
-  quantity: bigint
+  itemId?: bigint | null
+  quantity?: bigint | null
 }
 
-/** Chain-to-game bridge: burn a balance from the caller's routed inventory. */
+/** Chain-to-game bridge: burn from the caller's routed inventory. */
 export function chainItemToGame(
   tx: Transaction,
   config: WorldConfig,
@@ -224,7 +229,8 @@ export function chainItemToGame(
       entity,
       request,
       tx.pure.u64(args.typeId),
-      tx.pure.u64(args.quantity),
+      tx.pure.option('u64', args.itemId ?? null),
+      tx.pure.option('u64', args.quantity ?? null),
     ],
   })
 }
@@ -243,7 +249,7 @@ export function deposit(
   })
 }
 
-/** Withdraw a balance from the caller's routed inventory as a fresh `Item`. */
+/** Withdraw from the caller's routed inventory as a fresh `Item`. */
 export function withdraw(
   tx: Transaction,
   config: WorldConfig,
@@ -257,7 +263,8 @@ export function withdraw(
       entity,
       request,
       tx.pure.u64(args.typeId),
-      tx.pure.u64(args.quantity),
+      tx.pure.option('u64', args.itemId ?? null),
+      tx.pure.option('u64', args.quantity ?? null),
     ],
   })
 }
