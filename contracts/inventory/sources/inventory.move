@@ -9,7 +9,7 @@
 /// Requirements carry an `ephemeral` flag; the handler routes on it. Ephemeral
 /// also needs `access_cap::caller_requirement()` so the caller is recorded.
 ///
-/// At rest in an `ItemBag` (balances by `type_id`, singletons by `item_id`);
+/// At rest in an `ItemBag` (non-singletons by `type_id`, singletons by `item_id`);
 /// in transit as `Item` objects. Bridges mint/burn against the game;
 /// `withdraw`/`deposit` move items out/in.
 module inventory::inventory;

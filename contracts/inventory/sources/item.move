@@ -57,7 +57,7 @@ public struct Balance has drop, store {
 /// At-rest items inside an inventory: non-singleton `Balance`s keyed by `type_id`,
 /// and singleton `Item` objects keyed by their own `item_id`.
 public struct ItemBag has store {
-    balances: LinkedTable<u64, Balance>,
+    non_singletons: LinkedTable<u64, Balance>,
     singletons: LinkedTable<u64, Item>,
 }
 
@@ -103,12 +103,12 @@ public fun volume(item: &Item): u64 {
 
 /// Current quantity of `type_id` in `bag` (0 if absent).
 public fun balance(bag: &ItemBag, type_id: u64): u64 {
-    if (bag.balances.contains(type_id)) bag.balances[type_id].quantity else 0
+    if (bag.non_singletons.contains(type_id)) bag.non_singletons[type_id].quantity else 0
 }
 
 /// Per-unit volume stored for `type_id` in `bag` (0 if absent).
 public fun volume_of(bag: &ItemBag, type_id: u64): u64 {
-    if (bag.balances.contains(type_id)) bag.balances[type_id].volume else 0
+    if (bag.non_singletons.contains(type_id)) bag.non_singletons[type_id].volume else 0
 }
 
 /// True if a singleton `item_id` is stored in `bag`.
@@ -125,13 +125,13 @@ public fun singleton_volume(bag: &ItemBag, item_id: u64): u64 {
 
 /// Create an empty item store.
 public(package) fun new_bag(ctx: &mut TxContext): ItemBag {
-    ItemBag { balances: linked_table::new(ctx), singletons: linked_table::new(ctx) }
+    ItemBag { non_singletons: linked_table::new(ctx), singletons: linked_table::new(ctx) }
 }
 
 /// Drop a bag and all its items without emitting burn events.
 public(package) fun destroy_bag(bag: ItemBag) {
-    let ItemBag { balances, mut singletons } = bag;
-    linked_table::drop(balances);
+    let ItemBag { non_singletons, mut singletons } = bag;
+    linked_table::drop(non_singletons);
     while (!singletons.is_empty()) {
         let (_, item) = singletons.pop_front();
         let Item { id, item_id: _, type_id: _, quantity: _, volume: _ } = item;
@@ -159,12 +159,12 @@ public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
 /// Burn every non-singleton balance and singleton in `bag` (one `ItemBurned` event
 /// each), then destroy it.
 public(package) fun burn_all_and_destroy(bag: ItemBag, tenant: String) {
-    let ItemBag { mut balances, mut singletons } = bag;
-    while (!balances.is_empty()) {
-        let (type_id, Balance { quantity, volume: _ }) = balances.pop_front();
+    let ItemBag { mut non_singletons, mut singletons } = bag;
+    while (!non_singletons.is_empty()) {
+        let (type_id, Balance { quantity, volume: _ }) = non_singletons.pop_front();
         event::emit(ItemBurned { game_id: entity_key::new(type_id, tenant), quantity });
     };
-    balances.destroy_empty();
+    non_singletons.destroy_empty();
     while (!singletons.is_empty()) {
         let (_, item) = singletons.pop_front();
         let Item { id, item_id: _, type_id, quantity, volume: _ } = item;
@@ -209,8 +209,8 @@ public(package) fun withdraw(
 ): Item {
     let type_id = entity_key::id(&game_id);
     assert!(quantity > 0, EZeroQuantity);
-    assert!(bag.balances.contains(type_id), EInsufficientQuantity);
-    let volume = bag.balances[type_id].volume;
+    assert!(bag.non_singletons.contains(type_id), EInsufficientQuantity);
+    let volume = bag.non_singletons[type_id].volume;
     subtract_balance(bag, type_id, quantity);
     event::emit(ItemWithdrawn { game_id, quantity });
     Item { id: object::new(ctx), item_id: option::none(), type_id, quantity, volume }
@@ -291,22 +291,22 @@ public(package) fun merge(item: &mut Item, other: Item) {
 // === Private Functions ===
 
 fun add_balance(bag: &mut ItemBag, type_id: u64, quantity: u64, volume: u64) {
-    if (bag.balances.contains(type_id)) {
-        let bal = &mut bag.balances[type_id];
+    if (bag.non_singletons.contains(type_id)) {
+        let bal = &mut bag.non_singletons[type_id];
         assert!(bal.volume == volume, EVolumeMismatch);
         bal.quantity = bal.quantity + quantity;
     } else {
-        bag.balances.push_back(type_id, Balance { quantity, volume });
+        bag.non_singletons.push_back(type_id, Balance { quantity, volume });
     };
 }
 
 fun subtract_balance(bag: &mut ItemBag, type_id: u64, quantity: u64) {
-    assert!(bag.balances.contains(type_id), EInsufficientQuantity);
-    let bal = &mut bag.balances[type_id];
+    assert!(bag.non_singletons.contains(type_id), EInsufficientQuantity);
+    let bal = &mut bag.non_singletons[type_id];
     assert!(bal.quantity >= quantity, EInsufficientQuantity);
     bal.quantity = bal.quantity - quantity;
     let empty = bal.quantity == 0;
     if (empty) {
-        bag.balances.remove(type_id);
+        bag.non_singletons.remove(type_id);
     };
 }
