@@ -45,7 +45,7 @@ An Airlock's ownership is configurable per creation:
   Here the access control needs to be transferred to the contract from the owner.
 
 `ephemeral` inventories are removed entirely. There is no more free,
-anonymous per-caller storage every creation that wants to interact
+anonymous per-caller storage. Every creation that wants to interact
 on-chain, including a player's own ship, needs its own real Airlock.
 
 ### Architecture
@@ -69,14 +69,14 @@ sequenceDiagram
 **Iteration 1 : explicit, player-initiated**
 
 1. Player moves items from Container to Airlock.
-2. Airlock now holds an on-chain balance the contract to enable on-chain use cases.
+2. Airlock now holds an on-chain balance for the contract to enable on-chain use cases.
 3. Player interacts (trade, deposit, collect) via the existing
    Action/Request/Requirement flow against the Airlock.
 
 **Iteration 2 : lazy, interaction-triggered**
 
 1. Airlock starts empty.
-2. Player starts an interaction; the chain emits an event on what items are needed for the usecase.
+2. Player starts an interaction; the chain emits an event on what items are needed for the use case.
 3. The needed item then moves from Container to Airlock, then the interaction executes.
 
 Benefit of iteration 2: a player never pre-commits items on-chain unless a
@@ -106,9 +106,9 @@ bucket is gone and replaced by the player's own ship Airlock.
 
 ### Ship-internal movement
 
-The "Intra ship Inventory" note abstracts Container-to-Container movement
-within a ship based on rules defined by the game connected by conduits
-and is out of scope for the contracts here noted for context only.
+The "intra-ship inventory" note abstracts Container-to-Container movement
+within a ship, based on game rules and conduits. That movement is out of
+scope for these contracts; it is noted here for context only.
 
 ## Consequences
 
@@ -116,7 +116,7 @@ and is out of scope for the contracts here noted for context only.
   someone else's entity for free" convenience; a ship needs its own real
   Airlock and capacity to participate in any on-chain interaction.
 - Airlock capacity must account for shared, multi-party use (trade, pooling),
-  not just an owner's private capacity, a contract-controlled Airlock
+  not just an owner's private capacity. A contract-controlled Airlock
   handling many trades may need to be sized larger than an owner-only one.
 - The existing bridge functions (`game_item_to_chain_inventory`,
   `chain_item_to_game_inventory`) already match the notes' "interim chain
