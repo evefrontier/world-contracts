@@ -49,6 +49,14 @@ public fun install(
     )
 }
 
+public fun uninstall(entity: &mut Entity, module_id: u64, ctx: &mut TxContext): Request {
+    assert!(entity.has_module_with_type<GenericModule>(module_id), EModuleMissing);
+
+    let (m, req) = entity.uninstall<GenericModule>(module_id, module_permit(), ctx);
+    let GenericModule { data: _ } = m.unwrap(module_permit());
+    req
+}
+
 // === View Functions ===
 
 public fun data(entity: &Entity, module_id: u64): vector<u8> {

@@ -166,3 +166,88 @@ fun install_duplicate_module_id_aborts() {
 
     abort
 }
+
+#[test]
+fun uninstall_removes_module() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+
+    install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", module_data(), ctx);
+
+    let mut req = generic_module::uninstall(&mut e, MODULE_ID, ctx);
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    assert!(!e.has_module(MODULE_ID));
+    assert!(e.module_ids().is_empty());
+
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = generic_module::EModuleMissing)]
+fun uninstall_missing_module_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+
+    let _req = generic_module::uninstall(&mut e, MODULE_ID, scenario.ctx());
+
+    abort
+}
+
+#[test]
+fun delete_after_uninstall() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+
+    install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", module_data(), ctx);
+
+    let mut req = generic_module::uninstall(&mut e, MODULE_ID, ctx);
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    let (mut req, ticket) = e.request_delete();
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.delete(req, ticket);
+
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = entity::EModulesRemain)]
+fun delete_with_generic_module_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+
+    install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", module_data(), ctx);
+
+    let (_req, _ticket) = e.request_delete();
+
+    abort
+}
