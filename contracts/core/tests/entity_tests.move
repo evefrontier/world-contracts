@@ -398,9 +398,9 @@ fun delete_empty_entity() {
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let key = e.key();
 
-    let mut req = e.request_delete();
+    let (mut req, ticket) = e.request_delete();
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.delete(req);
+    e.delete(req, ticket);
 
     assert!(registry.exists(key));
     ts::return_shared(acl);
@@ -435,9 +435,9 @@ fun delete_after_uninstall() {
     e.complete_request(req);
     let Counter { value: _ } = m.unwrap(internal::permit<Counter>());
 
-    let mut req = e.request_delete();
+    let (mut req, ticket) = e.request_delete();
     admin_service::verify_admin(&mut req, &acl, ctx);
-    e.delete(req);
+    e.delete(req, ticket);
 
     ts::return_shared(acl);
     ts::return_shared(registry);
@@ -461,9 +461,9 @@ fun delete_shared_entity() {
     ts::next_tx(&mut scenario, @0xA);
     let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
     let acl = take_acl(&scenario);
-    let mut req = e.request_delete();
+    let (mut req, ticket) = e.request_delete();
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.delete(req);
+    e.delete(req, ticket);
     ts::return_shared(acl);
     scenario.end();
 }
@@ -490,7 +490,7 @@ fun delete_with_module_aborts() {
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    let _req = e.request_delete();
+    let (_req, _ticket) = e.request_delete();
 
     abort
 }
@@ -503,7 +503,7 @@ fun request_delete_while_locked_aborts() {
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
     let (mut e, _req) = entity::new(&mut registry, 1, tenant());
-    let _req2 = e.request_delete();
+    let (_req2, _ticket) = e.request_delete();
 
     abort
 }
@@ -517,8 +517,8 @@ fun delete_without_admin_aborts() {
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
-    let req = e.request_delete();
-    e.delete(req);
+    let (req, ticket) = e.request_delete();
+    e.delete(req, ticket);
 
     abort
 }

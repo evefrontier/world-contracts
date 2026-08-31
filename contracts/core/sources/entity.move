@@ -7,7 +7,7 @@
 /// Lifecycle operations (`install`, `uninstall`, `enable_action`,
 /// `disable_action`, `interact`, `request_delete`) lock the entity and return a
 /// `Request` the transaction must satisfy. `complete_request` unlocks;
-/// `delete` consumes the object.
+/// `delete` consumes the object and a `DeleteTicket` minted only by `request_delete`.
 module core::entity;
 
 use core::{
@@ -64,6 +64,12 @@ public struct Entity has key {
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
     module_ids: vector<u64>,
+}
+
+/// Proof that delete started via `request_delete`.
+/// `request_delete` mints it and only `delete` consumes it.
+public struct DeleteTicket {
+    entity_id: ID,
 }
 
 // === Events ===
@@ -274,23 +280,27 @@ public fun module_ref<T: store>(entity: &Entity, module_id: u64, _: Permit<T>): 
 /// Start admin teardown. Aborts if any module is still installed. The request
 /// carries `admin_requirement` today; more requirements can be added later.
 /// Finish with `verify_admin` (and any future handlers) then `delete`.
-public fun request_delete(entity: &mut Entity): Request {
+public fun request_delete(entity: &mut Entity): (Request, DeleteTicket) {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(!entity.is_locked(), ELocked);
     assert!(entity.module_ids.is_empty(), EModulesRemain);
     entity.lock();
-    request::new(
-        option::some(entity.id.to_inner()),
+    let entity_id = entity.id.to_inner();
+    let req = request::new(
+        option::some(entity_id),
         vector[admin_service::admin_requirement()],
-    )
+    );
+    (req, DeleteTicket { entity_id })
 }
 
 /// Consume the entity after `request_delete` and a completed request. Strips
 /// remaining DFs and deletes the UID. The derived `EntityKey` stays claimed.
-public fun delete(mut entity: Entity, req: Request) {
+public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(entity.is_locked(), ENotLocked);
     assert!(entity.module_ids.is_empty(), EModulesRemain);
+    let DeleteTicket { entity_id } = ticket;
+    assert!(entity_id == entity.id.to_inner(), EWrongEntity);
     req.entity_id().do!(|id| assert!(id == entity.id.to_inner(), EWrongEntity));
     req.complete();
     entity.unlock();

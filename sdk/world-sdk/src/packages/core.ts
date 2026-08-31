@@ -115,14 +115,14 @@ export function deleteEntity(
   config: WorldConfig,
   entity: TransactionArgument,
 ): void {
-  const request = tx.moveCall({
+  const [request, ticket] = tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::entity::request_delete`,
     arguments: [entity],
   })
   verifyAdmin(tx, config, request)
   tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::entity::delete`,
-    arguments: [entity, request],
+    arguments: [entity, request, ticket],
   })
 }
 
