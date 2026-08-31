@@ -16,6 +16,9 @@ if (!ADMIN) {
   throw new Error('WORLD_ADMIN_ADDRESS is required (an admin)')
 }
 
+const PLAYER =
+  '0x000000000000000000000000000000000000000000000000000000000000000b'
+
 describe('createCharacter (localnet)', () => {
   const config = loadWorldConfig(MANIFEST)
   const client = createWorldClient({ config })
@@ -27,10 +30,10 @@ describe('createCharacter (localnet)', () => {
       inGameId: key.id,
       tenant: key.tenant,
       tribeId: 1,
-      owner: ADMIN,
+      owner: PLAYER,
     })
 
-    // Simulate only needs a sender address; must be an admin for this call.
+    // Admin-gated create; character is owned by PLAYER.
     tx.setSender(ADMIN)
     const res = await client.simulateTransaction({
       transaction: tx,
