@@ -115,9 +115,14 @@ export function deleteEntity(
   config: WorldConfig,
   entity: TransactionArgument,
 ): void {
+  const request = tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::request_delete`,
+    arguments: [entity],
+  })
+  verifyAdmin(tx, config, request)
   tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::entity::delete`,
-    arguments: [entity, sharedRef(tx, adminAcl(config), false)],
+    arguments: [entity, request],
   })
 }
 

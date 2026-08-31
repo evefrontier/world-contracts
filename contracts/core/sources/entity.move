@@ -5,15 +5,15 @@
 /// identifier (`id + tenant`), so each in-game ID maps to exactly one entity.
 ///
 /// Lifecycle operations (`install`, `uninstall`, `enable_action`,
-/// `disable_action`, `interact`) lock the entity and return a `Request` that
-/// the transaction must `complete_request` — this is what gates `module_mut`
-/// access and leaves room for system approval requirements.
+/// `disable_action`, `interact`, `request_delete`) lock the entity and return a
+/// `Request` the transaction must satisfy. `complete_request` unlocks;
+/// `delete` consumes the object.
 module core::entity;
 
 use core::{
     access_cap::{Self, AccessCap, ReturnReceipt},
     action::Action,
-    admin_service::{Self, AdminACL},
+    admin_service,
     entity_key::{Self, EntityKey},
     location_service,
     mod::{Self, Module},
@@ -45,6 +45,8 @@ const EActionExists: vector<u8> = b"Action is already enabled";
 const EEntityAlreadyExists: vector<u8> = b"Entity already exists for this key";
 #[error(code = 9)]
 const EModulesRemain: vector<u8> = b"Uninstall all modules before deleting the entity";
+#[error(code = 10)]
+const ELocked: vector<u8> = b"Entity is locked";
 
 // === Constants ===
 
@@ -154,7 +156,7 @@ public fun install<T: store>(
     _ctx: &mut TxContext,
 ): Request {
     assert!(entity.version == VERSION, EWrongVersion);
-    assert!(!df::exists_(&entity.id, ModuleKey(module_id)), EModuleExists);
+    assert!(!df::exists(&entity.id, ModuleKey(module_id)), EModuleExists);
 
     df::add(&mut entity.id, ModuleKey(module_id), mod::new(name, inner, version));
     entity.module_ids.push_back(module_id);
@@ -269,16 +271,29 @@ public fun module_ref<T: store>(entity: &Entity, module_id: u64, _: Permit<T>): 
     df::borrow(&entity.id, ModuleKey(module_id))
 }
 
-/// Admin teardown. Aborts if any module is still installed. uninstall each
-/// module first. Strips remaining DF's and deletes the UID. The derived
-/// `EntityKey` stays claimed and cannot be reused.
-public fun delete(mut entity: Entity, acl: &AdminACL, ctx: &TxContext) {
+/// Start admin teardown. Aborts if any module is still installed. The request
+/// carries `admin_requirement` today; more requirements can be added later.
+/// Finish with `verify_admin` (and any future handlers) then `delete`.
+public fun request_delete(entity: &mut Entity): Request {
     assert!(entity.version == VERSION, EWrongVersion);
-    acl.assert_admin(ctx);
+    assert!(!entity.is_locked(), ELocked);
     assert!(entity.module_ids.is_empty(), EModulesRemain);
-    if (entity.is_locked()) {
-        entity.unlock();
-    };
+    entity.lock();
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
+    )
+}
+
+/// Consume the entity after `request_delete` and a completed request. Strips
+/// remaining DFs and deletes the UID. The derived `EntityKey` stays claimed.
+public fun delete(mut entity: Entity, req: Request) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    assert!(entity.is_locked(), ENotLocked);
+    assert!(entity.module_ids.is_empty(), EModulesRemain);
+    req.entity_id().do!(|id| assert!(id == entity.id.to_inner(), EWrongEntity));
+    req.complete();
+    entity.unlock();
 
     let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
     let Entity { id, version: _, key, module_ids: _ } = entity;
@@ -306,7 +321,7 @@ public fun key(entity: &Entity): EntityKey {
 }
 
 public fun has_module(entity: &Entity, module_id: u64): bool {
-    df::exists_(&entity.id, ModuleKey(module_id))
+    df::exists(&entity.id, ModuleKey(module_id))
 }
 
 public fun has_module_with_type<T: store>(entity: &Entity, module_id: u64): bool {
@@ -332,5 +347,5 @@ fun unlock(entity: &mut Entity) {
 }
 
 fun is_locked(entity: &Entity): bool {
-    df::exists_(&entity.id, InFlight())
+    df::exists(&entity.id, InFlight())
 }
