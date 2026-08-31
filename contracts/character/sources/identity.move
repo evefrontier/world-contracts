@@ -6,7 +6,12 @@
 /// multiple addresses can be bound to a single character.
 module character::identity;
 
-use core::{entity::Entity, mod::{Self, Module}, request::Request};
+use core::{
+    behavior_type::{Self, BehaviorType},
+    entity::Entity,
+    mod::{Self, Module},
+    request::Request
+};
 use std::{internal::Permit, string::{Self, String}};
 
 // === Errors ===
@@ -42,11 +47,20 @@ public fun module_id(): u64 {
     mod::id_from_name(NAME)
 }
 
+public fun type_id(entity: &Entity): u64 {
+    borrow_module(entity).type_id()
+}
+
+public fun behaviour_type_id(entity: &Entity): Option<BehaviorType> {
+    borrow_module(entity).behaviour_type_id()
+}
+
 // === Public Functions ===
 
 /// Build and install the identity module on a character entity.
 public fun install(
     entity: &mut Entity,
+    type_id: u64,
     tribe_id: u32,
     owner: address,
     ctx: &mut TxContext,
@@ -54,6 +68,8 @@ public fun install(
     let identity = Identity { tribe_id, owner };
     entity.install(
         module_id(),
+        type_id,
+        option::some(behavior_type::identity()),
         option::some(module_label()),
         identity,
         VERSION,
@@ -73,10 +89,14 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
 
 // === Private Functions ===
 
-fun borrow(entity: &Entity): &Identity {
+fun borrow_module(entity: &Entity): &Module<Identity> {
     let m: &Module<Identity> = entity.module_ref(module_id(), module_permit());
     assert!(mod::version(m) == VERSION, EWrongVersion);
-    m.inner()
+    m
+}
+
+fun borrow(entity: &Entity): &Identity {
+    borrow_module(entity).inner()
 }
 
 fun module_label(): String {

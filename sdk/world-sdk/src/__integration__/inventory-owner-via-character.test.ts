@@ -52,6 +52,7 @@ describe('inventory owner-access via Character', () => {
       inGameId: suKey.id,
       tenant: suKey.tenant,
       moduleId: MODULE_ID,
+      typeId: 1n,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 100n,
@@ -59,6 +60,7 @@ describe('inventory owner-access via Character', () => {
     createCharacter(setupTx, config, {
       inGameId: charKey.id,
       tenant: charKey.tenant,
+      typeId: 1n,
       tribeId: 1,
       owner: signer,
     })

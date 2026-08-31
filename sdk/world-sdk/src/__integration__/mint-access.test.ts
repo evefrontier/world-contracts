@@ -23,6 +23,7 @@ describe('mintAccess (localnet)', () => {
     createCharacter(createTx, config, {
       inGameId: key.id,
       tenant: key.tenant,
+      typeId: 1n,
       tribeId: 1,
       owner: signer,
     })

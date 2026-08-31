@@ -20,6 +20,7 @@
 module inventory::inventory;
 
 use core::{
+    behavior_type::{Self, BehaviorType},
     entity::Entity,
     entity_key,
     mod::{Self, Module},
@@ -95,6 +96,7 @@ public struct Withdrawal(ItemRequirement) has drop;
 public fun install(
     entity: &mut Entity,
     module_id: u64,
+    type_id: u64,
     name: Option<String>,
     main_capacity: u64,
     ephemeral_capacity: u64,
@@ -107,7 +109,16 @@ public fun install(
         Inventory { capacity: main_capacity, used: 0, items: item::new_bag(ctx) },
     );
     let storage = StorageInventory { ephemeral_capacity, inventories };
-    entity.install(module_id, name, storage, VERSION, module_permit(), ctx)
+    entity.install(
+        module_id,
+        type_id,
+        option::some(behavior_type::inventory()),
+        name,
+        storage,
+        VERSION,
+        module_permit(),
+        ctx,
+    )
 }
 
 /// Remove the storage module. Aborts if it was never installed. Burns every
@@ -263,9 +274,15 @@ public fun withdraw_requirement(
 
 /// Read the installed storage state by `module_id`.
 public fun storage(entity: &Entity, module_id: u64): &StorageInventory {
-    let m: &Module<StorageInventory> = entity.module_ref(module_id, module_permit());
-    assert!(mod::version(m) == VERSION, EWrongVersion);
-    m.inner()
+    borrow_module(entity, module_id).inner()
+}
+
+public fun type_id(entity: &Entity, module_id: u64): u64 {
+    borrow_module(entity, module_id).type_id()
+}
+
+public fun behaviour_type_id(entity: &Entity, module_id: u64): Option<BehaviorType> {
+    borrow_module(entity, module_id).behaviour_type_id()
 }
 
 public fun capacity(inv: &Inventory): u64 {
@@ -421,6 +438,12 @@ fun burn_all_inventories(mut inventories: LinkedTable<ID, Inventory>, tenant: St
         burn_inventory(inv, tenant);
     };
     inventories.destroy_empty();
+}
+
+fun borrow_module(entity: &Entity, module_id: u64): &Module<StorageInventory> {
+    let m: &Module<StorageInventory> = entity.module_ref(module_id, module_permit());
+    assert!(mod::version(m) == VERSION, EWrongVersion);
+    m
 }
 
 fun module_permit(): Permit<StorageInventory> {

@@ -40,6 +40,7 @@ for (const [, unit] of entries) {
     inGameId: BigInt(unit.itemId),
     tenant: resources.tenant,
     moduleId: BigInt(unit.itemId),
+    typeId: 1n,
     name: UNIT_NAME,
     mainCapacity: MAIN_CAPACITY,
     ephemeralCapacity: EPHEMERAL_CAPACITY,

@@ -47,6 +47,7 @@ describe('metadata owner-access via Character', () => {
       verifyAdmin(setupTx, config, claimReq)
       completeRequest(setupTx, config, entity, claimReq)
       installMetadata(setupTx, config, entity, {
+        typeId: 1n,
         name: 'Alpha',
         description: 'first',
         url: 'https://example.com/a.png',
@@ -56,6 +57,7 @@ describe('metadata owner-access via Character', () => {
     createCharacter(setupTx, config, {
       inGameId: charKey.id,
       tenant: charKey.tenant,
+      typeId: 1n,
       tribeId: 1,
       owner: signer,
     })

@@ -19,17 +19,22 @@ export interface MetadataFields {
   url: string
 }
 
+export interface InstallMetadataArgs extends MetadataFields {
+  typeId: bigint
+}
+
 /** Install metadata on `entity` and close its admin-gated request. */
 export function installMetadata(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
-  fields: MetadataFields,
+  fields: InstallMetadataArgs,
 ): void {
   const request = tx.moveCall({
     target: `${pkg(config)}::metadata::install`,
     arguments: [
       entity,
+      tx.pure.u64(fields.typeId),
       tx.pure.string(fields.name),
       tx.pure.string(fields.description),
       tx.pure.string(fields.url),

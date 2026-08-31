@@ -5,6 +5,7 @@
 module metadata::metadata;
 
 use core::{
+    behavior_type::{Self, BehaviorType},
     entity::Entity,
     entity_key::EntityKey,
     mod::{Self, Module},
@@ -53,6 +54,7 @@ public struct MetadataChanged has copy, drop {
 /// Empty strings are allowed.
 public fun install(
     entity: &mut Entity,
+    type_id: u64,
     name: String,
     description: String,
     url: String,
@@ -62,6 +64,8 @@ public fun install(
     emit_changed(entity, &metadata);
     entity.install(
         module_id(),
+        type_id,
+        option::some(behavior_type::metadata()),
         option::some(module_label()),
         metadata,
         VERSION,
@@ -129,12 +133,24 @@ public fun module_id(): u64 {
     mod::id_from_name(NAME)
 }
 
+public fun type_id(entity: &Entity): u64 {
+    borrow_module(entity).type_id()
+}
+
+public fun behaviour_type_id(entity: &Entity): Option<BehaviorType> {
+    borrow_module(entity).behaviour_type_id()
+}
+
 // === Private Functions ===
 
-fun borrow(entity: &Entity): &Metadata {
+fun borrow_module(entity: &Entity): &Module<Metadata> {
     let m: &Module<Metadata> = entity.module_ref(module_id(), module_permit());
     assert!(mod::version(m) == VERSION, EWrongVersion);
-    m.inner()
+    m
+}
+
+fun borrow(entity: &Entity): &Metadata {
+    borrow_module(entity).inner()
 }
 
 fun emit_changed(entity: &Entity, metadata: &Metadata) {

@@ -89,6 +89,7 @@ export {
   editMetadata,
   editRequirement,
   installMetadata,
+  type InstallMetadataArgs,
   type MetadataFields,
   uninstallMetadata,
 } from './packages/metadata.js'

@@ -5,6 +5,7 @@ use core::{
     access_cap::{Self, AccessCap},
     action,
     admin_service::{Self, AdminACL},
+    behavior_type,
     entity::{Self, Entity},
     location_service,
     object_registry::ObjectRegistry,
@@ -23,6 +24,7 @@ const LENS: u64 = 55;
 const VOL: u64 = 2;
 const MODULE_ID: u64 = 0x51;
 const MODULE_ID_2: u64 = 0x52;
+const TYPE_ID: u64 = 1;
 
 fun unit_name(): String { string::utf8(b"SU-01") }
 
@@ -55,6 +57,7 @@ fun build_storage_unit(
     let mut req = inventory::install(
         &mut e,
         MODULE_ID,
+        TYPE_ID,
         option::some(unit_name()),
         main_cap,
         eph_cap,
@@ -245,6 +248,8 @@ fun install_reports_module_and_capacities() {
 
     let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
     assert!(e.has_module(MODULE_ID));
+    assert!(inventory::type_id(&e, MODULE_ID) == TYPE_ID);
+    assert!(inventory::behaviour_type_id(&e, MODULE_ID) == option::some(behavior_type::inventory()));
     assert!(main_inv(&e).capacity() == 1000);
     assert!(main_inv(&e).used() == 0);
     assert!(inventory::ephemeral_capacity(inventory::storage(&e, MODULE_ID)) == 100);
@@ -268,6 +273,7 @@ fun install_two_inventories_on_one_entity() {
     let mut req = inventory::install(
         &mut e,
         MODULE_ID,
+        TYPE_ID,
         option::some(unit_name()),
         1000,
         100,
@@ -279,6 +285,7 @@ fun install_two_inventories_on_one_entity() {
     let mut req = inventory::install(
         &mut e,
         MODULE_ID_2,
+        TYPE_ID,
         option::some(string::utf8(b"SU-02")),
         500,
         50,

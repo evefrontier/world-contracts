@@ -6,6 +6,7 @@ use core::{
     action,
     admin_service,
     entity,
+    mod,
     request,
     test_helpers::{setup, take_registry, take_acl, claim, tenant}
 };
@@ -103,6 +104,8 @@ fun install_adds_module() {
 
     let mut req = e.install(
         counter_id(),
+        99,
+        option::none(),
         option::some(counter_name()),
         Counter { value: 0 },
         1,
@@ -115,6 +118,9 @@ fun install_adds_module() {
     assert!(e.has_module(counter_id()));
     assert!(e.has_module_with_type<Counter>(counter_id()));
     assert!(e.module_ids() == &vector[counter_id()]);
+    let m = e.module_ref<Counter>(counter_id(), internal::permit<Counter>());
+    assert!(mod::type_id(m) == 99);
+    assert!(mod::behaviour_type_id(m).is_none());
 
     entity::share(e);
     ts::return_shared(acl);
@@ -135,6 +141,8 @@ fun install_duplicate_module_aborts() {
 
     let mut req = e.install(
         counter_id(),
+        99,
+        option::none(),
         option::some(counter_name()),
         Counter { value: 0 },
         1,
@@ -146,6 +154,8 @@ fun install_duplicate_module_aborts() {
 
     let req = e.install(
         counter_id(),
+        99,
+        option::none(),
         option::some(counter_name()),
         Counter { value: 1 },
         1,
@@ -170,6 +180,8 @@ fun uninstall_removes_and_returns_module() {
 
     let mut req = e.install(
         counter_id(),
+        99,
+        option::none(),
         option::some(counter_name()),
         Counter { value: 9 },
         1,
@@ -224,6 +236,8 @@ fun install_two_modules_of_same_type() {
 
     let mut req = e.install(
         counter_id(),
+        99,
+        option::none(),
         option::some(counter_name()),
         Counter { value: 0 },
         1,
@@ -235,6 +249,8 @@ fun install_two_modules_of_same_type() {
 
     let mut req = e.install(
         second_id,
+        99,
+        option::none(),
         option::some(string::utf8(b"counter-2")),
         Counter { value: 1 },
         1,
@@ -421,6 +437,8 @@ fun delete_after_uninstall() {
 
     let mut req = e.install(
         counter_id(),
+        99,
+        option::none(),
         option::some(counter_name()),
         Counter { value: 0 },
         1,
@@ -481,6 +499,8 @@ fun delete_with_module_aborts() {
 
     let mut req = e.install(
         counter_id(),
+        99,
+        option::none(),
         option::some(counter_name()),
         Counter { value: 0 },
         1,
