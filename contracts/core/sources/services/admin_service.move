@@ -98,13 +98,11 @@ public fun add_sponsors(acl: &mut AdminACL, addrs: vector<address>, ctx: &mut Tx
     addrs.do!(|addr| if (!acl.sponsors.contains(addr)) acl.sponsors.add(addr, true));
 }
 
-// === Package Functions ===
+// === Private Functions ===
 
-public(package) fun assert_admin(acl: &AdminACL, ctx: &TxContext) {
+fun assert_admin(acl: &AdminACL, ctx: &TxContext) {
     assert!(acl.admins.contains(ctx.sender()), EUnauthorizedAdmin);
 }
-
-// === Private Functions ===
 
 /// Mint the package-authorship permit for `Admin`. Only this module defines
 /// `Admin`, so only this module can satisfy its requirement.
