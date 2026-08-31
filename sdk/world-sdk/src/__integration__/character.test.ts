@@ -16,7 +16,8 @@ if (!ADMIN) {
   throw new Error('WORLD_ADMIN_ADDRESS is required (an admin)')
 }
 
-const PLAYER = '0xb'
+const PLAYER =
+  '0x000000000000000000000000000000000000000000000000000000000000000b'
 
 describe('createCharacter (localnet)', () => {
   const config = loadWorldConfig(MANIFEST)
@@ -32,6 +33,7 @@ describe('createCharacter (localnet)', () => {
       owner: PLAYER,
     })
 
+    // Admin-gated create; character is owned by PLAYER.
     tx.setSender(ADMIN)
     const res = await client.simulateTransaction({
       transaction: tx,
