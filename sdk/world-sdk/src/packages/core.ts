@@ -107,6 +107,20 @@ export function completeRequest(
   })
 }
 
+/**
+ * Delete an entity with no modules left. Uninstall every module first.
+ */
+export function deleteEntity(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::delete`,
+    arguments: [entity, sharedRef(tx, adminAcl(config), false)],
+  })
+}
+
 /** Share a configured entity. */
 export function shareEntity(
   tx: Transaction,

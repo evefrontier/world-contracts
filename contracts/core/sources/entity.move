@@ -13,7 +13,7 @@ module core::entity;
 use core::{
     access_cap::{Self, AccessCap, ReturnReceipt},
     action::Action,
-    admin_service,
+    admin_service::{Self, AdminACL},
     entity_key::{Self, EntityKey},
     location_service,
     mod::{Self, Module},
@@ -43,6 +43,8 @@ const EModuleMissing: vector<u8> = b"Module is not installed";
 const EActionExists: vector<u8> = b"Action is already enabled";
 #[error(code = 8)]
 const EEntityAlreadyExists: vector<u8> = b"Entity already exists for this key";
+#[error(code = 9)]
+const EModulesRemain: vector<u8> = b"Uninstall all modules before deleting the entity";
 
 // === Constants ===
 
@@ -59,11 +61,17 @@ public struct Entity has key {
     version: u64,
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
+    module_ids: vector<u64>,
 }
 
 // === Events ===
 
 public struct EntityCreated has copy, drop {
+    entity_id: ID,
+    key: EntityKey,
+}
+
+public struct EntityDeleted has copy, drop {
     entity_id: ID,
     key: EntityKey,
 }
@@ -79,7 +87,7 @@ public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity,
     assert!(!registry.exists(key), EEntityAlreadyExists);
 
     let uid = derived_object::claim(registry.borrow_id(), key);
-    let mut entity = Entity { id: uid, version: VERSION, key };
+    let mut entity = Entity { id: uid, version: VERSION, key, module_ids: vector[] };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
 
     event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
@@ -149,6 +157,7 @@ public fun install<T: store>(
     assert!(!df::exists_(&entity.id, ModuleKey(module_id)), EModuleExists);
 
     df::add(&mut entity.id, ModuleKey(module_id), mod::new(name, inner, version));
+    entity.module_ids.push_back(module_id);
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
@@ -167,6 +176,9 @@ public fun uninstall<T: store>(
     assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(module_id)), EModuleMissing);
 
     let m: Module<T> = df::remove(&mut entity.id, ModuleKey(module_id));
+    let (found, i) = entity.module_ids.index_of(&module_id);
+    assert!(found, EModuleMissing);
+    entity.module_ids.remove(i);
     entity.lock();
     let req = request::new(
         option::some(entity.id.to_inner()),
@@ -257,6 +269,23 @@ public fun module_ref<T: store>(entity: &Entity, module_id: u64, _: Permit<T>): 
     df::borrow(&entity.id, ModuleKey(module_id))
 }
 
+/// Admin teardown. Aborts if any module is still installed. uninstall each
+/// module first. Strips remaining DF's and deletes the UID. The derived
+/// `EntityKey` stays claimed and cannot be reused.
+public fun delete(mut entity: Entity, acl: &AdminACL, ctx: &TxContext) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    acl.assert_admin(ctx);
+    assert!(entity.module_ids.is_empty(), EModulesRemain);
+    if (entity.is_locked()) {
+        entity.unlock();
+    };
+
+    let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
+    let Entity { id, version: _, key, module_ids: _ } = entity;
+    event::emit(EntityDeleted { entity_id: id.to_inner(), key });
+    id.delete();
+}
+
 /// Complete a request against this entity and unlock it.
 public fun complete_request(entity: &mut Entity, req: Request) {
     assert!(entity.version == VERSION, EWrongVersion);
@@ -286,6 +315,10 @@ public fun has_module_with_type<T: store>(entity: &Entity, module_id: u64): bool
 
 public fun version(entity: &Entity): u64 {
     entity.version
+}
+
+public fun module_ids(entity: &Entity): &vector<u64> {
+    &entity.module_ids
 }
 
 // === Private Functions ===

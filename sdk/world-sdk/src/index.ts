@@ -41,6 +41,7 @@ export {
   type CapObjectRef,
   callerRequirement,
   completeRequest,
+  deleteEntity,
   deriveObjectId,
   disableAction,
   type EntityKeyInput,
