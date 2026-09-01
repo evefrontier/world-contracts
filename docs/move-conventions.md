@@ -161,7 +161,16 @@ Modules pass their own `VERSION` at install time so they can upgrade independent
 ```move
 const VERSION: u64 = 1;
 assert!(e.version == VERSION, EWrongVersion);
-e.install(module_id, option::some(b"grid".to_string()), Grid { .. }, VERSION, internal::permit(), ctx);
+e.install(
+    module_id,
+    type_id,
+    option::none(),
+    option::some(b"grid".to_string()),
+    Grid { .. },
+    VERSION,
+    internal::permit(),
+    ctx,
+);
 ```
 
 ## Entity & dynamic fields
