@@ -251,3 +251,52 @@ fun delete_with_generic_module_aborts() {
 
     abort
 }
+
+#[test]
+fun extract_for_migration_returns_bytes_and_clears_slot() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+
+    install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", module_data(), ctx);
+
+    let (data, mut req) = generic_module::extract_for_migration(&mut e, MODULE_ID, ctx);
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    assert!(data == module_data());
+    assert!(!e.has_module(MODULE_ID));
+    assert!(e.module_ids().is_empty());
+
+    install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", data, ctx);
+    assert!(generic_module::data(&e, MODULE_ID) == module_data());
+
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = generic_module::EModuleMissing)]
+fun extract_for_migration_missing_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+
+    let (_data, _req) = generic_module::extract_for_migration(
+        &mut e,
+        MODULE_ID,
+        scenario.ctx(),
+    );
+
+    abort
+}

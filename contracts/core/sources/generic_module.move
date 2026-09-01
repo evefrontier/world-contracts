@@ -45,11 +45,20 @@ public fun install(
 }
 
 public fun uninstall(entity: &mut Entity, module_id: u64, ctx: &mut TxContext): Request {
+    let (_data, req) = extract_for_migration(entity, module_id, ctx);
+    req
+}
+
+public fun extract_for_migration(
+    entity: &mut Entity,
+    module_id: u64,
+    ctx: &mut TxContext,
+): (vector<u8>, Request) {
     assert!(entity.has_module_with_type<GenericModule>(module_id), EModuleMissing);
 
     let (m, req) = entity.uninstall<GenericModule>(module_id, module_permit(), ctx);
-    let GenericModule { data: _ } = m.unwrap(module_permit());
-    req
+    let GenericModule { data } = m.unwrap(module_permit());
+    (data, req)
 }
 
 // === View Functions ===
