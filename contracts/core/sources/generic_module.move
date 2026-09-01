@@ -2,12 +2,7 @@
 /// Core owns `GenericModule` so it can mint `Permit<GenericModule>` internally.
 module core::generic_module;
 
-use core::{
-    behavior_type::BehaviorType,
-    entity::Entity,
-    mod::{Self, Module},
-    request::Request
-};
+use core::{behavior_type::BehaviorType, entity::Entity, mod::{Self, Module}, request::Request};
 use std::{internal::Permit, string::String};
 
 // === Errors ===
