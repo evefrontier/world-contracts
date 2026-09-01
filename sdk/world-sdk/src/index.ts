@@ -66,7 +66,7 @@ export {
   transferEve,
 } from './packages/currency.js'
 export {
-  genericModuleBehaviourTypeId,
+  genericModuleBehaviorTypeId,
   genericModuleData,
   genericModuleName,
   genericModuleTypeId,

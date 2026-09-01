@@ -137,8 +137,8 @@ public fun type_id(entity: &Entity): u64 {
     borrow_module(entity).type_id()
 }
 
-public fun behaviour_type_id(entity: &Entity): Option<BehaviorType> {
-    borrow_module(entity).behaviour_type_id()
+public fun behavior_type_id(entity: &Entity): Option<BehaviorType> {
+    borrow_module(entity).behavior_type_id()
 }
 
 // === Private Functions ===

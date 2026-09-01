@@ -72,7 +72,7 @@ fun install_stores_type_id_and_bytes() {
     assert!(e.has_module(MODULE_ID));
     assert!(e.has_module_with_type<generic_module::GenericModule>(MODULE_ID));
     assert!(generic_module::type_id(&e, MODULE_ID) == TYPE_ID);
-    assert!(generic_module::behaviour_type_id(&e, MODULE_ID).is_none());
+    assert!(generic_module::behavior_type_id(&e, MODULE_ID).is_none());
     assert!(generic_module::data(&e, MODULE_ID) == module_data());
     assert!(generic_module::name(&e, MODULE_ID) == option::some(module_name()));
 
@@ -116,8 +116,8 @@ fun install_two_generic_modules_on_one_entity() {
     assert!(generic_module::type_id(&e, MODULE_ID_2) == TYPE_ID_2);
     assert!(generic_module::data(&e, MODULE_ID) == module_data());
     assert!(generic_module::data(&e, MODULE_ID_2) == module_data_2());
-    assert!(generic_module::behaviour_type_id(&e, MODULE_ID).is_none());
-    assert!(generic_module::behaviour_type_id(&e, MODULE_ID_2).is_none());
+    assert!(generic_module::behavior_type_id(&e, MODULE_ID).is_none());
+    assert!(generic_module::behavior_type_id(&e, MODULE_ID_2).is_none());
 
     e.share();
     ts::return_shared(acl);

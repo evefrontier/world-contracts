@@ -157,7 +157,7 @@ public fun install<T: store>(
     entity: &mut Entity,
     module_id: u64,
     type_id: u64,
-    behaviour_type_id: Option<BehaviorType>,
+    behavior_type_id: Option<BehaviorType>,
     name: Option<String>,
     inner: T,
     version: u64,
@@ -170,7 +170,7 @@ public fun install<T: store>(
     df::add(
         &mut entity.id,
         ModuleKey(module_id),
-        mod::new(name, inner, version, type_id, behaviour_type_id),
+        mod::new(name, inner, version, type_id, behavior_type_id),
     );
     entity.module_ids.push_back(module_id);
     entity.lock();

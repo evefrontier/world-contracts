@@ -78,14 +78,14 @@ export function genericModuleTypeId(
   })
 }
 
-export function genericModuleBehaviourTypeId(
+export function genericModuleBehaviorTypeId(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   moduleId: bigint,
 ): TransactionResult {
   return tx.moveCall({
-    target: `${pkg(config)}::generic_module::behaviour_type_id`,
+    target: `${pkg(config)}::generic_module::behavior_type_id`,
     arguments: [entity, tx.pure.u64(moduleId)],
   })
 }

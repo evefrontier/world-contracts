@@ -74,7 +74,7 @@ fun create_installs_identity() {
         assert!(identity::tribe_id(&e) == TRIBE_ID);
         assert!(identity::owner(&e) == OWNER);
         assert!(identity::type_id(&e) == TYPE_ID);
-        assert!(identity::behaviour_type_id(&e) == option::some(behavior_type::identity()));
+        assert!(identity::behavior_type_id(&e) == option::some(behavior_type::identity()));
         assert!(e.key() == entity_key::new(IN_GAME_ID, tenant()));
         ts::return_shared(e);
     };

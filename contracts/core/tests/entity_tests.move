@@ -120,7 +120,7 @@ fun install_adds_module() {
     assert!(e.module_ids() == &vector[counter_id()]);
     let m = e.module_ref<Counter>(counter_id(), internal::permit<Counter>());
     assert!(mod::type_id(m) == 99);
-    assert!(mod::behaviour_type_id(m).is_none());
+    assert!(mod::behavior_type_id(m).is_none());
 
     entity::share(e);
     ts::return_shared(acl);

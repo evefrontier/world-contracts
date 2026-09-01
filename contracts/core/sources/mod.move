@@ -14,7 +14,7 @@ public struct Module<T: store> has store {
     inner: T,
     name: Option<String>,
     type_id: u64,
-    behaviour_type_id: Option<BehaviorType>,
+    behavior_type_id: Option<BehaviorType>,
 }
 
 // === Public Functions ===
@@ -55,8 +55,8 @@ public fun type_id<T: store>(m: &Module<T>): u64 {
     m.type_id
 }
 
-public fun behaviour_type_id<T: store>(m: &Module<T>): Option<BehaviorType> {
-    m.behaviour_type_id
+public fun behavior_type_id<T: store>(m: &Module<T>): Option<BehaviorType> {
+    m.behavior_type_id
 }
 
 // === Package Functions ===
@@ -67,7 +67,7 @@ public(package) fun new<T: store>(
     inner: T,
     version: u64,
     type_id: u64,
-    behaviour_type_id: Option<BehaviorType>,
+    behavior_type_id: Option<BehaviorType>,
 ): Module<T> {
-    Module { version, inner, name, type_id, behaviour_type_id }
+    Module { version, inner, name, type_id, behavior_type_id }
 }

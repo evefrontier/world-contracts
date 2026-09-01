@@ -250,7 +250,7 @@ fun install_reports_module_and_capacities() {
     assert!(e.has_module(MODULE_ID));
     assert!(inventory::type_id(&e, MODULE_ID) == TYPE_ID);
     assert!(
-        inventory::behaviour_type_id(&e, MODULE_ID) == option::some(behavior_type::inventory()),
+        inventory::behavior_type_id(&e, MODULE_ID) == option::some(behavior_type::inventory()),
     );
     assert!(main_inv(&e).capacity() == 1000);
     assert!(main_inv(&e).used() == 0);
