@@ -20,7 +20,6 @@
 module inventory::inventory;
 
 use core::{
-    behavior_type::{Self, BehaviorType},
     entity::Entity,
     entity_key,
     mod::{Self, Module},
@@ -112,7 +111,6 @@ public fun install(
     entity.install(
         module_id,
         type_id,
-        option::some(behavior_type::inventory()),
         name,
         storage,
         VERSION,
@@ -279,10 +277,6 @@ public fun storage(entity: &Entity, module_id: u64): &StorageInventory {
 
 public fun type_id(entity: &Entity, module_id: u64): u64 {
     borrow_module(entity, module_id).type_id()
-}
-
-public fun behavior_type_id(entity: &Entity, module_id: u64): Option<BehaviorType> {
-    borrow_module(entity, module_id).behavior_type_id()
 }
 
 public fun capacity(inv: &Inventory): u64 {

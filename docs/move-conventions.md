@@ -164,7 +164,6 @@ assert!(e.version == VERSION, EWrongVersion);
 e.install(
     module_id,
     type_id,
-    option::none(),
     option::some(b"grid".to_string()),
     Grid { .. },
     VERSION,

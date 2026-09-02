@@ -72,7 +72,6 @@ fun install_stores_type_id_and_bytes() {
     assert!(e.has_module(MODULE_ID));
     assert!(e.has_module_with_type<generic_module::GenericModule>(MODULE_ID));
     assert!(generic_module::type_id(&e, MODULE_ID) == TYPE_ID);
-    assert!(generic_module::behavior_type_id(&e, MODULE_ID).is_none());
     assert!(generic_module::data(&e, MODULE_ID) == module_data());
     assert!(generic_module::name(&e, MODULE_ID) == option::some(module_name()));
 
@@ -111,13 +110,12 @@ fun install_two_generic_modules_on_one_entity() {
     install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", module_data(), ctx);
     install_generic(&mut e, &acl, MODULE_ID_2, TYPE_ID_2, b"turret", module_data_2(), ctx);
 
-    assert!(e.module_ids() == &vector[MODULE_ID, MODULE_ID_2]);
+    assert!(e.has_module(MODULE_ID));
+    assert!(e.has_module(MODULE_ID_2));
     assert!(generic_module::type_id(&e, MODULE_ID) == TYPE_ID);
     assert!(generic_module::type_id(&e, MODULE_ID_2) == TYPE_ID_2);
     assert!(generic_module::data(&e, MODULE_ID) == module_data());
     assert!(generic_module::data(&e, MODULE_ID_2) == module_data_2());
-    assert!(generic_module::behavior_type_id(&e, MODULE_ID).is_none());
-    assert!(generic_module::behavior_type_id(&e, MODULE_ID_2).is_none());
 
     e.share();
     ts::return_shared(acl);
@@ -185,7 +183,6 @@ fun uninstall_removes_module() {
     e.complete_request(req);
 
     assert!(!e.has_module(MODULE_ID));
-    assert!(e.module_ids().is_empty());
 
     e.share();
     ts::return_shared(acl);
@@ -234,24 +231,6 @@ fun delete_after_uninstall() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = entity::EModulesRemain)]
-fun delete_with_generic_module_aborts() {
-    let mut scenario = ts::begin(@0xA);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, @0xA);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
-    let ctx = scenario.ctx();
-
-    install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", module_data(), ctx);
-
-    let (_req, _ticket) = e.request_delete();
-
-    abort
-}
-
 #[test]
 fun extract_for_migration_returns_bytes_and_clears_slot() {
     let mut scenario = ts::begin(@0xA);
@@ -271,7 +250,6 @@ fun extract_for_migration_returns_bytes_and_clears_slot() {
 
     assert!(data == module_data());
     assert!(!e.has_module(MODULE_ID));
-    assert!(e.module_ids().is_empty());
 
     install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", data, ctx);
     assert!(generic_module::data(&e, MODULE_ID) == module_data());

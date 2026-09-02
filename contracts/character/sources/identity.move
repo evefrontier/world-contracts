@@ -6,12 +6,7 @@
 /// multiple addresses can be bound to a single character.
 module character::identity;
 
-use core::{
-    behavior_type::{Self, BehaviorType},
-    entity::Entity,
-    mod::{Self, Module},
-    request::Request
-};
+use core::{entity::Entity, mod::{Self, Module}, request::Request};
 use std::{internal::Permit, string::{Self, String}};
 
 // === Errors ===
@@ -51,10 +46,6 @@ public fun type_id(entity: &Entity): u64 {
     borrow_module(entity).type_id()
 }
 
-public fun behavior_type_id(entity: &Entity): Option<BehaviorType> {
-    borrow_module(entity).behavior_type_id()
-}
-
 // === Public Functions ===
 
 /// Build and install the identity module on a character entity.
@@ -69,7 +60,6 @@ public fun install(
     entity.install(
         module_id(),
         type_id,
-        option::some(behavior_type::identity()),
         option::some(module_label()),
         identity,
         VERSION,

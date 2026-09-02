@@ -5,7 +5,6 @@ use core::{
     access_cap::{Self, AccessCap},
     action,
     admin_service::{Self, AdminACL},
-    behavior_type,
     entity::{Self, Entity},
     location_service,
     mod,
@@ -149,7 +148,6 @@ fun install_sets_fields_and_emits() {
     assert!(metadata::description(&e) == string::utf8(DESC));
     assert!(metadata::url(&e) == string::utf8(URL));
     assert!(metadata::type_id(&e) == TYPE_ID);
-    assert!(metadata::behavior_type_id(&e) == option::some(behavior_type::metadata()));
     assert!(event::events_by_type<MetadataChanged>().length() == 1);
 
     e.share();

@@ -2,7 +2,7 @@
 /// Core owns `GenericModule` so it can mint `Permit<GenericModule>` internally.
 module core::generic_module;
 
-use core::{behavior_type::BehaviorType, entity::Entity, mod::{Self, Module}, request::Request};
+use core::{entity::Entity, mod::{Self, Module}, request::Request};
 use std::{internal::Permit, string::String};
 
 // === Errors ===
@@ -35,7 +35,6 @@ public fun install(
     entity.install(
         module_id,
         type_id,
-        option::none(),
         name,
         GenericModule { data },
         VERSION,
@@ -69,10 +68,6 @@ public fun data(entity: &Entity, module_id: u64): vector<u8> {
 
 public fun type_id(entity: &Entity, module_id: u64): u64 {
     borrow_module(entity, module_id).type_id()
-}
-
-public fun behavior_type_id(entity: &Entity, module_id: u64): Option<BehaviorType> {
-    borrow_module(entity, module_id).behavior_type_id()
 }
 
 public fun name(entity: &Entity, module_id: u64): Option<String> {

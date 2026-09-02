@@ -5,7 +5,6 @@
 module metadata::metadata;
 
 use core::{
-    behavior_type::{Self, BehaviorType},
     entity::Entity,
     entity_key::EntityKey,
     mod::{Self, Module},
@@ -65,7 +64,6 @@ public fun install(
     entity.install(
         module_id(),
         type_id,
-        option::some(behavior_type::metadata()),
         option::some(module_label()),
         metadata,
         VERSION,
@@ -135,10 +133,6 @@ public fun module_id(): u64 {
 
 public fun type_id(entity: &Entity): u64 {
     borrow_module(entity).type_id()
-}
-
-public fun behavior_type_id(entity: &Entity): Option<BehaviorType> {
-    borrow_module(entity).behavior_type_id()
 }
 
 // === Private Functions ===

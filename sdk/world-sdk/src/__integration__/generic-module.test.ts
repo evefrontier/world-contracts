@@ -10,7 +10,6 @@ import {
   verifyAdmin,
 } from '../packages/core.js'
 import {
-  genericModuleBehaviorTypeId,
   genericModuleData,
   genericModuleName,
   genericModuleTypeId,
@@ -59,13 +58,11 @@ describe('generic module (localnet)', () => {
     expect(first.typeId).toBe(TYPE_ID)
     expect(first.data).toEqual(DATA)
     expect(first.name).toBe('thruster')
-    expect(first.behaviorNone).toBe(true)
 
     const second = await readGeneric(client, config, entityId, MODULE_ID_2)
     expect(second.typeId).toBe(TYPE_ID_2)
     expect(second.data).toEqual(DATA_2)
     expect(second.name).toBe('turret')
-    expect(second.behaviorNone).toBe(true)
 
     const teardownTx = new Transaction()
     const e = teardownTx.object(entityId)
@@ -90,7 +87,6 @@ async function readGeneric(
   typeId: bigint
   data: number[]
   name: string | null
-  behaviorNone: boolean
 }> {
   const tx = new Transaction()
   tx.setSender(signer)
@@ -98,7 +94,6 @@ async function readGeneric(
   genericModuleTypeId(tx, config, entity, moduleId)
   genericModuleData(tx, config, entity, moduleId)
   genericModuleName(tx, config, entity, moduleId)
-  genericModuleBehaviorTypeId(tx, config, entity, moduleId)
 
   const res = await client.simulateTransaction({
     transaction: tx,
@@ -119,12 +114,10 @@ async function readGeneric(
   const name = bcs
     .option(bcs.string())
     .parse(res.commandResults[2].returnValues[0].bcs)
-  const behavior = res.commandResults[3].returnValues[0].bcs
 
   return {
     typeId,
     data,
     name,
-    behaviorNone: behavior[0] === 0,
   }
 }

@@ -5,7 +5,6 @@ use core::{
     access_cap::{Self, AccessCap},
     action,
     admin_service::{Self, AdminACL},
-    behavior_type,
     entity::{Self, Entity},
     location_service,
     object_registry::ObjectRegistry,
@@ -249,7 +248,6 @@ fun install_reports_module_and_capacities() {
     let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
     assert!(e.has_module(MODULE_ID));
     assert!(inventory::type_id(&e, MODULE_ID) == TYPE_ID);
-    assert!(inventory::behavior_type_id(&e, MODULE_ID) == option::some(behavior_type::inventory()));
     assert!(main_inv(&e).capacity() == 1000);
     assert!(main_inv(&e).used() == 0);
     assert!(inventory::ephemeral_capacity(inventory::storage(&e, MODULE_ID)) == 100);

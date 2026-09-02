@@ -3,7 +3,6 @@
 /// Identity is the caller-supplied `module_id` (`u64`) used as the dynamic-field key, not `name`.
 module core::mod;
 
-use core::behavior_type::BehaviorType;
 use std::{internal::Permit, string::String};
 use sui::{bcs, hash};
 
@@ -14,7 +13,6 @@ public struct Module<T: store> has store {
     inner: T,
     name: Option<String>,
     type_id: u64,
-    behavior_type_id: Option<BehaviorType>,
 }
 
 // === Public Functions ===
@@ -55,10 +53,6 @@ public fun type_id<T: store>(m: &Module<T>): u64 {
     m.type_id
 }
 
-public fun behavior_type_id<T: store>(m: &Module<T>): Option<BehaviorType> {
-    m.behavior_type_id
-}
-
 // === Package Functions ===
 
 /// Only `core::entity` may wrap module state.
@@ -67,7 +61,6 @@ public(package) fun new<T: store>(
     inner: T,
     version: u64,
     type_id: u64,
-    behavior_type_id: Option<BehaviorType>,
 ): Module<T> {
-    Module { version, inner, name, type_id, behavior_type_id }
+    Module { version, inner, name, type_id }
 }

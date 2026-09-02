@@ -14,7 +14,6 @@ use core::{
     access_cap::{Self, AccessCap, ReturnReceipt},
     action::Action,
     admin_service,
-    behavior_type::BehaviorType,
     entity_key::{Self, EntityKey},
     location_service,
     mod::{Self, Module},
@@ -154,7 +153,6 @@ public fun install<T: store>(
     entity: &mut Entity,
     module_id: u64,
     type_id: u64,
-    behavior_type_id: Option<BehaviorType>,
     name: Option<String>,
     inner: T,
     version: u64,
@@ -164,7 +162,7 @@ public fun install<T: store>(
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(!df::exists(&entity.id, ModuleKey(module_id)), EModuleExists);
 
-    df::add(&mut entity.id, ModuleKey(module_id), mod::new(name, inner, version));
+    df::add(&mut entity.id, ModuleKey(module_id), mod::new(name, inner, version, type_id));
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
