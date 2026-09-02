@@ -23,6 +23,7 @@ const URL: vector<u8> = b"https://example.com/a.png";
 const NAME2: vector<u8> = b"Beta";
 const DESC2: vector<u8> = b"Updated";
 const URL2: vector<u8> = b"https://example.com/b.png";
+
 /// Install metadata on a fresh entity. No access caps yet.
 fun build_entity(
     scenario: &mut ts::Scenario,
