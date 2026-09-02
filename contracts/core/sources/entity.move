@@ -5,9 +5,9 @@
 /// identifier (`id + tenant`), so each in-game ID maps to exactly one entity.
 ///
 /// Lifecycle operations (`install`, `uninstall`, `enable_action`,
-/// `disable_action`, `interact`) lock the entity and return a `Request` that
-/// the transaction must `complete_request` — this is what gates `module_mut`
-/// access and leaves room for system approval requirements.
+/// `disable_action`, `interact`, `request_delete`) lock the entity and return a
+/// `Request` the transaction must satisfy. `complete_request` unlocks;
+/// `delete` consumes the object and a `DeleteTicket` minted only by `request_delete`.
 module core::entity;
 
 use core::{
@@ -43,6 +43,8 @@ const EModuleMissing: vector<u8> = b"Module is not installed";
 const EActionExists: vector<u8> = b"Action is already enabled";
 #[error(code = 8)]
 const EEntityAlreadyExists: vector<u8> = b"Entity already exists for this key";
+#[error(code = 10)]
+const ELocked: vector<u8> = b"Entity is locked";
 
 // === Constants ===
 
@@ -61,9 +63,20 @@ public struct Entity has key {
     key: EntityKey,
 }
 
+/// Proof that delete started via `request_delete`.
+/// `request_delete` mints it and only `delete` consumes it.
+public struct DeleteTicket {
+    entity_id: ID,
+}
+
 // === Events ===
 
 public struct EntityCreated has copy, drop {
+    entity_id: ID,
+    key: EntityKey,
+}
+
+public struct EntityDeleted has copy, drop {
     entity_id: ID,
     key: EntityKey,
 }
@@ -146,7 +159,7 @@ public fun install<T: store>(
     _ctx: &mut TxContext,
 ): Request {
     assert!(entity.version == VERSION, EWrongVersion);
-    assert!(!df::exists_(&entity.id, ModuleKey(module_id)), EModuleExists);
+    assert!(!df::exists(&entity.id, ModuleKey(module_id)), EModuleExists);
 
     df::add(&mut entity.id, ModuleKey(module_id), mod::new(name, inner, version));
     entity.lock();
@@ -257,6 +270,41 @@ public fun module_ref<T: store>(entity: &Entity, module_id: u64, _: Permit<T>): 
     df::borrow(&entity.id, ModuleKey(module_id))
 }
 
+/// Start admin teardown. The request carries `admin_requirement` today; more
+/// requirements can be added later. Finish with `verify_admin` (and any future
+/// handlers) then `delete`.
+public fun request_delete(entity: &mut Entity): (Request, DeleteTicket) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    assert!(!entity.is_locked(), ELocked);
+    entity.lock();
+    let entity_id = entity.id.to_inner();
+    let req = request::new(
+        option::some(entity_id),
+        vector[admin_service::admin_requirement()],
+    );
+    (req, DeleteTicket { entity_id })
+}
+
+/// Consume the entity after `request_delete` and a completed request. Strips
+/// remaining DFs and deletes the UID. The derived `EntityKey` stays claimed.
+///
+/// TODO: check for orphaned modules. Delete no longer checks
+/// installed modules; leftover module DFs are orphaned.
+public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    assert!(entity.is_locked(), ENotLocked);
+    let DeleteTicket { entity_id } = ticket;
+    assert!(entity_id == entity.id.to_inner(), EWrongEntity);
+    req.entity_id().do!(|id| assert!(id == entity.id.to_inner(), EWrongEntity));
+    req.complete();
+    entity.unlock();
+
+    let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
+    let Entity { id, version: _, key } = entity;
+    event::emit(EntityDeleted { entity_id: id.to_inner(), key });
+    id.delete();
+}
+
 /// Complete a request against this entity and unlock it.
 public fun complete_request(entity: &mut Entity, req: Request) {
     assert!(entity.version == VERSION, EWrongVersion);
@@ -277,7 +325,7 @@ public fun key(entity: &Entity): EntityKey {
 }
 
 public fun has_module(entity: &Entity, module_id: u64): bool {
-    df::exists_(&entity.id, ModuleKey(module_id))
+    df::exists(&entity.id, ModuleKey(module_id))
 }
 
 public fun has_module_with_type<T: store>(entity: &Entity, module_id: u64): bool {
@@ -299,5 +347,5 @@ fun unlock(entity: &mut Entity) {
 }
 
 fun is_locked(entity: &Entity): bool {
-    df::exists_(&entity.id, InFlight())
+    df::exists(&entity.id, InFlight())
 }

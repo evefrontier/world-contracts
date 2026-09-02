@@ -6,6 +6,7 @@ use core::{
     action,
     admin_service,
     entity,
+    request,
     test_helpers::{setup, take_registry, take_acl, claim, tenant}
 };
 use std::string;
@@ -376,6 +377,117 @@ fun interact_unknown_action_aborts() {
 
     let req = e.interact(string::utf8(b"missing"), vector[], ctx);
     e.complete_request(req);
+
+    abort
+}
+
+// === Delete ===
+
+#[test]
+fun delete_empty_entity() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let key = e.key();
+
+    let (mut req, ticket) = e.request_delete();
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.delete(req, ticket);
+
+    assert!(registry.exists(key));
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test]
+fun delete_after_uninstall() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+
+    let mut req = e.install(
+        counter_id(),
+        option::some(counter_name()),
+        Counter { value: 0 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    let (m, mut req) = e.uninstall<Counter>(counter_id(), internal::permit<Counter>(), ctx);
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+    let Counter { value: _ } = m.unwrap(internal::permit<Counter>());
+
+    let (mut req, ticket) = e.request_delete();
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.delete(req, ticket);
+
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test]
+fun delete_shared_entity() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let e_id = e.id();
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let acl = take_acl(&scenario);
+    let (mut req, ticket) = e.request_delete();
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.delete(req, ticket);
+    ts::return_shared(acl);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = entity::ELocked)]
+fun request_delete_while_locked_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let (mut e, _req) = entity::new(&mut registry, 1, tenant());
+    let (_req2, _ticket) = e.request_delete();
+
+    abort
+}
+
+#[test, expected_failure(abort_code = request::ERequestNotComplete)]
+fun delete_without_admin_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let (req, ticket) = e.request_delete();
+    e.delete(req, ticket);
 
     abort
 }
