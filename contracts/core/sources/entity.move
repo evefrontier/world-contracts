@@ -43,8 +43,6 @@ const EModuleMissing: vector<u8> = b"Module is not installed";
 const EActionExists: vector<u8> = b"Action is already enabled";
 #[error(code = 8)]
 const EEntityAlreadyExists: vector<u8> = b"Entity already exists for this key";
-#[error(code = 9)]
-const EModulesRemain: vector<u8> = b"Uninstall all modules before deleting the entity";
 #[error(code = 10)]
 const ELocked: vector<u8> = b"Entity is locked";
 
@@ -63,7 +61,6 @@ public struct Entity has key {
     version: u64,
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
-    module_ids: vector<u64>,
 }
 
 /// Proof that delete started via `request_delete`.
@@ -95,7 +92,7 @@ public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity,
     assert!(!registry.exists(key), EEntityAlreadyExists);
 
     let uid = derived_object::claim(registry.borrow_id(), key);
-    let mut entity = Entity { id: uid, version: VERSION, key, module_ids: vector[] };
+    let mut entity = Entity { id: uid, version: VERSION, key };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
 
     event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
@@ -165,7 +162,6 @@ public fun install<T: store>(
     assert!(!df::exists(&entity.id, ModuleKey(module_id)), EModuleExists);
 
     df::add(&mut entity.id, ModuleKey(module_id), mod::new(name, inner, version));
-    entity.module_ids.push_back(module_id);
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
@@ -184,9 +180,6 @@ public fun uninstall<T: store>(
     assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(module_id)), EModuleMissing);
 
     let m: Module<T> = df::remove(&mut entity.id, ModuleKey(module_id));
-    let (found, i) = entity.module_ids.index_of(&module_id);
-    assert!(found, EModuleMissing);
-    entity.module_ids.remove(i);
     entity.lock();
     let req = request::new(
         option::some(entity.id.to_inner()),
@@ -277,13 +270,12 @@ public fun module_ref<T: store>(entity: &Entity, module_id: u64, _: Permit<T>): 
     df::borrow(&entity.id, ModuleKey(module_id))
 }
 
-/// Start admin teardown. Aborts if any module is still installed. The request
-/// carries `admin_requirement` today; more requirements can be added later.
-/// Finish with `verify_admin` (and any future handlers) then `delete`.
+/// Start admin teardown. The request carries `admin_requirement` today; more
+/// requirements can be added later. Finish with `verify_admin` (and any future
+/// handlers) then `delete`.
 public fun request_delete(entity: &mut Entity): (Request, DeleteTicket) {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(!entity.is_locked(), ELocked);
-    assert!(entity.module_ids.is_empty(), EModulesRemain);
     entity.lock();
     let entity_id = entity.id.to_inner();
     let req = request::new(
@@ -295,10 +287,12 @@ public fun request_delete(entity: &mut Entity): (Request, DeleteTicket) {
 
 /// Consume the entity after `request_delete` and a completed request. Strips
 /// remaining DFs and deletes the UID. The derived `EntityKey` stays claimed.
+///
+/// TODO: check for orphaned modules. Delete no longer checks
+/// installed modules; leftover module DFs are orphaned.
 public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(entity.is_locked(), ENotLocked);
-    assert!(entity.module_ids.is_empty(), EModulesRemain);
     let DeleteTicket { entity_id } = ticket;
     assert!(entity_id == entity.id.to_inner(), EWrongEntity);
     req.entity_id().do!(|id| assert!(id == entity.id.to_inner(), EWrongEntity));
@@ -306,7 +300,7 @@ public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     entity.unlock();
 
     let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
-    let Entity { id, version: _, key, module_ids: _ } = entity;
+    let Entity { id, version: _, key } = entity;
     event::emit(EntityDeleted { entity_id: id.to_inner(), key });
     id.delete();
 }
@@ -340,10 +334,6 @@ public fun has_module_with_type<T: store>(entity: &Entity, module_id: u64): bool
 
 public fun version(entity: &Entity): u64 {
     entity.version
-}
-
-public fun module_ids(entity: &Entity): &vector<u64> {
-    &entity.module_ids
 }
 
 // === Private Functions ===
