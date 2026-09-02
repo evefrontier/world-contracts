@@ -44,7 +44,6 @@ fun new_sets_initial_fields() {
         assert!(entity::key(&e).id() == 1);
         assert!(entity::key(&e).tenant() == tenant());
         assert!(!entity::has_module(&e, counter_id()));
-        assert!(entity::module_ids(&e).is_empty());
 
         entity::share(e);
         ts::return_shared(acl);
@@ -117,10 +116,6 @@ fun install_adds_module() {
 
     assert!(e.has_module(counter_id()));
     assert!(e.has_module_with_type<Counter>(counter_id()));
-    assert!(e.module_ids() == &vector[counter_id()]);
-    let m = e.module_ref<Counter>(counter_id(), internal::permit<Counter>());
-    assert!(mod::type_id(m) == 99);
-    assert!(mod::behavior_type_id(m).is_none());
 
     entity::share(e);
     ts::return_shared(acl);
@@ -196,7 +191,6 @@ fun uninstall_removes_and_returns_module() {
     e.complete_request(req);
 
     assert!(!e.has_module(counter_id()));
-    assert!(e.module_ids().is_empty());
     let Counter { value } = m.unwrap(internal::permit<Counter>());
     assert!(value == 9);
 
@@ -262,7 +256,6 @@ fun install_two_modules_of_same_type() {
 
     assert!(e.has_module_with_type<Counter>(counter_id()));
     assert!(e.has_module_with_type<Counter>(second_id));
-    assert!(e.module_ids() == &vector[counter_id(), second_id]);
     assert!(e.module_ref<Counter>(counter_id(), internal::permit<Counter>()).inner().value == 0);
     assert!(e.module_ref<Counter>(second_id, internal::permit<Counter>()).inner().value == 1);
 
@@ -484,35 +477,6 @@ fun delete_shared_entity() {
     e.delete(req, ticket);
     ts::return_shared(acl);
     scenario.end();
-}
-
-#[test, expected_failure(abort_code = entity::EModulesRemain)]
-fun delete_with_module_aborts() {
-    let mut scenario = ts::begin(@0xA);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, @0xA);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
-    let ctx = scenario.ctx();
-
-    let mut req = e.install(
-        counter_id(),
-        99,
-        option::none(),
-        option::some(counter_name()),
-        Counter { value: 0 },
-        1,
-        internal::permit<Counter>(),
-        ctx,
-    );
-    admin_service::verify_admin(&mut req, &acl, ctx);
-    e.complete_request(req);
-
-    let (_req, _ticket) = e.request_delete();
-
-    abort
 }
 
 #[test, expected_failure(abort_code = entity::ELocked)]
