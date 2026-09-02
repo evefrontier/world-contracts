@@ -19,7 +19,6 @@ const TENANT: vector<u8> = b"alpha";
 const TENANT2: vector<u8> = b"beta";
 const IN_GAME_ID: u64 = 42;
 const TRIBE_ID: u32 = 7;
-const TYPE_ID: u64 = 1;
 
 fun tenant(): String { string::utf8(TENANT) }
 
@@ -43,7 +42,7 @@ fun create_character(
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     character.complete_request(req);
 
-    let mut req = identity::install(&mut character, TYPE_ID, tribe_id, owner, scenario.ctx());
+    let mut req = identity::install(&mut character, tribe_id, owner, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     character.complete_request(req);
 
@@ -72,7 +71,8 @@ fun create_installs_identity() {
         assert!(identity::module_id() == mod::id_from_name(b"identity"));
         assert!(identity::tribe_id(&e) == TRIBE_ID);
         assert!(identity::owner(&e) == OWNER);
-        assert!(identity::type_id(&e) == TYPE_ID);
+        assert!(identity::type_id(&e) == 0);
+        assert!(!identity::is_creation_module(&e));
         assert!(e.key() == entity_key::new(IN_GAME_ID, tenant()));
         ts::return_shared(e);
     };

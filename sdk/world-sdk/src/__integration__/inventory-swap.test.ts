@@ -58,7 +58,6 @@ describe('inventory owner-configured swap (localnet)', () => {
     createCharacter(setupTx, config, {
       inGameId: playerKey.id,
       tenant: playerKey.tenant,
-      typeId: 1n,
       tribeId: 1,
       owner: signer,
     })

@@ -60,7 +60,6 @@ describe('inventory owner-access via Character', () => {
     createCharacter(setupTx, config, {
       inGameId: charKey.id,
       tenant: charKey.tenant,
-      typeId: 1n,
       tribeId: 1,
       owner: signer,
     })

@@ -8,7 +8,6 @@ const CHARACTER_PACKAGE = 'character'
 export interface CreateCharacterArgs {
   inGameId: bigint
   tenant: string
-  typeId: bigint
   tribeId: number
   owner: string
 }
@@ -34,7 +33,6 @@ export function createCharacter(
     target: `${mvrName(config.env, CHARACTER_PACKAGE)}::identity::install`,
     arguments: [
       character,
-      tx.pure.u64(args.typeId),
       tx.pure.u32(args.tribeId),
       tx.pure.address(args.owner),
     ],

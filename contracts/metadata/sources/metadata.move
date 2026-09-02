@@ -53,7 +53,6 @@ public struct MetadataChanged has copy, drop {
 /// Empty strings are allowed.
 public fun install(
     entity: &mut Entity,
-    type_id: u64,
     name: String,
     description: String,
     url: String,
@@ -63,7 +62,8 @@ public fun install(
     emit_changed(entity, &metadata);
     entity.install(
         module_id(),
-        type_id,
+        0,
+        false,
         option::some(module_label()),
         metadata,
         VERSION,
@@ -133,6 +133,10 @@ public fun module_id(): u64 {
 
 public fun type_id(entity: &Entity): u64 {
     borrow_module(entity).type_id()
+}
+
+public fun is_creation_module(entity: &Entity): bool {
+    borrow_module(entity).is_creation_module()
 }
 
 // === Private Functions ===

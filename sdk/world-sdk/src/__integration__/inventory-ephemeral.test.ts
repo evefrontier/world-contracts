@@ -56,7 +56,6 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     createCharacter(setupTx, config, {
       inGameId: playerKey.id,
       tenant: playerKey.tenant,
-      typeId: 1n,
       tribeId: 1,
       owner: signer,
     })

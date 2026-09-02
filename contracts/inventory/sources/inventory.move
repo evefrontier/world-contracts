@@ -111,6 +111,7 @@ public fun install(
     entity.install(
         module_id,
         type_id,
+        true,
         name,
         storage,
         VERSION,
@@ -277,6 +278,10 @@ public fun storage(entity: &Entity, module_id: u64): &StorageInventory {
 
 public fun type_id(entity: &Entity, module_id: u64): u64 {
     borrow_module(entity, module_id).type_id()
+}
+
+public fun is_creation_module(entity: &Entity, module_id: u64): bool {
+    borrow_module(entity, module_id).is_creation_module()
 }
 
 public fun capacity(inv: &Inventory): u64 {

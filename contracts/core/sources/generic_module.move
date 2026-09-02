@@ -35,6 +35,7 @@ public fun install(
     entity.install(
         module_id,
         type_id,
+        true,
         name,
         GenericModule { data },
         VERSION,
@@ -68,6 +69,10 @@ public fun data(entity: &Entity, module_id: u64): vector<u8> {
 
 public fun type_id(entity: &Entity, module_id: u64): u64 {
     borrow_module(entity, module_id).type_id()
+}
+
+public fun is_creation_module(entity: &Entity, module_id: u64): bool {
+    borrow_module(entity, module_id).is_creation_module()
 }
 
 public fun name(entity: &Entity, module_id: u64): Option<String> {

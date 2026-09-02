@@ -24,7 +24,6 @@ for (const alias of PLAYER_ALIASES) {
   createCharacter(tx, config, {
     inGameId: BigInt(resources.character[alias]),
     tenant: resources.tenant,
-    typeId: 1n,
     tribeId: resources.tribeId,
     owner: accounts.accounts[alias].address,
   })

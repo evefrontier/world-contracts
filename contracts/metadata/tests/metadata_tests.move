@@ -23,8 +23,6 @@ const URL: vector<u8> = b"https://example.com/a.png";
 const NAME2: vector<u8> = b"Beta";
 const DESC2: vector<u8> = b"Updated";
 const URL2: vector<u8> = b"https://example.com/b.png";
-const TYPE_ID: u64 = 1;
-
 /// Install metadata on a fresh entity. No access caps yet.
 fun build_entity(
     scenario: &mut ts::Scenario,
@@ -38,7 +36,6 @@ fun build_entity(
     let mut e = claim(registry, acl, id, scenario.ctx());
     let mut req = metadata::install(
         &mut e,
-        TYPE_ID,
         string::utf8(name),
         string::utf8(description),
         string::utf8(url),
@@ -147,7 +144,8 @@ fun install_sets_fields_and_emits() {
     assert!(metadata::name(&e) == string::utf8(NAME));
     assert!(metadata::description(&e) == string::utf8(DESC));
     assert!(metadata::url(&e) == string::utf8(URL));
-    assert!(metadata::type_id(&e) == TYPE_ID);
+    assert!(metadata::type_id(&e) == 0);
+    assert!(!metadata::is_creation_module(&e));
     assert!(event::events_by_type<MetadataChanged>().length() == 1);
 
     e.share();

@@ -104,6 +104,7 @@ fun install_adds_module() {
     let mut req = e.install(
         counter_id(),
         99,
+        false,
         option::some(counter_name()),
         Counter { value: 0 },
         1,
@@ -136,6 +137,7 @@ fun install_duplicate_module_aborts() {
     let mut req = e.install(
         counter_id(),
         99,
+        false,
         option::some(counter_name()),
         Counter { value: 0 },
         1,
@@ -148,6 +150,7 @@ fun install_duplicate_module_aborts() {
     let req = e.install(
         counter_id(),
         99,
+        false,
         option::some(counter_name()),
         Counter { value: 1 },
         1,
@@ -173,6 +176,7 @@ fun uninstall_removes_and_returns_module() {
     let mut req = e.install(
         counter_id(),
         99,
+        false,
         option::some(counter_name()),
         Counter { value: 9 },
         1,
@@ -227,6 +231,7 @@ fun install_two_modules_of_same_type() {
     let mut req = e.install(
         counter_id(),
         99,
+        false,
         option::some(counter_name()),
         Counter { value: 0 },
         1,
@@ -239,6 +244,7 @@ fun install_two_modules_of_same_type() {
     let mut req = e.install(
         second_id,
         99,
+        false,
         option::some(string::utf8(b"counter-2")),
         Counter { value: 1 },
         1,
@@ -425,6 +431,7 @@ fun delete_after_uninstall() {
     let mut req = e.install(
         counter_id(),
         99,
+        false,
         option::some(counter_name()),
         Counter { value: 0 },
         1,

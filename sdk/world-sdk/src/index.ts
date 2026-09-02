@@ -67,6 +67,7 @@ export {
 } from './packages/currency.js'
 export {
   genericModuleData,
+  genericModuleIsCreationModule,
   genericModuleName,
   genericModuleTypeId,
   type InstallGenericModuleArgs,
@@ -96,7 +97,6 @@ export {
 export {
   editMetadata,
   editRequirement,
-  type InstallMetadataArgs,
   installMetadata,
   type MetadataFields,
   uninstallMetadata,
