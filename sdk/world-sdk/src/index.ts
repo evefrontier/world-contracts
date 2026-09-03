@@ -67,7 +67,6 @@ export {
 } from './packages/currency.js'
 export {
   genericModuleData,
-  genericModuleIsCreationModule,
   genericModuleName,
   genericModuleTypeId,
   type InstallGenericModuleArgs,

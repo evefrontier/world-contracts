@@ -163,8 +163,6 @@ const VERSION: u64 = 1;
 assert!(e.version == VERSION, EWrongVersion);
 e.install(
     module_id,
-    type_id,
-    false,
     option::some(b"grid".to_string()),
     Grid { .. },
     VERSION,

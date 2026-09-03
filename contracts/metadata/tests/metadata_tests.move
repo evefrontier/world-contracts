@@ -145,8 +145,6 @@ fun install_sets_fields_and_emits() {
     assert!(metadata::name(&e) == string::utf8(NAME));
     assert!(metadata::description(&e) == string::utf8(DESC));
     assert!(metadata::url(&e) == string::utf8(URL));
-    assert!(metadata::type_id(&e) == 0);
-    assert!(!metadata::is_creation_module(&e));
     assert!(event::events_by_type<MetadataChanged>().length() == 1);
 
     e.share();

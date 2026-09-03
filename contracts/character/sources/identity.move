@@ -42,14 +42,6 @@ public fun module_id(): u64 {
     mod::id_from_name(NAME)
 }
 
-public fun type_id(entity: &Entity): u64 {
-    borrow_module(entity).type_id()
-}
-
-public fun is_creation_module(entity: &Entity): bool {
-    borrow_module(entity).is_creation_module()
-}
-
 // === Public Functions ===
 
 /// Build and install the identity module on a character entity.
@@ -62,8 +54,6 @@ public fun install(
     let identity = Identity { tribe_id, owner };
     entity.install(
         module_id(),
-        0,
-        false,
         option::some(module_label()),
         identity,
         VERSION,

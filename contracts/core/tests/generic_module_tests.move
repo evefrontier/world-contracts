@@ -72,7 +72,6 @@ fun install_stores_type_id_and_bytes() {
     assert!(e.has_module(MODULE_ID));
     assert!(e.has_module_with_type<generic_module::GenericModule>(MODULE_ID));
     assert!(generic_module::type_id(&e, MODULE_ID) == TYPE_ID);
-    assert!(generic_module::is_creation_module(&e, MODULE_ID));
     assert!(generic_module::data(&e, MODULE_ID) == module_data());
     assert!(generic_module::name(&e, MODULE_ID) == option::some(module_name()));
 

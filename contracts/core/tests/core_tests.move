@@ -50,8 +50,6 @@ fun end_to_end_flow() {
     // Install a module (admin-gated), then close out the install request.
     let mut req = e.install(
         counter_id,
-        99,
-        false,
         option::some(string::utf8(b"counter")),
         Counter { value: 0 },
         1,
@@ -107,8 +105,6 @@ fun cannot_complete_with_pending_requirement() {
 
     let mut req = e.install(
         counter_id,
-        99,
-        false,
         option::some(string::utf8(b"counter")),
         Counter { value: 0 },
         1,

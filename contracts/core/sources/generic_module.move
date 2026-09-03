@@ -19,6 +19,7 @@ const VERSION: u64 = 1;
 // === Structs ===
 
 public struct GenericModule has store {
+    type_id: u64,
     data: vector<u8>,
 }
 
@@ -34,10 +35,8 @@ public fun install(
 ): Request {
     entity.install(
         module_id,
-        type_id,
-        true,
         name,
-        GenericModule { data },
+        GenericModule { type_id, data },
         VERSION,
         module_permit(),
         ctx,
@@ -57,7 +56,7 @@ public fun extract_for_migration(
     assert!(entity.has_module_with_type<GenericModule>(module_id), EModuleMissing);
 
     let (m, req) = entity.uninstall<GenericModule>(module_id, module_permit(), ctx);
-    let GenericModule { data } = m.unwrap(module_permit());
+    let GenericModule { type_id: _, data } = m.unwrap(module_permit());
     (data, req)
 }
 
@@ -68,11 +67,7 @@ public fun data(entity: &Entity, module_id: u64): vector<u8> {
 }
 
 public fun type_id(entity: &Entity, module_id: u64): u64 {
-    borrow_module(entity, module_id).type_id()
-}
-
-public fun is_creation_module(entity: &Entity, module_id: u64): bool {
-    borrow_module(entity, module_id).is_creation_module()
+    borrow_module(entity, module_id).inner().type_id
 }
 
 public fun name(entity: &Entity, module_id: u64): Option<String> {

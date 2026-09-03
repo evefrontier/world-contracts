@@ -78,18 +78,6 @@ export function genericModuleTypeId(
   })
 }
 
-export function genericModuleIsCreationModule(
-  tx: Transaction,
-  config: WorldConfig,
-  entity: TransactionArgument,
-  moduleId: bigint,
-): TransactionResult {
-  return tx.moveCall({
-    target: `${pkg(config)}::generic_module::is_creation_module`,
-    arguments: [entity, tx.pure.u64(moduleId)],
-  })
-}
-
 export function genericModuleName(
   tx: Transaction,
   config: WorldConfig,

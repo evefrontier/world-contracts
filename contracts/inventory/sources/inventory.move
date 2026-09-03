@@ -64,6 +64,7 @@ public struct Inventory has store {
 /// the authorized id: the entity's own id is the main inventory (created at
 /// install); any other key is a lazily-created ephemeral inventory.
 public struct StorageInventory has store {
+    type_id: u64,
     ephemeral_capacity: u64,
     // `LinkedTable`: so it can be iterated to burn every inventory
     // on uninstall.
@@ -107,11 +108,9 @@ public fun install(
         entity_id,
         Inventory { capacity: main_capacity, used: 0, items: item::new_bag(ctx) },
     );
-    let storage = StorageInventory { ephemeral_capacity, inventories };
+    let storage = StorageInventory { type_id, ephemeral_capacity, inventories };
     entity.install(
         module_id,
-        type_id,
-        true,
         name,
         storage,
         VERSION,
@@ -128,7 +127,7 @@ public fun uninstall(entity: &mut Entity, module_id: u64, ctx: &mut TxContext): 
 
     let tenant = entity.key().tenant();
     let (inv_module, req) = entity.uninstall<StorageInventory>(module_id, module_permit(), ctx);
-    let StorageInventory { ephemeral_capacity: _, inventories } = inv_module.unwrap(
+    let StorageInventory { type_id: _, ephemeral_capacity: _, inventories } = inv_module.unwrap(
         module_permit(),
     );
     burn_all_inventories(inventories, tenant);
@@ -277,11 +276,7 @@ public fun storage(entity: &Entity, module_id: u64): &StorageInventory {
 }
 
 public fun type_id(entity: &Entity, module_id: u64): u64 {
-    borrow_module(entity, module_id).type_id()
-}
-
-public fun is_creation_module(entity: &Entity, module_id: u64): bool {
-    borrow_module(entity, module_id).is_creation_module()
+    borrow_module(entity, module_id).inner().type_id
 }
 
 public fun capacity(inv: &Inventory): u64 {

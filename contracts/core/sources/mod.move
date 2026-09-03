@@ -12,8 +12,6 @@ public struct Module<T: store> has store {
     version: u64,
     inner: T,
     name: Option<String>,
-    type_id: u64,
-    is_creation_module: bool,
 }
 
 // === Public Functions ===
@@ -50,23 +48,9 @@ public fun name<T: store>(m: &Module<T>): Option<String> {
     m.name
 }
 
-public fun type_id<T: store>(m: &Module<T>): u64 {
-    m.type_id
-}
-
-public fun is_creation_module<T: store>(m: &Module<T>): bool {
-    m.is_creation_module
-}
-
 // === Package Functions ===
 
 /// Only `core::entity` may wrap module state.
-public(package) fun new<T: store>(
-    name: Option<String>,
-    inner: T,
-    version: u64,
-    type_id: u64,
-    is_creation_module: bool,
-): Module<T> {
-    Module { version, inner, name, type_id, is_creation_module }
+public(package) fun new<T: store>(name: Option<String>, inner: T, version: u64): Module<T> {
+    Module { version, inner, name }
 }
