@@ -64,6 +64,7 @@ public struct Inventory has store {
 /// the authorized id: the entity's own id is the main inventory (created at
 /// install); any other key is a lazily-created ephemeral inventory.
 public struct StorageInventory has store {
+    type_id: u64,
     ephemeral_capacity: u64,
     // `LinkedTable`: so it can be iterated to burn every inventory
     // on uninstall.
@@ -95,6 +96,7 @@ public struct Withdrawal(ItemRequirement) has drop;
 public fun install(
     entity: &mut Entity,
     module_id: u64,
+    type_id: u64,
     name: Option<String>,
     main_capacity: u64,
     ephemeral_capacity: u64,
@@ -106,8 +108,15 @@ public fun install(
         entity_id,
         Inventory { capacity: main_capacity, used: 0, items: item::new_bag(ctx) },
     );
-    let storage = StorageInventory { ephemeral_capacity, inventories };
-    entity.install(module_id, name, storage, VERSION, module_permit(), ctx)
+    let storage = StorageInventory { type_id, ephemeral_capacity, inventories };
+    entity.install(
+        module_id,
+        name,
+        storage,
+        VERSION,
+        module_permit(),
+        ctx,
+    )
 }
 
 /// Remove the storage module. Aborts if it was never installed. Burns every
@@ -118,7 +127,7 @@ public fun uninstall(entity: &mut Entity, module_id: u64, ctx: &mut TxContext): 
 
     let tenant = entity.key().tenant();
     let (inv_module, req) = entity.uninstall<StorageInventory>(module_id, module_permit(), ctx);
-    let StorageInventory { ephemeral_capacity: _, inventories } = inv_module.unwrap(
+    let StorageInventory { type_id: _, ephemeral_capacity: _, inventories } = inv_module.unwrap(
         module_permit(),
     );
     burn_all_inventories(inventories, tenant);
@@ -263,9 +272,11 @@ public fun withdraw_requirement(
 
 /// Read the installed storage state by `module_id`.
 public fun storage(entity: &Entity, module_id: u64): &StorageInventory {
-    let m: &Module<StorageInventory> = entity.module_ref(module_id, module_permit());
-    assert!(mod::version(m) == VERSION, EWrongVersion);
-    m.inner()
+    borrow_module(entity, module_id).inner()
+}
+
+public fun type_id(entity: &Entity, module_id: u64): u64 {
+    borrow_module(entity, module_id).inner().type_id
 }
 
 public fun capacity(inv: &Inventory): u64 {
@@ -421,6 +432,12 @@ fun burn_all_inventories(mut inventories: LinkedTable<ID, Inventory>, tenant: St
         burn_inventory(inv, tenant);
     };
     inventories.destroy_empty();
+}
+
+fun borrow_module(entity: &Entity, module_id: u64): &Module<StorageInventory> {
+    let m: &Module<StorageInventory> = entity.module_ref(module_id, module_permit());
+    assert!(mod::version(m) == VERSION, EWrongVersion);
+    m
 }
 
 fun module_permit(): Permit<StorageInventory> {

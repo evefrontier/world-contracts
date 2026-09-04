@@ -6,6 +6,7 @@ use core::{
     action,
     admin_service,
     entity,
+    mod,
     request,
     test_helpers::{setup, take_registry, take_acl, claim, tenant}
 };

@@ -73,10 +73,14 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
 
 // === Private Functions ===
 
-fun borrow(entity: &Entity): &Identity {
+fun borrow_module(entity: &Entity): &Module<Identity> {
     let m: &Module<Identity> = entity.module_ref(module_id(), module_permit());
     assert!(mod::version(m) == VERSION, EWrongVersion);
-    m.inner()
+    m
+}
+
+fun borrow(entity: &Entity): &Identity {
+    borrow_module(entity).inner()
 }
 
 fun module_label(): String {

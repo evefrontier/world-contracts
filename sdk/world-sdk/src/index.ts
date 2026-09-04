@@ -66,6 +66,14 @@ export {
   transferEve,
 } from './packages/currency.js'
 export {
+  genericModuleData,
+  genericModuleName,
+  genericModuleTypeId,
+  type InstallGenericModuleArgs,
+  installGenericModule,
+  uninstallGenericModule,
+} from './packages/generic-module.js'
+export {
   type BalanceOfArgs,
   type BridgeInArgs,
   balanceOf,

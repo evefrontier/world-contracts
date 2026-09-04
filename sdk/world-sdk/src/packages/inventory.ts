@@ -77,6 +77,7 @@ export function withdrawRequirement(
 
 export interface InstallInventoryArgs {
   moduleId: bigint
+  typeId: bigint
   name?: string | null
   mainCapacity: bigint
   ephemeralCapacity: bigint
@@ -94,6 +95,7 @@ export function installInventory(
     arguments: [
       entity,
       tx.pure.u64(args.moduleId),
+      tx.pure.u64(args.typeId),
       tx.pure.option('string', args.name ?? null),
       tx.pure.u64(args.mainCapacity),
       tx.pure.u64(args.ephemeralCapacity),
@@ -122,6 +124,7 @@ export interface CreateStorageUnitArgs {
   inGameId: bigint
   tenant: string
   moduleId: bigint
+  typeId: bigint
   name?: string | null
   mainCapacity: bigint
   ephemeralCapacity: bigint
@@ -144,6 +147,7 @@ export function createStorageUnit(
   completeRequest(tx, config, entity, claimReq)
   installInventory(tx, config, entity, {
     moduleId: args.moduleId,
+    typeId: args.typeId,
     name: args.name,
     mainCapacity: args.mainCapacity,
     ephemeralCapacity: args.ephemeralCapacity,

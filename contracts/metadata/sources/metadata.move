@@ -131,10 +131,14 @@ public fun module_id(): u64 {
 
 // === Private Functions ===
 
-fun borrow(entity: &Entity): &Metadata {
+fun borrow_module(entity: &Entity): &Module<Metadata> {
     let m: &Module<Metadata> = entity.module_ref(module_id(), module_permit());
     assert!(mod::version(m) == VERSION, EWrongVersion);
-    m.inner()
+    m
+}
+
+fun borrow(entity: &Entity): &Metadata {
+    borrow_module(entity).inner()
 }
 
 fun emit_changed(entity: &Entity, metadata: &Metadata) {

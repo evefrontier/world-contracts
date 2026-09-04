@@ -46,3 +46,4 @@ dist/
 docs/v1/
 .secrets
 .vars
+.claude/skills/

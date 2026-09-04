@@ -48,6 +48,7 @@ describe('inventory owner round-trip (localnet)', () => {
       inGameId: key.id,
       tenant: key.tenant,
       moduleId: MODULE_ID,
+      typeId: 1n,
       name: UNIT,
       mainCapacity: 1000n,
       ephemeralCapacity: 100n,
