@@ -28,6 +28,7 @@ RUN pnpm install --frozen-lockfile
 COPY --chown=deployer:deployer . .
 
 FROM dependency-stage AS build-stage
+RUN sui client --yes envs >/dev/null 2>&1 || true
 RUN pnpm run build
 
 FROM dependency-stage AS ci-stage
