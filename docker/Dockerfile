@@ -21,6 +21,24 @@ WORKDIR /app
 RUN chown deployer:deployer /app
 USER deployer
 
+# Pre-create client.yaml so parallel `sui move build` does not race on first-run init.
+RUN mkdir -p /home/deployer/.sui/sui_config \
+    && printf '%s\n' '[]' > /home/deployer/.sui/sui_config/sui.keystore \
+    && chmod 600 /home/deployer/.sui/sui_config/sui.keystore \
+    && printf '%s\n' \
+    '---' \
+    'keystore:' \
+    '  File: /home/deployer/.sui/sui_config/sui.keystore' \
+    'envs:' \
+    '  - alias: testnet' \
+    '    rpc: "https://fullnode.testnet.sui.io:443"' \
+    '    ws: ~' \
+    '    basic_auth: ~' \
+    'active_env: testnet' \
+    'active_address: ~' \
+    > /home/deployer/.sui/sui_config/client.yaml \
+    && test -s /home/deployer/.sui/sui_config/client.yaml
+
 # Copy workspace manifests first for better layer caching, then install with pnpm
 COPY --chown=deployer:deployer package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
@@ -28,11 +46,9 @@ RUN pnpm install --frozen-lockfile
 COPY --chown=deployer:deployer . .
 
 FROM dependency-stage AS build-stage
-RUN sui client --yes envs >/dev/null 2>&1 || true
 RUN pnpm run build
 
 FROM dependency-stage AS ci-stage
-RUN sui client --yes envs >/dev/null 2>&1 || true
 RUN pnpm run fmt:check
 RUN pnpm run lint
 RUN pnpm run test
