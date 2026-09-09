@@ -271,7 +271,11 @@ public fun component_mut<T: store>(
 /// Read-only access to a component by `component_id`. `Permit<T>` enforces that
 /// only the package that authored `T` can read it; no lock is required since
 /// nothing is mutated.
-public fun component_ref<T: store>(entity: &Entity, component_id: u64, _: Permit<T>): &Component<T> {
+public fun component_ref<T: store>(
+    entity: &Entity,
+    component_id: u64,
+    _: Permit<T>,
+): &Component<T> {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(
         df::exists_with_type<_, Component<T>>(&entity.id, ComponentKey(component_id)),

@@ -5,9 +5,9 @@ use core::{
     access_cap::{Self, AccessCap},
     action,
     admin_service::{Self, AdminACL},
+    component,
     entity::{Self, Entity},
     location_service,
-    component,
     object_registry::ObjectRegistry,
     test_helpers::{claim, setup, take_acl, take_registry}
 };

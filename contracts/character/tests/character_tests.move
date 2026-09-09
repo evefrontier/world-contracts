@@ -4,9 +4,9 @@ module character::character_tests;
 use character::identity;
 use core::{
     admin_service::{Self, AdminACL},
+    component,
     entity::{Self, Entity, EntityCreated},
     entity_key,
-    component,
     object_registry::{Self, ObjectRegistry}
 };
 use std::string::{Self, String};

@@ -20,9 +20,9 @@
 module inventory::inventory;
 
 use core::{
+    component::{Self, Component},
     entity::Entity,
     entity_key,
-    component::{Self, Component},
     request::{Request, Frame},
     requirement::{Self, Requirement}
 };

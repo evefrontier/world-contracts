@@ -5,9 +5,9 @@
 module metadata::metadata;
 
 use core::{
+    component::{Self, Component},
     entity::Entity,
     entity_key::EntityKey,
-    component::{Self, Component},
     request::Request,
     requirement::{Self, Requirement}
 };

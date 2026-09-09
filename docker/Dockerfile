@@ -2,9 +2,11 @@ ARG SUI_VERSION=testnet-v1.75.1
 ARG PNPM_VERSION=9
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 
-# Install system dependencies, Node.js, and pnpm in a single layer
-# Bullseye security InRelease can expire on the sui-tools image; skip Valid-Until.
-RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y --no-install-recommends jq curl \
+# sui-tools is Debian 11. debian-security currently 404s rotated pool debs
+# (e.g. curl 7.74.0-1.3+deb11u16). Use main + updates only.
+RUN find /etc/apt -name '*.list' -exec sed -i '/security/s/^/#/' {} + \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends jq curl \
     && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g "pnpm@${PNPM_VERSION}" \
