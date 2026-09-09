@@ -1,4 +1,4 @@
-/// `Entity` in-game can be a ship or a structure. It stays small: modules and actions are
+/// `Entity` in-game can be a ship or a structure. It stays small: components and actions are
 /// stored as dynamic fields, so installing behavior never changes its type.
 ///
 /// On-chain object IDs are derived from `ObjectRegistry` using a tenant-scoped game
@@ -14,9 +14,9 @@ use core::{
     access_cap::{Self, AccessCap, ReturnReceipt},
     action::Action,
     admin_service,
+    component::{Self, Component},
     entity_key::{Self, EntityKey},
     location_service,
-    mod::{Self, Module},
     object_registry::ObjectRegistry,
     request::{Self, Request}
 };
@@ -30,15 +30,15 @@ const EWrongVersion: vector<u8> = b"Entity version does not match the package ve
 #[error(code = 1)]
 const ENotLocked: vector<u8> = b"Entity is not locked";
 #[error(code = 2)]
-const EWrongEntity: vector<u8> = b"Module does not belong to this entity";
+const EWrongEntity: vector<u8> = b"Component does not belong to this entity";
 #[error(code = 3)]
-const ERequirementNotModuleScoped: vector<u8> = b"Requirement is not module-scoped";
+const ERequirementNotComponentScoped: vector<u8> = b"Requirement is not component-scoped";
 #[error(code = 4)]
 const EUnknownAction: vector<u8> = b"Action is not enabled on this entity";
 #[error(code = 5)]
-const EModuleExists: vector<u8> = b"Module is already installed";
+const EComponentExists: vector<u8> = b"Component is already installed";
 #[error(code = 6)]
-const EModuleMissing: vector<u8> = b"Module is not installed";
+const EComponentMissing: vector<u8> = b"Component is not installed";
 #[error(code = 7)]
 const EActionExists: vector<u8> = b"Action is already enabled";
 #[error(code = 8)]
@@ -52,7 +52,7 @@ const VERSION: u64 = 1;
 
 // === Structs ===
 
-public struct ModuleKey(u64) has copy, drop, store;
+public struct ComponentKey(u64) has copy, drop, store;
 public struct ActionsKey() has copy, drop, store;
 public struct InFlight() has copy, drop, store;
 
@@ -146,12 +146,12 @@ public fun return_access(entity: &mut Entity, cap: AccessCap, receipt: ReturnRec
     access_cap::return_to(&mut entity.id, cap, receipt)
 }
 
-/// Install module state `T` under `module_id`. `name` is an optional
+/// Install component state `T` under `component_id`. `name` is an optional
 /// display label and is not unique. The `Permit<T>` proves the caller's package
 /// authored `T`. Returns a `Request` the transaction must complete.
 public fun install<T: store>(
     entity: &mut Entity,
-    module_id: u64,
+    component_id: u64,
     name: Option<String>,
     inner: T,
     version: u64,
@@ -159,9 +159,9 @@ public fun install<T: store>(
     _ctx: &mut TxContext,
 ): Request {
     assert!(entity.version == VERSION, EWrongVersion);
-    assert!(!df::exists(&entity.id, ModuleKey(module_id)), EModuleExists);
+    assert!(!df::exists(&entity.id, ComponentKey(component_id)), EComponentExists);
 
-    df::add(&mut entity.id, ModuleKey(module_id), mod::new(name, inner, version));
+    df::add(&mut entity.id, ComponentKey(component_id), component::new(name, inner, version));
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
@@ -169,23 +169,26 @@ public fun install<T: store>(
     )
 }
 
-/// Remove the module at `module_id`, returning its wrapped state to the caller.
+/// Remove the component at `component_id`, returning its wrapped state to the caller.
 public fun uninstall<T: store>(
     entity: &mut Entity,
-    module_id: u64,
+    component_id: u64,
     _: Permit<T>,
     _ctx: &mut TxContext,
-): (Module<T>, Request) {
+): (Component<T>, Request) {
     assert!(entity.version == VERSION, EWrongVersion);
-    assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(module_id)), EModuleMissing);
+    assert!(
+        df::exists_with_type<_, Component<T>>(&entity.id, ComponentKey(component_id)),
+        EComponentMissing,
+    );
 
-    let m: Module<T> = df::remove(&mut entity.id, ModuleKey(module_id));
+    let c: Component<T> = df::remove(&mut entity.id, ComponentKey(component_id));
     entity.lock();
     let req = request::new(
         option::some(entity.id.to_inner()),
         vector[admin_service::admin_requirement()],
     );
-    (m, req)
+    (c, req)
 }
 
 /// Expose a programmable `action` under `name`. Owner-gated: only the entity's
@@ -249,25 +252,32 @@ public fun interact(
     request
 }
 
-/// Mutable access to a module, only valid mid-interaction. The target module
-/// id is read off the request's next requirement (not the caller's args), so
-/// a handler can never mutate the wrong module.
-public fun module_mut<T: store>(entity: &mut Entity, req: &Request, _: Permit<T>): &mut Module<T> {
+/// Mutable access to a component, only valid mid-interaction. The target
+/// component id is read off the request's next requirement (not the caller's
+/// args), so a handler can never mutate the wrong component.
+public fun component_mut<T: store>(
+    entity: &mut Entity,
+    req: &Request,
+    _: Permit<T>,
+): &mut Component<T> {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(entity.is_locked(), ENotLocked);
     assert!(req.entity_id().is_some_and!(|id| id == entity.id.to_inner()), EWrongEntity);
 
-    let module_id = req.next().module_id().destroy_or!(abort ERequirementNotModuleScoped);
-    df::borrow_mut(&mut entity.id, ModuleKey(module_id))
+    let component_id = req.next().component_id().destroy_or!(abort ERequirementNotComponentScoped);
+    df::borrow_mut(&mut entity.id, ComponentKey(component_id))
 }
 
-/// Read-only access to a module by `module_id`. `Permit<T>` enforces that only the
-/// package that authored `T` can read it; no lock is required since nothing
-/// is mutated.
-public fun module_ref<T: store>(entity: &Entity, module_id: u64, _: Permit<T>): &Module<T> {
+/// Read-only access to a component by `component_id`. `Permit<T>` enforces that
+/// only the package that authored `T` can read it; no lock is required since
+/// nothing is mutated.
+public fun component_ref<T: store>(entity: &Entity, component_id: u64, _: Permit<T>): &Component<T> {
     assert!(entity.version == VERSION, EWrongVersion);
-    assert!(df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(module_id)), EModuleMissing);
-    df::borrow(&entity.id, ModuleKey(module_id))
+    assert!(
+        df::exists_with_type<_, Component<T>>(&entity.id, ComponentKey(component_id)),
+        EComponentMissing,
+    );
+    df::borrow(&entity.id, ComponentKey(component_id))
 }
 
 /// Start admin teardown. The request carries `admin_requirement` today; more
@@ -288,8 +298,8 @@ public fun request_delete(entity: &mut Entity): (Request, DeleteTicket) {
 /// Consume the entity after `request_delete` and a completed request. Strips
 /// remaining DFs and deletes the UID. The derived `EntityKey` stays claimed.
 ///
-/// TODO: check for orphaned modules. Delete no longer checks
-/// installed modules; leftover module DFs are orphaned.
+/// TODO: check for orphaned components. Delete no longer checks
+/// installed components; leftover component DFs are orphaned.
 public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(entity.is_locked(), ENotLocked);
@@ -324,12 +334,12 @@ public fun key(entity: &Entity): EntityKey {
     entity.key
 }
 
-public fun has_module(entity: &Entity, module_id: u64): bool {
-    df::exists(&entity.id, ModuleKey(module_id))
+public fun has_component(entity: &Entity, component_id: u64): bool {
+    df::exists(&entity.id, ComponentKey(component_id))
 }
 
-public fun has_module_with_type<T: store>(entity: &Entity, module_id: u64): bool {
-    df::exists_with_type<_, Module<T>>(&entity.id, ModuleKey(module_id))
+public fun has_component_with_type<T: store>(entity: &Entity, component_id: u64): bool {
+    df::exists_with_type<_, Component<T>>(&entity.id, ComponentKey(component_id))
 }
 
 public fun version(entity: &Entity): u64 {

@@ -22,7 +22,7 @@ This has two problems:
 
 Design notes propose a general model instead: every creation (ship or
 structure) gets its own on-chain inventory. This ADR adapts that model to the
-existing Entity/Module/Action/Request architecture and proposes retiring
+existing Entity/Component/Action/Request architecture and proposes retiring
 `ephemeral` inventories.
 
 ## Decision

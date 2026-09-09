@@ -47,7 +47,7 @@ describe('inventory owner round-trip (localnet)', () => {
     createStorageUnit(createTx, config, {
       inGameId: key.id,
       tenant: key.tenant,
-      moduleId: MODULE_ID,
+      componentId: MODULE_ID,
       typeId: 1n,
       name: UNIT,
       mainCapacity: 1000n,
@@ -136,7 +136,7 @@ describe('inventory owner round-trip (localnet)', () => {
     // Net main balance: 100 in, 20 out, 20 back = 100.
     const main = await readBalance(client, config, {
       entity: entityId,
-      moduleId: MODULE_ID,
+      componentId: MODULE_ID,
       authorizedId: entityId,
       typeId: FUEL,
     })

@@ -42,9 +42,9 @@ public struct Frame {
 /// Pop the next requirement, proving the caller owns type `T` via a `Permit`.
 /// Returns the requirement plus a `Frame` the handler can push follow-ups into.
 ///
-/// Only the requirement *type* is checked here. Structure-ID and module-id
-/// targeting are enforced when the handler borrows the module via
-/// `entity::module_mut`, which reads `entity_id()` and `next().module_id()`
+/// Only the requirement *type* is checked here. Structure-ID and component-id
+/// targeting are enforced when the handler borrows the component via
+/// `entity::component_mut`, which reads `entity_id()` and `next().component_id()`
 /// off the request.
 public fun take_next<T>(request: &mut Request, _: Permit<T>): (Requirement, Frame) {
     assert!(request.requires.length() > 0, ENoRequirements);
@@ -87,7 +87,7 @@ public fun requires(r: &Request): &vector<Requirement> {
 }
 
 /// Borrow the next requirement (the one `take_next` would pop) without removing
-/// it. Used by `entity::module_mut` to read the target module name.
+/// it. Used by `entity::component_mut` to read the target component id.
 public fun next(r: &Request): &Requirement {
     let len = r.requires.length();
     assert!(len > 0, ENoRequirements);

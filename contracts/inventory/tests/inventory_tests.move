@@ -237,7 +237,7 @@ fun eph_inv(e: &Entity, player_id: ID): &inventory::Inventory {
 }
 
 #[test]
-fun install_reports_module_and_capacities() {
+fun install_reports_component_and_capacities() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
@@ -246,7 +246,7 @@ fun install_reports_module_and_capacities() {
     let acl = take_acl(&scenario);
 
     let e = build_storage_unit(&mut scenario, &mut registry, &acl, 1000, 100);
-    assert!(e.has_module(MODULE_ID));
+    assert!(e.has_component(MODULE_ID));
     assert!(inventory::type_id(&e, MODULE_ID) == TYPE_ID);
     assert!(main_inv(&e).capacity() == 1000);
     assert!(main_inv(&e).used() == 0);
@@ -292,8 +292,8 @@ fun install_two_inventories_on_one_entity() {
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
 
-    assert!(e.has_module(MODULE_ID));
-    assert!(e.has_module(MODULE_ID_2));
+    assert!(e.has_component(MODULE_ID));
+    assert!(e.has_component(MODULE_ID_2));
     assert!(inventory::inventory(inventory::storage(&e, MODULE_ID), e.id()).capacity() == 1000);
     assert!(inventory::inventory(inventory::storage(&e, MODULE_ID_2), e.id()).capacity() == 500);
 
@@ -636,7 +636,7 @@ fun uninstall_burns_all_inventories() {
     let mut req = inventory::uninstall(&mut e, MODULE_ID, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
-    assert!(!e.has_module(MODULE_ID));
+    assert!(!e.has_component(MODULE_ID));
 
     ts::return_shared(acl);
     ts::return_shared(e);

@@ -18,8 +18,8 @@ import {
 } from '../packages/generic-module.js'
 import { expectSuccess, loadLocalnetWorld, signer } from './helpers.js'
 
-const MODULE_ID = 0x70n
-const MODULE_ID_2 = 0x71n
+const COMPONENT_ID = 0x70n
+const COMPONENT_ID_2 = 0x71n
 const TYPE_ID = 42n
 const TYPE_ID_2 = 43n
 const DATA = [1, 2, 3, 9]
@@ -40,13 +40,13 @@ describe('generic module (localnet)', () => {
     verifyAdmin(setupTx, config, claimReq)
     completeRequest(setupTx, config, entity, claimReq)
     installGenericModule(setupTx, config, entity, {
-      moduleId: MODULE_ID,
+      componentId: COMPONENT_ID,
       typeId: TYPE_ID,
       name: 'thruster',
       data: DATA,
     })
     installGenericModule(setupTx, config, entity, {
-      moduleId: MODULE_ID_2,
+      componentId: COMPONENT_ID_2,
       typeId: TYPE_ID_2,
       name: 'turret',
       data: DATA_2,
@@ -54,20 +54,20 @@ describe('generic module (localnet)', () => {
     shareEntity(setupTx, config, entity)
     await expectSuccess(client, setupTx)
 
-    const first = await readGeneric(client, config, entityId, MODULE_ID)
+    const first = await readGeneric(client, config, entityId, COMPONENT_ID)
     expect(first.typeId).toBe(TYPE_ID)
     expect(first.data).toEqual(DATA)
     expect(first.name).toBe('thruster')
 
-    const second = await readGeneric(client, config, entityId, MODULE_ID_2)
+    const second = await readGeneric(client, config, entityId, COMPONENT_ID_2)
     expect(second.typeId).toBe(TYPE_ID_2)
     expect(second.data).toEqual(DATA_2)
     expect(second.name).toBe('turret')
 
     const teardownTx = new Transaction()
     const e = teardownTx.object(entityId)
-    uninstallGenericModule(teardownTx, config, e, MODULE_ID)
-    uninstallGenericModule(teardownTx, config, e, MODULE_ID_2)
+    uninstallGenericModule(teardownTx, config, e, COMPONENT_ID)
+    uninstallGenericModule(teardownTx, config, e, COMPONENT_ID_2)
     deleteEntity(teardownTx, config, e)
     const deleted = await expectSuccess(client, teardownTx)
 
@@ -82,7 +82,7 @@ async function readGeneric(
   client: ReturnType<typeof loadLocalnetWorld>['client'],
   config: ReturnType<typeof loadLocalnetWorld>['config'],
   entityId: string,
-  moduleId: bigint,
+  componentId: bigint,
 ): Promise<{
   typeId: bigint
   data: number[]
@@ -91,9 +91,9 @@ async function readGeneric(
   const tx = new Transaction()
   tx.setSender(signer)
   const entity = tx.object(entityId)
-  genericModuleTypeId(tx, config, entity, moduleId)
-  genericModuleData(tx, config, entity, moduleId)
-  genericModuleName(tx, config, entity, moduleId)
+  genericModuleTypeId(tx, config, entity, componentId)
+  genericModuleData(tx, config, entity, componentId)
+  genericModuleName(tx, config, entity, componentId)
 
   const res = await client.simulateTransaction({
     transaction: tx,

@@ -19,6 +19,6 @@ Non-negotiables (full detail in the doc above):
 - `// === Section ===` headers in the canonical order; objects-first, capabilities-second,
   `ctx`/`&Clock` last in signatures.
 - Authorization is type-driven via `internal::Permit<T>` — never gated on a string/id argument;
-  module identity is read off the requirement, not handler args.
+  component identity is read off the requirement, not handler args.
 - Every persisted struct carries `version` and asserts `version == VERSION` on entry.
 - `Request`/`Frame` are abilities-free hot potatoes minted/consumed only by `core::entity`.

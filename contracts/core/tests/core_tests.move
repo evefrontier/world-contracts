@@ -21,8 +21,8 @@ public struct Counter has store {
 /// Requirement marker satisfied by this test's handler.
 public struct Bump has drop {}
 
-fun increment_requirement(module_id: u64): Requirement {
-    requirement::from_config(option::some(module_id), Bump {})
+fun increment_requirement(component_id: u64): Requirement {
+    requirement::from_config(option::some(component_id), Bump {})
 }
 
 fun counter_id(): u64 {
@@ -58,7 +58,7 @@ fun end_to_end_flow() {
     );
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
-    assert!(e.has_module(counter_id));
+    assert!(e.has_component(counter_id));
 
     // Mint the owner cap so the owner can configure actions.
     let mut req = e.mint_access(@0xA, false, scenario.ctx());
@@ -81,7 +81,7 @@ fun end_to_end_flow() {
     // borrow the module by requirement, satisfy it, and mutate.
     let mut req = e.interact(string::utf8(b"increment"), b"loc", scenario.ctx());
     location_service::verify_proximity(&mut req, b"loc");
-    let counter = e.module_mut<Counter>(&req, internal::permit<Counter>()).inner_mut();
+    let counter = e.component_mut<Counter>(&req, internal::permit<Counter>()).inner_mut();
     let (_requirement, frame) = req.take_next<Bump>(internal::permit<Bump>());
     counter.value = counter.value + 1;
     req.enqueue(frame);

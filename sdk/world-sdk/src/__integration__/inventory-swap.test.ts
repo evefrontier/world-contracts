@@ -49,7 +49,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
-      moduleId: MODULE_ID,
+      componentId: MODULE_ID,
       typeId: 1n,
       name: UNIT,
       mainCapacity: 1000n,
@@ -178,7 +178,7 @@ describe('inventory owner-configured swap (localnet)', () => {
     const read = (authorizedId: string, typeId: bigint) =>
       readBalance(client, config, {
         entity: suId,
-        moduleId: MODULE_ID,
+        componentId: MODULE_ID,
         authorizedId,
         typeId,
       })

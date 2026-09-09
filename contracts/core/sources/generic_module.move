@@ -1,8 +1,9 @@
-/// Opaque module state for kinds that have no on-chain logic yet.
-/// Core owns `GenericModule` so it can mint `Permit<GenericModule>` internally.
+/// Opaque in-game module state for fittings that have no on-chain logic yet.
+/// Installed as `Component<GenericModule>`. Core owns the type so it can mint
+/// `Permit<GenericModule>` internally.
 module core::generic_module;
 
-use core::{entity::Entity, mod::{Self, Module}, request::Request};
+use core::{component::{Self, Component}, entity::Entity, request::Request};
 use std::{internal::Permit, string::String};
 
 // === Errors ===
@@ -27,62 +28,62 @@ public struct GenericModule has store {
 
 public fun install(
     entity: &mut Entity,
-    module_id: u64,
+    component_id: u64,
     type_id: u64,
     name: Option<String>,
     data: vector<u8>,
     ctx: &mut TxContext,
 ): Request {
     entity.install(
-        module_id,
+        component_id,
         name,
         GenericModule { type_id, data },
         VERSION,
-        module_permit(),
+        generic_module_permit(),
         ctx,
     )
 }
 
-public fun uninstall(entity: &mut Entity, module_id: u64, ctx: &mut TxContext): Request {
-    let (_data, req) = extract_for_migration(entity, module_id, ctx);
+public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext): Request {
+    let (_data, req) = extract_for_migration(entity, component_id, ctx);
     req
 }
 
 public fun extract_for_migration(
     entity: &mut Entity,
-    module_id: u64,
+    component_id: u64,
     ctx: &mut TxContext,
 ): (vector<u8>, Request) {
-    assert!(entity.has_module_with_type<GenericModule>(module_id), EModuleMissing);
+    assert!(entity.has_component_with_type<GenericModule>(component_id), EModuleMissing);
 
-    let (m, req) = entity.uninstall<GenericModule>(module_id, module_permit(), ctx);
-    let GenericModule { type_id: _, data } = m.unwrap(module_permit());
+    let (c, req) = entity.uninstall<GenericModule>(component_id, generic_module_permit(), ctx);
+    let GenericModule { type_id: _, data } = c.unwrap(generic_module_permit());
     (data, req)
 }
 
 // === View Functions ===
 
-public fun data(entity: &Entity, module_id: u64): vector<u8> {
-    borrow_module(entity, module_id).inner().data
+public fun data(entity: &Entity, component_id: u64): vector<u8> {
+    borrow_module(entity, component_id).inner().data
 }
 
-public fun type_id(entity: &Entity, module_id: u64): u64 {
-    borrow_module(entity, module_id).inner().type_id
+public fun type_id(entity: &Entity, component_id: u64): u64 {
+    borrow_module(entity, component_id).inner().type_id
 }
 
-public fun name(entity: &Entity, module_id: u64): Option<String> {
-    borrow_module(entity, module_id).name()
+public fun name(entity: &Entity, component_id: u64): Option<String> {
+    borrow_module(entity, component_id).name()
 }
 
 // === Private Functions ===
 
-fun borrow_module(entity: &Entity, module_id: u64): &Module<GenericModule> {
-    assert!(entity.has_module_with_type<GenericModule>(module_id), EModuleMissing);
-    let m = entity.module_ref(module_id, module_permit());
-    assert!(mod::version(m) == VERSION, EWrongVersion);
-    m
+fun borrow_module(entity: &Entity, component_id: u64): &Component<GenericModule> {
+    assert!(entity.has_component_with_type<GenericModule>(component_id), EModuleMissing);
+    let c = entity.component_ref(component_id, generic_module_permit());
+    assert!(component::version(c) == VERSION, EWrongVersion);
+    c
 }
 
-fun module_permit(): Permit<GenericModule> {
+fun generic_module_permit(): Permit<GenericModule> {
     internal::permit<GenericModule>()
 }

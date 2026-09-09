@@ -6,7 +6,7 @@ use core::{
     admin_service::{Self, AdminACL},
     entity::{Self, Entity, EntityCreated},
     entity_key,
-    mod,
+    component,
     object_registry::{Self, ObjectRegistry}
 };
 use std::string::{Self, String};
@@ -67,8 +67,8 @@ fun create_installs_identity() {
     ts::next_tx(&mut scenario, ADMIN);
     {
         let e = ts::take_shared<Entity>(&scenario);
-        assert!(e.has_module(identity::module_id()));
-        assert!(identity::module_id() == mod::id_from_name(b"identity"));
+        assert!(e.has_component(identity::component_id()));
+        assert!(identity::component_id() == component::id_from_name(b"identity"));
         assert!(identity::tribe_id(&e) == TRIBE_ID);
         assert!(identity::owner(&e) == OWNER);
         assert!(e.key() == entity_key::new(IN_GAME_ID, tenant()));
@@ -107,7 +107,7 @@ fun uninstall_identity_removes_module() {
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
         e.complete_request(req);
 
-        assert!(!e.has_module(identity::module_id()));
+        assert!(!e.has_component(identity::component_id()));
         ts::return_shared(acl);
         ts::return_shared(e);
     };
@@ -115,7 +115,7 @@ fun uninstall_identity_removes_module() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = identity::EModuleMissing)]
+#[test, expected_failure(abort_code = identity::EComponentMissing)]
 fun uninstall_without_identity_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);

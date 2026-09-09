@@ -47,7 +47,7 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
-      moduleId: MODULE_ID,
+      componentId: MODULE_ID,
       typeId: 1n,
       name: UNIT,
       mainCapacity: 1000n,
@@ -130,13 +130,13 @@ describe('inventory player ephemeral round-trip (localnet)', () => {
 
     const ephemeral = await readBalance(client, config, {
       entity: suId,
-      moduleId: MODULE_ID,
+      componentId: MODULE_ID,
       authorizedId: characterId,
       typeId: FUEL,
     })
     const main = await readBalance(client, config, {
       entity: suId,
-      moduleId: MODULE_ID,
+      componentId: MODULE_ID,
       authorizedId: suId,
       typeId: FUEL,
     })

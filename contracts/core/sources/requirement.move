@@ -1,7 +1,7 @@
 /// A typed rule attached to an `Action` and resolved through a `Request`.
 ///
 /// - `type_name` identifies which handler may satisfy it (e.g. `inventory::Deposit`).
-/// - `module_id` optionally targets an installed module.
+/// - `component_id` optionally targets an installed component.
 /// - `data` is the BCS encoding of the rule's typed config.
 module core::requirement;
 
@@ -12,8 +12,8 @@ use std::{bcs, type_name::{Self, TypeName}};
 public struct Requirement has drop, store {
     // Identifies which handler type may satisfy this requirement.
     type_name: TypeName,
-    // Optional target module id; `None` when not module-scoped.
-    module_id: Option<u64>,
+    // Optional target component id; `None` when not component-scoped.
+    component_id: Option<u64>,
     // BCS-encoded typed config the handler enforces.
     data: vector<u8>,
 }
@@ -23,11 +23,11 @@ public struct Requirement has drop, store {
 /// Build a requirement from a typed config `c`. The type identity is recorded
 /// from `T`, so only the package that defines `T` can later satisfy it, while
 /// `data` carries the BCS-encoded configuration the handler enforces.
-public fun from_config<T: drop>(module_id: Option<u64>, c: T): Requirement {
+public fun from_config<T: drop>(component_id: Option<u64>, c: T): Requirement {
     Requirement {
         type_name: type_name::with_original_ids<T>(),
         data: bcs::to_bytes(&c),
-        module_id,
+        component_id,
     }
 }
 
@@ -42,10 +42,10 @@ public fun type_name(r: &Requirement): TypeName {
     r.type_name
 }
 
-/// The module this requirement targets, if any. `None` means the requirement
-/// is not module-scoped (e.g. an admin/sponsor approval).
-public fun module_id(r: &Requirement): Option<u64> {
-    r.module_id
+/// The component this requirement targets, if any. `None` means the requirement
+/// is not component-scoped (e.g. an admin/sponsor approval).
+public fun component_id(r: &Requirement): Option<u64> {
+    r.component_id
 }
 
 public fun data(r: &Requirement): vector<u8> {
@@ -57,7 +57,7 @@ public fun data(r: &Requirement): vector<u8> {
 public(package) fun clone(r: &Requirement): Requirement {
     Requirement {
         type_name: r.type_name,
-        module_id: r.module_id,
+        component_id: r.component_id,
         data: r.data,
     }
 }

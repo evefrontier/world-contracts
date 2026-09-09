@@ -1,6 +1,6 @@
 # Copilot Instructions — world-contracts
 
-Sui Move contracts for EVE Frontier, built on the modular **Entity / Module / Action /
+Sui Move contracts for EVE Frontier, built on the modular **Entity / Component / Action /
 Request / Requirement** architecture.
 
 Path-scoped Move guidance is applied automatically and carries the rule details — this file is

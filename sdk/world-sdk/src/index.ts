@@ -100,4 +100,4 @@ export {
   type MetadataFields,
   uninstallMetadata,
 } from './packages/metadata.js'
-export { moduleIdFromName } from './packages/module-id.js'
+export { componentIdFromName } from './packages/component-id.js'

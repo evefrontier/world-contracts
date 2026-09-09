@@ -51,7 +51,7 @@ describe('inventory owner-access via Character', () => {
     createStorageUnit(setupTx, config, {
       inGameId: suKey.id,
       tenant: suKey.tenant,
-      moduleId: MODULE_ID,
+      componentId: MODULE_ID,
       typeId: 1n,
       name: UNIT,
       mainCapacity: 1000n,
@@ -166,7 +166,7 @@ describe('inventory owner-access via Character', () => {
     // Main balance changed (0 -> 100) via the borrowed owner cap.
     const main = await readBalance(client, config, {
       entity: suId,
-      moduleId: MODULE_ID,
+      componentId: MODULE_ID,
       authorizedId: suId,
       typeId: FUEL,
     })

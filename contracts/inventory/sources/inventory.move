@@ -1,4 +1,4 @@
-/// Inventory module installed on an `Entity`. Holds one `Inventory` (a balance
+/// Inventory component installed on an `Entity`. Holds one `Inventory` (a balance
 /// area with its own volume cap) per accessor, keyed by entity id:
 ///
 /// - **main** — keyed by the entity's own id, created at install. Only the owner
@@ -22,7 +22,7 @@ module inventory::inventory;
 use core::{
     entity::Entity,
     entity_key,
-    mod::{Self, Module},
+    component::{Self, Component},
     request::{Request, Frame},
     requirement::{Self, Requirement}
 };
@@ -33,9 +33,9 @@ use sui::{bcs, linked_table::{Self, LinkedTable}};
 // === Errors ===
 
 #[error(code = 0)]
-const EWrongVersion: vector<u8> = b"Inventory module version does not match the package version";
+const EWrongVersion: vector<u8> = b"Inventory component version does not match the package version";
 #[error(code = 1)]
-const EModuleMissing: vector<u8> = b"Inventory module is not installed on this entity";
+const EComponentMissing: vector<u8> = b"Inventory component is not installed on this entity";
 #[error(code = 2)]
 const EOverCapacity: vector<u8> = b"Operation would exceed inventory capacity";
 #[error(code = 3)]
@@ -60,7 +60,7 @@ public struct Inventory has store {
     items: ItemBag,
 }
 
-/// Module state installed on the entity. One `Inventory` per player, keyed by
+/// Component state installed on the entity. One `Inventory` per player, keyed by
 /// the authorized id: the entity's own id is the main inventory (created at
 /// install); any other key is a lazily-created ephemeral inventory.
 public struct StorageInventory has store {
@@ -90,12 +90,12 @@ public struct Withdrawal(ItemRequirement) has drop;
 
 // === Public Functions ===
 
-/// Build and install the storage module under `module_id` with
+/// Build and install the storage component under `component_id` with
 /// independent main and ephemeral volume capacities. `name` is an optional
 /// display label and is not unique.
 public fun install(
     entity: &mut Entity,
-    module_id: u64,
+    component_id: u64,
     type_id: u64,
     name: Option<String>,
     main_capacity: u64,
@@ -110,25 +110,29 @@ public fun install(
     );
     let storage = StorageInventory { type_id, ephemeral_capacity, inventories };
     entity.install(
-        module_id,
+        component_id,
         name,
         storage,
         VERSION,
-        module_permit(),
+        storage_permit(),
         ctx,
     )
 }
 
-/// Remove the storage module. Aborts if it was never installed. Burns every
+/// Remove the storage component. Aborts if it was never installed. Burns every
 /// inventory's balances (emitting `ItemBurned` per type) so the game client is
 /// notified.
-public fun uninstall(entity: &mut Entity, module_id: u64, ctx: &mut TxContext): Request {
-    assert!(entity.has_module_with_type<StorageInventory>(module_id), EModuleMissing);
+public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext): Request {
+    assert!(entity.has_component_with_type<StorageInventory>(component_id), EComponentMissing);
 
     let tenant = entity.key().tenant();
-    let (inv_module, req) = entity.uninstall<StorageInventory>(module_id, module_permit(), ctx);
-    let StorageInventory { type_id: _, ephemeral_capacity: _, inventories } = inv_module.unwrap(
-        module_permit(),
+    let (inv_component, req) = entity.uninstall<StorageInventory>(
+        component_id,
+        storage_permit(),
+        ctx,
+    );
+    let StorageInventory { type_id: _, ephemeral_capacity: _, inventories } = inv_component.unwrap(
+        storage_permit(),
     );
     burn_all_inventories(inventories, tenant);
     req
@@ -147,7 +151,7 @@ public fun game_item_to_chain_inventory(
     let key = entity_key::new(type_id, entity.key().tenant());
     let entity_id = entity.id();
     let caller = req.authorized_id();
-    let (requirement, frame, storage) = take(entity, req, module_permit_bridge_in());
+    let (requirement, frame, storage) = take(entity, req, bridge_in_permit());
     let ephemeral = enforce_rule(&requirement, type_id, quantity);
     let inv_key = route_key(caller, entity_id, ephemeral);
     storage.ensure_inventory(inv_key, ctx);
@@ -167,7 +171,7 @@ public fun chain_item_to_game_inventory(
     let key = entity_key::new(type_id, entity.key().tenant());
     let entity_id = entity.id();
     let caller = req.authorized_id();
-    let (requirement, frame, storage) = take(entity, req, module_permit_bridge_out());
+    let (requirement, frame, storage) = take(entity, req, bridge_out_permit());
     let ephemeral = enforce_rule(&requirement, type_id, quantity);
     let inv_key = route_key(caller, entity_id, ephemeral);
     storage.ensure_inventory(inv_key, ctx);
@@ -182,7 +186,7 @@ public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut
     let tenant = entity.key().tenant();
     let entity_id = entity.id();
     let caller = req.authorized_id();
-    let (requirement, frame, storage) = take(entity, req, module_permit_deposit());
+    let (requirement, frame, storage) = take(entity, req, deposit_permit());
     let ephemeral = enforce_rule(&requirement, type_id, quantity);
     let inv_key = route_key(caller, entity_id, ephemeral);
     storage.ensure_inventory(inv_key, ctx);
@@ -202,7 +206,7 @@ public fun withdraw(
     let key = entity_key::new(type_id, entity.key().tenant());
     let entity_id = entity.id();
     let caller = req.authorized_id();
-    let (requirement, frame, storage) = take(entity, req, module_permit_withdrawal());
+    let (requirement, frame, storage) = take(entity, req, withdrawal_permit());
     let ephemeral = enforce_rule(&requirement, type_id, quantity);
     let inv_key = route_key(caller, entity_id, ephemeral);
     storage.ensure_inventory(inv_key, ctx);
@@ -211,72 +215,72 @@ public fun withdraw(
     item
 }
 
-/// Build a bridge-in requirement on module `module_id`. `ephemeral` selects the
+/// Build a bridge-in requirement on component `component_id`. `ephemeral` selects the
 /// target: false = main, true = the caller's ephemeral inventory.
 public fun bridge_in_requirement(
-    module_id: u64,
+    component_id: u64,
     ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
-        option::some(module_id),
+        option::some(component_id),
         BridgeIn(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a bridge-out requirement on module `module_id`. See `bridge_in_requirement`.
+/// Build a bridge-out requirement on component `component_id`. See `bridge_in_requirement`.
 public fun bridge_out_requirement(
-    module_id: u64,
+    component_id: u64,
     ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
-        option::some(module_id),
+        option::some(component_id),
         BridgeOut(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a deposit requirement on module `module_id`. See `bridge_in_requirement`.
+/// Build a deposit requirement on component `component_id`. See `bridge_in_requirement`.
 public fun deposit_requirement(
-    module_id: u64,
+    component_id: u64,
     ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
-        option::some(module_id),
+        option::some(component_id),
         Deposit(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
-/// Build a withdraw requirement on module `module_id`. See `bridge_in_requirement`.
+/// Build a withdraw requirement on component `component_id`. See `bridge_in_requirement`.
 public fun withdraw_requirement(
-    module_id: u64,
+    component_id: u64,
     ephemeral: bool,
     type_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
-        option::some(module_id),
+        option::some(component_id),
         Withdrawal(rule(ephemeral, type_id, min_quantity, max_quantity)),
     )
 }
 
 // === View Functions ===
 
-/// Read the installed storage state by `module_id`.
-public fun storage(entity: &Entity, module_id: u64): &StorageInventory {
-    borrow_module(entity, module_id).inner()
+/// Read the installed storage state by `component_id`.
+public fun storage(entity: &Entity, component_id: u64): &StorageInventory {
+    borrow_component(entity, component_id).inner()
 }
 
-public fun type_id(entity: &Entity, module_id: u64): u64 {
-    borrow_module(entity, module_id).inner().type_id
+public fun type_id(entity: &Entity, component_id: u64): u64 {
+    borrow_component(entity, component_id).inner().type_id
 }
 
 public fun capacity(inv: &Inventory): u64 {
@@ -308,8 +312,8 @@ public fun inventory(storage: &StorageInventory, authorized_id: ID): &Inventory 
 /// Current balance of `type_id` in the inventory routed to `authorized_id`
 /// (the entity's own id for main, a caller's id for ephemeral). 0 if that
 /// inventory does not exist yet. Read-only; for clients querying state.
-public fun balance_of(entity: &Entity, module_id: u64, authorized_id: ID, type_id: u64): u64 {
-    let storage = storage(entity, module_id);
+public fun balance_of(entity: &Entity, component_id: u64, authorized_id: ID, type_id: u64): u64 {
+    let storage = storage(entity, component_id);
     if (!storage.has_inventory(authorized_id)) return 0;
     storage.inventory(authorized_id).items.balance(type_id)
 }
@@ -324,9 +328,9 @@ fun take<T: drop>(
     req: &mut Request,
     permit: Permit<T>,
 ): (Requirement, Frame, &mut StorageInventory) {
-    let m: &mut Module<StorageInventory> = entity.module_mut(req, module_permit());
-    assert!(mod::version(m) == VERSION, EWrongVersion);
-    let storage = m.inner_mut();
+    let c: &mut Component<StorageInventory> = entity.component_mut(req, storage_permit());
+    assert!(component::version(c) == VERSION, EWrongVersion);
+    let storage = c.inner_mut();
     let (requirement, frame) = req.take_next(permit);
     (requirement, frame, storage)
 }
@@ -434,28 +438,28 @@ fun burn_all_inventories(mut inventories: LinkedTable<ID, Inventory>, tenant: St
     inventories.destroy_empty();
 }
 
-fun borrow_module(entity: &Entity, module_id: u64): &Module<StorageInventory> {
-    let m: &Module<StorageInventory> = entity.module_ref(module_id, module_permit());
-    assert!(mod::version(m) == VERSION, EWrongVersion);
-    m
+fun borrow_component(entity: &Entity, component_id: u64): &Component<StorageInventory> {
+    let c: &Component<StorageInventory> = entity.component_ref(component_id, storage_permit());
+    assert!(component::version(c) == VERSION, EWrongVersion);
+    c
 }
 
-fun module_permit(): Permit<StorageInventory> {
+fun storage_permit(): Permit<StorageInventory> {
     internal::permit<StorageInventory>()
 }
 
-fun module_permit_bridge_in(): Permit<BridgeIn> {
+fun bridge_in_permit(): Permit<BridgeIn> {
     internal::permit<BridgeIn>()
 }
 
-fun module_permit_bridge_out(): Permit<BridgeOut> {
+fun bridge_out_permit(): Permit<BridgeOut> {
     internal::permit<BridgeOut>()
 }
 
-fun module_permit_deposit(): Permit<Deposit> {
+fun deposit_permit(): Permit<Deposit> {
     internal::permit<Deposit>()
 }
 
-fun module_permit_withdrawal(): Permit<Withdrawal> {
+fun withdrawal_permit(): Permit<Withdrawal> {
     internal::permit<Withdrawal>()
 }

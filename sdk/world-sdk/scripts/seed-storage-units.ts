@@ -39,7 +39,7 @@ for (const [, unit] of entries) {
   createStorageUnit(createTx, config, {
     inGameId: BigInt(unit.itemId),
     tenant: resources.tenant,
-    moduleId: BigInt(unit.itemId),
+    componentId: BigInt(unit.itemId),
     typeId: 1n,
     name: UNIT_NAME,
     mainCapacity: MAIN_CAPACITY,

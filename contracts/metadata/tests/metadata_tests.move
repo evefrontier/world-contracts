@@ -7,7 +7,7 @@ use core::{
     admin_service::{Self, AdminACL},
     entity::{Self, Entity},
     location_service,
-    mod,
+    component,
     object_registry::ObjectRegistry,
     test_helpers::{claim, setup, take_acl, take_registry}
 };
@@ -140,8 +140,8 @@ fun install_sets_fields_and_emits() {
     let acl = take_acl(&scenario);
 
     let e = build_entity(&mut scenario, &mut registry, &acl, 1, NAME, DESC, URL);
-    assert!(e.has_module(metadata::module_id()));
-    assert!(metadata::module_id() == mod::id_from_name(b"metadata"));
+    assert!(e.has_component(metadata::component_id()));
+    assert!(metadata::component_id() == component::id_from_name(b"metadata"));
     assert!(metadata::name(&e) == string::utf8(NAME));
     assert!(metadata::description(&e) == string::utf8(DESC));
     assert!(metadata::url(&e) == string::utf8(URL));
@@ -222,7 +222,7 @@ fun uninstall_removes_module() {
     let mut req = metadata::uninstall(&mut e, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
-    assert!(!e.has_module(metadata::module_id()));
+    assert!(!e.has_component(metadata::component_id()));
 
     e.share();
     ts::return_shared(acl);
@@ -230,8 +230,8 @@ fun uninstall_removes_module() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = metadata::EModuleMissing)]
-fun uninstall_without_module_aborts() {
+#[test, expected_failure(abort_code = metadata::EComponentMissing)]
+fun uninstall_without_component_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 

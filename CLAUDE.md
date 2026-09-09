@@ -1,7 +1,7 @@
 <!-- TODO: NOT FINAL NEEDS UPDATE -->
 # world-contracts
 
-Sui Move contracts for EVE Frontier, built on the modular **Entity / Module / Action /
+Sui Move contracts for EVE Frontier, built on the modular **Entity / Component / Action /
 Request / Requirement** architecture.
 
 ## Where things live
@@ -16,7 +16,8 @@ Request / Requirement** architecture.
 ## Read before working
 
 - [`docs/move-conventions.md`](docs/move-conventions.md) — **authoritative** coding conventions.
-  Read before writing or reviewing any `.move`.
+ Read before writing or reviewing any `.move`.
+- [`CONTEXT.md`](CONTEXT.md) — domain glossary (Entity / Component / game module).
 - [`docs/adr/0002-modular-architecture.md`](docs/adr/0002-modular-architecture.md) — the design
-  and its rationale.
+ and its rationale.
 

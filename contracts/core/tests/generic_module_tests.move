@@ -69,8 +69,8 @@ fun install_stores_type_id_and_bytes() {
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
 
-    assert!(e.has_module(MODULE_ID));
-    assert!(e.has_module_with_type<generic_module::GenericModule>(MODULE_ID));
+    assert!(e.has_component(MODULE_ID));
+    assert!(e.has_component_with_type<generic_module::GenericModule>(MODULE_ID));
     assert!(generic_module::type_id(&e, MODULE_ID) == TYPE_ID);
     assert!(generic_module::data(&e, MODULE_ID) == module_data());
     assert!(generic_module::name(&e, MODULE_ID) == option::some(module_name()));
@@ -110,8 +110,8 @@ fun install_two_generic_modules_on_one_entity() {
     install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", module_data(), ctx);
     install_generic(&mut e, &acl, MODULE_ID_2, TYPE_ID_2, b"turret", module_data_2(), ctx);
 
-    assert!(e.has_module(MODULE_ID));
-    assert!(e.has_module(MODULE_ID_2));
+    assert!(e.has_component(MODULE_ID));
+    assert!(e.has_component(MODULE_ID_2));
     assert!(generic_module::type_id(&e, MODULE_ID) == TYPE_ID);
     assert!(generic_module::type_id(&e, MODULE_ID_2) == TYPE_ID_2);
     assert!(generic_module::data(&e, MODULE_ID) == module_data());
@@ -148,8 +148,8 @@ fun install_two_generic_modules_same_type_id() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = entity::EModuleExists)]
-fun install_duplicate_module_id_aborts() {
+#[test, expected_failure(abort_code = entity::EComponentExists)]
+fun install_duplicate_component_id_aborts() {
     let mut scenario = ts::begin(@0xA);
     setup(&mut scenario);
 
@@ -182,7 +182,7 @@ fun uninstall_removes_module() {
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    assert!(!e.has_module(MODULE_ID));
+    assert!(!e.has_component(MODULE_ID));
 
     e.share();
     ts::return_shared(acl);
@@ -249,7 +249,7 @@ fun extract_for_migration_returns_bytes_and_clears_slot() {
     e.complete_request(req);
 
     assert!(data == module_data());
-    assert!(!e.has_module(MODULE_ID));
+    assert!(!e.has_component(MODULE_ID));
 
     install_generic(&mut e, &acl, MODULE_ID, TYPE_ID, b"thruster", data, ctx);
     assert!(generic_module::data(&e, MODULE_ID) == module_data());

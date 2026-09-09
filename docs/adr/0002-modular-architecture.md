@@ -2,7 +2,7 @@
 
 - **Status:** Accepted — implemented in `contracts/core/`
 - **Supersedes:** [0001-assembly-architecture](0001-assembly-architecture.md)
-- **See also:** [`CONTEXT.md`](../../CONTEXT.md) (domain glossary),
+- **See also:** [`CONTEXT.md`](../../CONTEXT.md) (domain glossary, Entity / Component map),
   [`docs/move-conventions.md`](../move-conventions.md) (coding conventions)
 
 ## Motivation
@@ -15,27 +15,29 @@ That model is simple to integrate, but it does not fit the next modular building
 2. **New game behavior often requires core changes** because rules are attached to specific assembly functions instead of a shared programmable action model.
 3. **Composition is limited** because programmability is restrictive and not generalized across actions.
 
-The goal of the new architecture is to keep the base structure small, install behavior through modules, and make behavior programmable through on-chain requirements.
+The goal of the new architecture is to keep the base structure small, install behavior through components, and make behavior programmable through on-chain requirements.
 
 ### Modular Building
 
 We want to support modular buildings in the game:
 
 1. Create a base structure.
-2. Install modules that provide behavior, such as storage, transport, fuel, power, or weapons.
-3. Expose programmable actions that compose those module behaviors.
+2. Install components that provide behavior, such as storage, transport, fuel, power, or weapons (game modules).
+3. Expose programmable actions that compose those component behaviors.
 4. Attach rules to those actions so game design can evolve without changing the base structure type.
 
 Example:
 
-A player owns a structure and installs a storage module on it. Later, they configure that structure to offer an exchange: give one ticket and receive one fuel item.
+A player owns a structure and installs a storage component (a game module) on it. Later, they configure that structure to offer an exchange: give one ticket and receive one fuel item.
+
+How Entity, Component, and game-module wording fit together: [`CONTEXT.md`](../../CONTEXT.md).
 
 ## Decision
 
 Introduce a modular architecture built around five concepts:
 
-- `Entity`: the base shared object representing a structure.
-- `Module<T>`: typed module state installed on an entity.
+- `Entity`: the base shared object representing a structure (or character).
+- `Component<T>`: typed state installed on an entity (Identity, Inventory, …).
 - `Action`: a named programmable behavior exposed by an entity.
 - `Request`: a hot-potato value created when an action starts.
 - `Requirement`: a typed rule that must be satisfied before the request can complete.
@@ -44,9 +46,9 @@ The key design shift is:
 
 | Current model | New model |
 | --- | --- |
-| A concrete assembly type owns behavior, such as `gate::jump` or `storage_unit::deposit`. | A base `Entity` owns installed modules and exposes named actions. |
+| A concrete assembly type owns behavior, such as `gate::jump` or `storage_unit::deposit`. | A base `Entity` owns installed components and exposes named actions. |
 | Rules are encoded inside assembly functions. | Rules are represented as `Requirement` values attached to actions. |
-| Adding behavior often means changing core assembly code. | Adding behavior usually means installing a module, adding a handler, or exposing a new action. |
+| Adding behavior often means changing core assembly code. | Adding behavior usually means installing a component, adding a handler, or exposing a new action. |
 | Clients integrate with assembly-specific APIs. | Clients inspect an action, satisfy its requirements, and complete the request. |
 
 ## Architecture Overview
@@ -54,16 +56,16 @@ The key design shift is:
 ```mermaid
 flowchart TD
     Structure["Structure<br/>base Entity"]
-    Modules["Installed modules<br/>Storage, Transport, Fuel"]
+    Modules["Installed components<br/>Storage, Transport, Fuel"]
     Configure["Configure actions<br/>exchange, jump, deposit"]
     User["User interacts with<br/>Deposit and Jump action"]
     Request["Request<br/>requirements for this action"]
     Req1["Requirement 1<br/>approved by admin"]
     Req2["Requirement 2<br/>item must be deposited"]
     Req3["Requirement 3<br/>jump must be allowed"]
-    Handler1["Admin module<br/>satisfies requirement"]
-    Handler2["Inventory module<br/>satisfies requirement"]
-    Handler3["Transport module<br/>satisfies requirement"]
+    Handler1["Admin handler<br/>satisfies requirement"]
+    Handler2["Inventory component<br/>satisfies requirement"]
+    Handler3["Transport component<br/>satisfies requirement"]
     AllSatisfied["All requirements<br/>are satisfied"]
     Complete["Complete action"]
 
@@ -86,7 +88,7 @@ flowchart TD
 At a high level:
 
 1. Admin or owner creates an `Entity`.
-2. Admin-approved modules are installed on the entity.
+2. Admin-approved components are installed on the entity.
 3. Owner exposes named actions, each with an ordered list of requirements.
 4. A user interacts with an action, which creates a `Request`.
 5. The PTB satisfies each requirement by calling the right handler.
@@ -105,31 +107,36 @@ public struct Entity has key {
     id: UID,
     version: u64,
     // dynamic field: ActionsKey() => VecMap<String, Action>
-    // dynamic field: ModuleKey(String) => Module<T>
+    // dynamic field: ComponentKey(u64) => Component<T>
 }
 ```
 
-This means adding a new module does not require adding a new field to the base entity type.
+This means adding a new component does not require adding a new field to the base entity type.
 
-### Module
+### Component
 
-`Module<T>` wraps typed module state installed on an entity.
+`Component<T>` wraps typed state installed on an entity. A game module (player
+fitting) is one kind of component. Identity is a component and is not a fitting.
 
 Examples:
 
-- `Module<Inventory>`
-- `Module<Transport>`
-- `Module<Fuel>`
-- `Module<PowerGen>`
+- `Component<Identity>`
+- `Component<Inventory>`
+- `Component<Transport>`
+- `Component<Fuel>`
+- `Component<PowerGen>`
 
-The module is stored under a human-readable name:
+The component is stored under a caller-supplied `u64` slot (`component_id`).
+Well-known singletons hash a name to that id:
 
 ```text
-ModuleKey("storage unit (01)") => Module<Inventory>
-ModuleKey("transport")         => Module<Transport>
+ComponentKey(id_from_name("identity")) => Component<Identity>
+ComponentKey(storage_01)               => Component<Inventory>
+ComponentKey(transport)                => Component<Transport>
 ```
 
-Requirements can target a module by name, so the same entity can host multiple modules of the same type if needed.
+Requirements can target a component by id, so the same entity can host multiple
+components of the same type if needed.
 
 ### Action
 
@@ -157,7 +164,7 @@ public fun new(mut requirements: vector<Requirement>): Action {
 }
 ```
 
-The action does not execute logic by itself. It creates a request that must be satisfied by module or service calls.
+The action does not execute logic by itself. It creates a request that must be satisfied by component or service calls.
 
 ### Request
 
@@ -179,7 +186,7 @@ public struct Request {
 ```move
 public struct Requirement has drop, store {
     type_name: TypeName,
-    name: Option<String>,
+    component_id: Option<u64>,
     data: vector<u8>,
 }
 ```
@@ -187,15 +194,15 @@ public struct Requirement has drop, store {
 Each requirement contains:
 
 - `type_name`: identifies which handler is allowed to satisfy it, such as `inventory::Deposit`.
-- `name`: optionally targets an installed module, such as `some("storage unit (01)")`.
+- `component_id`: optionally targets an installed component slot.
 - `data`: BCS-encoded configuration, such as item type and min/max quantity.
 
 Example requirement constructor:
 
 ```move
-public fun deposit_requirement(module_name: String, rule: ItemRequirement): Requirement {
-    requirement::new(
-        option::some(module_name),
+public fun deposit_requirement(component_id: u64, rule: ItemRequirement): Requirement {
+    requirement::from_config(
+        option::some(component_id),
         Deposit(rule),
     )
 }
@@ -235,34 +242,32 @@ Handlers call `take_next<T>` (aliased as `satisfy<T>`) with the type they own. T
 
 The handler does three things:
 
-1. Borrows the targeted module through the active request.
+1. Borrows the targeted component through the active request.
 2. Satisfies the next typed requirement.
 3. Enforces the requirement data before mutating state.
 
 The returned `Frame` lets a handler push **new** requirements onto the same request before continuing — this is how dynamic, in-transaction follow-ups are modeled (the handler `enqueue`s the frame when done).
 
-#### Module targeting (`name` enforcement)
+#### Component targeting (`component_id` enforcement)
 
-`take_next<T>` only checks the requirement *type*. Module *identity* is enforced when the handler borrows the module. `module_mut` reads the module name off the **next requirement**, not off the handler's own arguments:
+`take_next<T>` only checks the requirement *type*. Component *identity* is enforced when the handler borrows the component. `component_mut` reads the component id off the **next requirement**, not off the handler's own arguments:
 
 ```move
-// NOTE: Pseudocode / illustrative API sketch (some helper macros/functions are placeholders).
-public fun module_mut<T: store>(e: &mut Entity, req: &Request, _: internal::Permit<T>): &mut Module<T> {
-    assert!(req.structure_id().is_some_and!(|id| id == e.id.to_inner()));
-    // name comes from the requirement, so the handler can't hit the wrong module
-    let name = req.next().module_name().destroy_or!(abort);
-    assert!(!e.exists(DeprecatedModuleKey(name)));
-    &mut e[ModuleKey(name)]
+public fun component_mut<T: store>(e: &mut Entity, req: &Request, _: internal::Permit<T>): &mut Component<T> {
+    assert!(req.entity_id().is_some_and!(|id| id == e.id.to_inner()));
+    // id comes from the requirement, so the handler can't hit the wrong component
+    let component_id = req.next().component_id().destroy_or!(abort ERequirementNotComponentScoped);
+    df::borrow_mut(&mut e.id, ComponentKey(component_id))
 }
 ```
 
-So a requirement scoped to `some("storage unit (02)")` forces the handler onto module `(02)`; it can never accidentally mutate `(01)`. The `name` field is `Option` only for requirements that don't target a module (e.g. an admin/sponsor approval); module handlers `abort` when it is `None`.
+So a requirement scoped to storage slot `(02)` forces the handler onto that component; it can never accidentally mutate `(01)`. The `component_id` field is `Option` only for requirements that don't target a component (e.g. an admin/sponsor approval); component handlers `abort` when it is `None`.
 
 ## Use Case: Exchange Tickets For Fuel
 
 Setup:
 
-1. Install an `Inventory` module named `storage unit (01)`.
+1. Install an `Inventory` component named `storage unit (01)`.
 2. Expose an action named `exchange tickets for fuel 1:1`.
 3. The action has two requirements:
    - `Deposit(ItemRequirement { type_id: TICKET, quantity: 1 })`
@@ -273,7 +278,7 @@ sequenceDiagram
     participant User as User / PTB
     participant Entity
     participant Request
-    participant Inventory as Inventory module
+    participant Inventory as Inventory component
 
     User->>Entity: interact("exchange tickets for fuel 1:1")
     Entity-->>User: Request { Deposit<TICKET>, Withdrawal<FUEL> }
@@ -371,7 +376,7 @@ For additive changes:
 
 - Add a new requirement type or handler.
 - Expose new actions that include the requirement.
-- Existing entity and module layouts can stay unchanged.
+- Existing entity and component layouts can stay unchanged.
 
 For bug fixes:
 
@@ -381,10 +386,10 @@ For bug fixes:
 
 For stored layout/interface changes:
 
-- Introduce `InventoryV2` or another new module type.
-- Install the V2 module.
+- Introduce `InventoryV2` or another new component type.
+- Install the V2 component.
 - Migrate known state from V1 to V2.
-- Deprecate the old module name.
+- Deprecate the old component slot.
 - Remove stale actions that point at V1 requirements.
 
 Lifecycle APIs support this:
@@ -392,22 +397,22 @@ Lifecycle APIs support this:
 ```move
 entity::disable_action(&mut entity, &admin_acl, action_name, ctx); // reversible soft block
 entity::remove_action(&mut entity, &admin_acl, action_name, ctx);  // hard delete stale action data
-entity::deprecate_module(&mut entity, &admin_acl, module_name, ctx);
+entity::deprecate_component(&mut entity, &admin_acl, component_id, ctx);
 ```
 
 ## Consequences
 
 What becomes easier:
 
-- **Upgrades**: core entity logic and module behavior are decoupled, so new modules, new rules, and V2 module migrations do not always require changing the base structure.
+- **Upgrades**: core entity logic and component behavior are decoupled, so new components, new rules, and V2 component migrations do not always require changing the base structure.
 - **Reusability**: independent checks such as admin approval, sponsor approval, item deposit, fuel burn, and proximity proof can be combined across actions.
-- **New module support**: new behavior can be added as a module instead of creating a new assembly type.
+- **New component support**: new behavior can be added as a component instead of creating a new assembly type.
 - **Programmability**: all programmable actions use the same request and requirement flow.
 
 What becomes harder:
 
 - PTB construction must understand requirement order and handler discovery.
 - Requirement data must be carefully designed because it is stored as BCS bytes.
-- Module names become part of action configuration, so naming and owner/admin controls matter.
+- Component ids become part of action configuration, so slot identity and owner/admin controls matter.
 
 The main trade-off is intentional: complexity moves out of predefined assembly modules and into explicit action configuration, request construction, and requirement satisfaction.

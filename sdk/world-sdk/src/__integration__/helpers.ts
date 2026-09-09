@@ -81,7 +81,7 @@ export async function readBalance(
   config: WorldConfig,
   args: {
     entity: string
-    moduleId: bigint
+    componentId: bigint
     authorizedId: string
     typeId: bigint
   },
@@ -89,7 +89,7 @@ export async function readBalance(
   const tx = new Transaction()
   tx.setSender(signer)
   balanceOf(tx, config, tx.object(args.entity), {
-    moduleId: args.moduleId,
+    componentId: args.componentId,
     authorizedId: args.authorizedId,
     typeId: args.typeId,
   })

@@ -1,6 +1,6 @@
 # Move Conventions
 
-**Authoritative** conventions for the modular **Entity / Module / Action / Request /
+**Authoritative** conventions for the modular **Entity / Component / Action / Request /
 Requirement** architecture. This is the single source of truth — `CLAUDE.md`,
 `.cursor/rules/`, and `.github/instructions/` all point here, so edit conventions **here** and
 nowhere else.
@@ -21,15 +21,15 @@ and the [Move Book code-quality checklist](https://move-book.com/guides/code-qua
 - Error constants are `E` + PascalCase with an `#[error(code = N)]` attribute and a `vector<u8>`
   message — never `E_SCREAMING_SNAKE`. See [Error handling](#error-handling).
 - Keep modules small and single-purpose — compose behavior, don't grow god-modules.
-- Adding behavior should mean **installing a module, adding a handler, or exposing an action** —
+- Adding behavior should mean **installing a component, adding a handler, or exposing an action** —
   not changing the base `Entity` type.
 
 ## Naming
 
 - Modules: `snake_case` (`entity`, `location_service`, `owner_service`).
-- Structs: `PascalCase` (`Entity`, `Module`, `Requirement`, `OwnerCap`).
+- Structs: `PascalCase` (`Entity`, `Component`, `Requirement`, `OwnerCap`).
 - Functions / variables: `snake_case`. Constants: `SCREAMING_SNAKE_CASE` (`VERSION`).
-- Error constants: `E` + PascalCase (`EWrongVersion`, `EModuleMissing`).
+- Error constants: `E` + PascalCase (`EWrongVersion`, `EComponentMissing`).
 
 ## Module layout & function order
 
@@ -75,7 +75,7 @@ const EWrongVersion: vector<u8> = b"Entity version does not match the package ve
 #[error(code = 1)]
 const ENotLocked: vector<u8> = b"Entity is not locked";
 #[error(code = 2)]
-const EWrongEntity: vector<u8> = b"Module does not belong to this entity";
+const EWrongEntity: vector<u8> = b"Component does not belong to this entity";
 ```
 
 ```move
@@ -95,7 +95,7 @@ Every struct field **must** have a **read-only** getter in `// === View Function
 
 - **Read-only return.** Getters never expose mutable access — return copyable types (scalars,
   and small copy types like `String` / `ID`) by value, everything else by **immutable `&`
-  reference**. No `_mut` getters. Mutable access, when genuinely needed (e.g. `mod::inner_mut`
+  reference**. No `_mut` getters. Mutable access, when genuinely needed (e.g. `component::inner_mut`
   for handlers), is a deliberate, separately-justified accessor — not a default getter, and not
   part of this rule.
 - **Naming.** Match the field name, no `get_` prefix.
@@ -105,11 +105,11 @@ Exempt: the `id: UID` field (callers use `object::id`), positional key/witness s
 transient hot-potato internals (e.g. `Request`/`Frame` fields that must stay opaque).
 
 ```move
-public struct Module<T: store> has store { version: u64, inner: T, name: String }
+public struct Component<T: store> has store { version: u64, inner: T, name: Option<String> }
 
-public fun version<T: store>(m: &Module<T>): u64 { m.version }   // copyable scalar: by value
-public fun name<T: store>(m: &Module<T>): String { m.name }      // copyable String: by value
-public fun inner<T: store>(m: &Module<T>): &T { &m.inner }       // everything else: immutable &
+public fun version<T: store>(c: &Component<T>): u64 { c.version }   // copyable scalar: by value
+public fun name<T: store>(c: &Component<T>): Option<String> { c.name }
+public fun inner<T: store>(c: &Component<T>): &T { &c.inner }       // everything else: immutable &
 ```
 
 ## Hot-potato Request / Frame
@@ -146,23 +146,23 @@ public fun verify_owner_cap(request: &mut Request) {
 }
 ```
 
-Module *identity* is enforced via the next requirement's `module_id`, read inside `entity::module_mut` —
+Component *identity* is enforced via the next requirement's `component_id`, read inside `entity::component_mut` —
 
 ```move
-let module_id = req.next().module_id().destroy_or!(abort ERequirementNotModuleScoped);
-df::borrow_mut(&mut entity.id, ModuleKey(module_id))
+let component_id = req.next().component_id().destroy_or!(abort ERequirementNotComponentScoped);
+df::borrow_mut(&mut entity.id, ComponentKey(component_id))
 ```
 
 ## Versioning
 
 Every persisted type carries `const VERSION` + a `version: u64` field, asserted on entry.
-Modules pass their own `VERSION` at install time so they can upgrade independently of `core`.
+Components pass their own `VERSION` at install time so they can upgrade independently of `core`.
 
 ```move
 const VERSION: u64 = 1;
 assert!(e.version == VERSION, EWrongVersion);
 e.install(
-    module_id,
+    component_id,
     option::some(b"grid".to_string()),
     Grid { .. },
     VERSION,
@@ -173,14 +173,14 @@ e.install(
 
 ## Entity & dynamic fields
 
-Keep `Entity` small; store modules/actions as dynamic fields keyed by **typed key structs**, so
-adding a module never changes the `Entity` type.
+Keep `Entity` small; store components/actions as dynamic fields keyed by **typed key structs**, so
+adding a component never changes the `Entity` type.
 
 ```move
-public struct ModuleKey(u64) has copy, drop, store;
+public struct ComponentKey(u64) has copy, drop, store;
 public struct ActionsKey() has copy, drop, store;
-// df: ModuleKey(module_id) => Module<T>,  ActionsKey() => VecMap<String, Action>
-// well-known slots: id = first 8 bytes (LE) of blake2b256(name) via mod::id_from_name
+// df: ComponentKey(component_id) => Component<T>,  ActionsKey() => VecMap<String, Action>
+// well-known slots: id = first 8 bytes (LE) of blake2b256(name) via component::id_from_name
 ```
 
 ## Requirements as BCS config
@@ -191,7 +191,7 @@ Use `type_name::with_original_ids<T>()` for stable type identity.
 
 ```move
 public struct Deposit(ItemRequirement) has drop;
-requirement::from_config(option::some(module_id), Deposit(rule)); // encode
+requirement::from_config(option::some(component_id), Deposit(rule)); // encode
 let req = parse_bcs_requirement(requirement.data());                // decode (mirror field order)
 ```
 
@@ -282,7 +282,7 @@ fun new_zero_id_aborts() {
 **Architecture & safety**
 
 - [ ] Authorization proven by type (`Permit<T>` / witness), not a string/id argument?
-- [ ] Target module name read from the requirement, never from handler arguments?
+- [ ] Target component id read from the requirement, never from handler arguments?
 - [ ] Handlers `take_next<T>` → enforce `requirement.data()` → mutate, in that order?
 - [ ] Every persisted struct asserts `version == VERSION` on entry?
 - [ ] Extension data stored as dynamic fields with typed keys, not new `Entity` fields?
@@ -303,10 +303,10 @@ invariants above.
 
 ## Key files
 
-- `contracts/core/sources/entity.move` — `Entity`, install/uninstall, actions, `module_mut`
+- `contracts/core/sources/entity.move` — `Entity`, install/uninstall, actions, `component_mut`
 - `contracts/core/sources/request.move` — hot-potato `Request` / `Frame`
 - `contracts/core/sources/requirement.move` — typed BCS requirements
-- `contracts/core/sources/mod.move` — `Module<T>` wrapper
+- `contracts/core/sources/component.move` — `Component<T>` wrapper
 - `contracts/core/sources/action.move` — `Action`
 - `contracts/core/tests/entity_tests.move` — full lifecycle test example
 - [`docs/adr/0002-modular-architecture.md`](adr/0002-modular-architecture.md) — design & rationale

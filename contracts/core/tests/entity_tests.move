@@ -6,7 +6,6 @@ use core::{
     action,
     admin_service,
     entity,
-    mod,
     request,
     test_helpers::{setup, take_registry, take_acl, claim, tenant}
 };
@@ -43,7 +42,7 @@ fun new_sets_initial_fields() {
         assert!(entity::version(&e) == 1);
         assert!(entity::key(&e).id() == 1);
         assert!(entity::key(&e).tenant() == tenant());
-        assert!(!entity::has_module(&e, counter_id()));
+        assert!(!entity::has_component(&e, counter_id()));
 
         entity::share(e);
         ts::return_shared(acl);
@@ -88,7 +87,7 @@ fun distinct_ids_yield_distinct_entities() {
     scenario.end();
 }
 
-// === Modules ===
+// === Components ===
 
 #[test]
 fun install_adds_module() {
@@ -112,8 +111,8 @@ fun install_adds_module() {
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    assert!(e.has_module(counter_id()));
-    assert!(e.has_module_with_type<Counter>(counter_id()));
+    assert!(e.has_component(counter_id()));
+    assert!(e.has_component_with_type<Counter>(counter_id()));
 
     entity::share(e);
     ts::return_shared(acl);
@@ -121,8 +120,8 @@ fun install_adds_module() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = entity::EModuleExists)]
-fun install_duplicate_module_aborts() {
+#[test, expected_failure(abort_code = entity::EComponentExists)]
+fun install_duplicate_component_aborts() {
     let mut scenario = ts::begin(@0xA);
     setup(&mut scenario);
 
@@ -182,7 +181,7 @@ fun uninstall_removes_and_returns_module() {
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    assert!(!e.has_module(counter_id()));
+    assert!(!e.has_component(counter_id()));
     let Counter { value } = m.unwrap(internal::permit<Counter>());
     assert!(value == 9);
 
@@ -192,8 +191,8 @@ fun uninstall_removes_and_returns_module() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = entity::EModuleMissing)]
-fun uninstall_missing_module_aborts() {
+#[test, expected_failure(abort_code = entity::EComponentMissing)]
+fun uninstall_missing_component_aborts() {
     let mut scenario = ts::begin(@0xA);
     setup(&mut scenario);
 
@@ -242,10 +241,10 @@ fun install_two_modules_of_same_type() {
     admin_service::verify_admin(&mut req, &acl, ctx);
     e.complete_request(req);
 
-    assert!(e.has_module_with_type<Counter>(counter_id()));
-    assert!(e.has_module_with_type<Counter>(second_id));
-    assert!(e.module_ref<Counter>(counter_id(), internal::permit<Counter>()).inner().value == 0);
-    assert!(e.module_ref<Counter>(second_id, internal::permit<Counter>()).inner().value == 1);
+    assert!(e.has_component_with_type<Counter>(counter_id()));
+    assert!(e.has_component_with_type<Counter>(second_id));
+    assert!(e.component_ref<Counter>(counter_id(), internal::permit<Counter>()).inner().value == 0);
+    assert!(e.component_ref<Counter>(second_id, internal::permit<Counter>()).inner().value == 1);
 
     entity::share(e);
     ts::return_shared(acl);

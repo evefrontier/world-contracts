@@ -1,5 +1,5 @@
 ---
-description: "Guidelines for building Sui Move contracts (modular Entity/Module/Action/Request/Requirement architecture)"
+description: "Guidelines for building Sui Move contracts (modular Entity/Component/Action/Request/Requirement architecture)"
 applyTo: "**/*.move"
 ---
 
@@ -20,7 +20,7 @@ Non-negotiables (full detail in the doc above):
   `ctx`/`&Clock` last in signatures.
 - Every non-exempt struct field has a getter named after it (no `get_` prefix).
 - Authorization is type-driven via `internal::Permit<T>` — never gated on a string/id argument;
-  the target module name is read off the requirement, never from handler arguments.
+  the target component id is read off the requirement, never from handler arguments.
 - Every persisted struct carries `version` and asserts `version == VERSION` on entry.
 - `Request`/`Frame` are abilities-free hot potatoes minted/consumed only by `core::entity`.
 - BCS requirement decode mirrors the encode field order exactly.

@@ -24,13 +24,13 @@ function requirement(
   tx: Transaction,
   config: WorldConfig,
   fn: string,
-  moduleId: bigint,
+  componentId: bigint,
   rule: ItemRule,
 ): TransactionResult {
   return tx.moveCall({
     target: `${pkg(config)}::inventory::${fn}`,
     arguments: [
-      tx.pure.u64(moduleId),
+      tx.pure.u64(componentId),
       tx.pure.bool(rule.ephemeral),
       tx.pure.option('u64', rule.typeId ?? null),
       tx.pure.option('u64', rule.minQuantity ?? null),
@@ -42,48 +42,48 @@ function requirement(
 export function bridgeInRequirement(
   tx: Transaction,
   config: WorldConfig,
-  moduleId: bigint,
+  componentId: bigint,
   rule: ItemRule,
 ): TransactionResult {
-  return requirement(tx, config, 'bridge_in_requirement', moduleId, rule)
+  return requirement(tx, config, 'bridge_in_requirement', componentId, rule)
 }
 
 export function bridgeOutRequirement(
   tx: Transaction,
   config: WorldConfig,
-  moduleId: bigint,
+  componentId: bigint,
   rule: ItemRule,
 ): TransactionResult {
-  return requirement(tx, config, 'bridge_out_requirement', moduleId, rule)
+  return requirement(tx, config, 'bridge_out_requirement', componentId, rule)
 }
 
 export function depositRequirement(
   tx: Transaction,
   config: WorldConfig,
-  moduleId: bigint,
+  componentId: bigint,
   rule: ItemRule,
 ): TransactionResult {
-  return requirement(tx, config, 'deposit_requirement', moduleId, rule)
+  return requirement(tx, config, 'deposit_requirement', componentId, rule)
 }
 
 export function withdrawRequirement(
   tx: Transaction,
   config: WorldConfig,
-  moduleId: bigint,
+  componentId: bigint,
   rule: ItemRule,
 ): TransactionResult {
-  return requirement(tx, config, 'withdraw_requirement', moduleId, rule)
+  return requirement(tx, config, 'withdraw_requirement', componentId, rule)
 }
 
 export interface InstallInventoryArgs {
-  moduleId: bigint
+  componentId: bigint
   typeId: bigint
   name?: string | null
   mainCapacity: bigint
   ephemeralCapacity: bigint
 }
 
-/** Install an inventory module on `entity` and close its admin-gated request. */
+/** Install an inventory component on `entity` and close its admin-gated request. */
 export function installInventory(
   tx: Transaction,
   config: WorldConfig,
@@ -94,7 +94,7 @@ export function installInventory(
     target: `${pkg(config)}::inventory::install`,
     arguments: [
       entity,
-      tx.pure.u64(args.moduleId),
+      tx.pure.u64(args.componentId),
       tx.pure.u64(args.typeId),
       tx.pure.option('string', args.name ?? null),
       tx.pure.u64(args.mainCapacity),
@@ -105,16 +105,16 @@ export function installInventory(
   completeRequest(tx, config, entity, request)
 }
 
-/** Remove the inventory module `moduleId`, closing its admin-gated request. */
+/** Remove the inventory component `componentId`, closing its admin-gated request. */
 export function uninstallInventory(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
-  moduleId: bigint,
+  componentId: bigint,
 ): void {
   const request = tx.moveCall({
     target: `${pkg(config)}::inventory::uninstall`,
-    arguments: [entity, tx.pure.u64(moduleId)],
+    arguments: [entity, tx.pure.u64(componentId)],
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
@@ -123,7 +123,7 @@ export function uninstallInventory(
 export interface CreateStorageUnitArgs {
   inGameId: bigint
   tenant: string
-  moduleId: bigint
+  componentId: bigint
   typeId: bigint
   name?: string | null
   mainCapacity: bigint
@@ -131,7 +131,7 @@ export interface CreateStorageUnitArgs {
 }
 
 /**
- * Claim an entity, install an inventory module, and share it — the full
+ * Claim an entity, install an inventory component, and share it — the full
  * storage-unit creation flow in one admin-signed transaction.
  */
 export function createStorageUnit(
@@ -146,7 +146,7 @@ export function createStorageUnit(
   verifyAdmin(tx, config, claimReq)
   completeRequest(tx, config, entity, claimReq)
   installInventory(tx, config, entity, {
-    moduleId: args.moduleId,
+    componentId: args.componentId,
     typeId: args.typeId,
     name: args.name,
     mainCapacity: args.mainCapacity,
@@ -156,7 +156,7 @@ export function createStorageUnit(
 }
 
 export interface BalanceOfArgs {
-  moduleId: bigint
+  componentId: bigint
   authorizedId: string
   typeId: bigint
 }
@@ -176,7 +176,7 @@ export function balanceOf(
     target: `${pkg(config)}::inventory::balance_of`,
     arguments: [
       entity,
-      tx.pure.u64(args.moduleId),
+      tx.pure.u64(args.componentId),
       tx.pure.address(args.authorizedId),
       tx.pure.u64(args.typeId),
     ],
