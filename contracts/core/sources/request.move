@@ -42,7 +42,7 @@ public struct Frame {
 /// Pop the next requirement, proving the caller owns type `T` via a `Permit`.
 /// Returns the requirement plus a `Frame` the handler can push follow-ups into.
 ///
-/// Only the requirement *type* is checked here. Structure-ID and component-id
+/// Only the requirement *type* is checked here. Entity-id and component-id
 /// targeting are enforced when the handler borrows the component via
 /// `entity::component_mut`, which reads `entity_id()` and `next().component_id()`
 /// off the request.

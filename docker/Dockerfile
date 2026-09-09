@@ -3,7 +3,8 @@ ARG PNPM_VERSION=9
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 
 # Install system dependencies, Node.js, and pnpm in a single layer
-RUN apt-get update && apt-get install -y --no-install-recommends jq curl \
+# Bullseye security InRelease can expire on the sui-tools image; skip Valid-Until.
+RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y --no-install-recommends jq curl \
     && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g "pnpm@${PNPM_VERSION}" \

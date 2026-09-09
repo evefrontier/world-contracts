@@ -34,6 +34,7 @@ export {
   type CreateCharacterArgs,
   createCharacter,
 } from './packages/character.js'
+export { componentIdFromName } from './packages/component-id.js'
 export {
   addAdmins,
   addSponsors,
@@ -100,4 +101,3 @@ export {
   type MetadataFields,
   uninstallMetadata,
 } from './packages/metadata.js'
-export { componentIdFromName } from './packages/component-id.js'
