@@ -1,14 +1,16 @@
 ARG SUI_VERSION=testnet-v1.75.1
-ARG PNPM_VERSION=9
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 
-# sui-tools is Debian 11. debian-security currently 404s rotated pool debs
-# (e.g. curl 7.74.0-1.3+deb11u16). Use main + updates only.
+ARG PNPM_VERSION=9
+ARG NODE_VERSION=24.20.0
+
+# sui-tools is Debian 11. debian-security 404s rotated debs and nodesource
+# needs gnupg from that repo. Install jq/curl from main; Node from nodejs.org.
 RUN find /etc/apt -name '*.list' -exec sed -i '/security/s/^/#/' {} + \
     && apt-get update \
     && apt-get install -y --no-install-recommends jq curl \
-    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz" \
+        | tar -xz -C /usr/local --strip-components=1 \
     && npm install -g "pnpm@${PNPM_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
