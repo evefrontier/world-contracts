@@ -145,14 +145,9 @@ deployer_addr() {
 # One-time bootstrap: register world-<pkg>-<env> on MAINNET and send AppCap to the deployer.
 cmd_bootstrap_appcap() {
     local env=$1 pkg=$2
-    local name out app_cap deployer world
+    local name out app_cap deployer
     [[ "$env" == "localnet" ]] && {
         echo "ERROR: bootstrap-appcap is mainnet-only — not for localnet" >&2
-        exit 1
-    }
-    world="deployments/$env/world.json"
-    [[ -f "$world" ]] || {
-        echo "ERROR: $world missing create the env manifest before register" >&2
         exit 1
     }
     deployer=$(deployer_addr "${3:-}")
@@ -180,7 +175,7 @@ SUB=$1
 ENV=$(get_env "$2")
 PKG=$3
 shift 3
-mkdir -p "deployments/$ENV"
+require_world_json "$ENV"
 
 case "$SUB" in
     package-info) cmd_package_info "$ENV" "$PKG" ;;

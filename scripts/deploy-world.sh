@@ -14,7 +14,7 @@ ENV=$(get_env "${1:-}")
 MODE="${2:-publish}"
 NETWORK=$(get_network "$ENV")
 DEPLOY_DIR="deployments/$ENV"
-mkdir -p "$DEPLOY_DIR"
+ensure_deploy_dir "$ENV"
 start_logging "$ENV" "deploy-world ($MODE)"
 
 # `deploy` (workflow term for a new lineage) is a synonym for `publish`.

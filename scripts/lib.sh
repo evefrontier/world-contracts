@@ -42,6 +42,21 @@ get_rpc() {
     esac
 }
 
+# Publish owns creating the env dir. No-op if it already exists.
+ensure_deploy_dir() {
+    local dir="deployments/$1"
+    [[ -d "$dir" ]] || mkdir -p "$dir"
+}
+
+# MVR / bootstrap never create the env; they only patch world.json.
+require_world_json() {
+    local world="deployments/$1/world.json"
+    [[ -f "$world" ]] || {
+        echo "ERROR: $world missing — publish the env first" >&2
+        exit 1
+    }
+}
+
 # Create an empty Sui client config if none exists, so keytool/client can write.
 # Needed when running without the image entrypoint (which does its own init).
 sui_init_config() {

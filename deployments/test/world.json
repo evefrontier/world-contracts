@@ -1,0 +1,16 @@
+{
+  "mvr": {
+    "core": {
+      "appCap": "0xfa162cc9318dba582f60c76a4297a4d1e6fab1ec543c1a6b90ede4e127f7d37e"
+    },
+    "character": {
+      "appCap": "0x99ba045c099917aa44c9e74c92b2fff082e510acf1d2864e30b652b984e73ffa"
+    },
+    "inventory": {
+      "appCap": "0x071e71571324ec6c24acbbaaa4286dab2cce2c44412664b7b69f0c7d7f1a62d0"
+    },
+    "metadata": {
+      "appCap": "0x82667a82334aa161812cb48c42b1eb30a9b6247d1ad023bc9550d4f2bd044790"
+    }
+  }
+}

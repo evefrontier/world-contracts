@@ -7,6 +7,10 @@ import type { Env, WorldConfig } from '../src/config/types.js'
 
 const VALID_ENVS: readonly Env[] = ['local', 'dev', 'uat', 'test', 'live']
 
+function isEnv(value: string): value is Env {
+  return (VALID_ENVS as readonly string[]).includes(value)
+}
+
 export interface ScriptContext {
   deployEnv: string
   env: Env
@@ -19,13 +23,12 @@ export interface ScriptContext {
 
 export function loadScriptContext(): ScriptContext {
   const deployEnv = process.env.ENV ?? 'localnet'
-  const sdkEnv = deployEnv === 'localnet' ? 'local' : deployEnv
-  if (!VALID_ENVS.includes(sdkEnv as Env)) {
+  const env = deployEnv === 'localnet' ? 'local' : deployEnv
+  if (!isEnv(env)) {
     throw new Error(
       `unknown ENV "${deployEnv}" (want localnet|${VALID_ENVS.join('|')})`,
     )
   }
-  const env = sdkEnv as Env
   const repoRoot = fileURLToPath(new URL('../../..', import.meta.url))
   const manifestPath = `${repoRoot}/deployments/${deployEnv}/world.json`
 
@@ -36,7 +39,9 @@ export function loadScriptContext(): ScriptContext {
   const keypair = Ed25519Keypair.fromSecretKey(privateKey)
 
   const config = loadWorldConfig(manifestPath)
-  const grpcUrl = process.env.SUI_GRPC_URL || process.env.SUI_RPC_URL
+  const grpcUrl =
+    process.env.SUI_GRPC_URL ??
+    (env === 'local' ? process.env.SUI_RPC_URL : undefined)
   const client = createWorldClient({ config, grpcUrl })
 
   return { deployEnv, env, repoRoot, manifestPath, config, client, keypair }
