@@ -11,6 +11,9 @@
     },
     "metadata": {
       "appCap": "0x82667a82334aa161812cb48c42b1eb30a9b6247d1ad023bc9550d4f2bd044790"
+    },
+    "currency": {
+      "appCap": "0x91c8bc89aad1928073c0655d569c66cb1d8374483ef93b254b6436a7f0bdbc16"
     }
   }
 }
