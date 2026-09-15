@@ -9,6 +9,10 @@ MVR_METADATA_MAINNET="0xc88768f8b26581a8ee1bf71e6a6ec0f93d4cc6460ebb66a31b94d64d
 MVR_CORE_MAINNET="0xbb97fa5af2504cc944a8df78dcb5c8b72c3673ca4ba8e4969a98188bf745ee54"
 MVR_REGISTRY="0x0e5d473a055b6b7d014af557a13ad9075157fdc19b6d51562a18511afd397727"
 
+# The @evefrontier SuiNS parent-domain NFT (mainnet), owned by whoever bootstraps
+# new AppCaps. Passed as the `suins` arg to move_registry::register.
+MVR_SUINS_PARENT="0x105c5d747025164575750f155ef13fc60229ec2ea4dfcdd13315c87aeb70bfbc"
+
 # SuiNS namespace these names live under.
 MVR_NAMESPACE="@evefrontier"
 

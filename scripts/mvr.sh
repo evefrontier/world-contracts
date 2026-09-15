@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # MVR (Move Registry) operations, per package per env.
 #
-#   mvr.sh package-info <env> <pkg>                 create PackageInfo (target network; deploy)
-#   mvr.sh set-network  <env> <pkg>                 repoint the name (MAINNET; deploy, new lineage)
-#   mvr.sh git-version  <env> <pkg> <ver> <commit>  record source for a version (target network)
-#   mvr.sh set-appcap   <env> <pkg> <appCapId>      record the AppCap from one-time bootstrap register
+#   mvr.sh package-info      <env> <pkg>
+#   mvr.sh set-network       <env> <pkg>
+#   mvr.sh git-version       <env> <pkg> <ver> <commit>
+#   mvr.sh set-appcap        <env> <pkg> <appCapId>
+#   mvr.sh bootstrap-appcap  <env> <pkg>
+#
+# bootstrap-appcap is a one-time, manual step per new (pkg, env) pair
+# It mints a permanent SuiNS subname, so run it deliberately with the
+# @evefrontier-owning mainnet key active, not as part of the automated deploy.
 #
 # Object ids are read from / written to the committed deployments/<env>/world.json.
 source "$(dirname "$0")/lib.sh"
@@ -13,7 +18,7 @@ source "$(dirname "$0")/mvr-lib.sh"
 GIT_REPO="https://github.com/evefrontier/world-contracts"
 
 usage() {
-    echo "Usage: $0 <package-info|set-network|git-version|set-appcap> <env> <pkg> [args]" >&2
+    echo "Usage: $0 <package-info|set-network|git-version|set-appcap|bootstrap-appcap> <env> <pkg> [args]" >&2
     exit 1
 }
 
@@ -123,6 +128,43 @@ cmd_git_version() {
     echo "set_git_versioning $pkg v$version @ $commit"
 }
 
+# Resolve deployer from CLI, DEPLOYER_ADDRESS, or the deployer private key.
+deployer_addr() {
+    local addr=${1:-${DEPLOYER_ADDRESS:-}}
+    if [[ -z "$addr" ]]; then
+        local key=${DEPLOYER_PRIVATE_KEY:-${DEPLOYER_KEY:-}}
+        [[ -n "$key" ]] && addr=$(import_key "$key")
+    fi
+    [[ "$addr" =~ ^0x[a-fA-F0-9]{64}$ ]] || {
+        echo "ERROR: no deployer address — pass 0x… or set DEPLOYER_ADDRESS / DEPLOYER_PRIVATE_KEY in .env" >&2
+        exit 1
+    }
+    echo "$addr"
+}
+
+# One-time bootstrap: register world-<pkg>-<env> on MAINNET and send AppCap to the deployer.
+cmd_bootstrap_appcap() {
+    local env=$1 pkg=$2
+    local name out app_cap deployer
+    deployer=$(deployer_addr "${3:-}")
+    name=$(mvr_name "$pkg" "$env")
+    # register() takes the app label only; the @evefrontier parent is MVR_SUINS_PARENT.
+    label="${name#*/}"
+    out="deployments/$env/$pkg.appcap.json"
+
+    ensure_client_env mainnet "$(get_rpc live)"
+    run_ptb "register $name" "$out" \
+        --move-call "$MVR_CORE_MAINNET::move_registry::register" \
+            "@$MVR_REGISTRY" "@$MVR_SUINS_PARENT" "\"$label\"" "@0x6" --assign appcap \
+        --transfer-objects "[appcap]" "@$deployer"
+
+    app_cap=$(jq -r '.objectChanges[] | select(.type=="created" and (.objectType|contains("AppCap"))) | .objectId' "$out" | head -1)
+    [[ -z "$app_cap" ]] && { echo "ERROR: no AppCap created in $out" >&2; exit 1; }
+
+    mvr_set "$env" "$pkg" appCap "$app_cap"
+    echo "bootstrap-appcap $pkg/$env: registered '$name', appCap = $app_cap -> $deployer"
+}
+
 setup
 [[ $# -lt 3 ]] && usage
 SUB=$1
@@ -135,6 +177,7 @@ case "$SUB" in
     package-info) cmd_package_info "$ENV" "$PKG" ;;
     set-network)  cmd_set_network  "$ENV" "$PKG" ;;
     git-version)  cmd_git_version  "$ENV" "$PKG" "${1:-}" "${2:-}" ;;
-    set-appcap)   [[ -z "${1:-}" ]] && usage; mvr_set "$ENV" "$PKG" appCap "$1"; echo "appCap $PKG/$ENV = $1" ;;
+    set-appcap)      [[ -z "${1:-}" ]] && usage; mvr_set "$ENV" "$PKG" appCap "$1"; echo "appCap $PKG/$ENV = $1" ;;
+    bootstrap-appcap) cmd_bootstrap_appcap "$ENV" "$PKG" "${1:-}" ;;
     *) usage ;;
 esac
