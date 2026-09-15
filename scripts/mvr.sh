@@ -145,7 +145,16 @@ deployer_addr() {
 # One-time bootstrap: register world-<pkg>-<env> on MAINNET and send AppCap to the deployer.
 cmd_bootstrap_appcap() {
     local env=$1 pkg=$2
-    local name out app_cap deployer
+    local name out app_cap deployer world
+    [[ "$env" == "localnet" ]] && {
+        echo "ERROR: bootstrap-appcap is mainnet-only — not for localnet" >&2
+        exit 1
+    }
+    world="deployments/$env/world.json"
+    [[ -f "$world" ]] || {
+        echo "ERROR: $world missing create the env manifest before register" >&2
+        exit 1
+    }
     deployer=$(deployer_addr "${3:-}")
     name=$(mvr_name "$pkg" "$env")
     # register() takes the app label only; the @evefrontier parent is MVR_SUINS_PARENT.
