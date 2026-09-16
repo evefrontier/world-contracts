@@ -57,12 +57,8 @@ Switched-off modules stay known to the grid, waiting for capacity to
 return.
 
 Fuel running low is different: it depletes gradually, so nothing switches off
-the moment it hits zero. Affected modules stay on until the grid is next
-mutated by a transaction, or by a client reading the live view. There is no
-on-chain settle or cron. However the game client updates its state based on a
-off-chain timer. Any other builder logic based on the current value 
-should read state through the view functions instead of assuming a cron
-exists.
+the moment it hits zero. Affected modules remain stored as-is until the next
+mutating transaction; view functions only expose the projected fuel/capacity.
 
 When capacity returns fitting a new generator, a refuel, or Power turning
 back On, the grid loops through the connected modules in that same
@@ -272,4 +268,4 @@ either has power or it does not, the instant fuel or capacity runs out).
 
 ## Open questions carried forward
 
-- Regrant order and Shed order
+- WIP discussions on Regrant order and Shed order
