@@ -31,8 +31,8 @@ A creation can have a power grid to manage the power its modules need.
 power grid's capacity goes up.
 - **Fuel Bays** hold the fuel that generators burn, pooled together.
 - Every other fitting that needs power (inventory, thruster, anything) is a
-load on the grid. Switching it on asks for a fixed number of
-megawatts.
+load on the grid. Switching it on asks for a number of megawatts: **Firm**
+(all-or-nothing) or **Elastic** (take leftover if the full ask does not fit).
 
 ```mermaid
 flowchart LR
@@ -47,23 +47,27 @@ flowchart LR
     Ceiling --> Turret[Turret: 15 MW]
 ```
 
-When a connected module requests power, the grid remembers that request and
-sets its `active_draw` to `true` if there was enough spare capacity to grant
-it, or `false` if there wasn't. A request is never dropped, only left waiting.
+When a connected module requests power, the grid stores the ask (`requested`)
+and how many watts it is actually getting right now (`active_draw: u64`,). 
+A request is never dropped.
 
-When capacity shrinks a generator goes offline or Power turns Off the
-grid switches off active modules, smallest draw first, until usage fits.
-Switched-off modules stay known to the grid, waiting for capacity to
-return.
+- **Firm:** `active_draw = requested` if leftover capacity covers the full ask,
+  else `0` (waiting).
+- **Elastic:** `active_draw = min(requested, leftover)`. Partial grant is
+  allowed; `0` only if leftover is `0`.
+
+When capacity shrinks (a generator goes offline or Power turns Off) the grid
+first **shrinks Elastic** `active_draw` until usage fits, then **sheds Firm**
+(smallest `requested` first) down to `active_draw = 0`.
 
 Fuel running low is different: it depletes gradually, so nothing switches off
 the moment it hits zero. Affected modules remain stored as-is until the next
 mutating transaction; view functions only expose the projected fuel/capacity.
 However in-game client will have the updated state via our internal cron job.
 
-When capacity returns fitting a new generator, a refuel, or Power turning
-back On, the grid loops through the connected modules in that same
-transaction, and turns each one back on if it now fits.
+When capacity returns (new generator, refuel, or Power On) the same
+transaction regrants: Firm rows in insertion order get a full grant or stay at
+`0`; leftover then fills Elastic rows up to each `requested`. 
 
 Power On/Off is one master switch for the whole Creation. Off treats capacity
 as zero and switches off every active module; the stored generator totals and
@@ -85,8 +89,8 @@ sequenceDiagram
     Generator->>PowerGrid: pool_capacity_mw += 50
     Owner->>FuelBay: deposit fuel
     FuelBay->>PowerGrid: settled_fuel_quantity += amount
-    Inventory->>PowerGrid: firm_draw_requirement(draw: 25, line_loss: 2)
-    PowerGrid-->>Inventory: Reserved { active_draw: true }
+    Inventory->>PowerGrid: firm_draw_requirement(draw: 25)
+    PowerGrid-->>Inventory: Reserved { requested: 25, active_draw: 25 }
 
     Note over PowerGrid: Generator goes offline<br/>pool_capacity_mw -= 50
     PowerGrid->>PowerGrid: shed smallest active row(s) until usage fits
@@ -94,24 +98,21 @@ sequenceDiagram
 
     Note over PowerGrid: Generator back online<br/>pool_capacity_mw += 50
     Owner->>PowerGrid: Power On (regrant)
-    PowerGrid-->>Inventory: Reserved { active_draw: true }
+    PowerGrid-->>Inventory: Reserved { requested: 25, active_draw: 25 }
 ```
 
-A firm draw is a `Requirement` any consuming action can bundle in, satisfied
-against the shared `PowerGrid` component or requested directly, without
-bundling, via `PowerGrid`'s own standalone "request power" Action:
+A firm or elastic draw is a `Requirement` any consuming action can bundle in,
+satisfied against the shared `PowerGrid` component, or requested directly via
+`PowerGrid`'s standalone "request power" Action:
 
 ```move
 public fun firm_draw_requirement(component_id: u64, draw: u64): Requirement {
     requirement::from_config(option::some(component_id), FirmDraw { draw })
 }
 
-// Bundled: Inventory's own "online" action carries the power requirement.
-let req = request.satisfy<power_grid::FirmDraw>(permit);
-power_grid::reserve(&mut grid, &mut request, req);
-
-// Standalone: PowerGrid's own action.
-power_grid::request_power(&mut grid, component_id, draw, ctx);
+public fun elastic_draw_requirement(component_id: u64, draw: u64): Requirement {
+    requirement::from_config(option::some(component_id), ElasticDraw { draw })
+}
 ```
 
 ## Scope
@@ -125,16 +126,18 @@ to the pool.
 - One or more `Component<FuelBay>` fittings, all pooling into one shared fuel
 supply (quantity + blended `impulse`) that every installed Generator burns
 from.
-- **Firm** power reservations only: a fixed draw, admitted all-or-nothing,
-parked inactive if it does not fit, held until released or shed.
+- **Firm** reservations: fixed ask, all-or-nothing (`active_draw` is `0` or
+`requested`).
+- **Elastic** reservations: (leftover watts), `active_draw` may be any 
+value <= requested.
 - Power On/Off (a Creation-level gate).
 - Lazy (pull-based, no cron) fuel burn settlement.
 
 **Out of scope for v1:**
 
-- **Capacitor/Store on-chain entirely.** No stored battery charge, no Elastic
-requests, no Burst requests, no reserve supply. If a capacitor exists in the
-client, it is off-chain state only.
+- **Capacitor/Store on-chain entirely.** No stored battery charge, no Burst
+requests, no reserve supply. If a capacitor exists in the client, it is
+off-chain state only.
 - Cross-Creation power sharing (Links/couplers).
 - Builder-customizable shed priority.
 
@@ -155,27 +158,35 @@ public struct PowerGrid has store {
 
     // running-total ceilings (summed from online contributions)
     pool_capacity_mw: u64,          // sum of online Generators' rated max_output
-    used_mw: u64,                   // sum of active_draw reservations (draw + line_loss)
+    used_mw: u64,                   // sum of reservation.active_draw
     containment_reduction: u64,     // Grid-level constant
 
     last_settled_ms: u64,           // timestamp settled_fuel_quantity was last computed at
 
     connected: VecSet<u64>,         // component_ids connected via a conduit
-    reservations: LinkedTable<u64, FirmReservation>, // key = requester_component_id
+    reservations: LinkedTable<u64, Reservation>, // key = requester_component_id
 }
 
-public struct FirmReservation has store, drop {
+public enum DrawKind has store, drop {
+    Firm,
+    Elastic,
+}
+
+public struct Reservation has store, drop {
     requester_component_id: u64,
-    draw: u64,
+    requested: u64,     // MW asked
     line_loss: u64,
-    priority: u64,   // flat default for every reservation in v1
-    active_draw: bool,
+    active_draw: u64,   // MW granted right now; 0 = none. Firm is 0 or requested.
+    kind: DrawKind,
 }
 
-// The Requirement config `firm_draw_requirement` wraps (see Actions &
-// Requirements). power_grid owns this type, so it alone can obtain the
-// Permit<FirmDraw> needed to pop it off a Request.
+// Requirement configs. power_grid owns these types, so it alone can obtain
+// Permit<FirmDraw> / Permit<ElasticDraw> to pop them off a Request.
 public struct FirmDraw has store, drop {
+    draw: u64,
+}
+
+public struct ElasticDraw has store, drop {
     draw: u64,
 }
 ```
@@ -183,8 +194,8 @@ public struct FirmDraw has store, drop {
 Effective capacity is `pool_capacity_mw - containment_reduction`.
 
 `LinkedTable` is keyed by `requester_component_id` so Reserve/Release are O(1).
-Shed still scans every row with `active_draw` set and repeatedly picks the
-smallest `draw + line_loss`
+`used_mw` is the sum of `active_draw` (the live grant), not `requested`.
+Shed/regrant use `DrawKind` as above: shrink Elastic first, then zero Firm.
 
 #### `Component<Generator>` (one or more per Creation)
 
@@ -220,9 +231,9 @@ to draw power: any existing or future component can include a
 
 - **Power On / Power Off**: its own Action on the Power Grid, gated
 `owner_requirement()`.
-- **Firm draw**: a Requirement, bundled into the player's own action (e.g. a
-Inventory's "online" action), or `PowerGrid`'s standalone **"request power"**
-Action for a module.
+- **Firm draw / Elastic draw**: Requirements, bundled into the player's own
+action (e.g. Inventory "online"), or `PowerGrid`'s standalone **"request
+power"** Action.
 - **Release**: a Requirement/handler pair on the player's own action (e.g.
 "offline"), or directly via `power_grid`'s own action, by
 `component_id`.
@@ -240,7 +251,7 @@ existing reservation, if any, in the same transaction.
 
 ### Events
 
-- `Reserved { requester_component_id, draw, line_loss, active_draw }`
+- `Reserved { requester_component_id, kind, requested, line_loss, active_draw }`
 - `Released { requester_component_id }`
 - `Shed { requester_component_id }`
 - `PowerToggled { on }`
@@ -262,14 +273,18 @@ Views are truth for fuel and effective capacity. Stored `active_draw` /
 `settle()` or poke action. Builders that rely on on-chain events should use
 the view functions to compute the values for the side-effects.
 
+A module is "on" iff `active_draw > 0`. Compare `active_draw` to `requested`
+to see a full Firm grant vs a partial Elastic grant.
+
 ## Consequences
 
 **Easier:** builders can automate power management from on-chain state (effective
 capacity, stored reservations, projected fuel) without querying the game
 client.
 
-**Harder / deferred:** no capacitor-backed grace period on-chain (a module
-either has power or it does not, the instant fuel or capacity runs out). 
+**Harder / deferred:** no capacitor-backed grace period on-chain. Elastic
+covers leftover watts, not stored charge over time. Burst / battery stay
+off-chain. 
 
 ## Open questions carried forward
 
