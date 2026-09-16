@@ -58,7 +58,11 @@ return.
 
 Fuel running low is different: it depletes gradually, so nothing switches off
 the moment it hits zero. Affected modules stay on until the grid is next
-mutated, by a transaction or a client reading the live view.
+mutated by a transaction, or by a client reading the live view. There is no
+on-chain settle or cron. However the game client updates its state based on a
+off-chain timer. Any other builder logic based on the current value 
+should read state through the view functions instead of assuming a cron
+exists.
 
 When capacity returns fitting a new generator, a refuel, or Power turning
 back On, the grid loops through the connected modules in that same
@@ -66,7 +70,7 @@ transaction, and turns each one back on if it now fits.
 
 Power On/Off is one master switch for the whole Creation. Off treats capacity
 as zero and switches off every active module; the stored generator totals and
-fuel are otherwise untouched.
+fuel stays the same.
 
 **Not covered in v1:** no battery/capacitor buffering a shortfall, no burst power for weapon fire. See [Scope](#scope) and [Consequences](#consequences).
 
