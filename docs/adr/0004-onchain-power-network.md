@@ -1,4 +1,4 @@
-# 4. On-Chain Power Network
+# 4. On-Chain Power Grid
 
 - **Status:** Proposed
 
@@ -105,7 +105,9 @@ against the shared `PowerGrid` component or requested directly, without
 bundling, via `PowerGrid`'s own standalone "request power" Action:
 
 ```move
-public fun firm_draw_requirement(component_id: u64, draw: u64, line_loss: u64): Requirement;
+public fun firm_draw_requirement(component_id: u64, draw: u64, line_loss: u64): Requirement {
+    requirement::from_config(option::some(component_id), FirmDraw { draw, line_loss })
+}
 
 // Bundled: Inventory's own "online" action carries the power requirement.
 let req = request.satisfy<power_grid::FirmDraw>(permit);
@@ -171,6 +173,14 @@ public struct FirmReservation has store, drop {
     line_loss: u64,
     priority: u64,   // flat default for every reservation in v1
     active_draw: bool,
+}
+
+// The Requirement config `firm_draw_requirement` wraps (see Actions &
+// Requirements). power_grid owns this type, so it alone can obtain the
+// Permit<FirmDraw> needed to pop it off a Request.
+public struct FirmDraw has store, drop {
+    draw: u64,
+    line_loss: u64,
 }
 ```
 

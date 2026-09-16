@@ -25,13 +25,13 @@ Entity
   Component<Identity>        who this is (not a game fitting)
   Component<Creation>        kind of thing (ship / gate / …) 
   Component<Inventory>       game module (player-facing fitting)
-  Component<PowerNetwork>    game module
+  Component<PowerGrid>       game module
   Component<KillMail>        optional record bag (not a fitting)
 ```
 
 ```
 Character entity = Entity + Identity   (+ Inventory, KillMail, … later)
-Creation entity  = Entity + Creation   + Inventory + PowerNetwork + …
+Creation entity  = Entity + Creation   + Inventory + PowerGrid + …
 Tribe entity     = Entity + …          (Principal / AccessCaps)
 ```
 
