@@ -59,6 +59,7 @@ return.
 Fuel running low is different: it depletes gradually, so nothing switches off
 the moment it hits zero. Affected modules remain stored as-is until the next
 mutating transaction; view functions only expose the projected fuel/capacity.
+However in-game client will have the updated state via our internal cron job.
 
 When capacity returns fitting a new generator, a refuel, or Power turning
 back On, the grid loops through the connected modules in that same
@@ -101,8 +102,8 @@ against the shared `PowerGrid` component or requested directly, without
 bundling, via `PowerGrid`'s own standalone "request power" Action:
 
 ```move
-public fun firm_draw_requirement(component_id: u64, draw: u64, line_loss: u64): Requirement {
-    requirement::from_config(option::some(component_id), FirmDraw { draw, line_loss })
+public fun firm_draw_requirement(component_id: u64, draw: u64): Requirement {
+    requirement::from_config(option::some(component_id), FirmDraw { draw })
 }
 
 // Bundled: Inventory's own "online" action carries the power requirement.
@@ -110,7 +111,7 @@ let req = request.satisfy<power_grid::FirmDraw>(permit);
 power_grid::reserve(&mut grid, &mut request, req);
 
 // Standalone: PowerGrid's own action.
-power_grid::request_power(&mut grid, component_id, draw, line_loss, ctx);
+power_grid::request_power(&mut grid, component_id, draw, ctx);
 ```
 
 ## Scope
@@ -155,7 +156,7 @@ public struct PowerGrid has store {
     // running-total ceilings (summed from online contributions)
     pool_capacity_mw: u64,          // sum of online Generators' rated max_output
     used_mw: u64,                   // sum of active_draw reservations (draw + line_loss)
-    containment_reduction: u64,     // one Grid-level constant, shared by every Generator
+    containment_reduction: u64,     // Grid-level constant
 
     last_settled_ms: u64,           // timestamp settled_fuel_quantity was last computed at
 
@@ -176,9 +177,10 @@ public struct FirmReservation has store, drop {
 // Permit<FirmDraw> needed to pop it off a Request.
 public struct FirmDraw has store, drop {
     draw: u64,
-    line_loss: u64,
 }
 ```
+
+Effective capacity is `pool_capacity_mw - containment_reduction`.
 
 `LinkedTable` is keyed by `requester_component_id` so Reserve/Release are O(1).
 Shed still scans every row with `active_draw` set and repeatedly picks the
@@ -229,9 +231,12 @@ pushes the `max_output_mw` delta into `PowerGrid.pool_capacity_mw`
 (requires bundling a `power_grid` targeting requirement, since it mutates
 a sibling component).
 - **Fuel Bay install/uninstall/deposit**: pushes capacity deltas and
-blends deposits into the pooled fuel state.
+blends deposits into the pooled fuel state. Uninstall settles fuel first
+advancing `settled_fuel_quantity` to now then aborts if the settled
+quantity would exceed the reduced `fuel_capacity`.
 - **Rewire**: an owner-gated action to add/remove a component from
-`PowerGrid.connected` after install.
+`PowerGrid.connected` after install. Removing a component auto-releases its
+existing reservation, if any, in the same transaction.
 
 ### Events
 
