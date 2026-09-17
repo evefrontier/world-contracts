@@ -94,7 +94,7 @@ sequenceDiagram
 
     Note over PowerGrid: Generator goes offline<br/>pool_capacity_mw -= 50
     PowerGrid->>PowerGrid: shed smallest active row(s) until usage fits
-    PowerGrid-->>Inventory: Shed { requester_module_id }
+    PowerGrid-->>Inventory: Shed { module_id }
 
     Note over PowerGrid: Generator back online<br/>pool_capacity_mw += 50
     Owner->>PowerGrid: Power On (regrant)
@@ -148,6 +148,7 @@ off-chain state only.
 #### `Component<PowerGrid>`
 
 ```move
+// One per Creation. Pooled fuel and watts, plus who is plugged in and who is drawing.
 public struct PowerGrid has store {
     on: bool,
 
@@ -157,14 +158,14 @@ public struct PowerGrid has store {
     fuel_impulse: u64,              // blended (weighted-average) quality attribute
 
     // running-total ceilings (summed from online contributions)
-    pool_capacity_mw: u64,          // sum of online Generators' rated max_output
+    capacity_mw: u64,          // sum of online Generators' rated max_output
     used_mw: u64,                   // sum of reservation.active_draw
     containment_reduction: u64,     // Grid-level constant
 
     last_settled_ms: u64,           // timestamp settled_fuel_quantity was last computed at
 
     connected: VecSet<u64>,         // component_ids connected via a conduit
-    reservations: LinkedTable<u64, Reservation>, // key = requester_module_id
+    reservations: LinkedTable<u64, Reservation>, // key = module_id
 }
 
 public enum DrawKind has store, drop {
@@ -173,11 +174,12 @@ public enum DrawKind has store, drop {
 }
 
 public struct Reservation has store, drop {
-    requester_module_id: u64,
+    module_id: u64,
     requested: u64,     // MW asked
     line_loss: u64,
-    active_draw: u64,   // MW granted right now; 0 = none. Firm is 0 or requested.
+    active_draw_at_last_settled : u64,   // MW granted right now; 0 = none. Firm is 0 or requested.
     kind: DrawKind,
+    // Can add priority later
 }
 
 // Requirement configs. power_grid owns these types, so it alone can obtain
@@ -193,7 +195,7 @@ public struct ElasticDraw has store, drop {
 
 Effective capacity is `pool_capacity_mw - containment_reduction`.
 
-`LinkedTable` is keyed by `requester_module_id` so Reserve/Release are O(1).
+`LinkedTable` is keyed by `module_id` so Reserve/Release are O(1).
 `used_mw` is the sum of `active_draw` (the live grant), not `requested`.
 Shed/regrant use `DrawKind` as above: shrink Elastic first, then zero Firm.
 
@@ -251,9 +253,9 @@ existing reservation, if any, in the same transaction.
 
 ### Events
 
-- `Reserved { requester_module_id, kind, requested, line_loss, active_draw }`
-- `Released { requester_module_id }`
-- `Shed { requester_module_id }`
+- `Reserved { module_id, kind, requested, line_loss, active_draw }`
+- `Released { module_id }`
+- `Shed { module_id }`
 - `PowerToggled { on }`
 - `FuelAdded { fuel_type, amount, resulting_impulse }`
 
