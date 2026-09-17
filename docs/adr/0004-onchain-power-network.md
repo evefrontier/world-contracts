@@ -94,7 +94,7 @@ sequenceDiagram
 
     Note over PowerGrid: Generator goes offline<br/>pool_capacity_mw -= 50
     PowerGrid->>PowerGrid: shed smallest active row(s) until usage fits
-    PowerGrid-->>Inventory: Shed { requester_component_id }
+    PowerGrid-->>Inventory: Shed { requester_module_id }
 
     Note over PowerGrid: Generator back online<br/>pool_capacity_mw += 50
     Owner->>PowerGrid: Power On (regrant)
@@ -164,7 +164,7 @@ public struct PowerGrid has store {
     last_settled_ms: u64,           // timestamp settled_fuel_quantity was last computed at
 
     connected: VecSet<u64>,         // component_ids connected via a conduit
-    reservations: LinkedTable<u64, Reservation>, // key = requester_component_id
+    reservations: LinkedTable<u64, Reservation>, // key = requester_module_id
 }
 
 public enum DrawKind has store, drop {
@@ -173,7 +173,7 @@ public enum DrawKind has store, drop {
 }
 
 public struct Reservation has store, drop {
-    requester_component_id: u64,
+    requester_module_id: u64,
     requested: u64,     // MW asked
     line_loss: u64,
     active_draw: u64,   // MW granted right now; 0 = none. Firm is 0 or requested.
@@ -193,7 +193,7 @@ public struct ElasticDraw has store, drop {
 
 Effective capacity is `pool_capacity_mw - containment_reduction`.
 
-`LinkedTable` is keyed by `requester_component_id` so Reserve/Release are O(1).
+`LinkedTable` is keyed by `requester_module_id` so Reserve/Release are O(1).
 `used_mw` is the sum of `active_draw` (the live grant), not `requested`.
 Shed/regrant use `DrawKind` as above: shrink Elastic first, then zero Firm.
 
@@ -251,9 +251,9 @@ existing reservation, if any, in the same transaction.
 
 ### Events
 
-- `Reserved { requester_component_id, kind, requested, line_loss, active_draw }`
-- `Released { requester_component_id }`
-- `Shed { requester_component_id }`
+- `Reserved { requester_module_id, kind, requested, line_loss, active_draw }`
+- `Released { requester_module_id }`
+- `Shed { requester_module_id }`
 - `PowerToggled { on }`
 - `FuelAdded { fuel_type, amount, resulting_impulse }`
 
