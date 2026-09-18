@@ -45,9 +45,8 @@ public struct AccessCap has key {
 public struct Owner() has drop;
 
 /// Requirement marker: the caller must present *any* valid `AccessCap`. Records
-/// its `entity()` as the request's authorized entity for downstream routing
-/// (e.g. inventory owner-vs-ephemeral). Does not require the cap to own the
-/// target entity.
+/// its `entity()` as the request's authorized entity for downstream use. Does
+/// not require the cap to own the target entity.
 public struct Caller() has drop;
 
 /// Hot-potato proof that a parked `AccessCap` was borrowed from `origin`. Has no
