@@ -1,13 +1,12 @@
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
-import { createCharacter } from '../packages/character.js'
 import {
-  callerRequirement,
   completeRequest,
   deriveObjectId,
   enableAction,
   interact,
-  verifyCaller,
+  ownerRequirement,
+  verifyOwner,
   verifyProximity,
 } from '../packages/core.js'
 import {
@@ -27,114 +26,125 @@ import {
   signer,
 } from './helpers.js'
 
-// Owner configures a multi-requirement swap (give a fuel from your ephemeral,
-// get a lens from main). A player executes the whole swap in one PTB with one
-// signer — no owner cap at call time, since the requirements are owner-trusted.
+// A owns entity1 (offers LENS). B owns entity2 (pays FUEL).
+// B withdraws FUEL, swaps it for LENS on entity1, deposits LENS into entity2.
 const MODULE_ID = 0x51n
-const UNIT = 'SU-03'
 const FUEL = 88834n
 const LENS = 55n
 const VOL = 2n
 
-describe('inventory owner-configured swap (localnet)', () => {
+describe('inventory swap across two entities (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
 
-  it('swaps a player fuel for a main lens in one player-signed PTB', async () => {
-    const suKey = { id: 4400n, tenant: 'inventory-t3' }
-    const suId = deriveObjectId(config, suKey)
-    const playerKey = { id: 4401n, tenant: 'inventory-t3' }
-    const characterId = deriveObjectId(config, playerKey)
+  it('swaps a fuel for a lens between two owner-gated inventories', async () => {
+    const entity1Key = { id: 4400n, tenant: 'inventory-t3' }
+    const entity1Id = deriveObjectId(config, entity1Key)
+    const entity2Key = { id: 4401n, tenant: 'inventory-t3' }
+    const entity2Id = deriveObjectId(config, entity2Key)
 
+    // A owns entity1, B owns entity2 — both plain addresses here (the signer
+    // stands in for both; access control is what's under test, not identity).
     const setupTx = new Transaction()
     createStorageUnit(setupTx, config, {
-      inGameId: suKey.id,
-      tenant: suKey.tenant,
+      inGameId: entity1Key.id,
+      tenant: entity1Key.tenant,
       componentId: MODULE_ID,
       typeId: 1n,
-      name: UNIT,
-      mainCapacity: 1000n,
-      ephemeralCapacity: 1000n,
+      name: 'SU-03',
+      capacity: 1000n,
     })
-    createCharacter(setupTx, config, {
-      inGameId: playerKey.id,
-      tenant: playerKey.tenant,
-      tribeId: 1,
-      owner: signer,
+    createStorageUnit(setupTx, config, {
+      inGameId: entity2Key.id,
+      tenant: entity2Key.tenant,
+      componentId: MODULE_ID,
+      typeId: 1n,
+      name: 'SU-04',
+      capacity: 1000n,
     })
     await expectSuccess(client, setupTx)
 
-    const ownerCapId = await mintAccessCap(client, config, {
-      entity: suId,
+    const ownerACapId = await mintAccessCap(client, config, {
+      entity: entity1Id,
       owner: signer,
       transferable: true,
     })
-    const playerCapId = await mintAccessCap(client, config, {
-      entity: characterId,
+    const ownerBCapId = await mintAccessCap(client, config, {
+      entity: entity2Id,
       owner: signer,
-      transferable: false,
+      transferable: true,
     })
 
-    // Owner enables the main and ephemeral bridge_in actions plus the swap.
+    // Each owner enables their own owner-gated bridge_in/withdraw/deposit.
     const enableTx = new Transaction()
-    const entity = enableTx.object(suId)
-    const ownerCap = enableTx.object(ownerCapId)
+    for (const [entityId, capId] of [
+      [entity1Id, ownerACapId],
+      [entity2Id, ownerBCapId],
+    ] as const) {
+      const entity = enableTx.object(entityId)
+      const cap = enableTx.object(capId)
+      enableAction(
+        enableTx,
+        config,
+        entity,
+        'bridge_in',
+        [
+          ownerRequirement(enableTx, config),
+          bridgeInRequirement(enableTx, config, MODULE_ID, {}),
+        ],
+        cap,
+      )
+      enableAction(
+        enableTx,
+        config,
+        entity,
+        'withdraw',
+        [
+          ownerRequirement(enableTx, config),
+          withdrawRequirement(enableTx, config, MODULE_ID, {}),
+        ],
+        cap,
+      )
+      enableAction(
+        enableTx,
+        config,
+        entity,
+        'deposit',
+        [
+          ownerRequirement(enableTx, config),
+          depositRequirement(enableTx, config, MODULE_ID, {}),
+        ],
+        cap,
+      )
+    }
+    // A configures a public swap on entity1: hand over one fuel, receive the
+    // lens. No owner/caller gate - satisfying the item rule is the only gate.
     enableAction(
       enableTx,
       config,
-      entity,
-      'bridge_in',
-      [
-        callerRequirement(enableTx, config),
-        bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
-      ],
-      ownerCap,
-    )
-    enableAction(
-      enableTx,
-      config,
-      entity,
-      'eph_bridge_in',
-      [
-        callerRequirement(enableTx, config),
-        bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: true }),
-      ],
-      ownerCap,
-    )
-    // swap: from ephemeral fuel -> main; from main lens -> ephemeral.
-    enableAction(
-      enableTx,
-      config,
-      entity,
+      enableTx.object(entity1Id),
       'swap',
       [
-        callerRequirement(enableTx, config),
-        withdrawRequirement(enableTx, config, MODULE_ID, {
-          ephemeral: true,
-          typeId: FUEL,
-        }),
         depositRequirement(enableTx, config, MODULE_ID, {
-          ephemeral: false,
           typeId: FUEL,
+          minQuantity: 1n,
+          maxQuantity: 1n,
         }),
         withdrawRequirement(enableTx, config, MODULE_ID, {
-          ephemeral: false,
           typeId: LENS,
-        }),
-        depositRequirement(enableTx, config, MODULE_ID, {
-          ephemeral: true,
-          typeId: LENS,
+          minQuantity: 1n,
+          maxQuantity: 1n,
         }),
       ],
-      ownerCap,
+      enableTx.object(ownerACapId),
     )
     await expectSuccess(client, enableTx)
 
-    // Owner stocks a lens in main.
+    // A bridges a lens onto entity1 (owner-only).
     const stockTx = new Transaction()
-    const se = stockTx.object(suId)
+    const se = stockTx.object(entity1Id)
     const stockReq = interact(stockTx, config, se, 'bridge_in', [])
     verifyProximity(stockTx, config, stockReq, [])
-    verifyCaller(stockTx, config, stockReq, stockTx.object(ownerCapId))
+    verifyOwner(stockTx, config, stockReq, stockTx.object(ownerACapId))
     gameItemToChain(stockTx, config, se, stockReq, {
       typeId: LENS,
       quantity: 1n,
@@ -143,49 +153,60 @@ describe('inventory owner-configured swap (localnet)', () => {
     completeRequest(stockTx, config, se, stockReq)
     await expectSuccess(client, stockTx)
 
-    // Player brings a fuel into their ephemeral, then swaps.
-    const runTx = new Transaction()
-    const e = runTx.object(suId)
-    const playerCap = runTx.object(playerCapId)
-
-    const inReq = interact(runTx, config, e, 'eph_bridge_in', [])
-    verifyProximity(runTx, config, inReq, [])
-    verifyCaller(runTx, config, inReq, playerCap)
-    gameItemToChain(runTx, config, e, inReq, {
+    // B bridges a fuel onto entity2 (owner-only, their own creation).
+    const bridgeBTx = new Transaction()
+    const be = bridgeBTx.object(entity2Id)
+    const bridgeBReq = interact(bridgeBTx, config, be, 'bridge_in', [])
+    verifyProximity(bridgeBTx, config, bridgeBReq, [])
+    verifyOwner(bridgeBTx, config, bridgeBReq, bridgeBTx.object(ownerBCapId))
+    gameItemToChain(bridgeBTx, config, be, bridgeBReq, {
       typeId: FUEL,
       quantity: 1n,
       volume: VOL,
     })
-    completeRequest(runTx, config, e, inReq)
+    completeRequest(bridgeBTx, config, be, bridgeBReq)
+    await expectSuccess(client, bridgeBTx)
 
-    const swapReq = interact(runTx, config, e, 'swap', [])
-    verifyProximity(runTx, config, swapReq, [])
-    verifyCaller(runTx, config, swapReq, playerCap)
-    const fuel = withdraw(runTx, config, e, swapReq, {
+    // B flies to A and, in one signed transaction: withdraws the fuel from
+    // entity2, swaps it for the lens on entity1, then deposits the lens into
+    // entity2. Nothing is left over.
+    const runTx = new Transaction()
+    const e2 = runTx.object(entity2Id)
+    const capB = runTx.object(ownerBCapId)
+
+    const wReq = interact(runTx, config, e2, 'withdraw', [])
+    verifyProximity(runTx, config, wReq, [])
+    verifyOwner(runTx, config, wReq, capB)
+    const fuel = withdraw(runTx, config, e2, wReq, {
       typeId: FUEL,
       quantity: 1n,
     })
-    deposit(runTx, config, e, swapReq, fuel)
-    const lens = withdraw(runTx, config, e, swapReq, {
+    completeRequest(runTx, config, e2, wReq)
+
+    const e1 = runTx.object(entity1Id)
+    const swapReq = interact(runTx, config, e1, 'swap', [])
+    verifyProximity(runTx, config, swapReq, [])
+    deposit(runTx, config, e1, swapReq, fuel)
+    const lens = withdraw(runTx, config, e1, swapReq, {
       typeId: LENS,
       quantity: 1n,
     })
-    deposit(runTx, config, e, swapReq, lens)
-    completeRequest(runTx, config, e, swapReq)
+    completeRequest(runTx, config, e1, swapReq)
+
+    const dReq = interact(runTx, config, e2, 'deposit', [])
+    verifyProximity(runTx, config, dReq, [])
+    verifyOwner(runTx, config, dReq, capB)
+    deposit(runTx, config, e2, dReq, lens)
+    completeRequest(runTx, config, e2, dReq)
 
     await expectSuccess(client, runTx)
 
-    const read = (authorizedId: string, typeId: bigint) =>
-      readBalance(client, config, {
-        entity: suId,
-        componentId: MODULE_ID,
-        authorizedId,
-        typeId,
-      })
+    const read = (entity: string, typeId: bigint) =>
+      readBalance(client, config, { entity, componentId: MODULE_ID, typeId })
 
-    expect(await read(suId, FUEL)).toBe(1n) // fuel now in main
-    expect(await read(suId, LENS)).toBe(0n) // lens left main
-    expect(await read(characterId, LENS)).toBe(1n) // lens now in player ephemeral
-    expect(await read(characterId, FUEL)).toBe(0n) // fuel left ephemeral
+    expect(await read(entity1Id, FUEL)).toBe(1n) // fuel now on entity1
+    expect(await read(entity1Id, LENS)).toBe(0n) // lens left entity1
+    expect(await read(entity2Id, LENS)).toBe(1n) // lens now on entity2
+    expect(await read(entity2Id, FUEL)).toBe(0n) // fuel left entity2
   })
 })

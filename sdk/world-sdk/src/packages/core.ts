@@ -201,8 +201,8 @@ export function verifyOwner(
 }
 
 /**
- * Satisfy a caller requirement on `request` with any valid `AccessCap`, recording
- * its entity as the request actor (drives inventory owner-vs-ephemeral routing).
+ * Satisfy a caller requirement on `request` with any valid `AccessCap`,
+ * recording its entity as the request actor.
  */
 export function verifyCaller(
   tx: Transaction,

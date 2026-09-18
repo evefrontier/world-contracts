@@ -54,8 +54,7 @@ describe('inventory owner-access via Character', () => {
       componentId: MODULE_ID,
       typeId: 1n,
       name: UNIT,
-      mainCapacity: 1000n,
-      ephemeralCapacity: 100n,
+      capacity: 1000n,
     })
     createCharacter(setupTx, config, {
       inGameId: charKey.id,
@@ -91,22 +90,9 @@ describe('inventory owner-access via Character', () => {
       )
       const su = enableTx.object(suId)
       for (const [name, req] of [
-        [
-          'bridge_in',
-          bridgeInRequirement(enableTx, config, MODULE_ID, {
-            ephemeral: false,
-          }),
-        ],
-        [
-          'withdraw',
-          withdrawRequirement(enableTx, config, MODULE_ID, {
-            ephemeral: false,
-          }),
-        ],
-        [
-          'deposit',
-          depositRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
-        ],
+        ['bridge_in', bridgeInRequirement(enableTx, config, MODULE_ID, {})],
+        ['withdraw', withdrawRequirement(enableTx, config, MODULE_ID, {})],
+        ['deposit', depositRequirement(enableTx, config, MODULE_ID, {})],
       ] as const) {
         enableAction(
           enableTx,
@@ -163,14 +149,13 @@ describe('inventory owner-access via Character', () => {
     }
     await expectSuccess(client, runTx)
 
-    // Main balance changed (0 -> 100) via the borrowed owner cap.
-    const main = await readBalance(client, config, {
+    // Balance changed (0 -> 100) via the borrowed owner cap.
+    const balance = await readBalance(client, config, {
       entity: suId,
       componentId: MODULE_ID,
-      authorizedId: suId,
       typeId: FUEL,
     })
-    expect(main).toBe(100n)
+    expect(balance).toBe(100n)
 
     // The cap is back on the character (object-owned by it).
     const { object: capObj } = await client.getObject({ objectId: suCapId })
