@@ -1,12 +1,12 @@
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import {
-  callerRequirement,
   completeRequest,
   deriveObjectId,
   enableAction,
   interact,
-  verifyCaller,
+  ownerRequirement,
+  verifyOwner,
   verifyProximity,
 } from '../packages/core.js'
 import {
@@ -27,9 +27,9 @@ import {
 } from './helpers.js'
 
 // Exercise the inventory bindings in isolation. Create a storage-unit entity,
-// mint the owner cap to a plain address, enable owner deposit/withdraw/bridge
-// actions, then round-trip a balance: bridge_in seeds it, withdraw yields an Item,
-// deposit puts it back.
+// mint the owner cap to a plain address, enable owner-gated deposit/withdraw/
+// bridge actions, then round-trip a balance: bridge_in seeds it, withdraw
+// yields an Item, deposit puts it back.
 const MODULE_ID = 0x51n
 const UNIT = 'SU-01'
 const FUEL = 88834n
@@ -38,7 +38,7 @@ const VOL = 2n
 describe('inventory owner round-trip (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
 
-  it('bridges in, withdraws, and deposits back on the main inventory', async () => {
+  it('bridges in, withdraws, and deposits back on the inventory', async () => {
     const key = { id: 4200n, tenant: 'inventory-t1' }
     const entityId = deriveObjectId(config, key)
 
@@ -50,8 +50,7 @@ describe('inventory owner round-trip (localnet)', () => {
       componentId: MODULE_ID,
       typeId: 1n,
       name: UNIT,
-      mainCapacity: 1000n,
-      ephemeralCapacity: 100n,
+      capacity: 1000n,
     })
     await expectSuccess(client, createTx)
 
@@ -62,7 +61,7 @@ describe('inventory owner round-trip (localnet)', () => {
       transferable: true,
     })
 
-    // tx3: owner enables the three main-inventory actions.
+    // tx3: owner enables the three owner-gated inventory actions.
     const enableTx = new Transaction()
     const entity = enableTx.object(entityId)
     const cap = enableTx.object(capId)
@@ -72,8 +71,8 @@ describe('inventory owner round-trip (localnet)', () => {
       entity,
       'bridge_in',
       [
-        callerRequirement(enableTx, config),
-        bridgeInRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
+        ownerRequirement(enableTx, config),
+        bridgeInRequirement(enableTx, config, MODULE_ID, {}),
       ],
       cap,
     )
@@ -83,8 +82,8 @@ describe('inventory owner round-trip (localnet)', () => {
       entity,
       'withdraw',
       [
-        callerRequirement(enableTx, config),
-        withdrawRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
+        ownerRequirement(enableTx, config),
+        withdrawRequirement(enableTx, config, MODULE_ID, {}),
       ],
       cap,
     )
@@ -94,8 +93,8 @@ describe('inventory owner round-trip (localnet)', () => {
       entity,
       'deposit',
       [
-        callerRequirement(enableTx, config),
-        depositRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
+        ownerRequirement(enableTx, config),
+        depositRequirement(enableTx, config, MODULE_ID, {}),
       ],
       cap,
     )
@@ -108,7 +107,7 @@ describe('inventory owner round-trip (localnet)', () => {
 
     const bridgeReqObj = interact(runTx, config, e, 'bridge_in', [])
     verifyProximity(runTx, config, bridgeReqObj, [])
-    verifyCaller(runTx, config, bridgeReqObj, c)
+    verifyOwner(runTx, config, bridgeReqObj, c)
     gameItemToChain(runTx, config, e, bridgeReqObj, {
       typeId: FUEL,
       quantity: 100n,
@@ -118,7 +117,7 @@ describe('inventory owner round-trip (localnet)', () => {
 
     const wReq = interact(runTx, config, e, 'withdraw', [])
     verifyProximity(runTx, config, wReq, [])
-    verifyCaller(runTx, config, wReq, c)
+    verifyOwner(runTx, config, wReq, c)
     const item = withdraw(runTx, config, e, wReq, {
       typeId: FUEL,
       quantity: 20n,
@@ -127,19 +126,18 @@ describe('inventory owner round-trip (localnet)', () => {
 
     const dReq = interact(runTx, config, e, 'deposit', [])
     verifyProximity(runTx, config, dReq, [])
-    verifyCaller(runTx, config, dReq, c)
+    verifyOwner(runTx, config, dReq, c)
     deposit(runTx, config, e, dReq, item)
     completeRequest(runTx, config, e, dReq)
 
     await expectSuccess(client, runTx)
 
-    // Net main balance: 100 in, 20 out, 20 back = 100.
-    const main = await readBalance(client, config, {
+    // Net balance: 100 in, 20 out, 20 back = 100.
+    const balance = await readBalance(client, config, {
       entity: entityId,
       componentId: MODULE_ID,
-      authorizedId: entityId,
       typeId: FUEL,
     })
-    expect(main).toBe(100n)
+    expect(balance).toBe(100n)
   })
 })

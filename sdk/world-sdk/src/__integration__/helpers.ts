@@ -75,14 +75,13 @@ export async function mintAccessCap(
   )
 }
 
-/** Read the `type_id` balance of an inventory via `balance_of` (simulate). */
+/** Read the `type_id` balance of an entity's inventory via `balance_of` (simulate). */
 export async function readBalance(
   client: WorldClient,
   config: WorldConfig,
   args: {
     entity: string
     componentId: bigint
-    authorizedId: string
     typeId: bigint
   },
 ): Promise<bigint> {
@@ -90,7 +89,6 @@ export async function readBalance(
   tx.setSender(signer)
   balanceOf(tx, config, tx.object(args.entity), {
     componentId: args.componentId,
-    authorizedId: args.authorizedId,
     typeId: args.typeId,
   })
   const res = await client.simulateTransaction({

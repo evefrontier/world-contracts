@@ -26,9 +26,12 @@ const EVolumeMismatch: vector<u8> = b"Item volume does not match the stored volu
 
 // === Structs ===
 
-/// Standalone item: created on withdraw, destroyed on deposit. `volume` is the
-/// per-unit volume (see module TODO).
-public struct Item has key, store {
+/// Standalone item: created on withdraw, destroyed on deposit. No `store`: a
+/// withdrawn `Item` can only move via functions this package defines (i.e.
+/// `inventory::deposit`), never by a bare `public_transfer` that would let it
+/// leave the Entity/Requirement system ungated. `volume` is the per-unit
+/// volume (see module TODO).
+public struct Item has key {
     id: UID,
     type_id: u64,
     quantity: u64,
