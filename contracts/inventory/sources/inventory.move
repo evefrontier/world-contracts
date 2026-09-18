@@ -262,7 +262,11 @@ fun take<T: drop>(
     (requirement, frame, inv)
 }
 
-fun rule(type_id: Option<u64>, min_quantity: Option<u64>, max_quantity: Option<u64>): ItemRequirement {
+fun rule(
+    type_id: Option<u64>,
+    min_quantity: Option<u64>,
+    max_quantity: Option<u64>,
+): ItemRequirement {
     ItemRequirement { type_id, min_quantity, max_quantity }
 }
 

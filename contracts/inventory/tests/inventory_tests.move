@@ -356,9 +356,23 @@ fun swap_moves_items_between_two_entities() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let entity_a = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, player_a, 1000);
+    let entity_a = build_entity_with_inventory(
+        &mut scenario,
+        &mut registry,
+        &acl,
+        1,
+        player_a,
+        1000,
+    );
     let entity_a_id = entity_a.id();
-    let entity_b = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, player_b, 1000);
+    let entity_b = build_entity_with_inventory(
+        &mut scenario,
+        &mut registry,
+        &acl,
+        2,
+        player_b,
+        1000,
+    );
     let entity_b_id = entity_b.id();
     entity_a.share();
     entity_b.share();
@@ -383,8 +397,18 @@ fun swap_moves_items_between_two_entities() {
         player_a,
         b"swap",
         action::new(vector[
-            inventory::deposit_requirement(MODULE_ID, option::some(FUEL), option::some(1), option::some(1)),
-            inventory::withdraw_requirement(MODULE_ID, option::some(LENS), option::some(1), option::some(1)),
+            inventory::deposit_requirement(
+                MODULE_ID,
+                option::some(FUEL),
+                option::some(1),
+                option::some(1),
+            ),
+            inventory::withdraw_requirement(
+                MODULE_ID,
+                option::some(LENS),
+                option::some(1),
+                option::some(1),
+            ),
         ]),
     );
 
