@@ -95,9 +95,10 @@ wait_for_rpc() {
       return 1
     fi
     # A bare JSON-RPC ping isn't enough; require a real `sui client` round-trip.
+    # Newer sui CLI takes the owner as a positional arg, not `--address`.
     if curl -sf -X POST "$RPC_URL" -H 'Content-Type: application/json' \
       -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' >/dev/null 2>&1 \
-      && sui client gas --address "${ADDR[ADMIN]}" >/dev/null 2>&1; then
+      && sui client gas "${ADDR[ADMIN]}" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
