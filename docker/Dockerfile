@@ -7,9 +7,8 @@ ARG NODE_VERSION=24.20.0
 # sui-tools is Debian 11. debian-security 404s rotated debs and nodesource
 # needs gnupg from that repo. Install jq/curl from main; Node from nodejs.org.
 #
-# mysten/sui-tools only publishes an amd64 image (single-platform manifest),
-# so this is always amd64 content regardless of the requested --platform
-# $TARGETARCH would report the *requested* platform, not the real one
+# mysten/sui-tools only publishes an amd64 image, so this stage's base
+# content is always amd64 regardless of the requested --platform.
 RUN find /etc/apt -name '*.list' -exec sed -i '/security/s/^/#/' {} + \
     && apt-get update \
     && apt-get install -y --no-install-recommends jq curl \

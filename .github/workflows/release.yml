@@ -34,34 +34,14 @@ jobs:
           cache-from: type=gha,scope=release
           cache-to: type=gha,mode=max,scope=release
       
-  release-image:
-    name: Build and Push Release Image
+  metadata:
+    name: Extract release metadata
     runs-on: ubuntu-latest
     needs: build-and-test
-    permissions:
-      contents: read
-      packages: write
     outputs:
       tags: ${{ steps.meta.outputs.tags }}
       labels: ${{ steps.meta.outputs.labels }}
     steps:
-      - uses: actions/checkout@v5
-      
-      # Setup QEMU for multi-platform builds
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      
-      # Setup Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -77,6 +57,31 @@ jobs:
             # Dev dry-runs still push, but only under an isolated `dev-v*` tag.
             type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref_name, 'dev-') }}
 
+  release-image:
+    name: Build and Push Release Image
+    runs-on: ubuntu-latest
+    needs: [build-and-test, metadata]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      # Setup QEMU for multi-platform builds
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # Setup Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push release image
         uses: docker/build-push-action@v6
         with:
@@ -85,14 +90,14 @@ jobs:
           target: release-stage
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ needs.metadata.outputs.tags }}
+          labels: ${{ needs.metadata.outputs.labels }}
           cache-from: type=gha,scope=release
           cache-to: type=gha,mode=max,scope=release
 
   bake-snapshot:
     name: Bake and push snapshot image (${{ matrix.arch }})
-    needs: release-image
+    needs: metadata
     strategy:
       fail-fast: false
       matrix:
@@ -147,14 +152,14 @@ jobs:
           REGISTRY: ${{ env.REGISTRY }}
           OWNER: ${{ env.REPO_OWNER }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          METADATA_TAGS: ${{ needs.release-image.outputs.tags }}
-          METADATA_LABELS: ${{ needs.release-image.outputs.labels }}
+          METADATA_TAGS: ${{ needs.metadata.outputs.tags }}
+          METADATA_LABELS: ${{ needs.metadata.outputs.labels }}
           PNPM_STORE_DIR: ${{ runner.temp }}/pnpm-store
         run: ./scripts/bake-snapshot-image.sh bake ${{ matrix.arch }}
 
   join-snapshot-manifest:
     name: Join multi-arch snapshot manifest
-    needs: [release-image, bake-snapshot]
+    needs: [metadata, bake-snapshot]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -178,5 +183,5 @@ jobs:
           REGISTRY: ${{ env.REGISTRY }}
           OWNER: ${{ env.REPO_OWNER }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          METADATA_TAGS: ${{ needs.release-image.outputs.tags }}
+          METADATA_TAGS: ${{ needs.metadata.outputs.tags }}
         run: ./scripts/bake-snapshot-image.sh join
