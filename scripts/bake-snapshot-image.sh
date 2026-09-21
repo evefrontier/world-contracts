@@ -96,8 +96,12 @@ bake)
         done <<<"$METADATA_LABELS"
     fi
 
-    CID=""
-    cleanup() { [ -n "$CID" ] && docker rm "$CID" >/dev/null 2>&1 || true; }
+    CIDS=()
+    cleanup() {
+        for cid in ${CIDS[@]+"${CIDS[@]}"}; do
+            docker rm "$cid" >/dev/null 2>&1 || true
+        done
+    }
     trap cleanup EXIT
 
     # pnpm's store lives inside the container; mounting a host dir here lets
@@ -117,22 +121,25 @@ bake)
         echo "==> Baking ${ARCH} snapshot"
 
         # 1) Run bake container (mount workspace so pnpm install / deploy scripts can run)
-        CID="$(docker run -d --platform "linux/${ARCH}" -v "$(pwd):/app" \
+        local cid
+        cid="$(docker run -d --platform "linux/${ARCH}" -v "$(pwd):/app" \
             ${pnpm_mount_args[@]+"${pnpm_mount_args[@]}"} -w /app -e CI=true "$BAKER_IMAGE" snapshot)" || return 1
+        CIDS+=("$cid")
 
         # 2) Wait for it to finish
         local status
-        status="$(docker wait "$CID")" || return 1
+        status="$(docker wait "$cid")" || return 1
         if [ "$status" != "0" ]; then
-            docker logs "$CID" >&2 || true
+            docker logs "$cid" >&2 || true
             return 1
         fi
 
         # 3) Commit baked filesystem into an image
-        IMAGE_ID="$(docker commit ${commit_args[@]+"${commit_args[@]}"} "$CID")" || return 1
-        # actions/cache runs as the (non-root) runner user; the container ran
-        # as root, so make sure it can read back what got written to the mount.
-        [ -n "$PNPM_STORE_DIR" ] && chmod -R a+rX "$PNPM_STORE_DIR" 2>/dev/null || true
+        IMAGE_ID="$(docker commit ${commit_args[@]+"${commit_args[@]}"} "$cid")" || return 1
+        # Container wrote as root; runner user needs sudo to chmod it readable.
+        if [ -n "$PNPM_STORE_DIR" ] && ! sudo -n chmod -R a+rX "$PNPM_STORE_DIR" 2>/dev/null; then
+            echo "WARN: could not make ${PNPM_STORE_DIR} world-readable (no passwordless sudo); pnpm store cache may not persist" >&2
+        fi
     }
 
     if ! retry 2 10 bake_one_arch; then

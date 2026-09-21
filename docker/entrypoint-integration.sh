@@ -26,21 +26,16 @@ KEY_SCHEME="ed25519"
 
 log() { echo "[integration] $*"; }
 
-# arm64 gets a longer budget in case it ever runs emulated (e.g. local dev);
-# the release pipeline itself now runs arm64 on a native runner.
-case "$(uname -m)" in
-  aarch64|arm64) RPC_WAIT_ITERATIONS="${RPC_WAIT_ITERATIONS:-240}" ;;
-  *)             RPC_WAIT_ITERATIONS="${RPC_WAIT_ITERATIONS:-120}" ;;
-esac
+RPC_WAIT_ITERATIONS="${RPC_WAIT_ITERATIONS:-120}"
 
 # Snapshot bake must reach epoch >= 1 so downstream tests that depend on
 # epoch-1 cases don't fail against a sealed epoch-0 chain.
 wait_for_epoch() {
   local min_epoch="${1:-1}"
   local epoch=0
-  ensure_node_up
   log "Waiting for epoch >= ${min_epoch}..."
   for i in $(seq 1 60); do
+    ensure_node_up
     epoch="$(curl -sf -X POST "$RPC_URL" \
       -H "Content-Type: application/json" \
       -d '{"jsonrpc":"2.0","id":1,"method":"suix_getLatestSuiSystemState","params":[]}' \
@@ -94,12 +89,14 @@ wait_for_rpc() {
     if ! node_alive; then
       return 1
     fi
-    # A bare JSON-RPC ping isn't enough; require a real `sui client` round-trip.
-    # Newer sui CLI takes the owner as a positional arg, not `--address`.
     if curl -sf -X POST "$RPC_URL" -H 'Content-Type: application/json' \
-      -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' >/dev/null 2>&1 \
-      && sui client gas "${ADDR[ADMIN]}" >/dev/null 2>&1; then
-      return 0
+      -d '{"jsonrpc":"2.0","method":"rpc.discover","id":1}' >/dev/null 2>&1; then
+      # Confirm with a real `sui client` call too, but only every 3rd tick.
+      if [ $((i % 3)) -eq 0 ] || [ "$i" -eq 1 ]; then
+        if sui client gas "${ADDR[ADMIN]}" >/dev/null 2>&1; then
+          return 0
+        fi
+      fi
     fi
     sleep 1
   done
