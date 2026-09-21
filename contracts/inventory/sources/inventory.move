@@ -1,5 +1,6 @@
 /// Inventory component installed on an `Entity`: a balance area with its own
-/// volume cap. One per entity, created at install.
+/// volume cap, created at install. An entity may host several, one per
+/// `component_id`.
 ///
 /// Only the owner can configure actions (`enable_action` is owner-gated), so an
 /// action's requirements are trusted by construction and any caller who
@@ -43,6 +44,8 @@ const EQuantityBelowMin: vector<u8> = b"Quantity below the required minimum";
 const EQuantityAboveMax: vector<u8> = b"Quantity above the allowed maximum";
 #[error(code = 6)]
 const EWrongTenant: vector<u8> = b"Inventory can only move between entities of the same tenant";
+#[error(code = 7)]
+const ERequirementNotComponentScoped: vector<u8> = b"Requirement is not component-scoped";
 
 // === Constants ===
 
@@ -72,8 +75,61 @@ public struct Withdrawal(ItemRequirement) has drop;
 
 // === Events ===
 
-/// Emitted when an inventory is installed. `inventory_type_id` is the
-/// inventory's own kind (`Inventory.type_id`), never an item type.
+/// Game to chain: `game_item_to_chain_inventory` created this balance.
+public struct ItemMinted has copy, drop {
+    entity_id: ID,
+    component_id: u64,
+    type_id: u64,
+    quantity: u64,
+    balance_after: u64,
+    used_after: u64,
+}
+
+/// Chain to game: `chain_item_to_game_inventory` removed this balance, which
+/// reappears in the game's own container. Also emitted per type by `uninstall`,
+/// where an `InventoryUninstalled` marker arrives first to say the opposite:
+/// that nothing was credited back.
+public struct ItemBurned has copy, drop {
+    entity_id: ID,
+    component_id: u64,
+    type_id: u64,
+    quantity: u64,
+    balance_after: u64,
+    used_after: u64,
+}
+
+/// Left this inventory as an in-transit `Item`. `transit_id` is that object's
+/// id, and pairs this event with the `ItemDeposited` that lands it — the only
+/// thing tying the two halves of a move together, since a move between entities
+/// shares nothing else.
+public struct ItemWithdrawn has copy, drop {
+    entity_id: ID,
+    component_id: u64,
+    transit_id: ID,
+    type_id: u64,
+    quantity: u64,
+    balance_after: u64,
+    used_after: u64,
+}
+
+/// An in-transit `Item` landed in this inventory. `transit_id` pairs it with
+/// the `ItemWithdrawn` that produced it.
+public struct ItemDeposited has copy, drop {
+    entity_id: ID,
+    component_id: u64,
+    transit_id: ID,
+    type_id: u64,
+    quantity: u64,
+    balance_after: u64,
+    used_after: u64,
+}
+
+/// An inventory now exists at `(entity_id, component_id)` and will hold
+/// balances until `InventoryUninstalled`. `component_id` is caller-chosen and
+/// reusable, so the pair is what makes that key sound: a reinstall is a
+/// different inventory, with a fresh bag and possibly a different capacity.
+/// `inventory_type_id` is the inventory's own kind (`Inventory.type_id`), named
+/// apart from the item `type_id` every other event carries.
 public struct InventoryInstalled has copy, drop {
     entity_id: ID,
     component_id: u64,
@@ -82,9 +138,12 @@ public struct InventoryInstalled has copy, drop {
     capacity: u64,
 }
 
-/// Emitted when an inventory is uninstalled, ahead of the burns it accounts for.
-/// `used_before` is the volume destroyed; unlike a bridge-out, none of it
-/// returns to the game.
+/// `uninstall` dropped the whole inventory: every balance under this
+/// `(entity_id, component_id)` ceased to exist. Unlike a bridge `ItemBurned`,
+/// none of it returned to the game — and this marker is emitted *before* the
+/// burns it reinterprets, so they are unambiguous as they arrive rather than at
+/// end of transaction. `used_before` is the total those burns count back down
+/// to zero.
 public struct InventoryUninstalled has copy, drop {
     entity_id: ID,
     component_id: u64,
@@ -145,9 +204,10 @@ public fun install(
     req
 }
 
-/// Remove the storage component and disconnect it from the power grid. Aborts if it was never
-/// installed. Emits `InventoryUninstalled`, then burns the Inventory's balances
-/// (emitting `ItemBurned` per type) so the game client is notified.
+/// Remove the storage component and disconnect it from the power grid. Aborts
+/// if it was never installed. Announces the teardown with `InventoryUninstalled`,
+/// then burns the Inventory's balances (one `ItemBurned` per type) so the game
+/// client is notified.
 public fun uninstall(
     entity: &mut Entity,
     component_id: u64,
@@ -156,17 +216,16 @@ public fun uninstall(
 ): Request {
     assert!(entity.has_component_with_type<Inventory>(component_id), EComponentMissing);
 
-    let tenant = entity.key().tenant();
     let (inv_component, req) = entity.uninstall<Inventory>(
         component_id,
         inventory_permit(),
         ctx,
     );
     grid_load::disconnect<Inventory>(entity, component_id, inventory_permit(), clock);
+    // Reading the entity is free again now that `uninstall` released its borrow.
     let entity_id = entity.id();
     let inventory = inv_component.unwrap(inventory_permit());
-    event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });
-    burn_inventory(inventory, tenant);
+    burn_inventory(inventory, entity_id, component_id);
     req
 }
 
@@ -209,13 +268,22 @@ public fun game_item_to_chain_inventory(
     quantity: u64,
     volume: u64, // TODO: volume should be stored in static data module in the future
 ) {
+    let entity_id = entity.id();
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, bridge_in_permit());
-    let module_id = module_id(&requirement);
+    let component_id = target_component_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.mint_item(key, quantity, volume);
+    event::emit(ItemMinted {
+        entity_id,
+        component_id,
+        type_id,
+        quantity,
+        balance_after: inv.items.balance(type_id),
+        used_after: inv.used,
+    });
     frame.require(admin_service::sponsor_requirement());
-    frame.require(online_requirement(entity, module_id));
+    frame.require(online_requirement(entity, component_id));
     req.enqueue(frame);
 }
 
@@ -227,13 +295,22 @@ public fun chain_item_to_game_inventory(
     type_id: u64,
     quantity: u64,
 ) {
+    let entity_id = entity.id();
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, bridge_out_permit());
-    let module_id = module_id(&requirement);
+    let component_id = target_component_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.burn_item(key, type_id, quantity);
+    event::emit(ItemBurned {
+        entity_id,
+        component_id,
+        type_id,
+        quantity,
+        balance_after: inv.items.balance(type_id),
+        used_after: inv.used,
+    });
     frame.require(admin_service::sponsor_requirement());
-    frame.require(online_requirement(entity, module_id));
+    frame.require(online_requirement(entity, component_id));
     req.enqueue(frame);
 }
 
@@ -241,15 +318,25 @@ public fun chain_item_to_game_inventory(
 /// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
 /// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
 public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
-    docking::assert_docked(entity.id(), option::some(item.source()), ctx);
+    let entity_id = entity.id();
+    docking::assert_docked(entity_id, option::some(item.source()), ctx);
+    let transit_id = object::id(&item);
     let type_id = item.type_id();
     let quantity = item.quantity();
-    let tenant = entity.key().tenant();
     let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
-    let module_id = module_id(&requirement);
+    let component_id = target_component_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
-    inv.deposit_item(item, tenant);
-    frame.require(online_requirement(entity, module_id));
+    inv.deposit_item(item);
+    event::emit(ItemDeposited {
+        entity_id,
+        component_id,
+        transit_id,
+        type_id,
+        quantity,
+        balance_after: inv.items.balance(type_id),
+        used_after: inv.used,
+    });
+    frame.require(online_requirement(entity, component_id));
     req.enqueue(frame);
 }
 
@@ -263,14 +350,23 @@ public fun withdraw(
     quantity: u64,
     ctx: &mut TxContext,
 ): Item {
-    let source = entity.id();
-    docking::assert_docked(source, option::none(), ctx);
+    let entity_id = entity.id();
+    docking::assert_docked(entity_id, option::none(), ctx);
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
-    let module_id = module_id(&requirement);
+    let component_id = target_component_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
-    let item = inv.withdraw_item(key, type_id, quantity, source, ctx);
-    frame.require(online_requirement(entity, module_id));
+    let item = inv.withdraw_item(key, type_id, quantity, entity_id, ctx);
+    event::emit(ItemWithdrawn {
+        entity_id,
+        component_id,
+        transit_id: object::id(&item),
+        type_id,
+        quantity,
+        balance_after: inv.items.balance(type_id),
+        used_after: inv.used,
+    });
+    frame.require(online_requirement(entity, component_id));
     req.enqueue(frame);
     item
 }
@@ -373,15 +469,11 @@ fun take<T: drop>(
     (requirement, frame, inv)
 }
 
-fun module_id(requirement: &Requirement): u64 {
-    requirement.component_id().destroy_some()
-}
-
 /// `OnlineRequirement` for the grant stored when this inventory connected.
-fun online_requirement(entity: &Entity, module_id: u64): Requirement {
-    let state = power_grid::module_state(power_grid::power_grid(entity), module_id);
+fun online_requirement(entity: &Entity, component_id: u64): Requirement {
+    let state = power_grid::module_state(power_grid::power_grid(entity), component_id);
     power_grid::online_requirement(
-        module_id,
+        component_id,
         power_grid::power_req(&state),
         power_grid::draw_kind(&state),
     )
@@ -423,11 +515,11 @@ fun burn_item(inv: &mut Inventory, game_id: entity_key::EntityKey, type_id: u64,
 }
 
 /// Deposit an item into an inventory, enforcing its volume capacity.
-fun deposit_item(inv: &mut Inventory, item: Item, tenant: String) {
+fun deposit_item(inv: &mut Inventory, item: Item) {
     let added = item.volume() * item.quantity();
     assert!(inv.used + added <= inv.capacity, EOverCapacity);
     inv.used = inv.used + added;
-    inv.items.deposit(item, tenant);
+    inv.items.deposit(item);
 }
 
 /// Withdraw a balance from an inventory as a fresh `Item`, freeing its volume.
@@ -445,9 +537,35 @@ fun withdraw_item(
     item
 }
 
-fun burn_inventory(inv: Inventory, tenant: String) {
-    let Inventory { items, type_id: _, capacity: _, used: _ } = inv;
-    item::burn_all_and_destroy(items, tenant);
+/// Announce the teardown, then burn every balance the inventory still held.
+/// `InventoryUninstalled` goes out first: it is what reinterprets the burns that
+/// follow as destruction rather than a bridge-out, and a consumer reading them
+/// in arrival order needs that before it books the supply. Each burn carries
+/// `balance_after: 0` — the balance is gone, not reduced — and `used_after` as
+/// the running remainder, landing on 0 with the last one.
+fun burn_inventory(inv: Inventory, entity_id: ID, component_id: u64) {
+    let Inventory { items, type_id: _, capacity: _, used } = inv;
+    event::emit(InventoryUninstalled { entity_id, component_id, used_before: used });
+
+    let mut used_after = used;
+    item::burn_all_and_destroy(items).do!(|drained| {
+        used_after = used_after - drained.volume() * drained.quantity();
+        event::emit(ItemBurned {
+            entity_id,
+            component_id,
+            type_id: drained.type_id(),
+            quantity: drained.quantity(),
+            balance_after: 0,
+            used_after,
+        });
+    });
+}
+
+/// The component `take` borrowed, read off the requirement that targeted it.
+/// Never `None` in practice: `entity::component_mut` read the id off this same
+/// requirement and has already aborted if it were unscoped.
+fun target_component_id(requirement: &Requirement): u64 {
+    requirement.component_id().destroy_or!(abort ERequirementNotComponentScoped)
 }
 
 fun borrow_component(entity: &Entity, component_id: u64): &Component<Inventory> {
@@ -477,6 +595,46 @@ fun withdrawal_permit(): Permit<Withdrawal> {
 }
 
 // === Test Functions ===
+
+/// `(entity_id, component_id, type_id, quantity, balance_after, used_after)`.
+#[test_only]
+public fun minted_fields(e: &ItemMinted): (ID, u64, u64, u64, u64, u64) {
+    (e.entity_id, e.component_id, e.type_id, e.quantity, e.balance_after, e.used_after)
+}
+
+/// `(entity_id, component_id, type_id, quantity, balance_after, used_after)`.
+#[test_only]
+public fun burned_fields(e: &ItemBurned): (ID, u64, u64, u64, u64, u64) {
+    (e.entity_id, e.component_id, e.type_id, e.quantity, e.balance_after, e.used_after)
+}
+
+/// `(entity_id, component_id, transit_id, type_id, quantity, balance_after, used_after)`.
+#[test_only]
+public fun withdrawn_fields(e: &ItemWithdrawn): (ID, u64, ID, u64, u64, u64, u64) {
+    (
+        e.entity_id,
+        e.component_id,
+        e.transit_id,
+        e.type_id,
+        e.quantity,
+        e.balance_after,
+        e.used_after,
+    )
+}
+
+/// `(entity_id, component_id, transit_id, type_id, quantity, balance_after, used_after)`.
+#[test_only]
+public fun deposited_fields(e: &ItemDeposited): (ID, u64, ID, u64, u64, u64, u64) {
+    (
+        e.entity_id,
+        e.component_id,
+        e.transit_id,
+        e.type_id,
+        e.quantity,
+        e.balance_after,
+        e.used_after,
+    )
+}
 
 /// `(entity_id, component_id, inventory_type_id, name, capacity)`.
 #[test_only]

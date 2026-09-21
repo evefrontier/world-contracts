@@ -12,7 +12,7 @@ use core::{
     requirement::Requirement,
     test_helpers::{claim, setup, take_acl, take_registry}
 };
-use inventory::{inventory, item::{Self, Item}};
+use inventory::{inventory, item::Item};
 use power::{grid_fuel, grid_generator, grid_load, power_grid};
 use std::string::{Self, String};
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
@@ -479,6 +479,7 @@ fun install_reports_component_and_capacity() {
     assert!(inv(&e).capacity() == 1000);
     assert!(inv(&e).used() == 0);
 
+    // Capacity and the inventory's own kind reach the wire here and nowhere else.
     let installed = event::events_by_type<inventory::InventoryInstalled>();
     assert!(installed.length() == 1);
     let (entity_id, component_id, inventory_type_id, name, capacity) = inventory::installed_fields(
@@ -531,6 +532,7 @@ fun install_two_inventories_on_one_entity() {
     assert!(inventory::inventory(&e, MODULE_ID).capacity() == 1000);
     assert!(inventory::inventory(&e, MODULE_ID_2).capacity() == 500);
 
+    // Two inventories on one entity: `component_id` is what tells them apart.
     let installed = event::events_by_type<inventory::InventoryInstalled>();
     assert!(installed.length() == 2);
     let (entity_a, component_a, _, _, capacity_a) = inventory::installed_fields(&installed[0]);
@@ -561,8 +563,41 @@ fun owner_interaction_inventory() {
     configure_default_actions(&mut scenario, e_id, OWNER);
     power_inventory(&mut scenario, e_id, OWNER);
 
+    // Every movement names the inventory it moved through and the state it left
+    // behind. Each bridge is its own tx, so its row is read right after it.
     bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL); // used 200, bal 100
+    let minted = event::events_by_type<inventory::ItemMinted>();
+    assert!(minted.length() == 1);
+    let (
+        entity_id,
+        component_id,
+        type_id,
+        quantity,
+        balance_after,
+        used_after,
+    ) = inventory::minted_fields(
+        &minted[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(type_id == FUEL && quantity == 100);
+    assert!(balance_after == 100 && used_after == 200);
+
     bridge_out(&mut scenario, e_id, OWNER, b"bridge_out", FUEL, 50); // used 100, bal 50
+    let burned = event::events_by_type<inventory::ItemBurned>();
+    assert!(burned.length() == 1);
+    let (
+        entity_id,
+        component_id,
+        type_id,
+        quantity,
+        balance_after,
+        used_after,
+    ) = inventory::burned_fields(
+        &burned[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(type_id == FUEL && quantity == 50);
+    assert!(balance_after == 50 && used_after == 100);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -570,10 +605,49 @@ fun owner_interaction_inventory() {
     docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
     let item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 20); // used 60, bal 30
     assert!(item.quantity() == 20);
+    let transit_id = object::id(&item);
     deposit(&mut scenario, &mut e, &cap, b"deposit", item); // used 100, bal 50
 
     assert!(inv(&e).used() == 100);
     assert!(inv(&e).items().balance(FUEL) == 50);
+
+    // The transit pair names the inventory it moved through and the state it
+    // left behind, replaying to the two asserts above.
+    let withdrawn = event::events_by_type<inventory::ItemWithdrawn>();
+    assert!(withdrawn.length() == 1);
+    let (
+        entity_id,
+        component_id,
+        out_transit,
+        type_id,
+        quantity,
+        balance_after,
+        used_after,
+    ) = inventory::withdrawn_fields(
+        &withdrawn[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(out_transit == transit_id);
+    assert!(type_id == FUEL && quantity == 20);
+    assert!(balance_after == 30 && used_after == 60);
+
+    let deposited = event::events_by_type<inventory::ItemDeposited>();
+    assert!(deposited.length() == 1);
+    let (
+        entity_id,
+        component_id,
+        in_transit,
+        type_id,
+        quantity,
+        balance_after,
+        used_after,
+    ) = inventory::deposited_fields(
+        &deposited[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(in_transit == transit_id);
+    assert!(type_id == FUEL && quantity == 20);
+    assert!(balance_after == 50 && used_after == 100);
 
     ts::return_to_sender(&scenario, cap);
     ts::return_shared(e);
@@ -727,6 +801,25 @@ fun swap_moves_items_between_two_entities() {
     assert!(inv(&entity_b).items().balance(LENS) == 1);
     assert!(inv(&entity_b).items().balance(FUEL) == 0);
 
+    // Four rows, two entities, one transaction: `transit_id` is the only thing
+    // that says which withdrawal each deposit completes.
+    let withdrawn = event::events_by_type<inventory::ItemWithdrawn>();
+    let deposited = event::events_by_type<inventory::ItemDeposited>();
+    assert!(withdrawn.length() == 2 && deposited.length() == 2);
+    let (fuel_from, _, fuel_transit, fuel_type, _, _, _) = inventory::withdrawn_fields(
+        &withdrawn[0],
+    );
+    let (fuel_to, _, fuel_landed, _, _, _, _) = inventory::deposited_fields(&deposited[0]);
+    let (lens_from, _, lens_transit, lens_type, _, _, _) = inventory::withdrawn_fields(
+        &withdrawn[1],
+    );
+    let (lens_to, _, lens_landed, _, _, _, _) = inventory::deposited_fields(&deposited[1]);
+    assert!(fuel_type == FUEL && lens_type == LENS);
+    assert!(fuel_transit == fuel_landed && lens_transit == lens_landed);
+    assert!(fuel_transit != lens_transit);
+    assert!(fuel_from == entity_b_id && fuel_to == entity_a_id);
+    assert!(lens_from == entity_a_id && lens_to == entity_b_id);
+
     ts::return_shared(entity_a);
     ts::return_shared(entity_b);
     scenario.end();
@@ -812,7 +905,8 @@ fun uninstall_burns_inventory() {
     configure_default_actions(&mut scenario, e_id, OWNER);
     power_inventory(&mut scenario, e_id, OWNER);
 
-    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL);
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL); // used 200
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", LENS, 10, VOL); // used 220
 
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -820,13 +914,35 @@ fun uninstall_burns_inventory() {
     uninstall_inventory(&mut scenario, &mut e, &acl, MODULE_ID);
     assert!(!e.has_component(MODULE_ID));
 
-    // The marker carries the whole `used` total and arrives ahead of the burns.
+    // Teardown announces itself with the `used` total it is about to destroy.
     let torn_down = event::events_by_type<inventory::InventoryUninstalled>();
     assert!(torn_down.length() == 1);
     let (entity_id, component_id, used_before) = inventory::uninstalled_fields(&torn_down[0]);
     assert!(entity_id == e_id && component_id == MODULE_ID);
-    assert!(used_before == 200);
-    assert!(event::events_by_type<item::ItemBurned>().length() == 1);
+    assert!(used_before == 220);
+
+    // One burn per type, each under the same envelope as any other movement.
+    // These are destruction, not a bridge-out: nothing was credited to the game.
+    // `balance_after` is 0 because the balance is gone rather than reduced, and
+    // `used_after` counts down to meet the `used_before` above.
+    let burned = event::events_by_type<inventory::ItemBurned>();
+    assert!(burned.length() == 2);
+    let (
+        entity_id,
+        component_id,
+        type_id,
+        quantity,
+        balance_after,
+        used_after,
+    ) = inventory::burned_fields(
+        &burned[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(type_id == FUEL && quantity == 100);
+    assert!(balance_after == 0 && used_after == 20);
+    let (_, _, type_id, quantity, balance_after, used_after) = inventory::burned_fields(&burned[1]);
+    assert!(type_id == LENS && quantity == 10);
+    assert!(balance_after == 0 && used_after == 0);
 
     ts::return_shared(acl);
     ts::return_shared(e);
@@ -1175,7 +1291,7 @@ fun migrate_moves_inventory_with_its_items() {
 
     migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
 
-    assert!(event::events_by_type<item::ItemBurned>().is_empty());
+    assert!(event::events_by_type<inventory::ItemBurned>().is_empty());
     ts::next_tx(&mut scenario, ADMIN);
     let from = ts::take_shared_by_id<Entity>(&scenario, from_id);
     let to = ts::take_shared_by_id<Entity>(&scenario, to_id);

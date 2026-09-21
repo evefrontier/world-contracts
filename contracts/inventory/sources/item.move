@@ -4,35 +4,41 @@
 /// `ItemBag` is at-rest balances keyed by `type_id`. Items are fungible: balances
 /// stack exactly by `type_id`.
 ///
+/// Pure balance mechanics, with no event surface: a movement is only legible
+/// once it is attributed to an inventory, and the owning entity and component
+/// are reachable in `inventory::inventory` alone, which emits there instead.
+///
 /// TODO: volume (and mass) are per-type metadata, not per-balance. Move them to
 /// an admin-registered item type (source of truth) and read volume from there
 /// instead of carrying it on the bag. Pending team discussion.
 module inventory::item;
 
 use core::entity_key::{Self, EntityKey};
-use std::string::String;
-use sui::{event, linked_table::{Self, LinkedTable}};
+use sui::linked_table::{Self, LinkedTable};
+
+// Field-named getters for `DrainedBalance`; the plain names belong to `Item`.
+public use fun drained_type_id as DrainedBalance.type_id;
+public use fun drained_quantity as DrainedBalance.quantity;
+public use fun drained_volume as DrainedBalance.volume;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EWrongType: vector<u8> = b"Item type does not match";
-#[error(code = 1)]
 const EInsufficientQuantity: vector<u8> = b"Not enough quantity in the bag";
-#[error(code = 2)]
+#[error(code = 1)]
 const EZeroQuantity: vector<u8> = b"Quantity must be non-zero";
-#[error(code = 3)]
+#[error(code = 2)]
 const EVolumeMismatch: vector<u8> = b"Item volume does not match the stored volume for this type";
-#[error(code = 4)]
-const ESourceMismatch: vector<u8> = b"Items withdrawn from different entities cannot merge";
 
 // === Structs ===
 
 /// Standalone item: created on withdraw, destroyed on deposit. No `store`: a
 /// withdrawn `Item` can only move via functions this package defines (i.e.
 /// `inventory::deposit`), never by a bare `public_transfer` that would let it
-/// leave the Entity/Requirement system ungated. `volume` is the per-unit
-/// volume (see module TODO).
+/// leave the Entity/Requirement system ungated. Lacking `store` and `drop` it
+/// also cannot outlive its transaction, which is what makes the `transit_id` on
+/// `ItemWithdrawn` / `ItemDeposited` an always-paired correlation key.
+/// `volume` is the per-unit volume (see module TODO).
 public struct Item has key {
     id: UID,
     type_id: u64,
@@ -52,26 +58,12 @@ public struct ItemBag has store {
     balances: LinkedTable<u64, Balance>,
 }
 
-// === Events ===
-
-public struct ItemMinted has copy, drop {
-    game_id: EntityKey,
+/// One balance drained by `burn_all_and_destroy`, carrying the `type_id` its
+/// table entry was keyed by so the caller can announce it after the bag is gone.
+public struct DrainedBalance has copy, drop {
+    type_id: u64,
     quantity: u64,
-}
-
-public struct ItemBurned has copy, drop {
-    game_id: EntityKey,
-    quantity: u64,
-}
-
-public struct ItemDeposited has copy, drop {
-    game_id: EntityKey,
-    quantity: u64,
-}
-
-public struct ItemWithdrawn has copy, drop {
-    game_id: EntityKey,
-    quantity: u64,
+    volume: u64,
 }
 
 // === View Functions ===
@@ -92,6 +84,18 @@ public fun source(item: &Item): ID {
     item.source
 }
 
+public fun drained_type_id(drained: &DrainedBalance): u64 {
+    drained.type_id
+}
+
+public fun drained_quantity(drained: &DrainedBalance): u64 {
+    drained.quantity
+}
+
+public fun drained_volume(drained: &DrainedBalance): u64 {
+    drained.volume
+}
+
 /// Current quantity of `type_id` in `bag` (0 if absent).
 public fun balance(bag: &ItemBag, type_id: u64): u64 {
     if (bag.balances.contains(type_id)) bag.balances[type_id].quantity else 0
@@ -109,18 +113,11 @@ public(package) fun new_bag(ctx: &mut TxContext): ItemBag {
     ItemBag { balances: linked_table::new(ctx) }
 }
 
-/// Drop a bag and all its balances without emitting burn events.
-public(package) fun destroy_bag(bag: ItemBag) {
-    let ItemBag { balances } = bag;
-    linked_table::drop(balances);
-}
-
 /// Mint `quantity` of `game_id` into `bag` at `volume` (game-to-chain bridge).
 public(package) fun mint(bag: &mut ItemBag, game_id: EntityKey, quantity: u64, volume: u64) {
     let type_id = entity_key::id(&game_id);
     assert!(quantity > 0, EZeroQuantity);
     add_balance(bag, type_id, quantity, volume);
-    event::emit(ItemMinted { game_id, quantity });
 }
 
 /// Burn `quantity` of `game_id` from `bag`, removing it from existence.
@@ -128,36 +125,32 @@ public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
     let type_id = entity_key::id(&game_id);
     assert!(quantity > 0, EZeroQuantity);
     subtract_balance(bag, type_id, quantity);
-    event::emit(ItemBurned { game_id, quantity });
 }
 
-/// Burn every balance in `bag` (one `ItemBurned` event per type), then destroy it.
-public(package) fun burn_all_and_destroy(bag: ItemBag, tenant: String) {
+/// Drain every balance out of `bag`, destroy it, and hand the drained balances
+/// back for the caller to announce. Entries are popped one by one rather than
+/// dropped wholesale: `linked_table::drop` deletes only the table's parent
+/// `UID` and would orphan one dynamic field per balance.
+public(package) fun burn_all_and_destroy(bag: ItemBag): vector<DrainedBalance> {
     let ItemBag { mut balances } = bag;
+    let mut drained = vector[];
     while (!balances.is_empty()) {
-        let (type_id, Balance { quantity, volume: _ }) = balances.pop_front();
-        event::emit(ItemBurned { game_id: entity_key::new(type_id, tenant), quantity });
+        let (type_id, Balance { quantity, volume }) = balances.pop_front();
+        drained.push_back(DrainedBalance { type_id, quantity, volume });
     };
     balances.destroy_empty();
-}
-
-/// Destroy an `Item`, removing its quantity from existence.
-public(package) fun destroy(item: Item, game_id: EntityKey) {
-    let Item { id, type_id, quantity, .. } = item;
-    assert!(entity_key::id(&game_id) == type_id, EWrongType);
-    event::emit(ItemBurned { game_id, quantity });
-    id.delete();
+    drained
 }
 
 /// Deposit `item` into `bag`, merging into the existing balance for its type.
-public(package) fun deposit(bag: &mut ItemBag, item: Item, tenant: String) {
+public(package) fun deposit(bag: &mut ItemBag, item: Item) {
     let Item { id, type_id, quantity, volume, .. } = item;
     id.delete();
     add_balance(bag, type_id, quantity, volume);
-    event::emit(ItemDeposited { game_id: entity_key::new(type_id, tenant), quantity });
 }
 
-/// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item` with `volume`
+/// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item` carrying the
+/// type's stored volume.
 public(package) fun withdraw(
     bag: &mut ItemBag,
     game_id: EntityKey,
@@ -170,31 +163,7 @@ public(package) fun withdraw(
     assert!(bag.balances.contains(type_id), EInsufficientQuantity);
     let volume = bag.balances[type_id].volume;
     subtract_balance(bag, type_id, quantity);
-    event::emit(ItemWithdrawn { game_id, quantity });
     Item { id: object::new(ctx), type_id, quantity, volume, source }
-}
-
-/// Split `quantity` off `item` into a new `Item` of the same type.
-public(package) fun split(item: &mut Item, quantity: u64, ctx: &mut TxContext): Item {
-    assert!(quantity > 0, EZeroQuantity);
-    assert!(item.quantity >= quantity, EInsufficientQuantity);
-    item.quantity = item.quantity - quantity;
-    Item {
-        id: object::new(ctx),
-        type_id: item.type_id,
-        quantity,
-        volume: item.volume,
-        source: item.source,
-    }
-}
-
-/// Merge `other` into `item`. Both must be the same type.
-public(package) fun merge(item: &mut Item, other: Item) {
-    let Item { id, type_id, quantity, source, .. } = other;
-    assert!(item.type_id == type_id, EWrongType);
-    assert!(item.source == source, ESourceMismatch);
-    id.delete();
-    item.quantity = item.quantity + quantity;
 }
 
 // === Private Functions ===
@@ -218,4 +187,15 @@ fun subtract_balance(bag: &mut ItemBag, type_id: u64, quantity: u64) {
     if (empty) {
         bag.balances.remove(type_id);
     };
+}
+
+// === Test Functions ===
+
+/// Dispose of an in-transit `Item`. Tests only: production has exactly one exit
+/// for an `Item` — `inventory::deposit` — and a withdrawal with no valid
+/// destination aborts the transaction rather than taking another one.
+#[test_only]
+public fun destroy_for_testing(item: Item) {
+    let Item { id, .. } = item;
+    id.delete();
 }
