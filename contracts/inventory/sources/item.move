@@ -16,11 +16,6 @@ module inventory::item;
 use core::entity_key::{Self, EntityKey};
 use sui::linked_table::{Self, LinkedTable};
 
-// Field-named getters for `DrainedBalance`; the plain names belong to `Item`.
-public use fun drained_type_id as DrainedBalance.type_id;
-public use fun drained_quantity as DrainedBalance.quantity;
-public use fun drained_volume as DrainedBalance.volume;
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -58,14 +53,6 @@ public struct ItemBag has store {
     balances: LinkedTable<u64, Balance>,
 }
 
-/// One balance drained by `burn_all_and_destroy`, carrying the `type_id` its
-/// table entry was keyed by so the caller can announce it after the bag is gone.
-public struct DrainedBalance has copy, drop {
-    type_id: u64,
-    quantity: u64,
-    volume: u64,
-}
-
 // === View Functions ===
 
 public fun type_id(item: &Item): u64 {
@@ -82,18 +69,6 @@ public fun volume(item: &Item): u64 {
 
 public fun source(item: &Item): ID {
     item.source
-}
-
-public fun drained_type_id(drained: &DrainedBalance): u64 {
-    drained.type_id
-}
-
-public fun drained_quantity(drained: &DrainedBalance): u64 {
-    drained.quantity
-}
-
-public fun drained_volume(drained: &DrainedBalance): u64 {
-    drained.volume
 }
 
 /// Current quantity of `type_id` in `bag` (0 if absent).
@@ -127,19 +102,18 @@ public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
     subtract_balance(bag, type_id, quantity);
 }
 
-/// Drain every balance out of `bag`, destroy it, and hand the drained balances
-/// back for the caller to announce. Entries are popped one by one rather than
-/// dropped wholesale: `linked_table::drop` deletes only the table's parent
-/// `UID` and would orphan one dynamic field per balance.
-public(package) fun burn_all_and_destroy(bag: ItemBag): vector<DrainedBalance> {
+/// Drain every balance out of `bag` and destroy it. The balances are not
+/// reported: `inventory::uninstall` accounts for the whole inventory in one
+/// `InventoryUninstalled`, so there is nothing per type to hand back. Entries
+/// are still popped one by one rather than dropped wholesale, because
+/// `linked_table::drop` deletes only the table's parent `UID` and would orphan
+/// one dynamic field per balance.
+public(package) fun burn_all_and_destroy(bag: ItemBag) {
     let ItemBag { mut balances } = bag;
-    let mut drained = vector[];
     while (!balances.is_empty()) {
-        let (type_id, Balance { quantity, volume }) = balances.pop_front();
-        drained.push_back(DrainedBalance { type_id, quantity, volume });
+        let (_, Balance { quantity: _, volume: _ }) = balances.pop_front();
     };
     balances.destroy_empty();
-    drained
 }
 
 /// Deposit `item` into `bag`, merging into the existing balance for its type.

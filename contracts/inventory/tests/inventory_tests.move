@@ -890,7 +890,7 @@ fun bridge_in_wrong_type_aborts() {
 }
 
 #[test]
-fun uninstall_burns_inventory() {
+fun uninstall_reports_the_whole_inventory() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
@@ -914,35 +914,19 @@ fun uninstall_burns_inventory() {
     uninstall_inventory(&mut scenario, &mut e, &acl, MODULE_ID);
     assert!(!e.has_component(MODULE_ID));
 
-    // Teardown announces itself with the `used` total it is about to destroy.
+    // One event for the whole inventory, carrying the entire accounting: both
+    // balances were destroyed, and 220 is the total the consumer checks against
+    // what it had tracked under this key.
     let torn_down = event::events_by_type<inventory::InventoryUninstalled>();
     assert!(torn_down.length() == 1);
     let (entity_id, component_id, used_before) = inventory::uninstalled_fields(&torn_down[0]);
     assert!(entity_id == e_id && component_id == MODULE_ID);
     assert!(used_before == 220);
 
-    // One burn per type, each under the same envelope as any other movement.
-    // These are destruction, not a bridge-out: nothing was credited to the game.
-    // `balance_after` is 0 because the balance is gone rather than reduced, and
-    // `used_after` counts down to meet the `used_before` above.
-    let burned = event::events_by_type<inventory::ItemBurned>();
-    assert!(burned.length() == 2);
-    let (
-        entity_id,
-        component_id,
-        type_id,
-        quantity,
-        balance_after,
-        used_after,
-    ) = inventory::burned_fields(
-        &burned[0],
-    );
-    assert!(entity_id == e_id && component_id == MODULE_ID);
-    assert!(type_id == FUEL && quantity == 100);
-    assert!(balance_after == 0 && used_after == 20);
-    let (_, _, type_id, quantity, balance_after, used_after) = inventory::burned_fields(&burned[1]);
-    assert!(type_id == LENS && quantity == 10);
-    assert!(balance_after == 0 && used_after == 0);
+    // Explicitly not per type. `ItemBurned` stays exclusively the bridge-out, so
+    // a consumer never has to ask whether a burn conserved supply or destroyed
+    // it — teardown is the other event entirely.
+    assert!(event::events_by_type<inventory::ItemBurned>().is_empty());
 
     ts::return_shared(acl);
     ts::return_shared(e);

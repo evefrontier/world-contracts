@@ -28,8 +28,7 @@ fun withdraw_item(
     item::withdraw(bag, key, quantity, source(), ctx)
 }
 
-/// Empty a bag the way teardown does; the drained balances are the caller's to
-/// announce, and a test has nothing to say about them.
+/// Empty a bag the way teardown does.
 fun drop_bag(bag: item::ItemBag) {
     item::burn_all_and_destroy(bag);
 }
@@ -47,23 +46,18 @@ fun bag_mint_adds_balance() {
 }
 
 #[test]
-fun burn_all_reports_every_balance() {
+fun burn_all_drains_every_balance() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
 
     item::mint(&mut bag, fuel_key(), 50, VOL);
     item::mint(&mut bag, lens_key(), 3, VOL + 1);
     assert!(item::balance(&bag, FUEL) == 50);
+    assert!(item::balance(&bag, LENS) == 3);
 
-    // Drained in insertion order, each carrying what the caller needs to emit.
-    let drained = item::burn_all_and_destroy(bag);
-    assert!(drained.length() == 2);
-    assert!(drained[0].type_id() == FUEL);
-    assert!(drained[0].quantity() == 50);
-    assert!(drained[0].volume() == VOL);
-    assert!(drained[1].type_id() == LENS);
-    assert!(drained[1].quantity() == 3);
-    assert!(drained[1].volume() == VOL + 1);
+    // Every type is popped, not just the first: the table has to be empty before
+    // `destroy_empty`, which is what keeps the dynamic fields from leaking.
+    item::burn_all_and_destroy(bag);
 
     scenario.end();
 }
