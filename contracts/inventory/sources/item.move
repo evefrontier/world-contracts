@@ -102,18 +102,10 @@ public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
     subtract_balance(bag, type_id, quantity);
 }
 
-/// Drain every balance out of `bag` and destroy it. The balances are not
-/// reported: `inventory::uninstall` accounts for the whole inventory in one
-/// `InventoryUninstalled`, so there is nothing per type to hand back. Entries
-/// are still popped one by one rather than dropped wholesale, because
-/// `linked_table::drop` deletes only the table's parent `UID` and would orphan
-/// one dynamic field per balance.
-public(package) fun burn_all_and_destroy(bag: ItemBag) {
-    let ItemBag { mut balances } = bag;
-    while (!balances.is_empty()) {
-        let (_, Balance { quantity: _, volume: _ }) = balances.pop_front();
-    };
-    balances.destroy_empty();
+/// Drop a bag and all its balances without emitting burn events.
+public(package) fun destroy_bag(bag: ItemBag) {
+    let ItemBag { balances } = bag;
+    linked_table::drop(balances);
 }
 
 /// Deposit `item` into `bag`, merging into the existing balance for its type.

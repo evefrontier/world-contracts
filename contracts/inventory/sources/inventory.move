@@ -536,17 +536,18 @@ fun withdraw_item(
     item
 }
 
-/// Announce the teardown, then destroy every balance the inventory still held.
+/// Announce the teardown, then drop the bag and every balance in it.
 /// One event for the whole inventory, not one per type: an inventory holds one
 /// balance per type with no bound on how many, and the fullest storage unit is
-/// the one most likely to be torn down. `used_before` carries the entire
-/// accounting, and the epoch `InventoryInstalled` opened is what scopes it —
-/// every balance a consumer tracked under this key is gone, with none of it
-/// credited back to the game.
+/// the one most likely to be torn down — so neither the emit nor the drop scales
+/// with the number of types held. `used_before` carries the entire accounting,
+/// and the epoch `InventoryInstalled` opened is what scopes it: every balance a
+/// consumer tracked under this key is gone, with none of it credited back to the
+/// game.
 fun burn_inventory(inv: Inventory, entity_id: ID, component_id: u64) {
     let Inventory { items, type_id: _, capacity: _, used } = inv;
     event::emit(InventoryUninstalled { entity_id, component_id, used_before: used });
-    item::burn_all_and_destroy(items);
+    item::destroy_bag(items);
 }
 
 /// The component `take` borrowed, read off the requirement that targeted it.
