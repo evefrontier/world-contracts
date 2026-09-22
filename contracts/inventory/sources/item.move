@@ -92,6 +92,12 @@ public(package) fun new_bag(ctx: &mut TxContext): ItemBag {
     ItemBag { balances: linked_table::new(ctx) }
 }
 
+/// Drop a bag and all its balances without emitting burn events.
+public(package) fun destroy_bag(bag: ItemBag) {
+    let ItemBag { balances } = bag;
+    linked_table::drop(balances);
+}
+
 /// Mint `quantity` of `game_id` into `bag` at `volume` (game-to-chain bridge).
 public(package) fun mint(bag: &mut ItemBag, game_id: EntityKey, quantity: u64, volume: u64) {
     let type_id = entity_key::id(&game_id);
@@ -106,12 +112,6 @@ public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
     subtract_balance(bag, type_id, quantity);
 }
 
-/// Drop a bag and all its balances without emitting burn events.
-public(package) fun destroy_bag(bag: ItemBag) {
-    let ItemBag { balances } = bag;
-    linked_table::drop(balances);
-}
-
 /// Deposit `item` into `bag`, merging into the existing balance for its type.
 public(package) fun deposit(bag: &mut ItemBag, item: Item) {
     let Item { id, type_id, quantity, volume, .. } = item;
@@ -119,8 +119,7 @@ public(package) fun deposit(bag: &mut ItemBag, item: Item) {
     add_balance(bag, type_id, quantity, volume);
 }
 
-/// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item` carrying the
-/// type's stored volume.
+/// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item` with `volume`
 public(package) fun withdraw(
     bag: &mut ItemBag,
     game_id: EntityKey,
