@@ -5,7 +5,7 @@
 /// identifier (`id + tenant`), so each in-game ID maps to exactly one entity.
 ///
 /// Lifecycle operations (`install`, `uninstall`, `enable_action`,
-/// `disable_action`, `interact`, `request_delete`) lock the entity and return a
+/// `enable_admin_action`, `disable_action`, `interact`, `request_delete`) lock the entity and return a
 /// `Request` the transaction must satisfy. `complete_request` unlocks;
 /// `delete` consumes the object and a `DeleteTicket` minted only by `request_delete`.
 module core::entity;
@@ -207,16 +207,24 @@ public fun enable_action(
     action: Action,
     _ctx: &mut TxContext,
 ): Request {
-    assert!(entity.version == VERSION, EWrongVersion);
-
-    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
-    assert!(!actions.contains(&name), EActionExists);
-    actions.insert(name, action);
-
-    entity.lock();
+    add_action(entity, name, action);
     request::new(
         option::some(entity.id.to_inner()),
         vector[access_cap::owner_requirement()],
+    )
+}
+
+/// Expose `action` under `name`. Admin-gated. Same insert as `enable_action`.
+public fun enable_admin_action(
+    entity: &mut Entity,
+    name: String,
+    action: Action,
+    _ctx: &mut TxContext,
+): Request {
+    add_action(entity, name, action);
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
     )
 }
 
@@ -362,6 +370,14 @@ public fun version(entity: &Entity): u64 {
 }
 
 // === Private Functions ===
+
+fun add_action(entity: &mut Entity, name: String, action: Action) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
+    assert!(!actions.contains(&name), EActionExists);
+    actions.insert(name, action);
+    entity.lock();
+}
 
 fun lock(entity: &mut Entity) {
     df::add(&mut entity.id, InFlight(), true);
