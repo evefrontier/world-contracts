@@ -300,7 +300,11 @@ fun admin_enables_action_owner_disables_it() {
     let mut req = e.mint_access(@0xB, false, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
-    let mut req = e.enable_admin_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
+    let mut req = e.enable_admin_action(
+        string::utf8(b"act"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     let e_id = e.id();
@@ -335,7 +339,11 @@ fun enable_admin_action_by_non_admin_aborts() {
     ts::next_tx(&mut scenario, @0xB);
     let mut e = ts::take_shared<entity::Entity>(&scenario);
     let acl = take_acl(&scenario);
-    let mut req = e.enable_admin_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
+    let mut req = e.enable_admin_action(
+        string::utf8(b"act"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
 
     abort

@@ -14,6 +14,7 @@
 module inventory::inventory;
 
 use core::{
+    admin_service,
     component::{Self, Component},
     entity::Entity,
     entity_key,
@@ -109,6 +110,7 @@ public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext
 }
 
 /// Game to chain bridge: mint `quantity` of `type_id` into the entity's Inventory.
+/// Pushes a sponsor requirement. The owner can sign. The gas sponsor must be on `AdminACL`.
 public fun game_item_to_chain_inventory(
     entity: &mut Entity,
     req: &mut Request,
@@ -117,13 +119,15 @@ public fun game_item_to_chain_inventory(
     volume: u64, // TODO: volume should be stored in static data module in the future
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
-    let (requirement, frame, inv) = take(entity, req, bridge_in_permit());
+    let (requirement, mut frame, inv) = take(entity, req, bridge_in_permit());
     enforce_rule(&requirement, type_id, quantity);
     inv.mint_item(key, quantity, volume);
+    frame.require(admin_service::sponsor_requirement());
     req.enqueue(frame);
 }
 
 /// Chain to game bridge: burn `quantity` of `type_id` from the entity's Inventory.
+/// Pushes a sponsor requirement. The owner can sign. The gas sponsor must be on `AdminACL`.
 public fun chain_item_to_game_inventory(
     entity: &mut Entity,
     req: &mut Request,
@@ -131,9 +135,10 @@ public fun chain_item_to_game_inventory(
     quantity: u64,
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
-    let (requirement, frame, inv) = take(entity, req, bridge_out_permit());
+    let (requirement, mut frame, inv) = take(entity, req, bridge_out_permit());
     enforce_rule(&requirement, type_id, quantity);
     inv.burn_item(key, type_id, quantity);
+    frame.require(admin_service::sponsor_requirement());
     req.enqueue(frame);
 }
 

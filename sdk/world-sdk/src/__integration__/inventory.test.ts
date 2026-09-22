@@ -1,9 +1,10 @@
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import {
+  addSponsors,
   completeRequest,
   deriveObjectId,
-  enableAction,
+  enableAdminAction,
   interact,
   ownerRequirement,
   verifyOwner,
@@ -27,9 +28,9 @@ import {
 } from './helpers.js'
 
 // Exercise the inventory bindings in isolation. Create a storage-unit entity,
-// mint the owner cap to a plain address, enable owner-gated deposit/withdraw/
-// bridge actions, then round-trip a balance: bridge_in seeds it, withdraw
-// yields an Item, deposit puts it back.
+// mint the owner cap to a plain address, have an admin expose deposit/withdraw/
+// bridge, then round-trip a balance: bridge_in seeds it, withdraw yields an
+// Item, deposit puts it back.
 const MODULE_ID = 0x51n
 const UNIT = 'SU-01'
 const FUEL = 88834n
@@ -61,47 +62,27 @@ describe('inventory owner round-trip (localnet)', () => {
       transferable: true,
     })
 
-    // tx3: owner enables the three owner-gated inventory actions.
+    // tx3: admin exposes the actions before the owner uses them.
     const enableTx = new Transaction()
     const entity = enableTx.object(entityId)
-    const cap = enableTx.object(capId)
-    enableAction(
-      enableTx,
-      config,
-      entity,
-      'bridge_in',
-      [
-        ownerRequirement(enableTx, config),
-        bridgeInRequirement(enableTx, config, MODULE_ID, {}),
-      ],
-      cap,
-    )
-    enableAction(
-      enableTx,
-      config,
-      entity,
-      'withdraw',
-      [
-        ownerRequirement(enableTx, config),
-        withdrawRequirement(enableTx, config, MODULE_ID, {}),
-      ],
-      cap,
-    )
-    enableAction(
-      enableTx,
-      config,
-      entity,
-      'deposit',
-      [
-        ownerRequirement(enableTx, config),
-        depositRequirement(enableTx, config, MODULE_ID, {}),
-      ],
-      cap,
-    )
+
+    enableAdminAction(enableTx, config, entity, 'bridge_in', [
+      ownerRequirement(enableTx, config),
+      bridgeInRequirement(enableTx, config, MODULE_ID, {}),
+    ])
+    enableAdminAction(enableTx, config, entity, 'withdraw', [
+      ownerRequirement(enableTx, config),
+      withdrawRequirement(enableTx, config, MODULE_ID, {}),
+    ])
+    enableAdminAction(enableTx, config, entity, 'deposit', [
+      ownerRequirement(enableTx, config),
+      depositRequirement(enableTx, config, MODULE_ID, {}),
+    ])
     await expectSuccess(client, enableTx)
 
     // tx4: bridge_in 100 -> withdraw 20 -> deposit the Item back, one signer.
     const runTx = new Transaction()
+    addSponsors(runTx, config, [signer])
     const e = runTx.object(entityId)
     const c = runTx.object(capId)
 

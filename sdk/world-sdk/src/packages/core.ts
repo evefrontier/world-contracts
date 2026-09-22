@@ -82,6 +82,18 @@ export function entityNew(
   })
 }
 
+/** Satisfy a sponsor requirement on `request`. The gas sponsor, or the sender when unsponsored, must be on `AdminACL`. */
+export function verifySponsor(
+  tx: Transaction,
+  config: WorldConfig,
+  request: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::admin_service::verify_sponsor`,
+    arguments: [request, sharedRef(tx, adminAcl(config), false)],
+  })
+}
+
 /** Satisfy an admin requirement on `request` against the shared `AdminACL`. */
 export function verifyAdmin(
   tx: Transaction,
@@ -275,6 +287,36 @@ export function enableAction(
     arguments: [entity, tx.pure.string(name), action],
   })
   verifyOwner(tx, config, request, ownerCap)
+  completeRequest(tx, config, entity, request)
+}
+
+/**
+ * Expose an action under `name` from `requirements` and close its admin-gated
+ * request. Signer must be an admin. The owner can still disable it later.
+ */
+export function enableAdminAction(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  name: string,
+  requirements: TransactionObjectArgument[],
+): void {
+  const core = mvrName(config.env, CORE_PACKAGE)
+  const requirementType = requirementTypeTag(config)
+  const action = tx.moveCall({
+    target: `${core}::action::new`,
+    arguments: [
+      tx.makeMoveVec({
+        type: requirementType,
+        elements: requirements,
+      }),
+    ],
+  })
+  const request = tx.moveCall({
+    target: `${core}::entity::enable_admin_action`,
+    arguments: [entity, tx.pure.string(name), action],
+  })
+  verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
 }
 
