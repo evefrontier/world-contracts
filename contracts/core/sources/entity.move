@@ -198,9 +198,9 @@ public fun uninstall<T: store>(
     (c, req)
 }
 
-/// Expose a programmable `action` under `name`. Owner-gated: only the entity's
-/// owner (holder of its `AccessCap`) may configure which actions exist and their
-/// requirements, so a requirement on an action is trusted by construction.
+/// Expose a programmable `action` under `name`. Owner-gated: the entity's owner
+/// (holder of its `AccessCap`) configures the action and its requirements.
+/// Admins can also expose actions via `enable_admin_action`.
 public fun enable_action(
     entity: &mut Entity,
     name: String,
