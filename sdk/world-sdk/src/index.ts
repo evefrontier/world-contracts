@@ -57,10 +57,10 @@ export {
   returnAccess,
   shareEntity,
   verifyAdmin,
-  verifySponsor,
   verifyCaller,
   verifyOwner,
   verifyProximity,
+  verifySponsor,
 } from './packages/core.js'
 export {
   currencyPackage,

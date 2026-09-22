@@ -1,9 +1,9 @@
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import {
+  addSponsors,
   completeRequest,
   deriveObjectId,
-  addSponsors,
   enableAction,
   interact,
   ownerRequirement,
