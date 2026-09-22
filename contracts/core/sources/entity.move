@@ -61,6 +61,7 @@ public struct Entity has key {
     version: u64,
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
+    access_cap_id: Option<ID>,
 }
 
 /// Proof that delete started via `request_delete`.
@@ -92,7 +93,12 @@ public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity,
     assert!(!registry.exists(key), EEntityAlreadyExists);
 
     let uid = derived_object::claim(registry.borrow_id(), key);
-    let mut entity = Entity { id: uid, version: VERSION, key };
+    let mut entity = Entity {
+        id: uid,
+        version: VERSION,
+        key,
+        access_cap_id: option::none(),
+    };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
 
     event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
@@ -119,7 +125,8 @@ public fun mint_access(
     ctx: &mut TxContext,
 ): Request {
     assert!(entity.version == VERSION, EWrongVersion);
-    access_cap::mint(entity.id.to_inner(), owner, transferable, ctx);
+    let cap_id = access_cap::mint(entity.id.to_inner(), owner, transferable, ctx);
+    entity.access_cap_id = option::some(cap_id);
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
@@ -314,7 +321,7 @@ public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     entity.unlock();
 
     let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
-    let Entity { id, version: _, key } = entity;
+    let Entity { id, version: _, key, access_cap_id: _ } = entity;
     event::emit(EntityDeleted { entity_id: id.to_inner(), key });
     id.delete();
 }
@@ -336,6 +343,10 @@ public fun id(entity: &Entity): ID {
 
 public fun key(entity: &Entity): EntityKey {
     entity.key
+}
+
+public fun access_cap_id(entity: &Entity): Option<ID> {
+    entity.access_cap_id
 }
 
 public fun has_component(entity: &Entity, component_id: u64): bool {

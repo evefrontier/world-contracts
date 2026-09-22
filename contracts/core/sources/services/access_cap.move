@@ -150,11 +150,13 @@ public fun is_transferable(cap: &AccessCap): bool {
 
 // === Package Functions ===
 
-/// Mint a cap for `entity` and transfer it to `owner`.
-public(package) fun mint(entity: ID, owner: address, transferable: bool, ctx: &mut TxContext) {
+/// Mint a cap for `entity` and transfer it to `owner`. Returns the new cap's id.
+public(package) fun mint(entity: ID, owner: address, transferable: bool, ctx: &mut TxContext): ID {
     let cap = AccessCap { id: object::new(ctx), version: VERSION, entity, transferable };
-    event::emit(AccessCapCreated { cap_id: cap.id.to_inner(), entity });
+    let cap_id = cap.id.to_inner();
+    event::emit(AccessCapCreated { cap_id, entity });
     transfer::transfer(cap, owner);
+    cap_id
 }
 
 // === Private Functions ===
