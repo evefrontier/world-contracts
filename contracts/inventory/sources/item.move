@@ -19,11 +19,15 @@ use sui::linked_table::{Self, LinkedTable};
 // === Errors ===
 
 #[error(code = 0)]
-const EInsufficientQuantity: vector<u8> = b"Not enough quantity in the bag";
+const EWrongType: vector<u8> = b"Item type does not match";
 #[error(code = 1)]
-const EZeroQuantity: vector<u8> = b"Quantity must be non-zero";
+const EInsufficientQuantity: vector<u8> = b"Not enough quantity in the bag";
 #[error(code = 2)]
+const EZeroQuantity: vector<u8> = b"Quantity must be non-zero";
+#[error(code = 3)]
 const EVolumeMismatch: vector<u8> = b"Item volume does not match the stored volume for this type";
+#[error(code = 4)]
+const ESourceMismatch: vector<u8> = b"Items withdrawn from different entities cannot merge";
 
 // === Structs ===
 
@@ -130,6 +134,29 @@ public(package) fun withdraw(
     let volume = bag.balances[type_id].volume;
     subtract_balance(bag, type_id, quantity);
     Item { id: object::new(ctx), type_id, quantity, volume, source }
+}
+
+/// Split `quantity` off `item` into a new `Item` of the same type.
+public(package) fun split(item: &mut Item, quantity: u64, ctx: &mut TxContext): Item {
+    assert!(quantity > 0, EZeroQuantity);
+    assert!(item.quantity >= quantity, EInsufficientQuantity);
+    item.quantity = item.quantity - quantity;
+    Item {
+        id: object::new(ctx),
+        type_id: item.type_id,
+        quantity,
+        volume: item.volume,
+        source: item.source,
+    }
+}
+
+/// Merge `other` into `item`. Both must be the same type.
+public(package) fun merge(item: &mut Item, other: Item) {
+    let Item { id, type_id, quantity, source, .. } = other;
+    assert!(item.type_id == type_id, EWrongType);
+    assert!(item.source == source, ESourceMismatch);
+    id.delete();
+    item.quantity = item.quantity + quantity;
 }
 
 // === Private Functions ===
