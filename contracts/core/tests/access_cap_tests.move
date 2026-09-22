@@ -68,6 +68,7 @@ fun mint_access_grants_cap_to_owner() {
     ts::next_tx(&mut scenario, ADMIN);
     {
         let mut e = ts::take_shared<entity::Entity>(&scenario);
+        assert!(e.access_cap_id().is_none());
         let acl = take_acl(&scenario);
         let mut req = e.mint_access(OWNER, false, scenario.ctx());
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
@@ -78,10 +79,13 @@ fun mint_access_grants_cap_to_owner() {
 
     ts::next_tx(&mut scenario, OWNER);
     {
+        let e = ts::take_shared<entity::Entity>(&scenario);
         let cap = ts::take_from_sender<AccessCap>(&scenario);
         assert!(cap.entity() == entity_id);
         assert!(!cap.is_transferable());
+        assert!(e.access_cap_id() == option::some(object::id(&cap)));
         ts::return_to_sender(&scenario, cap);
+        ts::return_shared(e);
     };
 
     scenario.end();
