@@ -48,6 +48,7 @@ export {
   type EntityKeyInput,
   type EntityNewArgs,
   enableAction,
+  enableAdminAction,
   entityNew,
   interact,
   type MintAccessArgs,
@@ -59,6 +60,7 @@ export {
   verifyCaller,
   verifyOwner,
   verifyProximity,
+  verifySponsor,
 } from './packages/core.js'
 export {
   currencyPackage,

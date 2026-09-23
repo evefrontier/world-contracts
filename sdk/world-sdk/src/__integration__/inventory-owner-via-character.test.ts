@@ -2,6 +2,7 @@ import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import { createCharacter } from '../packages/character.js'
 import {
+  addSponsors,
   borrowAccess,
   completeRequest,
   deriveObjectId,
@@ -109,6 +110,7 @@ describe('inventory owner-access via Character', () => {
 
     // Assertion PTB: borrow -> bridge_in 100 -> withdraw 30 -> deposit it back -> return.
     const runTx = new Transaction()
+    addSponsors(runTx, config, [signer])
     {
       const character = runTx.object(characterId)
       const [suCap, receipt] = borrowAccess(

@@ -288,6 +288,67 @@ fun enable_then_disable_action() {
     scenario.end();
 }
 
+#[test]
+fun admin_enables_action_owner_disables_it() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.mint_access(@0xB, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let mut req = e.enable_admin_action(
+        string::utf8(b"act"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.disable_action(string::utf8(b"act"), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
+fun enable_admin_action_by_non_admin_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = claim(&mut registry, &acl, 1, scenario.ctx());
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared<entity::Entity>(&scenario);
+    let acl = take_acl(&scenario);
+    let mut req = e.enable_admin_action(
+        string::utf8(b"act"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+
+    abort
+}
+
 #[test, expected_failure(abort_code = access_cap::ENotOwner)]
 fun enable_action_by_non_owner_aborts() {
     let mut scenario = ts::begin(@0xA);

@@ -1,6 +1,7 @@
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import {
+  addSponsors,
   completeRequest,
   deriveObjectId,
   enableAction,
@@ -74,7 +75,7 @@ describe('inventory swap across two entities (localnet)', () => {
       transferable: true,
     })
 
-    // Each owner enables their own owner-gated bridge_in/withdraw/deposit.
+    // Each owner enables their own bridge_in, withdraw, and deposit.
     const enableTx = new Transaction()
     for (const [entityId, capId] of [
       [entity1Id, ownerACapId],
@@ -141,6 +142,7 @@ describe('inventory swap across two entities (localnet)', () => {
 
     // A bridges a lens onto entity1 (owner-only).
     const stockTx = new Transaction()
+    addSponsors(stockTx, config, [signer])
     const se = stockTx.object(entity1Id)
     const stockReq = interact(stockTx, config, se, 'bridge_in', [])
     verifyProximity(stockTx, config, stockReq, [])

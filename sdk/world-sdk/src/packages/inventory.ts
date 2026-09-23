@@ -5,7 +5,13 @@ import type {
 } from '@mysten/sui/transactions'
 import { mvrName } from '../config/env.js'
 import type { WorldConfig } from '../config/types.js'
-import { completeRequest, entityNew, shareEntity, verifyAdmin } from './core.js'
+import {
+  completeRequest,
+  entityNew,
+  shareEntity,
+  verifyAdmin,
+  verifySponsor,
+} from './core.js'
 
 const INVENTORY_PACKAGE = 'inventory'
 
@@ -198,6 +204,7 @@ export function gameItemToChain(
       tx.pure.u64(args.volume),
     ],
   })
+  verifySponsor(tx, config, request)
 }
 
 export interface ItemAmount {
@@ -222,6 +229,7 @@ export function chainItemToGame(
       tx.pure.u64(args.quantity),
     ],
   })
+  verifySponsor(tx, config, request)
 }
 
 /** Deposit a standalone `Item` into the entity's inventory. */
