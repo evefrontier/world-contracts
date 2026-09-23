@@ -47,22 +47,22 @@ according to digital physics.
    `Interaction<Docked>`, so only a docking proof can satisfy them. An owner can't build an action
    that skips or weakens it, and the handler never changes between modes.
 
-3. **A transfer is one request per entity, sharing one `Relation`.** Moving an item from X to Y
-   takes a request on X and a request on Y in the same transaction. The proof is verified once into
-   a `Relation<K>`, and each request's `Interaction<K>` is satisfied against it:
-    - The request's entity must be a part of the `Relation`.
-    - A relation of another kind fails the requirement's type check.
+3. **A transfer is one request per entity, sharing one `Proof`.** Moving an item from X to Y
+   takes a request on X and a request on Y in the same transaction. The signed payload is verified
+   once into a `Proof<K>`, and each request's `Interaction<K>` is satisfied against it:
+    - The request's entity must be a part of the `Proof`.
+    - A proof of another kind fails the requirement's type check.
     ```move
-    public struct Relation<phantom K> has drop { a: ID, b: ID }
+    public struct Proof<phantom K> has drop { a: ID, b: ID }
 
     public fun verify_docking(
         cfg: &mut ProofConfig,
         clock: &Clock, // checks deadline_ms
-        proof: vector<u8>,
+        payload: vector<u8>, // signed DockingProof
         sig: vector<u8>,
         ctx: &TxContext,
-    ): Relation<Docked>
-    public fun verify_interaction<K>(req: &mut Request, rel: &Relation<K>)
+    ): Proof<Docked>
+    public fun verify_interaction<K>(req: &mut Request, proof: &Proof<K>)
     ```
 
 4. **Long-lived relationships are stored, not proven.** A gate link needs one `Distance` proof on
@@ -72,10 +72,10 @@ according to digital physics.
 
 5. **Rollout: switched per proof type.** Each proof type's `ProofConfig` is in one of two modes:
     - **Attested:** `verify_interaction_attested(req, cfg, acl, ctx)` satisfies the requirement when
-      the sender is an admin, or the gas sponsor is allowlisted. No `Relation` is needed: the
+      the sender is an admin, or the gas sponsor is allowlisted. No `Proof` is needed: the
       sponsor backend checks the whole transaction, both entities included, before paying gas. Used
       until proofs are published through external APIs.
-    - **Signed:** only `verify_interaction` with a `Relation` from a valid server-signed proof
+    - **Signed:** only `verify_interaction` with a `Proof` from a valid server-signed payload
       satisfies it.
 
     Only the calls in the transaction change when a type switches over; handlers and actions don't.
@@ -91,7 +91,7 @@ according to digital physics.
 ## Consequences
 
 - New shared objects: a per-type `ProofConfig` (mode, signing key, used nonces).
-- One signature check per transfer in Signed mode, however many requests use the `Relation`.
+- One signature check per transfer in Signed mode, however many requests use the `Proof`.
 - `withdraw` and `deposit` push an `Interaction<Docked>` requirement; their signatures don't change.
 - In Attested mode, a player can submit when an allowlisted sponsor pays the gas. An admin can
   submit as the sender with no sponsor.
