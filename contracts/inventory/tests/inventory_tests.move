@@ -649,12 +649,10 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
     configure_default_actions(&mut scenario, e_id, OWNER);
 
     // First epoch: 100 FUEL at VOL each.
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL);
     ts::next_tx(&mut scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    let owner_cap = ts::take_from_sender<AccessCap>(&scenario);
-    bridge_in(&mut scenario, &mut e, &owner_cap, b"bridge_in", FUEL, 100, VOL);
+    let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     assert!(inv(&e).used() == 200);
-    ts::return_to_sender(&scenario, owner_cap);
     ts::return_shared(e);
 
     // The seam: one tx closes the first epoch and opens the second under the
@@ -697,14 +695,12 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
 
     // Second epoch: its own items, under the key the first one used. The FUEL
     // balance does not carry across.
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", LENS, 50, VOL);
     ts::next_tx(&mut scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    let owner_cap = ts::take_from_sender<AccessCap>(&scenario);
-    bridge_in(&mut scenario, &mut e, &owner_cap, b"bridge_in", LENS, 50, VOL);
+    let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     assert!(inventory::balance_of(&e, MODULE_ID, LENS) == 50);
     assert!(inventory::balance_of(&e, MODULE_ID, FUEL) == 0);
     assert!(inv(&e).used() == 100);
-    ts::return_to_sender(&scenario, owner_cap);
     ts::return_shared(e);
 
     scenario.end();
