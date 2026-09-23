@@ -48,7 +48,8 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   deterministically from the `ObjectRegistry`. A single Entity type plays one of two **roles**,
   not a fixed sub-type:
   - **Structure** (Creation) — a spatial Entity (gate, storage unit, turret, ship). Components
-    define behavior; location is supplied at interact time, not stored on the Entity.
+    define behavior. Location is not stored on the Entity; relationships between Structures are
+    proven per transaction (see **Interaction / Relation**).
   - **Principal** — an Entity that represents an account-like actor and **owns AccessCaps**
     (a Character or a Tribe). See **Keychain**.
 - **Component** — typed state installed on an Entity
@@ -96,10 +97,12 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   Maps an in-game ID to exactly one on-chain object.
 - **ObjectRegistry** — shared object that derives and tracks Entity object IDs, guaranteeing one
   on-chain object per `EntityKey` ([`object_registry.move`](contracts/core/sources/object_registry.move)).
-- **Location service / Proximity** — `interact` injects a `Proximity` requirement carrying the
-  target location hash. The caller satisfies it with `verify_proximity` by supplying their
-  caller location hash (player, or the ship/structure they are boarded on). v1 is an exact match
-  ([`services/location_service.move`](contracts/core/sources/services/location_service.move)).
+- **Interaction / Relation** — a handler that moves something between two creations (e.g.
+  `inventory::withdraw` / `deposit`) pushes an `Interaction` requirement. The caller verifies a
+  relationship proof (e.g. `verify_docking`) once per transaction into a `Relation` naming the
+  two creations, and satisfies each request's `Interaction` against it with `verify_interaction`.
+  The docking proof is mocked in v1 (ADR 0004;
+  [`services/interaction_service.move`](contracts/core/sources/services/interaction_service.move)).
 
 ## Installed components
 
