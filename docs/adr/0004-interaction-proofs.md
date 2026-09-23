@@ -14,7 +14,6 @@ As we build modularity and the design changes, digital physics has new rules:
 | Use case                                                   | Required relationship |
 | ---------------------------------------------------------- | --------------------- |
 | Item transfer between a ship and a structure, or two ships | Docked                |
-| Item transfer between two structures                       | Proximity             |
 | Gate link                                                  | Within distance       |
 | Power network                                              | Connected by conduit  |
 
@@ -42,27 +41,28 @@ according to digital physics.
     }
     ```
 
-2. **The handler adds the requirement through its `Frame`.** `withdraw` and `deposit` push an
-   `Interaction` requirement, as `game_item_to_chain` already does with `sponsor_requirement`. An
-   owner can't build an action that skips it, and the handler never changes between modes.
+2. **The handler picks the relationship kind.** Each handler pushes an `Interaction<K>`
+   requirement through its `Frame`, as `game_item_to_chain` already does with
+   `sponsor_requirement`. `K` is the kind the action needs: `withdraw` and `deposit` push
+   `Interaction<Docked>`, so only a docking proof can satisfy them. An owner can't build an action
+   that skips or weakens it, and the handler never changes between modes.
 
 3. **A transfer is one request per entity, sharing one `Relation`.** Moving an item from X to Y
-   takes a request on X and a request on Y in the same transaction. In Signed mode, the proof is
-   verified once into a `Relation`, and each request's `Interaction` requirement is satisfied
-   against it. That aborts unless the request's entity is one of its two sides, so both requests are
-   tied to the same pair. The same handlers serve every pair (ship and structure, ship and ship,
-   structure and structure); which proof produced the `Relation` doesn't matter.
-
+   takes a request on X and a request on Y in the same transaction. The proof is verified once into
+   a `Relation<K>`, and each request's `Interaction<K>` is satisfied against it:
+    - The request's entity must be a part of the `Relation`.
+    - A relation of another kind fails the requirement's type check.
     ```move
-    public struct Relation has drop { a: ID, b: ID }
+    public struct Relation<phantom K> has drop { a: ID, b: ID }
 
     public fun verify_docking(
-        cfg: &ProofConfig,
+        cfg: &mut ProofConfig,
+        clock: &Clock, // checks deadline_ms
         proof: vector<u8>,
         sig: vector<u8>,
         ctx: &TxContext,
-    ): Relation
-    public fun verify_interaction(req: &mut Request, rel: &Relation)
+    ): Relation<Docked>
+    public fun verify_interaction<K>(req: &mut Request, rel: &Relation<K>)
     ```
 
 4. **Long-lived relationships are stored, not proven.** A gate link needs one `Distance` proof on
@@ -92,6 +92,6 @@ according to digital physics.
 
 - New shared objects: a per-type `ProofConfig` (mode, signing key, used nonces).
 - One signature check per transfer in Signed mode, however many requests use the `Relation`.
-- `withdraw` and `deposit` push an `Interaction` requirement; their signatures don't change.
+- `withdraw` and `deposit` push an `Interaction<Docked>` requirement; their signatures don't change.
 - In Attested mode, a player can submit when an allowlisted sponsor pays the gas. An admin can
   submit as the sender with no sponsor.
