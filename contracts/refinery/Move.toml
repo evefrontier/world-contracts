@@ -1,0 +1,6 @@
+[package]
+name = "refinery"
+edition = "2024"
+
+[dependencies]
+core = { local = "../core" }
