@@ -23,7 +23,7 @@ use core::{
 };
 use inventory::item::{Self, Item, ItemBag};
 use std::{internal::Permit, string::String};
-use sui::bcs;
+use sui::{bcs, event};
 
 // === Errors ===
 
@@ -68,6 +68,25 @@ public struct Withdrawal(ItemRequirement) has drop;
 
 // === Events ===
 
+/// Emitted when an inventory is installed. `inventory_type_id` is the
+/// inventory's own kind (`Inventory.type_id`), never an item type.
+public struct InventoryInstalled has copy, drop {
+    entity_id: ID,
+    component_id: u64,
+    inventory_type_id: u64,
+    name: Option<String>,
+    capacity: u64,
+}
+
+/// Emitted when an inventory is uninstalled, ahead of the burns it accounts for.
+/// `used_before` is the volume destroyed; unlike a bridge-out, none of it
+/// returns to the game.
+public struct InventoryUninstalled has copy, drop {
+    entity_id: ID,
+    component_id: u64,
+    used_before: u64,
+}
+
 // === Public Functions ===
 
 /// Build and install the storage component under `component_id` with the
@@ -81,20 +100,29 @@ public fun install(
     capacity: u64,
     ctx: &mut TxContext,
 ): Request {
+    let entity_id = entity.id();
     let inventory = Inventory { type_id, capacity, used: 0, items: item::new_bag(ctx) };
-    entity.install(
+    let req = entity.install(
         component_id,
         name,
         inventory,
         VERSION,
         inventory_permit(),
         ctx,
-    )
+    );
+    event::emit(InventoryInstalled {
+        entity_id,
+        component_id,
+        inventory_type_id: type_id,
+        name,
+        capacity,
+    });
+    req
 }
 
-/// Remove the storage component. Aborts if it was never installed. Burns the
-/// Inventory's balances (emitting `ItemBurned` per type) so the game client is
-/// notified.
+/// Remove the storage component. Aborts if it was never installed. Emits
+/// `InventoryUninstalled`, then burns the Inventory's balances (emitting
+/// `ItemBurned` per type) so the game client is notified.
 public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext): Request {
     assert!(entity.has_component_with_type<Inventory>(component_id), EComponentMissing);
 
@@ -104,7 +132,9 @@ public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext
         inventory_permit(),
         ctx,
     );
+    let entity_id = entity.id();
     let inventory = inv_component.unwrap(inventory_permit());
+    event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });
     burn_inventory(inventory, tenant);
     req
 }
@@ -353,4 +383,18 @@ fun deposit_permit(): Permit<Deposit> {
 
 fun withdrawal_permit(): Permit<Withdrawal> {
     internal::permit<Withdrawal>()
+}
+
+// === Test Functions ===
+
+/// `(entity_id, component_id, inventory_type_id, name, capacity)`.
+#[test_only]
+public fun installed_fields(e: &InventoryInstalled): (ID, u64, u64, Option<String>, u64) {
+    (e.entity_id, e.component_id, e.inventory_type_id, e.name, e.capacity)
+}
+
+/// `(entity_id, component_id, used_before)`.
+#[test_only]
+public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64) {
+    (e.entity_id, e.component_id, e.used_before)
 }
