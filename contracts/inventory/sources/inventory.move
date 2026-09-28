@@ -174,7 +174,7 @@ public fun chain_item_to_game_inventory(
 }
 
 /// Deposit a standalone `Item` into the entity's Inventory.
-public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &TxContext) {
+public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
     // Rule for deposit is that the entity must be docked
     docking::assert_docked(entity.id(), option::some(item.source()), ctx);
     let type_id = item.type_id();

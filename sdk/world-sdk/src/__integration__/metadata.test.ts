@@ -13,7 +13,6 @@ import {
   shareEntity,
   verifyAdmin,
   verifyOwner,
-  verifyProximity,
 } from '../packages/core.js'
 import {
   editMetadata,
@@ -105,8 +104,7 @@ describe('metadata owner-access via Character', () => {
         await getObjectRef(client, entityCapId),
       )
       const e = editTx.object(entityId)
-      const req = interact(editTx, config, e, 'edit_metadata', [])
-      verifyProximity(editTx, config, req, [])
+      const req = interact(editTx, config, e, 'edit_metadata')
       verifyOwner(editTx, config, req, entityCap)
       editMetadata(editTx, config, e, req, {
         name: 'Beta',

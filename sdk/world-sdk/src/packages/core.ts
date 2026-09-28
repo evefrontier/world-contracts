@@ -228,16 +228,33 @@ export function verifyCaller(
   })
 }
 
-/** Satisfy a proximity requirement. `callerLocationHash` must match the target baked at `interact`. */
-export function verifyProximity(
+/**
+ * Verify docking proof `proofBytes`. The docking is kept in the transaction
+ * scratchpad and checked inline by `withdraw` and `deposit`, so call this once
+ * per transaction, before them.
+ */
+export function verifyDocking(
   tx: Transaction,
   config: WorldConfig,
-  request: TransactionArgument,
-  callerLocationHash: number[],
+  proofBytes: Uint8Array,
 ): void {
   tx.moveCall({
-    target: `${mvrName(config.env, CORE_PACKAGE)}::location_service::verify_proximity`,
-    arguments: [request, tx.pure.vector('u8', callerLocationHash)],
+    target: `${mvrName(config.env, CORE_PACKAGE)}::docking::verify`,
+    arguments: [
+      tx.pure.vector('u8', Array.from(proofBytes)),
+      tx.object.clock(),
+    ],
+  })
+}
+
+/**
+ * Attest this transaction's docking without a proof (stopgap mode): the sender
+ * is an admin, or the gas sponsor is allowlisted. Use in place of `verifyDocking`.
+ */
+export function attestDocking(tx: Transaction, config: WorldConfig): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::docking::attest`,
+    arguments: [sharedRef(tx, adminAcl(config), false)],
   })
 }
 
@@ -247,15 +264,10 @@ export function interact(
   config: WorldConfig,
   entity: TransactionArgument,
   action: string,
-  targetLocationHash: number[],
 ): TransactionResult {
   return tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::entity::interact`,
-    arguments: [
-      entity,
-      tx.pure.string(action),
-      tx.pure.vector('u8', targetLocationHash),
-    ],
+    arguments: [entity, tx.pure.string(action)],
   })
 }
 

@@ -1,5 +1,6 @@
-import { Transaction } from '@mysten/sui/transactions'
-import { describe, expect, it } from 'vitest'
+import { Transaction, type TransactionArgument } from '@mysten/sui/transactions'
+import { normalizeSuiAddress } from '@mysten/sui/utils'
+import { beforeAll, describe, expect, it } from 'vitest'
 import {
   addSponsors,
   completeRequest,
@@ -7,8 +8,8 @@ import {
   enableAction,
   interact,
   ownerRequirement,
+  verifyDocking,
   verifyOwner,
-  verifyProximity,
 } from '../packages/core.js'
 import {
   bridgeInRequirement,
@@ -20,195 +21,261 @@ import {
   withdrawRequirement,
 } from '../packages/inventory.js'
 import {
+  dockedProof,
+  expectAbort,
+  expectSponsored,
   expectSuccess,
+  genesisAccount,
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
   signer,
 } from './helpers.js'
 
-// A owns entity1 (offers LENS). B owns entity2 (pays FUEL).
-// B withdraws FUEL, swaps it for LENS on entity1, deposits LENS into entity2.
+// A merchant (admin) runs a trading post with a public FUEL -> LENS swap.
+// PLAYER_A owns two ships: one docked at the trading post, one docked at another structure.
 const MODULE_ID = 0x51n
 const FUEL = 88834n
 const LENS = 55n
 const VOL = 2n
+const TRADING_POST_TYPE = 1n
+const SHIP_TYPE = 2n
+const TENANT = 'inventory-t3'
+// Stand-in dock for the other ship. Only the id matters to the proof.
+const OTHER_DOCK = normalizeSuiAddress('0xe15e')
 
-describe('inventory swap across two entities (localnet)', () => {
+describe('ship docks at a trading post and swaps cargo (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
 
-  it('swaps a fuel for a lens between two owner-gated inventories', async () => {
-    const entity1Key = { id: 4400n, tenant: 'inventory-t3' }
-    const entity1Id = deriveObjectId(config, entity1Key)
-    const entity2Key = { id: 4401n, tenant: 'inventory-t3' }
-    const entity2Id = deriveObjectId(config, entity2Key)
+  const tradingPostId = deriveObjectId(config, { id: 4400n, tenant: TENANT })
+  const shipId = deriveObjectId(config, { id: 4401n, tenant: TENANT })
+  const otherShipId = deriveObjectId(config, { id: 4402n, tenant: TENANT })
 
-    // A owns entity1, B owns entity2 — both plain addresses here (the signer
-    // stands in for both; access control is what's under test, not identity).
+  const pilot = genesisAccount('PLAYER_A')
+  const pilotAddr = pilot.toSuiAddress()
+  let shipCapId: string
+  let otherShipCapId: string
+
+  beforeAll(async () => {
+    // No ship module yet, so ships are storage units.
     const setupTx = new Transaction()
-    createStorageUnit(setupTx, config, {
-      inGameId: entity1Key.id,
-      tenant: entity1Key.tenant,
-      componentId: MODULE_ID,
-      typeId: 1n,
-      name: 'SU-03',
-      capacity: 1000n,
-    })
-    createStorageUnit(setupTx, config, {
-      inGameId: entity2Key.id,
-      tenant: entity2Key.tenant,
-      componentId: MODULE_ID,
-      typeId: 1n,
-      name: 'SU-04',
-      capacity: 1000n,
-    })
+    for (const [inGameId, typeId, unitName] of [
+      [4400n, TRADING_POST_TYPE, 'Trading Post'],
+      [4401n, SHIP_TYPE, 'PLAYER_A Ship'],
+      [4402n, SHIP_TYPE, 'Other Ship'],
+    ] as const) {
+      createStorageUnit(setupTx, config, {
+        inGameId,
+        tenant: TENANT,
+        componentId: MODULE_ID,
+        typeId,
+        name: unitName,
+        capacity: 1000n,
+      })
+    }
     await expectSuccess(client, setupTx)
 
-    const ownerACapId = await mintAccessCap(client, config, {
-      entity: entity1Id,
+    const merchantCapId = await mintAccessCap(client, config, {
+      entity: tradingPostId,
       owner: signer,
       transferable: true,
     })
-    const ownerBCapId = await mintAccessCap(client, config, {
-      entity: entity2Id,
-      owner: signer,
+    shipCapId = await mintAccessCap(client, config, {
+      entity: shipId,
+      owner: pilotAddr,
+      transferable: true,
+    })
+    otherShipCapId = await mintAccessCap(client, config, {
+      entity: otherShipId,
+      owner: pilotAddr,
       transferable: true,
     })
 
-    // Each owner enables their own bridge_in, withdraw, and deposit.
-    const enableTx = new Transaction()
-    for (const [entityId, capId] of [
-      [entity1Id, ownerACapId],
-      [entity2Id, ownerBCapId],
-    ] as const) {
-      const entity = enableTx.object(entityId)
-      const cap = enableTx.object(capId)
-      enableAction(
-        enableTx,
-        config,
-        entity,
-        'bridge_in',
-        [
-          ownerRequirement(enableTx, config),
-          bridgeInRequirement(enableTx, config, MODULE_ID, {}),
-        ],
-        cap,
-      )
-      enableAction(
-        enableTx,
-        config,
-        entity,
-        'withdraw',
-        [
-          ownerRequirement(enableTx, config),
-          withdrawRequirement(enableTx, config, MODULE_ID, {}),
-        ],
-        cap,
-      )
-      enableAction(
-        enableTx,
-        config,
-        entity,
-        'deposit',
-        [
-          ownerRequirement(enableTx, config),
-          depositRequirement(enableTx, config, MODULE_ID, {}),
-        ],
-        cap,
-      )
-    }
-    // A configures a public swap on entity1: hand over one fuel, receive the
-    // lens. No owner/caller gate - satisfying the item rule is the only gate.
+    // Merchant: owner-only restock, and a public swap gated only by the item rule.
+    const merchantTx = new Transaction()
+    const tradingStructure = merchantTx.object(tradingPostId)
+    const merchantCap = merchantTx.object(merchantCapId)
     enableAction(
-      enableTx,
+      merchantTx,
       config,
-      enableTx.object(entity1Id),
+      tradingStructure,
+      'bridge_in',
+      [
+        ownerRequirement(merchantTx, config),
+        bridgeInRequirement(merchantTx, config, MODULE_ID, {}),
+      ],
+      merchantCap,
+    )
+    enableAction(
+      merchantTx,
+      config,
+      tradingStructure,
       'swap',
       [
-        depositRequirement(enableTx, config, MODULE_ID, {
+        depositRequirement(merchantTx, config, MODULE_ID, {
           typeId: FUEL,
           minQuantity: 1n,
           maxQuantity: 1n,
         }),
-        withdrawRequirement(enableTx, config, MODULE_ID, {
+        withdrawRequirement(merchantTx, config, MODULE_ID, {
           typeId: LENS,
           minQuantity: 1n,
           maxQuantity: 1n,
         }),
       ],
-      enableTx.object(ownerACapId),
+      merchantCap,
     )
-    await expectSuccess(client, enableTx)
+    await expectSuccess(client, merchantTx)
 
-    // A bridges a lens onto entity1 (owner-only).
+    // Pilot: owner-only bridge_in, withdraw and deposit on both ships.
+    const pilotTx = new Transaction()
+    for (const [entityId, capId] of [
+      [shipId, shipCapId],
+      [otherShipId, otherShipCapId],
+    ] as const) {
+      const entity = pilotTx.object(entityId)
+      const cap = pilotTx.object(capId)
+      for (const [action, rule] of [
+        ['bridge_in', bridgeInRequirement(pilotTx, config, MODULE_ID, {})],
+        ['withdraw', withdrawRequirement(pilotTx, config, MODULE_ID, {})],
+        ['deposit', depositRequirement(pilotTx, config, MODULE_ID, {})],
+      ] as const) {
+        enableAction(
+          pilotTx,
+          config,
+          entity,
+          action,
+          [ownerRequirement(pilotTx, config), rule],
+          cap,
+        )
+      }
+    }
+    await expectSuccess(client, pilotTx, pilot)
+
+    // Merchant stocks one lens.
     const stockTx = new Transaction()
     addSponsors(stockTx, config, [signer])
-    const se = stockTx.object(entity1Id)
-    const stockReq = interact(stockTx, config, se, 'bridge_in', [])
-    verifyProximity(stockTx, config, stockReq, [])
-    verifyOwner(stockTx, config, stockReq, stockTx.object(ownerACapId))
-    gameItemToChain(stockTx, config, se, stockReq, {
+    const tradingPost = stockTx.object(tradingPostId)
+    const stockRequest = interact(stockTx, config, tradingPost, 'bridge_in')
+    verifyOwner(stockTx, config, stockRequest, stockTx.object(merchantCapId))
+    gameItemToChain(stockTx, config, tradingPost, stockRequest, {
       typeId: LENS,
       quantity: 1n,
       volume: VOL,
     })
-    completeRequest(stockTx, config, se, stockReq)
+    completeRequest(stockTx, config, tradingPost, stockRequest)
     await expectSuccess(client, stockTx)
 
-    // B bridges a fuel onto entity2 (owner-only, their own creation).
-    const bridgeBTx = new Transaction()
-    const be = bridgeBTx.object(entity2Id)
-    const bridgeBReq = interact(bridgeBTx, config, be, 'bridge_in', [])
-    verifyProximity(bridgeBTx, config, bridgeBReq, [])
-    verifyOwner(bridgeBTx, config, bridgeBReq, bridgeBTx.object(ownerBCapId))
-    gameItemToChain(bridgeBTx, config, be, bridgeBReq, {
+    // Pilot bridges one fuel onto each ship; bridging needs a sponsor, so the admin pays gas.
+    const fuelTx = new Transaction()
+    for (const [entityId, capId] of [
+      [shipId, shipCapId],
+      [otherShipId, otherShipCapId],
+    ] as const) {
+      const ship = fuelTx.object(entityId)
+      const bridgeRequest = interact(fuelTx, config, ship, 'bridge_in')
+      verifyOwner(fuelTx, config, bridgeRequest, fuelTx.object(capId))
+      gameItemToChain(fuelTx, config, ship, bridgeRequest, {
+        typeId: FUEL,
+        quantity: 1n,
+        volume: VOL,
+      })
+      completeRequest(fuelTx, config, ship, bridgeRequest)
+    }
+    await expectSponsored(client, fuelTx, pilot)
+  }, 120_000)
+
+  /** Withdraw one FUEL from a pilot ship. */
+  function unload(
+    tx: Transaction,
+    shipId: string,
+    capId: string,
+  ): TransactionArgument {
+    const ship = tx.object(shipId)
+    const withdrawRequest = interact(tx, config, ship, 'withdraw')
+    verifyOwner(tx, config, withdrawRequest, tx.object(capId))
+    const fuel = withdraw(tx, config, ship, withdrawRequest, {
       typeId: FUEL,
       quantity: 1n,
-      volume: VOL,
     })
-    completeRequest(bridgeBTx, config, be, bridgeBReq)
-    await expectSuccess(client, bridgeBTx)
+    completeRequest(tx, config, ship, withdrawRequest)
+    return fuel
+  }
 
-    // B flies to A and, in one signed transaction: withdraws the fuel from
-    // entity2, swaps it for the lens on entity1, then deposits the lens into
-    // entity2. Nothing is left over.
-    const runTx = new Transaction()
-    const e2 = runTx.object(entity2Id)
-    const capB = runTx.object(ownerBCapId)
-
-    const wReq = interact(runTx, config, e2, 'withdraw', [])
-    verifyProximity(runTx, config, wReq, [])
-    verifyOwner(runTx, config, wReq, capB)
-    const fuel = withdraw(runTx, config, e2, wReq, {
-      typeId: FUEL,
-      quantity: 1n,
-    })
-    completeRequest(runTx, config, e2, wReq)
-
-    const e1 = runTx.object(entity1Id)
-    const swapReq = interact(runTx, config, e1, 'swap', [])
-    verifyProximity(runTx, config, swapReq, [])
-    deposit(runTx, config, e1, swapReq, fuel)
-    const lens = withdraw(runTx, config, e1, swapReq, {
+  /** Swap `fuel` for a LENS at the trading post. */
+  function swap(
+    tx: Transaction,
+    fuel: TransactionArgument,
+  ): TransactionArgument {
+    const tradingStructure = tx.object(tradingPostId)
+    const swapRequest = interact(tx, config, tradingStructure, 'swap')
+    deposit(tx, config, tradingStructure, swapRequest, fuel)
+    const lens = withdraw(tx, config, tradingStructure, swapRequest, {
       typeId: LENS,
       quantity: 1n,
     })
-    completeRequest(runTx, config, e1, swapReq)
+    completeRequest(tx, config, tradingStructure, swapRequest)
+    return lens
+  }
 
-    const dReq = interact(runTx, config, e2, 'deposit', [])
-    verifyProximity(runTx, config, dReq, [])
-    verifyOwner(runTx, config, dReq, capB)
-    deposit(runTx, config, e2, dReq, lens)
-    completeRequest(runTx, config, e2, dReq)
+  /** Deposit the swapped `lens` onto the docked ship. */
+  function depositLens(tx: Transaction, lens: TransactionArgument): void {
+    const ship = tx.object(shipId)
+    const depositRequest = interact(tx, config, ship, 'deposit')
+    verifyOwner(tx, config, depositRequest, tx.object(shipCapId))
+    deposit(tx, config, ship, depositRequest, lens)
+    completeRequest(tx, config, ship, depositRequest)
+  }
 
-    await expectSuccess(client, runTx)
+  const dock = (tx: Transaction, ship: string, target: string) =>
+    verifyDocking(tx, config, dockedProof(config, ship, target, pilotAddr))
 
-    const read = (entity: string, typeId: bigint) =>
+  it('rejects a swap with no docking', async () => {
+    // withdraw and deposit check the docking inline, so the first unload aborts.
+    const tx = new Transaction()
+    depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
+    await expectAbort(client, tx, pilotAddr, /ENoDocking/)
+  })
+
+  it('rejects a ship docked at the other dock', async () => {
+    const tx = new Transaction()
+    dock(tx, shipId, OTHER_DOCK)
+    depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
+    await expectAbort(client, tx, pilotAddr, /ENotDocked/)
+  })
+
+  it('rejects a second docking proof in one transaction', async () => {
+    // One docking per transaction: the other ship's proof can't be mixed with the docked ship's.
+    const tx = new Transaction()
+    dock(tx, otherShipId, OTHER_DOCK)
+    dock(tx, shipId, tradingPostId)
+    depositLens(tx, swap(tx, unload(tx, otherShipId, otherShipCapId)))
+    await expectAbort(client, tx, pilotAddr, /EAlreadyDocked/)
+  })
+
+  it('rejects cargo from a ship that is not the docked one', async () => {
+    // The other ship is not part of the docking, so its unload aborts.
+    const tx = new Transaction()
+    dock(tx, shipId, tradingPostId)
+    depositLens(tx, swap(tx, unload(tx, otherShipId, otherShipCapId)))
+    await expectAbort(client, tx, pilotAddr, /ENotDocked/)
+  })
+
+  it("swaps fuel from the pilot's docked ship for the merchant's lens", async () => {
+    // One docking proof covers every withdraw and deposit: ship to trading post to ship.
+    // The pilot holds no merchant cap; the public swap needs none.
+    const tx = new Transaction()
+    dock(tx, shipId, tradingPostId)
+    depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
+    await expectSuccess(client, tx, pilot)
+
+    const itemBalance = (entity: string, typeId: bigint) =>
       readBalance(client, config, { entity, componentId: MODULE_ID, typeId })
 
-    expect(await read(entity1Id, FUEL)).toBe(1n) // fuel now on entity1
-    expect(await read(entity1Id, LENS)).toBe(0n) // lens left entity1
-    expect(await read(entity2Id, LENS)).toBe(1n) // lens now on entity2
-    expect(await read(entity2Id, FUEL)).toBe(0n) // fuel left entity2
+    expect(await itemBalance(tradingPostId, FUEL)).toBe(1n)
+    expect(await itemBalance(tradingPostId, LENS)).toBe(0n)
+    expect(await itemBalance(shipId, LENS)).toBe(1n)
+    expect(await itemBalance(shipId, FUEL)).toBe(0n)
+    expect(await itemBalance(otherShipId, FUEL)).toBe(1n)
   })
 })
