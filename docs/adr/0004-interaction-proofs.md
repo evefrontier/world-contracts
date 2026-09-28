@@ -53,7 +53,7 @@ according to digital physics.
 
     public fun verify(bytes: vector<u8>, clock: &Clock, ctx: &mut TxContext) // into the scratchpad
     public fun attest(acl: &AdminACL, ctx: &mut TxContext)                   // rollout, point 5
-    public fun assert_docked(entity: ID, source: Option<ID>, ctx: &TxContext)
+    public fun assert_docked(entity: ID, source: Option<ID>, ctx: &mut TxContext)
     ```
 
    The proof is verified once and kept in the transaction
@@ -87,7 +87,7 @@ according to digital physics.
 
 - New shared object: `ProofConfig` (authorized servers, mode per kind).
 - One signature check per transfer in Signed mode, however many requests use the `Docking`.
-- `withdraw` and `deposit` check docking inline; `deposit` gains a `ctx: &TxContext` argument.
+- `withdraw` and `deposit` check docking inline; `deposit` gains a `ctx: &mut TxContext` argument.
   The docking need doesn't appear in `request.requires()`, so clients learn it from these
   handlers' docs, or from `ENoDocking`.
 - In Attested mode, a player can submit when an allowlisted sponsor pays the gas. An admin can

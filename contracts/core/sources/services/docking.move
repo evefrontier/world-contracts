@@ -73,7 +73,7 @@ public fun attest(acl: &AdminACL, ctx: &mut TxContext) {
 
 /// Abort unless this transaction's docking links `entity`, and also `source`
 /// when set (the other side of a transfer). Components can verify it inline.
-public fun assert_docked(entity: ID, source: Option<ID>, ctx: &TxContext) {
+public fun assert_docked(entity: ID, source: Option<ID>, ctx: &mut TxContext) {
     match (cached(ctx)) {
         Proven::Attested => (),
         Proven::Signed(docking) => {
@@ -86,7 +86,7 @@ public fun assert_docked(entity: ID, source: Option<ID>, ctx: &TxContext) {
 // === View Functions ===
 
 /// The docking cached for this transaction.
-public fun cached(ctx: &TxContext): Proven {
+public fun cached(ctx: &mut TxContext): Proven {
     ctx.scratch_internal_read_opt!(DockingKey()).destroy_or!(abort ENoDocking)
 }
 

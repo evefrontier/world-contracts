@@ -90,9 +90,9 @@ fun ship_docked_at_itself_aborts() {
 fun both_sides_pass_with_one_docking() {
     let mut ctx = tx_context::dummy();
     docking::dock_for_testing(entity_id(SHIP), entity_id(TARGET), entity_id(CHARACTER), &mut ctx);
-    docking::assert_docked(entity_id(SHIP), option::none(), &ctx);
-    docking::assert_docked(entity_id(TARGET), option::some(entity_id(SHIP)), &ctx);
-    docking::assert_docked(entity_id(TARGET), option::some(entity_id(TARGET)), &ctx);
+    docking::assert_docked(entity_id(SHIP), option::none(), &mut ctx);
+    docking::assert_docked(entity_id(TARGET), option::some(entity_id(SHIP)), &mut ctx);
+    docking::assert_docked(entity_id(TARGET), option::some(entity_id(TARGET)), &mut ctx);
 }
 
 #[test, expected_failure(abort_code = docking::EAlreadyDocked)]
@@ -106,22 +106,22 @@ fun second_docking_in_a_transaction_aborts() {
 
 #[test, expected_failure(abort_code = docking::ENoDocking)]
 fun check_without_docking_aborts() {
-    let ctx = tx_context::dummy();
-    docking::assert_docked(entity_id(SHIP), option::none(), &ctx);
+    let mut ctx = tx_context::dummy();
+    docking::assert_docked(entity_id(SHIP), option::none(), &mut ctx);
 }
 
 #[test, expected_failure(abort_code = docking::ENotDocked)]
 fun entity_outside_docking_aborts() {
     let mut ctx = tx_context::dummy();
     docking::dock_for_testing(entity_id(SHIP), entity_id(TARGET), entity_id(CHARACTER), &mut ctx);
-    docking::assert_docked(entity_id(NON_PLAYER), option::none(), &ctx);
+    docking::assert_docked(entity_id(NON_PLAYER), option::none(), &mut ctx);
 }
 
 #[test, expected_failure(abort_code = docking::EWrongSource)]
 fun source_outside_docking_aborts() {
     let mut ctx = tx_context::dummy();
     docking::dock_for_testing(entity_id(SHIP), entity_id(TARGET), entity_id(CHARACTER), &mut ctx);
-    docking::assert_docked(entity_id(TARGET), option::some(entity_id(NON_PLAYER)), &ctx);
+    docking::assert_docked(entity_id(TARGET), option::some(entity_id(NON_PLAYER)), &mut ctx);
 }
 
 #[test]
