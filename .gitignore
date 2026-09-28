@@ -47,3 +47,4 @@ docs/v1/
 .secrets
 .vars
 .claude/skills/
+.cursor/rules/

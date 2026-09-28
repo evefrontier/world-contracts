@@ -16,6 +16,7 @@ module inventory::inventory;
 use core::{
     admin_service,
     component::{Self, Component},
+    docking,
     entity::Entity,
     entity_key,
     request::{Request, Frame},
@@ -173,7 +174,9 @@ public fun chain_item_to_game_inventory(
 }
 
 /// Deposit a standalone `Item` into the entity's Inventory.
-public fun deposit(entity: &mut Entity, req: &mut Request, item: Item) {
+public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &TxContext) {
+    // Rule for deposit is that the entity must be docked
+    docking::assert_docked(entity.id(), option::some(item.source()), ctx);
     let type_id = item.type_id();
     let quantity = item.quantity();
     let tenant = entity.key().tenant();
@@ -191,10 +194,12 @@ public fun withdraw(
     quantity: u64,
     ctx: &mut TxContext,
 ): Item {
+    let source = entity.id();
+    docking::assert_docked(source, option::none(), ctx);
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, frame, inv) = take(entity, req, withdrawal_permit());
     enforce_rule(&requirement, type_id, quantity);
-    let item = inv.withdraw_item(key, type_id, quantity, ctx);
+    let item = inv.withdraw_item(key, type_id, quantity, source, ctx);
     req.enqueue(frame);
     item
 }
@@ -346,10 +351,11 @@ fun withdraw_item(
     game_id: entity_key::EntityKey,
     type_id: u64,
     quantity: u64,
+    source: ID,
     ctx: &mut TxContext,
 ): Item {
     let volume = inv.items.volume_of(type_id);
-    let item = inv.items.withdraw(game_id, quantity, ctx);
+    let item = inv.items.withdraw(game_id, quantity, source, ctx);
     inv.used = inv.used - volume * quantity;
     item
 }

@@ -13,6 +13,8 @@ fun tenant(): string::String { string::utf8(b"test") }
 
 fun fuel_key(): entity_key::EntityKey { entity_key::new(FUEL, tenant()) }
 
+fun source(): ID { object::id_from_address(@0x5) }
+
 fun withdraw_item(
     bag: &mut item::ItemBag,
     key: entity_key::EntityKey,
@@ -20,7 +22,7 @@ fun withdraw_item(
     ctx: &mut TxContext,
 ): item::Item {
     item::mint(bag, key, quantity, VOL);
-    item::withdraw(bag, key, quantity, ctx)
+    item::withdraw(bag, key, quantity, source(), ctx)
 }
 
 #[test]
@@ -61,7 +63,7 @@ fun bag_deposit_merges_by_type() {
     item::deposit(&mut bag, item_b, tenant());
     assert!(item::balance(&bag, FUEL) == 50);
 
-    let out = item::withdraw(&mut bag, key, 15, scenario.ctx());
+    let out = item::withdraw(&mut bag, key, 15, source(), scenario.ctx());
     assert!(out.quantity() == 15);
     assert!(out.volume() == VOL);
     assert!(item::balance(&bag, FUEL) == 35);
@@ -91,7 +93,7 @@ fun withdraw_over_balance_aborts() {
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
     item::mint(&mut bag, key, 10, VOL);
-    let _out = item::withdraw(&mut bag, key, 11, scenario.ctx());
+    let _out = item::withdraw(&mut bag, key, 11, source(), scenario.ctx());
 
     abort
 }
@@ -134,6 +136,19 @@ fun merge_wrong_type_aborts() {
     let key_b = entity_key::new(FUEL + 1, tenant());
     let mut a = withdraw_item(&mut bag, key_a, 10, scenario.ctx());
     let b = withdraw_item(&mut bag, key_b, 10, scenario.ctx());
+    item::merge(&mut a, b);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::ESourceMismatch)]
+fun merge_different_source_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let key = fuel_key();
+    item::mint(&mut bag, key, 20, VOL);
+    let mut a = item::withdraw(&mut bag, key, 10, source(), scenario.ctx());
+    let b = item::withdraw(&mut bag, key, 10, object::id_from_address(@0x6), scenario.ctx());
     item::merge(&mut a, b);
 
     abort

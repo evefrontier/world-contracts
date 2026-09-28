@@ -5,8 +5,8 @@ use core::{
     access_cap::{Self, AccessCap},
     action,
     admin_service::{Self, AdminACL},
+    docking,
     entity::{Self, Entity},
-    location_service,
     object_registry::ObjectRegistry,
     requirement::Requirement,
     test_helpers::{claim, setup, take_acl, take_registry}
@@ -26,6 +26,10 @@ const MODULE_ID_2: u64 = 0x52;
 const TYPE_ID: u64 = 1;
 
 fun unit_name(): String { string::utf8(b"SU-01") }
+
+fun ship_id(): ID { object::id_from_address(@0x5) }
+
+fun character_id(): ID { object::id_from_address(@0x8) }
 
 /// Enable an action gated by the target's owner plus `item_req`. The owner
 /// signs with their `AccessCap` (enable is owner-gated); the same cap also
@@ -193,8 +197,7 @@ fun bridge_in(
     let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
-    let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(action), scenario.ctx());
     access_cap::verify(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, type_id, qty, vol);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
@@ -217,8 +220,7 @@ fun bridge_out(
     let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
-    let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(action), scenario.ctx());
     access_cap::verify(&mut req, &cap);
     inventory::chain_item_to_game_inventory(&mut e, &mut req, type_id, qty);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
@@ -235,10 +237,9 @@ fun deposit(
     action: vector<u8>,
     item: Item,
 ) {
-    let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(action), scenario.ctx());
     access_cap::verify(&mut req, cap);
-    inventory::deposit(e, &mut req, item);
+    inventory::deposit(e, &mut req, item, scenario.ctx());
     e.complete_request(req);
 }
 
@@ -250,8 +251,7 @@ fun withdraw(
     type_id: u64,
     qty: u64,
 ): Item {
-    let mut req = e.interact(string::utf8(action), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(action), scenario.ctx());
     access_cap::verify(&mut req, cap);
     let item = inventory::withdraw(e, &mut req, type_id, qty, scenario.ctx());
     e.complete_request(req);
@@ -368,6 +368,7 @@ fun owner_interaction_inventory() {
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
+    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
     let item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 20); // used 60, bal 30
     assert!(item.quantity() == 20);
     deposit(&mut scenario, &mut e, &cap, b"deposit", item); // used 100, bal 50
@@ -401,8 +402,7 @@ fun bridge_in_by_non_owner_aborts() {
     ts::next_tx(&mut scenario, PLAYER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let player_cap = ts::take_from_sender<AccessCap>(&scenario);
-    let mut req = e.interact(string::utf8(b"bridge_in"), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
     access_cap::verify(&mut req, &player_cap);
 
     abort
@@ -427,8 +427,7 @@ fun bridge_in_by_owner_without_sponsor_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let acl = take_acl(&scenario);
-    let mut req = e.interact(string::utf8(b"bridge_in"), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
     access_cap::verify(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
@@ -502,17 +501,16 @@ fun swap_moves_items_between_two_entities() {
     // Admin bridges a FUEL onto entity_b. The call needs the entity cap and an admin.
     bridge_in(&mut scenario, entity_b_id, player_b, b"bridge_in", FUEL, 1, VOL);
 
-    // B, in one signed tx: withdraws FUEL from entity_b, swaps it for the LENS
-    // on entity_a, then deposits the LENS into entity_b.
+    // B's ship (entity_b) docks at entity_a and swaps in one tx.
     ts::next_tx(&mut scenario, player_b);
+    docking::dock_for_testing(entity_b_id, entity_a_id, character_id(), scenario.ctx());
     let mut entity_b = ts::take_shared_by_id<Entity>(&scenario, entity_b_id);
     let cap_b = ts::take_from_sender<AccessCap>(&scenario);
     let fuel = withdraw(&mut scenario, &mut entity_b, &cap_b, b"withdraw", FUEL, 1);
 
     let mut entity_a = ts::take_shared_by_id<Entity>(&scenario, entity_a_id);
-    let mut req = entity_a.interact(string::utf8(b"swap"), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
-    inventory::deposit(&mut entity_a, &mut req, fuel);
+    let mut req = entity_a.interact(string::utf8(b"swap"), scenario.ctx());
+    inventory::deposit(&mut entity_a, &mut req, fuel, scenario.ctx());
     let lens = inventory::withdraw(&mut entity_a, &mut req, LENS, 1, scenario.ctx());
     entity_a.complete_request(req);
 
@@ -547,8 +545,7 @@ fun bridge_in_over_capacity_aborts() {
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let mut req = e.interact(string::utf8(b"bridge_in"), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
     access_cap::verify(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 60, VOL); // 120 > 100
 
@@ -587,8 +584,7 @@ fun bridge_in_wrong_type_aborts() {
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let mut req = e.interact(string::utf8(b"bridge_fuel"), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(b"bridge_fuel"), scenario.ctx());
     access_cap::verify(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL + 1, 10, VOL);
 
@@ -649,12 +645,10 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
     configure_default_actions(&mut scenario, e_id, OWNER);
 
     // First epoch: 100 FUEL at VOL each.
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL);
     ts::next_tx(&mut scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    let owner_cap = ts::take_from_sender<AccessCap>(&scenario);
-    bridge_in(&mut scenario, &mut e, &owner_cap, b"bridge_in", FUEL, 100, VOL);
+    let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     assert!(inv(&e).used() == 200);
-    ts::return_to_sender(&scenario, owner_cap);
     ts::return_shared(e);
 
     // The seam: one tx closes the first epoch and opens the second under the
@@ -697,15 +691,131 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
 
     // Second epoch: its own items, under the key the first one used. The FUEL
     // balance does not carry across.
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", LENS, 50, VOL);
     ts::next_tx(&mut scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    let owner_cap = ts::take_from_sender<AccessCap>(&scenario);
-    bridge_in(&mut scenario, &mut e, &owner_cap, b"bridge_in", LENS, 50, VOL);
+    let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     assert!(inventory::balance_of(&e, MODULE_ID, LENS) == 50);
     assert!(inventory::balance_of(&e, MODULE_ID, FUEL) == 0);
     assert!(inv(&e).used() == 100);
-    ts::return_to_sender(&scenario, owner_cap);
     ts::return_shared(e);
 
     scenario.end();
+}
+
+#[test, expected_failure(abort_code = docking::ENoDocking)]
+fun withdraw_without_docking_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id, OWNER);
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
+
+    abort
+}
+
+#[test]
+fun attested_docking_allows_withdraw_and_deposit() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, ADMIN, 1000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id, ADMIN);
+    bridge_in(&mut scenario, e_id, ADMIN, b"bridge_in", FUEL, 1, VOL);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let acl = take_acl(&scenario);
+    docking::attest(&acl, scenario.ctx());
+    ts::return_shared(acl);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
+    deposit(&mut scenario, &mut e, &cap, b"deposit", item);
+    assert!(inv(&e).items().balance(FUEL) == 1);
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = docking::ENotDocked)]
+fun withdraw_with_docking_of_another_pair_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id, OWNER);
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    docking::dock_for_testing(
+        ship_id(),
+        object::id_from_address(@0x6),
+        character_id(),
+        scenario.ctx(),
+    );
+    let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = docking::ENotDocked)]
+fun deposit_at_an_entity_outside_the_docking_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let z_id = z.id();
+    x.share();
+    z.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+
+    // X is docked at Y; Z is not part of the transaction's docking.
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    docking::dock_for_testing(x_id, ship_id(), character_id(), scenario.ctx());
+    let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
+    deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
+
+    abort
 }

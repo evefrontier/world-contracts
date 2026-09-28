@@ -49,7 +49,7 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   not a fixed sub-type:
   - **Structure** (Creation) — a spatial Entity (gate, storage unit, turret, ship). Components
     define behavior. Location is not stored on the Entity; relationships between Structures are
-    proven per transaction (see **Interaction / Relation**).
+    proven per transaction (see **Proof**).
   - **Principal** — an Entity that represents an account-like actor and **owns AccessCaps**
     (a Character or a Tribe). See **Keychain**.
 - **Component** — typed state installed on an Entity
@@ -97,13 +97,11 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   Maps an in-game ID to exactly one on-chain object.
 - **ObjectRegistry** — shared object that derives and tracks Entity object IDs, guaranteeing one
   on-chain object per `EntityKey` ([`object_registry.move`](contracts/core/sources/object_registry.move)).
-- **Interaction / Relation** — a handler that moves something between two creations (e.g.
-  `inventory::withdraw` / `deposit`) pushes an `Interaction` requirement. The caller verifies a
-  relationship proof (e.g. `verify_docking`) once per transaction into a `Relation` naming the
-  two creations, and satisfies each request's `Interaction` against it with `verify_interaction`.
-  The docking proof is mocked in v1 (ADR 0004;
-  [`services/interaction_service.move`](contracts/core/sources/services/interaction_service.move)).
-
+- **Proof** — server-signed bytes: a signed proof (server, sender, kind, deadline) plus a
+  use-case payload. `core::proof` checks the signed proof; the module that owns the payload type
+  decodes it (e.g. `core::docking::verify` for `Docking`), keeping the result in the transaction
+  scratchpad so components can check it during the same transaction.
+  
 ## Installed components
 
 Concrete `T` values installed on Entities. Migrated from the legacy assembly model.

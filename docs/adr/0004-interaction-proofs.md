@@ -25,60 +25,52 @@ according to digital physics.
 
 ## Decision
 
-1. **One proof per relationship.** v1 defines `Docking`, `Proximity` and `Distance` proofs. The
-   server signs the relationship itself (e.g. "ship B is docked at A"), not the locations. These
-   replace the location-hash `Proximity` that `entity::interact` injects today.
-
-    The server signs this payload, and the contract checks the signature and the fields:
+1. **One signed Message, one payload type per use case.** The server signs the relationship
+   (e.g. "ship B is docked at A"), not the locations. The
+   use-case data travels as `payload`, the BCS of a struct only its own module can decode. Proof
+   bytes are `bcs(Message) || bcs(signature)`.
 
     ```move
-    public struct DockingProof has drop {
-        creation_id: ID, // ship
-        target: ID, // structure or ship
+    public struct Message has drop {
+        server: address, // must be an authorized server
         sender: address, // only this address may submit it
-        deadline_ms: u64, // expiry
-        nonce: u64, // single-use, blocks replay
+        kind: vector<u8>, // type_name of the payload struct
+        deadline_ms: u64, // expiry; the only replay protection
+        payload: vector<u8>, // BCS of e.g. Docking or GateDistance
     }
     ```
 
-2. **The handler picks the relationship kind.** Each handler pushes an `Interaction<K>`
-   requirement through its `Frame`, as `game_item_to_chain` already does with
-   `sponsor_requirement`. `K` is the kind the action needs: `withdraw` and `deposit` push
-   `Interaction<Docked>`, so only a docking proof can satisfy them. An owner can't build an action
-   that skips or weakens it, and the handler never changes between modes.
+   `kind` binds a signature to one payload type. It includes the package address, so a signature
+   can't be reused across kinds or deployments. `core::proof::verify<K>` checks the message and
+   signature and returns the payload; it takes a `Permit<K>`, so only `K`'s module can open it.
 
-3. **A transfer is one request per entity, sharing one `Proof`.** Moving an item from X to Y
-   takes a request on X and a request on Y in the same transaction. The signed payload is verified
-   once into a `Proof<K>`, and each request's `Interaction<K>` is satisfied against it:
-    - The request's entity must be a part of the `Proof`.
-    - A proof of another kind fails the requirement's type check.
+2. **Each use case is a module that owns its payload, decoder and check.** Docking is world
+   physics, so it lives in `core::docking`. A gate's `GateDistance { source_gate, dest_gate,
+   distance }` would live with gates, with no change to core.
+
     ```move
-    public struct Proof<phantom K> has drop { a: ID, b: ID }
+    public struct Docking has copy, drop { ship: ID, target: ID, character: ID } // no store: one tx
 
-    public fun verify_docking(
-        cfg: &mut ProofConfig,
-        clock: &Clock, // checks deadline_ms
-        payload: vector<u8>, // signed DockingProof
-        sig: vector<u8>,
-        ctx: &TxContext,
-    ): Proof<Docked>
-    public fun verify_interaction<K>(req: &mut Request, proof: &Proof<K>)
+    public fun verify(bytes: vector<u8>, clock: &Clock, ctx: &mut TxContext) // into the scratchpad
+    public fun attest(acl: &AdminACL, ctx: &mut TxContext)                   // rollout, point 5
+    public fun assert_docked(entity: ID, source: Option<ID>, ctx: &TxContext)
     ```
 
-4. **Long-lived relationships are stored, not proven.** A gate link needs one `Distance` proof on
+   The proof is verified once and kept in the transaction
+   [scratchpad](https://move-book.com/programmability/scratchpad/) under a key only
+   `core::docking` can read or write.
+
+3. **Long-lived relationships are stored, not proven.** A gate link needs one `Distance` proof on
    the interaction that creates it; after that proof is checked, the link is stored. A conduit
    connection works the same way for `PowerNetwork`: the proof authorizes the interaction, and only
    the connection is stored for later actions.
 
-5. **Rollout: switched per proof type.** Each proof type's `ProofConfig` is in one of two modes:
-    - **Attested:** `verify_interaction_attested(req, cfg, acl, ctx)` satisfies the requirement when
-      the sender is an admin, or the gas sponsor is allowlisted. No `Proof` is needed: the
-      sponsor backend checks the whole transaction, both entities included, before paying gas. Used
-      until proofs are published through external APIs.
-    - **Signed:** only `verify_interaction` with a `Proof` from a valid server-signed payload
-      satisfies it.
-
-    Only the calls in the transaction change when a type switches over; handlers and actions don't.
+4. **Rollout: switched per proof type.** Each proof type's `ProofConfig` is in one of two modes:
+    - **Attested:** `docking::attest(acl, ctx)` stores an attested docking when the sender is an
+      admin, or the gas sponsor is allowlisted. `assert_docked` then passes for any entity. No
+      proof is needed: the sponsor backend checks the whole transaction, both entities included,
+      before paying gas. Used until proofs are published through external APIs.
+    - **Signed:** only `docking::verify` with a server-signed proof stores a docking.
 
 ## Alternatives Considered
 
@@ -87,11 +79,16 @@ according to digital physics.
    would leak positions.
 3. **Store every relationship on-chain.** Too costly, and docking goes stale. Used only for
    long-lived relationships (point 4).
+4. **Docking as a `Requirement` per request.** Handlers push a docking requirement and the PTB
+   satisfies each one against the cached docking. It shows the need in `request.requires()`, but
+   adds one call per withdraw and deposit to re-check a rule no owner can change.
 
 ## Consequences
 
-- New shared objects: a per-type `ProofConfig` (mode, signing key, used nonces).
-- One signature check per transfer in Signed mode, however many requests use the `Proof`.
-- `withdraw` and `deposit` push an `Interaction<Docked>` requirement; their signatures don't change.
+- New shared object: `ProofConfig` (authorized servers, mode per kind).
+- One signature check per transfer in Signed mode, however many requests use the `Docking`.
+- `withdraw` and `deposit` check docking inline; `deposit` gains a `ctx: &TxContext` argument.
+  The docking need doesn't appear in `request.requires()`, so clients learn it from these
+  handlers' docs, or from `ENoDocking`.
 - In Attested mode, a player can submit when an allowlisted sponsor pays the gas. An admin can
   submit as the sender with no sponsor.
