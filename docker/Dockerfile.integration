@@ -3,7 +3,7 @@
 FROM docker.io/library/ubuntu:24.04
 
 ARG PNPM_VERSION=9
-ARG SUI_VERSION=testnet-v1.76.0
+ARG SUI_VERSION=testnet-v1.78.0
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Retry apt fetches; --fix-missing for archive 404s on rotated packages (e.g. python3.12).
