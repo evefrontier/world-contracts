@@ -1,7 +1,9 @@
 import { bcs } from '@mysten/sui/bcs'
+import type { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { normalizeSuiAddress } from '@mysten/sui/utils'
 import { objectRegistry } from '../config/shared-objects.js'
 import type { WorldConfig } from '../config/types.js'
+import { signPersonalMessage } from './personal-message.js'
 
 /** Must match `core::proof::ProofMessage` in Move. */
 const ProofMessage = bcs.struct('ProofMessage', {
@@ -20,16 +22,19 @@ const Docking = bcs.struct('Docking', {
 })
 
 export interface ProofMessageArgs {
+  /** Address that signed the proof. Must match the signature's public key. */
+  server: string
   /** Only this address may submit the proof. */
   sender: string
   deadlineMs: bigint
-  server?: string
 }
 
-export interface DockingArgs extends ProofMessageArgs {
+export interface DockingArgs {
   ship: string
   target: string
   character: string
+  sender: string
+  deadlineMs: bigint
 }
 
 /**
@@ -49,31 +54,53 @@ export function encodeProof(
   kind: string,
   payload: Uint8Array,
   args: ProofMessageArgs,
-  signature: Uint8Array = new Uint8Array(),
+  signature: Uint8Array,
 ): Uint8Array {
-  const message = ProofMessage.serialize({
-    server: args.server ?? normalizeSuiAddress('0x0'),
-    sender: args.sender,
-    kind: Array.from(new TextEncoder().encode(kind)),
-    deadline_ms: args.deadlineMs,
-    payload: Array.from(payload),
-  }).toBytes()
-  const sig = bcs.vector(bcs.u8()).serialize(Array.from(signature)).toBytes()
-  const bytes = new Uint8Array(message.length + sig.length)
-  bytes.set(message, 0)
-  bytes.set(sig, message.length)
-  return bytes
+  const message = messageBytes(kind, payload, args)
+  const encodedSignature = bcs
+    .vector(bcs.u8())
+    .serialize(Array.from(signature))
+    .toBytes()
+  const proofBytes = new Uint8Array(message.length + encodedSignature.length)
+  proofBytes.set(message, 0)
+  proofBytes.set(encodedSignature, message.length)
+  return proofBytes
 }
 
-/** An unsigned docking proof */
-export function dockingProof(
+/** A docking proof signed by `keypair`. `server` is that key's Sui address. */
+export async function dockingProof(
   config: WorldConfig,
   args: DockingArgs,
-): Uint8Array {
+  keypair: Ed25519Keypair,
+): Promise<Uint8Array> {
   const payload = Docking.serialize({
     ship: args.ship,
     target: args.target,
     character: args.character,
   }).toBytes()
-  return encodeProof(proofKind(config, 'docking', 'Docking'), payload, args)
+  const messageArgs: ProofMessageArgs = {
+    server: keypair.getPublicKey().toSuiAddress(),
+    sender: args.sender,
+    deadlineMs: args.deadlineMs,
+  }
+  const kind = proofKind(config, 'docking', 'Docking')
+  const signature = await signPersonalMessage(
+    messageBytes(kind, payload, messageArgs),
+    keypair,
+  )
+  return encodeProof(kind, payload, messageArgs, signature)
+}
+
+function messageBytes(
+  kind: string,
+  payload: Uint8Array,
+  args: ProofMessageArgs,
+): Uint8Array {
+  return ProofMessage.serialize({
+    server: args.server,
+    sender: args.sender,
+    kind: Array.from(new TextEncoder().encode(kind)),
+    deadline_ms: args.deadlineMs,
+    payload: Array.from(payload),
+  }).toBytes()
 }

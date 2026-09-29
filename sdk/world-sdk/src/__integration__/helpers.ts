@@ -198,18 +198,22 @@ export const PILOT_CHARACTER = '0x8'
 /** Stand-in ship id for docking proofs. */
 export const DOCKED_SHIP = '0x5'
 
-/** An unsigned docking proof of `ship` at `target`, issued to `sender` for ten minutes. */
+/** A docking proof of `ship` at `target`, signed by the admin key, issued to `sender` for ten minutes. */
 export function dockedProof(
   config: WorldConfig,
   ship: string,
   target: string,
   sender: string = signer,
-): Uint8Array {
-  return dockingProof(config, {
-    ship,
-    target,
-    character: PILOT_CHARACTER,
-    sender,
-    deadlineMs: BigInt(Date.now() + 10 * 60 * 1000),
-  })
+): Promise<Uint8Array> {
+  return dockingProof(
+    config,
+    {
+      ship,
+      target,
+      character: PILOT_CHARACTER,
+      sender,
+      deadlineMs: BigInt(Date.now() + 10 * 60 * 1000),
+    },
+    keypair,
+  )
 }

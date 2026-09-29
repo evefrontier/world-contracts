@@ -97,7 +97,11 @@ describe('inventory owner round-trip (localnet)', () => {
     })
     completeRequest(runTx, config, e, bridgeRequest)
 
-    verifyDocking(runTx, config, dockedProof(config, DOCKED_SHIP, entityId))
+    verifyDocking(
+      runTx,
+      config,
+      await dockedProof(config, DOCKED_SHIP, entityId),
+    )
     const withdrawRequest = interact(runTx, config, e, 'withdraw')
     verifyOwner(runTx, config, withdrawRequest, c)
     const item = withdraw(runTx, config, e, withdrawRequest, {

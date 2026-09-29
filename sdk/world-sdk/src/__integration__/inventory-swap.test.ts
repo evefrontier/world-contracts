@@ -227,8 +227,13 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     completeRequest(tx, config, ship, depositRequest)
   }
 
-  const dock = (tx: Transaction, ship: string, target: string) =>
-    verifyDocking(tx, config, dockedProof(config, ship, target, pilotAddr))
+  const dock = async (tx: Transaction, ship: string, target: string) => {
+    verifyDocking(
+      tx,
+      config,
+      await dockedProof(config, ship, target, pilotAddr),
+    )
+  }
 
   it('rejects a swap with no docking', async () => {
     // withdraw and deposit check the docking inline, so the first unload aborts.
@@ -239,7 +244,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
 
   it('rejects a ship docked at the other dock', async () => {
     const tx = new Transaction()
-    dock(tx, shipId, OTHER_DOCK)
+    await dock(tx, shipId, OTHER_DOCK)
     depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
     await expectAbort(client, tx, pilotAddr, /ENotDocked/)
   })
@@ -247,8 +252,8 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
   it('rejects a second docking proof in one transaction', async () => {
     // One docking per transaction: the other ship's proof can't be mixed with the docked ship's.
     const tx = new Transaction()
-    dock(tx, otherShipId, OTHER_DOCK)
-    dock(tx, shipId, tradingPostId)
+    await dock(tx, otherShipId, OTHER_DOCK)
+    await dock(tx, shipId, tradingPostId)
     depositLens(tx, swap(tx, unload(tx, otherShipId, otherShipCapId)))
     await expectAbort(client, tx, pilotAddr, /EAlreadyDocked/)
   })
@@ -256,7 +261,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
   it('rejects cargo from a ship that is not the docked one', async () => {
     // The other ship is not part of the docking, so its unload aborts.
     const tx = new Transaction()
-    dock(tx, shipId, tradingPostId)
+    await dock(tx, shipId, tradingPostId)
     depositLens(tx, swap(tx, unload(tx, otherShipId, otherShipCapId)))
     await expectAbort(client, tx, pilotAddr, /ENotDocked/)
   })
@@ -265,7 +270,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     // One docking proof covers every withdraw and deposit: ship to trading post to ship.
     // The pilot holds no merchant cap; the public swap needs none.
     const tx = new Transaction()
-    dock(tx, shipId, tradingPostId)
+    await dock(tx, shipId, tradingPostId)
     depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
     await expectSuccess(client, tx, pilot)
 

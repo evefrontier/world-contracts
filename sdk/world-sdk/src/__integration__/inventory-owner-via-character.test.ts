@@ -133,7 +133,7 @@ describe('inventory owner-access via Character', () => {
       })
       completeRequest(runTx, config, su, bridgeRequest)
 
-      verifyDocking(runTx, config, dockedProof(config, DOCKED_SHIP, suId))
+      verifyDocking(runTx, config, await dockedProof(config, DOCKED_SHIP, suId))
       const withdrawRequest = interact(runTx, config, su, 'withdraw')
       verifyOwner(runTx, config, withdrawRequest, suCap)
       const item = withdraw(runTx, config, su, withdrawRequest, {

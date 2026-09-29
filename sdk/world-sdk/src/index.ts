@@ -104,6 +104,7 @@ export {
   type MetadataFields,
   uninstallMetadata,
 } from './packages/metadata.js'
+export { signPersonalMessage } from './packages/personal-message.js'
 export {
   type DockingArgs,
   dockingProof,

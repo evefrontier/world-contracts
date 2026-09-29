@@ -229,9 +229,9 @@ export function verifyCaller(
 }
 
 /**
- * Verify docking proof `proofBytes`. The docking is kept in the transaction
- * scratchpad and checked inline by `withdraw` and `deposit`, so call this once
- * per transaction, before them.
+ * Verify docking proof `proofBytes`. The signer must be an admin on `AdminACL`.
+ * The docking is kept in the transaction scratchpad and checked inline by
+ * `withdraw` and `deposit`, so call this once per transaction, before them.
  */
 export function verifyDocking(
   tx: Transaction,
@@ -241,6 +241,7 @@ export function verifyDocking(
   tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::docking::verify`,
     arguments: [
+      sharedRef(tx, adminAcl(config), false),
       tx.pure.vector('u8', Array.from(proofBytes)),
       tx.object.clock(),
     ],

@@ -47,9 +47,11 @@ public struct DockingKey() has copy, drop;
 // === Public Functions ===
 
 /// Verify a server-signed docking proof and keep it for the rest of the
-/// transaction. At most one docking per transaction.
-public fun verify(bytes: vector<u8>, clock: &Clock, ctx: &mut TxContext) {
-    let mut proof_bytes = bcs::new(proof::verify<Docking>(bytes, clock, internal::permit(), ctx));
+/// transaction. The signer must be an admin on `acl`.
+public fun verify(acl: &AdminACL, bytes: vector<u8>, clock: &Clock, ctx: &mut TxContext) {
+    let mut proof_bytes = bcs::new(
+        proof::verify<Docking>(acl, bytes, clock, internal::permit(), ctx),
+    );
     let docking = Docking {
         ship: proof_bytes.peel_address().to_id(),
         target: proof_bytes.peel_address().to_id(),
