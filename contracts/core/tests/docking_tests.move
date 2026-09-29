@@ -44,7 +44,7 @@ fun docking_proof(sender: address, kind: vector<u8>, deadline_ms: u64): vector<u
 }
 
 /// ACL with `SERVER` whitelisted, plus a clock at timestamp 0.
-fun prepared(scenario: &mut ts::Scenario): (admin_service::AdminACL, Clock) {
+fun server_acl_and_clock(scenario: &mut ts::Scenario): (admin_service::AdminACL, Clock) {
     setup(scenario);
     ts::next_tx(scenario, PILOT);
     let mut acl = take_acl(scenario);
@@ -55,7 +55,7 @@ fun prepared(scenario: &mut ts::Scenario): (admin_service::AdminACL, Clock) {
 #[test]
 fun verify_decodes_the_payload() {
     let mut scenario = ts::begin(PILOT);
-    let (acl, clock) = prepared(&mut scenario);
+    let (acl, clock) = server_acl_and_clock(&mut scenario);
     docking::verify(&acl, docking_proof(PILOT, docking_kind(), DEADLINE), &clock, scenario.ctx());
     let verified_docking = docking::cached(scenario.ctx()).signed_docking();
     assert!(
@@ -69,7 +69,7 @@ fun verify_decodes_the_payload() {
 #[test, expected_failure(abort_code = proof::EWrongKind)]
 fun proof_of_another_kind_aborts() {
     let mut scenario = ts::begin(PILOT);
-    let (acl, clock) = prepared(&mut scenario);
+    let (acl, clock) = server_acl_and_clock(&mut scenario);
     docking::verify(
         &acl,
         docking_proof(PILOT, b"0::gate::GateDistance", DEADLINE),
@@ -82,7 +82,7 @@ fun proof_of_another_kind_aborts() {
 #[test, expected_failure(abort_code = proof::EWrongSender)]
 fun proof_for_another_sender_aborts() {
     let mut scenario = ts::begin(PILOT);
-    let (acl, clock) = prepared(&mut scenario);
+    let (acl, clock) = server_acl_and_clock(&mut scenario);
     docking::verify(
         &acl,
         docking_proof(NON_PLAYER, docking_kind(), DEADLINE),
@@ -95,7 +95,7 @@ fun proof_for_another_sender_aborts() {
 #[test, expected_failure(abort_code = proof::EDeadlineExpired)]
 fun expired_proof_aborts() {
     let mut scenario = ts::begin(PILOT);
-    let (acl, mut clock) = prepared(&mut scenario);
+    let (acl, mut clock) = server_acl_and_clock(&mut scenario);
     clock.set_for_testing(DEADLINE);
     docking::verify(&acl, docking_proof(PILOT, docking_kind(), DEADLINE), &clock, scenario.ctx());
     abort
@@ -104,7 +104,7 @@ fun expired_proof_aborts() {
 #[test, expected_failure(abort_code = docking::ESameCreation)]
 fun ship_docked_at_itself_aborts() {
     let mut scenario = ts::begin(PILOT);
-    let (acl, clock) = prepared(&mut scenario);
+    let (acl, clock) = server_acl_and_clock(&mut scenario);
     let bytes = proof::proof_bytes_for_testing(
         SERVER,
         PILOT,
@@ -129,7 +129,7 @@ fun both_sides_pass_with_one_docking() {
 #[test, expected_failure(abort_code = docking::EAlreadyDocked)]
 fun second_docking_in_a_transaction_aborts() {
     let mut scenario = ts::begin(PILOT);
-    let (acl, clock) = prepared(&mut scenario);
+    let (acl, clock) = server_acl_and_clock(&mut scenario);
     docking::verify(&acl, docking_proof(PILOT, docking_kind(), DEADLINE), &clock, scenario.ctx());
     docking::verify(&acl, docking_proof(PILOT, docking_kind(), DEADLINE), &clock, scenario.ctx());
     abort
@@ -180,7 +180,7 @@ fun non_admin_cannot_attest() {
 #[test, expected_failure(abort_code = proof::EInvalidSignature)]
 fun bad_signature_aborts() {
     let mut scenario = ts::begin(PILOT);
-    let (acl, clock) = prepared(&mut scenario);
+    let (acl, clock) = server_acl_and_clock(&mut scenario);
     docking::verify(
         &acl,
         proof::proof_bytes_for_testing(
@@ -213,7 +213,7 @@ fun server_not_on_acl_aborts() {
 #[test]
 fun verify_decodes_sdk_bytes() {
     let mut scenario = ts::begin(@0xA);
-    let (acl, clock) = prepared(&mut scenario);
+    let (acl, clock) = server_acl_and_clock(&mut scenario);
     let docking_proof_bytes =
         x"d0c2c91eda34bbfbaec6cfb9c7bb913e57dab3cbec4018a4b3f5e55531cd63af000000000000000000000000000000000000000000000000000000000000000a52303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303a3a646f636b696e673a3a446f636b696e67e80300000000000060000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000008610001f13f3e63c36f7963792ee9df2f60ee67f7e0fb4d04a2fa170d81e05adb067a95838959de6639926af5000977a40edf27a6b90ef613d220d2452fb1bcd3d80f4cb5abf6ad79fbf5abbccafcc269d85cd2651ed4b885b5869f241aedf0a5ba29";
     docking::verify(&acl, docking_proof_bytes, &clock, scenario.ctx());
