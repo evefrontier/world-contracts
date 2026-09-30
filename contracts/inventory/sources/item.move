@@ -23,6 +23,8 @@ const EInsufficientQuantity: vector<u8> = b"Not enough quantity in the bag";
 const EZeroQuantity: vector<u8> = b"Quantity must be non-zero";
 #[error(code = 3)]
 const EVolumeMismatch: vector<u8> = b"Item volume does not match the stored volume for this type";
+#[error(code = 4)]
+const ESourceMismatch: vector<u8> = b"Items withdrawn from different entities cannot merge";
 
 // === Structs ===
 
@@ -36,6 +38,7 @@ public struct Item has key {
     type_id: u64,
     quantity: u64,
     volume: u64,
+    source: ID,
 }
 
 /// One at-rest balance: quantity plus the per-unit volume shared by the type.
@@ -83,6 +86,10 @@ public fun quantity(item: &Item): u64 {
 
 public fun volume(item: &Item): u64 {
     item.volume
+}
+
+public fun source(item: &Item): ID {
+    item.source
 }
 
 /// Current quantity of `type_id` in `bag` (0 if absent).
@@ -136,7 +143,7 @@ public(package) fun burn_all_and_destroy(bag: ItemBag, tenant: String) {
 
 /// Destroy an `Item`, removing its quantity from existence.
 public(package) fun destroy(item: Item, game_id: EntityKey) {
-    let Item { id, type_id, quantity, volume: _ } = item;
+    let Item { id, type_id, quantity, .. } = item;
     assert!(entity_key::id(&game_id) == type_id, EWrongType);
     event::emit(ItemBurned { game_id, quantity });
     id.delete();
@@ -144,7 +151,7 @@ public(package) fun destroy(item: Item, game_id: EntityKey) {
 
 /// Deposit `item` into `bag`, merging into the existing balance for its type.
 public(package) fun deposit(bag: &mut ItemBag, item: Item, tenant: String) {
-    let Item { id, type_id, quantity, volume } = item;
+    let Item { id, type_id, quantity, volume, .. } = item;
     id.delete();
     add_balance(bag, type_id, quantity, volume);
     event::emit(ItemDeposited { game_id: entity_key::new(type_id, tenant), quantity });
@@ -155,6 +162,7 @@ public(package) fun withdraw(
     bag: &mut ItemBag,
     game_id: EntityKey,
     quantity: u64,
+    source: ID,
     ctx: &mut TxContext,
 ): Item {
     let type_id = entity_key::id(&game_id);
@@ -163,7 +171,7 @@ public(package) fun withdraw(
     let volume = bag.balances[type_id].volume;
     subtract_balance(bag, type_id, quantity);
     event::emit(ItemWithdrawn { game_id, quantity });
-    Item { id: object::new(ctx), type_id, quantity, volume }
+    Item { id: object::new(ctx), type_id, quantity, volume, source }
 }
 
 /// Split `quantity` off `item` into a new `Item` of the same type.
@@ -171,13 +179,20 @@ public(package) fun split(item: &mut Item, quantity: u64, ctx: &mut TxContext): 
     assert!(quantity > 0, EZeroQuantity);
     assert!(item.quantity >= quantity, EInsufficientQuantity);
     item.quantity = item.quantity - quantity;
-    Item { id: object::new(ctx), type_id: item.type_id, quantity, volume: item.volume }
+    Item {
+        id: object::new(ctx),
+        type_id: item.type_id,
+        quantity,
+        volume: item.volume,
+        source: item.source,
+    }
 }
 
 /// Merge `other` into `item`. Both must be the same type.
 public(package) fun merge(item: &mut Item, other: Item) {
-    let Item { id, type_id, quantity, volume: _ } = other;
+    let Item { id, type_id, quantity, source, .. } = other;
     assert!(item.type_id == type_id, EWrongType);
+    assert!(item.source == source, ESourceMismatch);
     id.delete();
     item.quantity = item.quantity + quantity;
 }

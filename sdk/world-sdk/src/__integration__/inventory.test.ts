@@ -7,8 +7,8 @@ import {
   enableAdminAction,
   interact,
   ownerRequirement,
+  verifyDocking,
   verifyOwner,
-  verifyProximity,
 } from '../packages/core.js'
 import {
   bridgeInRequirement,
@@ -20,6 +20,8 @@ import {
   withdrawRequirement,
 } from '../packages/inventory.js'
 import {
+  DOCKED_SHIP,
+  dockedProof,
   expectSuccess,
   loadLocalnetWorld,
   mintAccessCap,
@@ -86,30 +88,32 @@ describe('inventory owner round-trip (localnet)', () => {
     const e = runTx.object(entityId)
     const c = runTx.object(capId)
 
-    const bridgeReqObj = interact(runTx, config, e, 'bridge_in', [])
-    verifyProximity(runTx, config, bridgeReqObj, [])
-    verifyOwner(runTx, config, bridgeReqObj, c)
-    gameItemToChain(runTx, config, e, bridgeReqObj, {
+    const bridgeRequest = interact(runTx, config, e, 'bridge_in')
+    verifyOwner(runTx, config, bridgeRequest, c)
+    gameItemToChain(runTx, config, e, bridgeRequest, {
       typeId: FUEL,
       quantity: 100n,
       volume: VOL,
     })
-    completeRequest(runTx, config, e, bridgeReqObj)
+    completeRequest(runTx, config, e, bridgeRequest)
 
-    const wReq = interact(runTx, config, e, 'withdraw', [])
-    verifyProximity(runTx, config, wReq, [])
-    verifyOwner(runTx, config, wReq, c)
-    const item = withdraw(runTx, config, e, wReq, {
+    verifyDocking(
+      runTx,
+      config,
+      await dockedProof(config, DOCKED_SHIP, entityId),
+    )
+    const withdrawRequest = interact(runTx, config, e, 'withdraw')
+    verifyOwner(runTx, config, withdrawRequest, c)
+    const item = withdraw(runTx, config, e, withdrawRequest, {
       typeId: FUEL,
       quantity: 20n,
     })
-    completeRequest(runTx, config, e, wReq)
+    completeRequest(runTx, config, e, withdrawRequest)
 
-    const dReq = interact(runTx, config, e, 'deposit', [])
-    verifyProximity(runTx, config, dReq, [])
-    verifyOwner(runTx, config, dReq, c)
-    deposit(runTx, config, e, dReq, item)
-    completeRequest(runTx, config, e, dReq)
+    const depositRequest = interact(runTx, config, e, 'deposit')
+    verifyOwner(runTx, config, depositRequest, c)
+    deposit(runTx, config, e, depositRequest, item)
+    completeRequest(runTx, config, e, depositRequest)
 
     await expectSuccess(client, runTx)
 

@@ -10,8 +10,8 @@ import {
   interact,
   ownerRequirement,
   returnAccess,
+  verifyDocking,
   verifyOwner,
-  verifyProximity,
 } from '../packages/core.js'
 import {
   bridgeInRequirement,
@@ -23,6 +23,8 @@ import {
   withdrawRequirement,
 } from '../packages/inventory.js'
 import {
+  DOCKED_SHIP,
+  dockedProof,
   expectSuccess,
   getObjectRef,
   loadLocalnetWorld,
@@ -122,30 +124,28 @@ describe('inventory owner-access via Character', () => {
       )
       const su = runTx.object(suId)
 
-      const inReq = interact(runTx, config, su, 'bridge_in', [])
-      verifyProximity(runTx, config, inReq, [])
-      verifyOwner(runTx, config, inReq, suCap)
-      gameItemToChain(runTx, config, su, inReq, {
+      const bridgeRequest = interact(runTx, config, su, 'bridge_in')
+      verifyOwner(runTx, config, bridgeRequest, suCap)
+      gameItemToChain(runTx, config, su, bridgeRequest, {
         typeId: FUEL,
         quantity: 100n,
         volume: VOL,
       })
-      completeRequest(runTx, config, su, inReq)
+      completeRequest(runTx, config, su, bridgeRequest)
 
-      const wReq = interact(runTx, config, su, 'withdraw', [])
-      verifyProximity(runTx, config, wReq, [])
-      verifyOwner(runTx, config, wReq, suCap)
-      const item = withdraw(runTx, config, su, wReq, {
+      verifyDocking(runTx, config, await dockedProof(config, DOCKED_SHIP, suId))
+      const withdrawRequest = interact(runTx, config, su, 'withdraw')
+      verifyOwner(runTx, config, withdrawRequest, suCap)
+      const item = withdraw(runTx, config, su, withdrawRequest, {
         typeId: FUEL,
         quantity: 30n,
       })
-      completeRequest(runTx, config, su, wReq)
+      completeRequest(runTx, config, su, withdrawRequest)
 
-      const dReq = interact(runTx, config, su, 'deposit', [])
-      verifyProximity(runTx, config, dReq, [])
-      verifyOwner(runTx, config, dReq, suCap)
-      deposit(runTx, config, su, dReq, item)
-      completeRequest(runTx, config, su, dReq)
+      const depositRequest = interact(runTx, config, su, 'deposit')
+      verifyOwner(runTx, config, depositRequest, suCap)
+      deposit(runTx, config, su, depositRequest, item)
+      completeRequest(runTx, config, su, depositRequest)
 
       returnAccess(runTx, config, character, suCap, receipt)
     }

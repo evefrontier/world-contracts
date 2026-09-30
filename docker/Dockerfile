@@ -1,4 +1,4 @@
-ARG SUI_VERSION=testnet-v1.75.1
+ARG SUI_VERSION=testnet-v1.78.0
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 
 ARG PNPM_VERSION=9
@@ -13,7 +13,7 @@ RUN find /etc/apt -name '*.list' -exec sed -i '/security/s/^/#/' {} + \
     && apt-get update \
     && apt-get install -y --no-install-recommends jq curl \
     && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz" \
-        | tar -xz -C /usr/local --strip-components=1 \
+    | tar -xz -C /usr/local --strip-components=1 \
     && npm install -g "pnpm@${PNPM_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 

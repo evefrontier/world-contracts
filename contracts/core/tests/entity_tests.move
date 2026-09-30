@@ -436,7 +436,7 @@ fun interact_unknown_action_aborts() {
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let ctx = scenario.ctx();
 
-    let req = e.interact(string::utf8(b"missing"), vector[], ctx);
+    let req = e.interact(string::utf8(b"missing"), ctx);
     e.complete_request(req);
 
     abort

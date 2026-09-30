@@ -1,11 +1,15 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import 'dotenv/config'
 import { bcs } from '@mysten/sui/bcs'
+import type { Signer } from '@mysten/sui/cryptography'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
+import { expect } from 'vitest'
 import {
   createWorldClient,
   type ExecutedTransaction,
+  requireExecutedTx,
   signAndExecute,
   type WorldClient,
 } from '../client.js'
@@ -13,6 +17,7 @@ import { loadWorldConfig } from '../config/load.js'
 import type { WorldConfig } from '../config/types.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
+import { dockingProof } from '../packages/proof.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
@@ -34,17 +39,80 @@ export function loadLocalnetWorld(): {
   return { config, client: createWorldClient({ config }) }
 }
 
-/** Sign, execute, assert success, and wait for the transaction to settle. */
+/** Sign as `sender` (default: admin), execute, assert success, and wait for the transaction to settle. */
 export async function expectSuccess(
   client: WorldClient,
   transaction: Transaction,
+  sender: Signer = keypair,
 ): Promise<ExecutedTransaction> {
-  const result = await signAndExecute(client, {
-    signer: keypair,
-    transaction,
-  })
+  const result = await signAndExecute(client, { signer: sender, transaction })
   await client.waitForTransaction({ digest: result.digest })
   return result
+}
+
+/** Execute `transaction` sent by `sender` with the admin paying gas, i.e. an admin-sponsored transaction. */
+export async function expectSponsored(
+  client: WorldClient,
+  transaction: Transaction,
+  sender: Signer,
+): Promise<void> {
+  transaction.setSender(sender.toSuiAddress())
+  transaction.setGasOwner(signer)
+  const bytes = await transaction.build({ client })
+  const signatures = await Promise.all(
+    [sender, keypair].map(
+      async (signer) => (await signer.signTransaction(bytes)).signature,
+    ),
+  )
+  const result = await client.executeTransaction({
+    transaction: bytes,
+    signatures,
+    include: { effects: true },
+  })
+  const { digest } = requireExecutedTx(result)
+  await client.waitForTransaction({ digest })
+}
+
+/** Simulate `transaction` as `sender` and assert it aborts with a message matching `message`. */
+export async function expectAbort(
+  client: WorldClient,
+  transaction: Transaction,
+  sender: string,
+  message: RegExp,
+): Promise<void> {
+  transaction.setSender(sender)
+  const res = await client.simulateTransaction({ transaction })
+  if (!res.FailedTransaction)
+    throw new Error('expected the transaction to abort')
+  expect(res.FailedTransaction.status.error?.message ?? '').toMatch(message)
+}
+
+type GenesisAlias = 'SPONSOR' | 'PLAYER_A' | 'PLAYER_B' | 'PLAYER_C'
+
+const GENESIS_ACCOUNTS = fileURLToPath(
+  new URL('../../../../docker/genesis/accounts.json', import.meta.url),
+)
+
+let genesisKeypairs: Record<GenesisAlias, Ed25519Keypair> | undefined
+
+/** A genesis-funded localnet account. Already has SUI; no transfer needed. */
+export function genesisAccount(alias: GenesisAlias): Ed25519Keypair {
+  if (!genesisKeypairs) {
+    const file = JSON.parse(readFileSync(GENESIS_ACCOUNTS, 'utf8')) as {
+      accounts: Record<string, { privateKey?: string }>
+    }
+    const aliases = ['SPONSOR', 'PLAYER_A', 'PLAYER_B', 'PLAYER_C'] as const
+    const loaded = {} as Record<GenesisAlias, Ed25519Keypair>
+    for (const name of aliases) {
+      const privateKey = file.accounts[name]?.privateKey
+      if (!privateKey) {
+        throw new Error(`accounts.json missing accounts.${name}.privateKey`)
+      }
+      loaded[name] = Ed25519Keypair.fromSecretKey(privateKey)
+    }
+    genesisKeypairs = loaded
+  }
+  return genesisKeypairs[alias]
 }
 
 /** Object id of the `AccessCap` created by a `mintAccess` transaction. */
@@ -122,4 +190,30 @@ export function requirePackage(config: WorldConfig, pkg: string): string {
   const id = config.packageOverrides?.[pkg]
   if (!id) throw new Error(`localnet config must supply the ${pkg} package id`)
   return id
+}
+
+/** Stand-in character id for docking proofs. */
+export const PILOT_CHARACTER = '0x8'
+
+/** Stand-in ship id for docking proofs. */
+export const DOCKED_SHIP = '0x5'
+
+/** A docking proof of `ship` at `target`, signed by the admin key, issued to `sender` for ten minutes. */
+export function dockedProof(
+  config: WorldConfig,
+  ship: string,
+  target: string,
+  sender: string = signer,
+): Promise<Uint8Array> {
+  return dockingProof(
+    config,
+    {
+      ship,
+      target,
+      character: PILOT_CHARACTER,
+      sender,
+      deadlineMs: BigInt(Date.now() + 10 * 60 * 1000),
+    },
+    keypair,
+  )
 }

@@ -16,7 +16,6 @@ use core::{
     admin_service,
     component::{Self, Component},
     entity_key::{Self, EntityKey},
-    location_service,
     object_registry::ObjectRegistry,
     request::{Self, Request}
 };
@@ -243,25 +242,13 @@ public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContex
     )
 }
 
-/// Interact with a registered action, producing the `Request` to satisfy. A
-/// proximity requirement for `target_location_hash` is injected ahead of the
-/// action's own requirements, so it must be resolved first.
-public fun interact(
-    entity: &mut Entity,
-    action: String,
-    target_location_hash: vector<u8>,
-    _ctx: &mut TxContext,
-): Request {
+/// Interact with a registered action, producing the `Request` to satisfy.
+public fun interact(entity: &mut Entity, action: String, _ctx: &mut TxContext): Request {
     assert!(entity.version == VERSION, EWrongVersion);
 
     let actions: &VecMap<String, Action> = df::borrow(&entity.id, ActionsKey());
     assert!(actions.contains(&action), EUnknownAction);
-    let request = actions
-        .get(&action)
-        .to_request(
-            option::some(entity.id.to_inner()),
-            vector[location_service::proximity_requirement(target_location_hash)],
-        );
+    let request = actions.get(&action).to_request(option::some(entity.id.to_inner()), vector[]);
 
     entity.lock();
     request
