@@ -4,9 +4,9 @@
 /// On-chain object IDs are derived from `ObjectRegistry` using a tenant-scoped game
 /// identifier (`id + tenant`), so each in-game ID maps to exactly one entity.
 ///
-/// Lifecycle operations (`install`, `uninstall`, `enable_action`,
-/// `enable_admin_action`, `disable_action`, `interact`, `request_delete`) lock the entity and return a
-/// `Request` the transaction must satisfy. `complete_request` unlocks;
+/// Lifecycle operations (`install`, `uninstall`, `enable_action`, `enable_admin_action`,
+/// `disable_action`, `disable_admin_action`, `interact`, `request_delete`) lock the entity and
+/// return a `Request` the transaction must satisfy. `complete_request` unlocks;
 /// `delete` consumes the object and a `DeleteTicket` minted only by `request_delete`.
 module core::entity;
 
@@ -228,17 +228,23 @@ public fun enable_admin_action(
 }
 
 /// Remove a previously-exposed action. Owner-gated, like `enable_action`.
+/// Admins can also remove actions via `disable_admin_action`.
 public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContext): Request {
-    assert!(entity.version == VERSION, EWrongVersion);
-
-    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
-    assert!(actions.contains(&name), EUnknownAction);
-    let (_, _action) = actions.remove(&name);
-
-    entity.lock();
+    remove_action(entity, name);
     request::new(
         option::some(entity.id.to_inner()),
         vector[access_cap::owner_requirement()],
+    )
+}
+
+/// Remove the action under `name`. Admin-gated. Same removal as `disable_action`.
+/// Works on any action, also one that the owner enabled. Use it to remove the
+/// actions that target a component before you uninstall that component.
+public fun disable_admin_action(entity: &mut Entity, name: String, _ctx: &mut TxContext): Request {
+    remove_action(entity, name);
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
     )
 }
 
@@ -363,6 +369,14 @@ fun add_action(entity: &mut Entity, name: String, action: Action) {
     let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
     assert!(!actions.contains(&name), EActionExists);
     actions.insert(name, action);
+    entity.lock();
+}
+
+fun remove_action(entity: &mut Entity, name: String) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
+    assert!(actions.contains(&name), EUnknownAction);
+    let (_, _action) = actions.remove(&name);
     entity.lock();
 }
 

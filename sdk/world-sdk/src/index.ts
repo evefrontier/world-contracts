@@ -46,6 +46,7 @@ export {
   deleteEntity,
   deriveObjectId,
   disableAction,
+  disableAdminAction,
   type EntityKeyInput,
   type EntityNewArgs,
   enableAction,

@@ -349,6 +349,103 @@ fun enable_admin_action_by_non_admin_aborts() {
     abort
 }
 
+#[test]
+fun owner_enables_action_admin_disables_it() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.mint_access(@0xB, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(
+        string::utf8(b"retrieve_the_one_piece"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+
+    // The admin removes the owner's action. The admin does not hold the owner cap.
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let acl = take_acl(&scenario);
+    let mut req = e.disable_admin_action(string::utf8(b"retrieve_the_one_piece"), scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = entity::EUnknownAction)]
+fun interact_after_disable_admin_action_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.enable_admin_action(
+        string::utf8(b"retrieve_the_one_piece"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let mut req = e.disable_admin_action(string::utf8(b"retrieve_the_one_piece"), scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    let req = e.interact(string::utf8(b"retrieve_the_one_piece"), scenario.ctx());
+    e.complete_request(req);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
+fun disable_admin_action_by_non_admin_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.enable_admin_action(
+        string::utf8(b"retrieve_the_one_piece"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared<entity::Entity>(&scenario);
+    let acl = take_acl(&scenario);
+    let mut req = e.disable_admin_action(string::utf8(b"retrieve_the_one_piece"), scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+
+    abort
+}
+
 #[test, expected_failure(abort_code = access_cap::ENotOwner)]
 fun enable_action_by_non_owner_aborts() {
     let mut scenario = ts::begin(@0xA);

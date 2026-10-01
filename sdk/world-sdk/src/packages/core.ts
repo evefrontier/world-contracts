@@ -349,6 +349,25 @@ export function disableAction(
   completeRequest(tx, config, entity, request)
 }
 
+/**
+ * Remove the action under `name` and close its admin-gated request. Signer
+ * must be an admin. Works on any action, also one that the owner enabled. Call
+ * it before you uninstall the component that the action targets.
+ */
+export function disableAdminAction(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  name: string,
+): void {
+  const request = tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::disable_admin_action`,
+    arguments: [entity, tx.pure.string(name)],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
 export interface CapObjectRef {
   objectId: string
   version: string | number
