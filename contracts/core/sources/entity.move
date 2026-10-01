@@ -5,7 +5,7 @@
 /// identifier (`id + tenant`), so each in-game ID maps to exactly one entity.
 ///
 /// Lifecycle operations (`install`, `uninstall`, `enable_action`,
-/// `disable_action`, `interact`, `request_delete`) lock the entity and return a
+/// `enable_admin_action`, `disable_action`, `interact`, `request_delete`) lock the entity and return a
 /// `Request` the transaction must satisfy. `complete_request` unlocks;
 /// `delete` consumes the object and a `DeleteTicket` minted only by `request_delete`.
 module core::entity;
@@ -16,7 +16,6 @@ use core::{
     admin_service,
     component::{Self, Component},
     entity_key::{Self, EntityKey},
-    location_service,
     object_registry::ObjectRegistry,
     request::{Self, Request}
 };
@@ -61,6 +60,7 @@ public struct Entity has key {
     version: u64,
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
+    access_cap_id: Option<ID>,
 }
 
 /// Proof that delete started via `request_delete`.
@@ -92,7 +92,12 @@ public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity,
     assert!(!registry.exists(key), EEntityAlreadyExists);
 
     let uid = derived_object::claim(registry.borrow_id(), key);
-    let mut entity = Entity { id: uid, version: VERSION, key };
+    let mut entity = Entity {
+        id: uid,
+        version: VERSION,
+        key,
+        access_cap_id: option::none(),
+    };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
 
     event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
@@ -119,7 +124,8 @@ public fun mint_access(
     ctx: &mut TxContext,
 ): Request {
     assert!(entity.version == VERSION, EWrongVersion);
-    access_cap::mint(entity.id.to_inner(), owner, transferable, ctx);
+    let cap_id = access_cap::mint(entity.id.to_inner(), owner, transferable, ctx);
+    entity.access_cap_id = option::some(cap_id);
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
@@ -191,25 +197,33 @@ public fun uninstall<T: store>(
     (c, req)
 }
 
-/// Expose a programmable `action` under `name`. Owner-gated: only the entity's
-/// owner (holder of its `AccessCap`) may configure which actions exist and their
-/// requirements, so a requirement on an action is trusted by construction.
+/// Expose a programmable `action` under `name`. Owner-gated: the entity's owner
+/// (holder of its `AccessCap`) configures the action and its requirements.
+/// Admins can also expose actions via `enable_admin_action`.
 public fun enable_action(
     entity: &mut Entity,
     name: String,
     action: Action,
     _ctx: &mut TxContext,
 ): Request {
-    assert!(entity.version == VERSION, EWrongVersion);
-
-    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
-    assert!(!actions.contains(&name), EActionExists);
-    actions.insert(name, action);
-
-    entity.lock();
+    add_action(entity, name, action);
     request::new(
         option::some(entity.id.to_inner()),
         vector[access_cap::owner_requirement()],
+    )
+}
+
+/// Expose `action` under `name`. Admin-gated. Same insert as `enable_action`.
+public fun enable_admin_action(
+    entity: &mut Entity,
+    name: String,
+    action: Action,
+    _ctx: &mut TxContext,
+): Request {
+    add_action(entity, name, action);
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
     )
 }
 
@@ -228,25 +242,13 @@ public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContex
     )
 }
 
-/// Interact with a registered action, producing the `Request` to satisfy. A
-/// proximity requirement for `target_location_hash` is injected ahead of the
-/// action's own requirements, so it must be resolved first.
-public fun interact(
-    entity: &mut Entity,
-    action: String,
-    target_location_hash: vector<u8>,
-    _ctx: &mut TxContext,
-): Request {
+/// Interact with a registered action, producing the `Request` to satisfy.
+public fun interact(entity: &mut Entity, action: String, _ctx: &mut TxContext): Request {
     assert!(entity.version == VERSION, EWrongVersion);
 
     let actions: &VecMap<String, Action> = df::borrow(&entity.id, ActionsKey());
     assert!(actions.contains(&action), EUnknownAction);
-    let request = actions
-        .get(&action)
-        .to_request(
-            option::some(entity.id.to_inner()),
-            vector[location_service::proximity_requirement(target_location_hash)],
-        );
+    let request = actions.get(&action).to_request(option::some(entity.id.to_inner()), vector[]);
 
     entity.lock();
     request
@@ -314,7 +316,7 @@ public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     entity.unlock();
 
     let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
-    let Entity { id, version: _, key } = entity;
+    let Entity { id, version: _, key, access_cap_id: _ } = entity;
     event::emit(EntityDeleted { entity_id: id.to_inner(), key });
     id.delete();
 }
@@ -338,6 +340,10 @@ public fun key(entity: &Entity): EntityKey {
     entity.key
 }
 
+public fun access_cap_id(entity: &Entity): Option<ID> {
+    entity.access_cap_id
+}
+
 public fun has_component(entity: &Entity, component_id: u64): bool {
     df::exists(&entity.id, ComponentKey(component_id))
 }
@@ -351,6 +357,14 @@ public fun version(entity: &Entity): u64 {
 }
 
 // === Private Functions ===
+
+fun add_action(entity: &mut Entity, name: String, action: Action) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
+    assert!(!actions.contains(&name), EActionExists);
+    actions.insert(name, action);
+    entity.lock();
+}
 
 fun lock(entity: &mut Entity) {
     df::add(&mut entity.id, InFlight(), true);

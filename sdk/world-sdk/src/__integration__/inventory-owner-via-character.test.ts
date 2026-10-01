@@ -2,6 +2,7 @@ import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import { createCharacter } from '../packages/character.js'
 import {
+  addSponsors,
   borrowAccess,
   completeRequest,
   deriveObjectId,
@@ -9,8 +10,8 @@ import {
   interact,
   ownerRequirement,
   returnAccess,
+  verifyDocking,
   verifyOwner,
-  verifyProximity,
 } from '../packages/core.js'
 import {
   bridgeInRequirement,
@@ -22,6 +23,8 @@ import {
   withdrawRequirement,
 } from '../packages/inventory.js'
 import {
+  DOCKED_SHIP,
+  dockedProof,
   expectSuccess,
   getObjectRef,
   loadLocalnetWorld,
@@ -54,8 +57,7 @@ describe('inventory owner-access via Character', () => {
       componentId: MODULE_ID,
       typeId: 1n,
       name: UNIT,
-      mainCapacity: 1000n,
-      ephemeralCapacity: 100n,
+      capacity: 1000n,
     })
     createCharacter(setupTx, config, {
       inGameId: charKey.id,
@@ -91,22 +93,9 @@ describe('inventory owner-access via Character', () => {
       )
       const su = enableTx.object(suId)
       for (const [name, req] of [
-        [
-          'bridge_in',
-          bridgeInRequirement(enableTx, config, MODULE_ID, {
-            ephemeral: false,
-          }),
-        ],
-        [
-          'withdraw',
-          withdrawRequirement(enableTx, config, MODULE_ID, {
-            ephemeral: false,
-          }),
-        ],
-        [
-          'deposit',
-          depositRequirement(enableTx, config, MODULE_ID, { ephemeral: false }),
-        ],
+        ['bridge_in', bridgeInRequirement(enableTx, config, MODULE_ID, {})],
+        ['withdraw', withdrawRequirement(enableTx, config, MODULE_ID, {})],
+        ['deposit', depositRequirement(enableTx, config, MODULE_ID, {})],
       ] as const) {
         enableAction(
           enableTx,
@@ -123,6 +112,7 @@ describe('inventory owner-access via Character', () => {
 
     // Assertion PTB: borrow -> bridge_in 100 -> withdraw 30 -> deposit it back -> return.
     const runTx = new Transaction()
+    addSponsors(runTx, config, [signer])
     {
       const character = runTx.object(characterId)
       const [suCap, receipt] = borrowAccess(
@@ -134,43 +124,40 @@ describe('inventory owner-access via Character', () => {
       )
       const su = runTx.object(suId)
 
-      const inReq = interact(runTx, config, su, 'bridge_in', [])
-      verifyProximity(runTx, config, inReq, [])
-      verifyOwner(runTx, config, inReq, suCap)
-      gameItemToChain(runTx, config, su, inReq, {
+      const bridgeRequest = interact(runTx, config, su, 'bridge_in')
+      verifyOwner(runTx, config, bridgeRequest, suCap)
+      gameItemToChain(runTx, config, su, bridgeRequest, {
         typeId: FUEL,
         quantity: 100n,
         volume: VOL,
       })
-      completeRequest(runTx, config, su, inReq)
+      completeRequest(runTx, config, su, bridgeRequest)
 
-      const wReq = interact(runTx, config, su, 'withdraw', [])
-      verifyProximity(runTx, config, wReq, [])
-      verifyOwner(runTx, config, wReq, suCap)
-      const item = withdraw(runTx, config, su, wReq, {
+      verifyDocking(runTx, config, await dockedProof(config, DOCKED_SHIP, suId))
+      const withdrawRequest = interact(runTx, config, su, 'withdraw')
+      verifyOwner(runTx, config, withdrawRequest, suCap)
+      const item = withdraw(runTx, config, su, withdrawRequest, {
         typeId: FUEL,
         quantity: 30n,
       })
-      completeRequest(runTx, config, su, wReq)
+      completeRequest(runTx, config, su, withdrawRequest)
 
-      const dReq = interact(runTx, config, su, 'deposit', [])
-      verifyProximity(runTx, config, dReq, [])
-      verifyOwner(runTx, config, dReq, suCap)
-      deposit(runTx, config, su, dReq, item)
-      completeRequest(runTx, config, su, dReq)
+      const depositRequest = interact(runTx, config, su, 'deposit')
+      verifyOwner(runTx, config, depositRequest, suCap)
+      deposit(runTx, config, su, depositRequest, item)
+      completeRequest(runTx, config, su, depositRequest)
 
       returnAccess(runTx, config, character, suCap, receipt)
     }
     await expectSuccess(client, runTx)
 
-    // Main balance changed (0 -> 100) via the borrowed owner cap.
-    const main = await readBalance(client, config, {
+    // Balance changed (0 -> 100) via the borrowed owner cap.
+    const balance = await readBalance(client, config, {
       entity: suId,
       componentId: MODULE_ID,
-      authorizedId: suId,
       typeId: FUEL,
     })
-    expect(main).toBe(100n)
+    expect(balance).toBe(100n)
 
     // The cap is back on the character (object-owned by it).
     const { object: capObj } = await client.getObject({ objectId: suCapId })

@@ -8,9 +8,9 @@ ssfn_config_info: ~
 validator_config_info: ~
 parameters:
   chain_start_timestamp_ms: 0
-  protocol_version: 119  # Pinned for deterministic genesis. Just needs to be <= the max
-                         # protocol version the pinned SUI_VERSION binary supports; does not
-                         # have to equal it, and is safe to leave fixed across minor sui bumps.
+  protocol_version: 132  # sui::scratch starts at 130. derived_object calls
+                         # record_new_uid_from_hash during genesis; that native's
+                         # gas cost is unset below 132 (sui 1.78.0 max is 134).
   allow_insertion_of_extra_objects: true
   epoch_duration_ms: 86400000
   stake_subsidy_start_epoch: 0

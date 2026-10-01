@@ -1,4 +1,4 @@
-ARG SUI_VERSION=testnet-v1.75.1
+ARG SUI_VERSION=testnet-v1.78.0
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 
 ARG PNPM_VERSION=9
@@ -6,11 +6,14 @@ ARG NODE_VERSION=24.20.0
 
 # sui-tools is Debian 11. debian-security 404s rotated debs and nodesource
 # needs gnupg from that repo. Install jq/curl from main; Node from nodejs.org.
+#
+# mysten/sui-tools only publishes an amd64 image, so this stage's base
+# content is always amd64 regardless of the requested --platform.
 RUN find /etc/apt -name '*.list' -exec sed -i '/security/s/^/#/' {} + \
     && apt-get update \
     && apt-get install -y --no-install-recommends jq curl \
     && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz" \
-        | tar -xz -C /usr/local --strip-components=1 \
+    | tar -xz -C /usr/local --strip-components=1 \
     && npm install -g "pnpm@${PNPM_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 

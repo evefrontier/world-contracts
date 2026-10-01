@@ -6,8 +6,9 @@
 /// multiple addresses can be bound to a single character.
 module character::identity;
 
-use core::{component::{Self, Component}, entity::Entity, request::Request};
+use core::{component::{Self, Component}, entity::Entity, entity_key::EntityKey, request::Request};
 use std::{internal::Permit, string::{Self, String}};
+use sui::event;
 
 // === Errors ===
 
@@ -26,6 +27,16 @@ const NAME: vector<u8> = b"identity";
 public struct Identity has store {
     tribe_id: u32,
     owner: address,
+}
+
+// === Events ===
+
+/// Emitted when identity is installed on an entity, i.e. when it becomes a character.
+public struct CharacterCreated has copy, drop {
+    character_id: ID,
+    key: EntityKey,
+    tribe_id: u32,
+    character_address: address,
 }
 
 // === View Functions ===
@@ -52,14 +63,22 @@ public fun install(
     ctx: &mut TxContext,
 ): Request {
     let identity = Identity { tribe_id, owner };
-    entity.install(
+    let req = entity.install(
         component_id(),
         option::some(component_label()),
         identity,
         VERSION,
         identity_permit(),
         ctx,
-    )
+    );
+
+    event::emit(CharacterCreated {
+        character_id: entity.id(),
+        key: entity.key(),
+        tribe_id,
+        character_address: owner,
+    });
+    req
 }
 
 /// Remove the identity component, discarding its state. Aborts if it was never installed.

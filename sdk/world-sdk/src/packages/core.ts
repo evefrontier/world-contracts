@@ -82,6 +82,18 @@ export function entityNew(
   })
 }
 
+/** Satisfy a sponsor requirement on `request`. The gas sponsor, or the sender when unsponsored, must be on `AdminACL`. */
+export function verifySponsor(
+  tx: Transaction,
+  config: WorldConfig,
+  request: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::admin_service::verify_sponsor`,
+    arguments: [request, sharedRef(tx, adminAcl(config), false)],
+  })
+}
+
 /** Satisfy an admin requirement on `request` against the shared `AdminACL`. */
 export function verifyAdmin(
   tx: Transaction,
@@ -201,8 +213,8 @@ export function verifyOwner(
 }
 
 /**
- * Satisfy a caller requirement on `request` with any valid `AccessCap`, recording
- * its entity as the request actor (drives inventory owner-vs-ephemeral routing).
+ * Satisfy a caller requirement on `request` with any valid `AccessCap`,
+ * recording its entity as the request actor.
  */
 export function verifyCaller(
   tx: Transaction,
@@ -216,16 +228,34 @@ export function verifyCaller(
   })
 }
 
-/** Satisfy a proximity requirement. `callerLocationHash` must match the target baked at `interact`. */
-export function verifyProximity(
+/**
+ * Verify docking proof `proofBytes`. The signer must be an admin on `AdminACL`.
+ * The docking is kept in the transaction scratchpad and checked inline by
+ * `withdraw` and `deposit`, so call this once per transaction, before them.
+ */
+export function verifyDocking(
   tx: Transaction,
   config: WorldConfig,
-  request: TransactionArgument,
-  callerLocationHash: number[],
+  proofBytes: Uint8Array,
 ): void {
   tx.moveCall({
-    target: `${mvrName(config.env, CORE_PACKAGE)}::location_service::verify_proximity`,
-    arguments: [request, tx.pure.vector('u8', callerLocationHash)],
+    target: `${mvrName(config.env, CORE_PACKAGE)}::docking::verify`,
+    arguments: [
+      sharedRef(tx, adminAcl(config), false),
+      tx.pure.vector('u8', Array.from(proofBytes)),
+      tx.object.clock(),
+    ],
+  })
+}
+
+/**
+ * Attest this transaction's docking without a proof (stopgap mode): the sender
+ * is an admin, or the gas sponsor is allowlisted. Use in place of `verifyDocking`.
+ */
+export function attestDocking(tx: Transaction, config: WorldConfig): void {
+  tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::docking::attest`,
+    arguments: [sharedRef(tx, adminAcl(config), false)],
   })
 }
 
@@ -235,15 +265,10 @@ export function interact(
   config: WorldConfig,
   entity: TransactionArgument,
   action: string,
-  targetLocationHash: number[],
 ): TransactionResult {
   return tx.moveCall({
     target: `${mvrName(config.env, CORE_PACKAGE)}::entity::interact`,
-    arguments: [
-      entity,
-      tx.pure.string(action),
-      tx.pure.vector('u8', targetLocationHash),
-    ],
+    arguments: [entity, tx.pure.string(action)],
   })
 }
 
@@ -275,6 +300,36 @@ export function enableAction(
     arguments: [entity, tx.pure.string(name), action],
   })
   verifyOwner(tx, config, request, ownerCap)
+  completeRequest(tx, config, entity, request)
+}
+
+/**
+ * Expose an action under `name` from `requirements` and close its admin-gated
+ * request. Signer must be an admin. The owner can still disable it later.
+ */
+export function enableAdminAction(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  name: string,
+  requirements: TransactionObjectArgument[],
+): void {
+  const core = mvrName(config.env, CORE_PACKAGE)
+  const requirementType = requirementTypeTag(config)
+  const action = tx.moveCall({
+    target: `${core}::action::new`,
+    arguments: [
+      tx.makeMoveVec({
+        type: requirementType,
+        elements: requirements,
+      }),
+    ],
+  })
+  const request = tx.moveCall({
+    target: `${core}::entity::enable_admin_action`,
+    arguments: [entity, tx.pure.string(name), action],
+  })
+  verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
 }
 

@@ -1,4 +1,4 @@
-import { blake2b } from '@noble/hashes/blake2b'
+import { blake2b } from '@noble/hashes/blake2'
 
 /** Matches `core::component::id_from_name`: first 8 bytes (LE) of `blake2b256(utf8(name))`. */
 export function componentIdFromName(name: string): bigint {

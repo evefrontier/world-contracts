@@ -38,6 +38,7 @@ export { componentIdFromName } from './packages/component-id.js'
 export {
   addAdmins,
   addSponsors,
+  attestDocking,
   borrowAccess,
   type CapObjectRef,
   callerRequirement,
@@ -48,6 +49,7 @@ export {
   type EntityKeyInput,
   type EntityNewArgs,
   enableAction,
+  enableAdminAction,
   entityNew,
   interact,
   type MintAccessArgs,
@@ -57,8 +59,9 @@ export {
   shareEntity,
   verifyAdmin,
   verifyCaller,
+  verifyDocking,
   verifyOwner,
-  verifyProximity,
+  verifySponsor,
 } from './packages/core.js'
 export {
   currencyPackage,
@@ -101,3 +104,11 @@ export {
   type MetadataFields,
   uninstallMetadata,
 } from './packages/metadata.js'
+export { signPersonalMessage } from './packages/personal-message.js'
+export {
+  type DockingArgs,
+  dockingProof,
+  encodeProof,
+  type ProofMessageArgs,
+  proofKind,
+} from './packages/proof.js'

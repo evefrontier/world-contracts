@@ -7,7 +7,6 @@ use core::{
     admin_service::{Self, AdminACL},
     component,
     entity::{Self, Entity},
-    location_service,
     object_registry::ObjectRegistry,
     test_helpers::{claim, setup, take_acl, take_registry}
 };
@@ -112,8 +111,7 @@ fun edit_via_character(
     let ticket = ts::receiving_ticket_by_id<AccessCap>(parked_cap_id(character_id));
     let (owner_cap, receipt) = character.borrow_access(&char_cap, ticket);
 
-    let mut req = e.interact(string::utf8(b"edit_metadata"), vector[], scenario.ctx());
-    location_service::verify_proximity(&mut req, vector[]);
+    let mut req = e.interact(string::utf8(b"edit_metadata"), scenario.ctx());
     access_cap::verify(&mut req, &owner_cap);
     metadata::edit(
         &mut e,

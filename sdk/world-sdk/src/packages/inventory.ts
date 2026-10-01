@@ -5,7 +5,13 @@ import type {
 } from '@mysten/sui/transactions'
 import { mvrName } from '../config/env.js'
 import type { WorldConfig } from '../config/types.js'
-import { completeRequest, entityNew, shareEntity, verifyAdmin } from './core.js'
+import {
+  completeRequest,
+  entityNew,
+  shareEntity,
+  verifyAdmin,
+  verifySponsor,
+} from './core.js'
 
 const INVENTORY_PACKAGE = 'inventory'
 
@@ -14,7 +20,6 @@ function pkg(config: WorldConfig): string {
 }
 
 export interface ItemRule {
-  ephemeral: boolean
   typeId?: bigint | null
   minQuantity?: bigint | null
   maxQuantity?: bigint | null
@@ -31,7 +36,6 @@ function requirement(
     target: `${pkg(config)}::inventory::${fn}`,
     arguments: [
       tx.pure.u64(componentId),
-      tx.pure.bool(rule.ephemeral),
       tx.pure.option('u64', rule.typeId ?? null),
       tx.pure.option('u64', rule.minQuantity ?? null),
       tx.pure.option('u64', rule.maxQuantity ?? null),
@@ -79,8 +83,7 @@ export interface InstallInventoryArgs {
   componentId: bigint
   typeId: bigint
   name?: string | null
-  mainCapacity: bigint
-  ephemeralCapacity: bigint
+  capacity: bigint
 }
 
 /** Install an inventory component on `entity` and close its admin-gated request. */
@@ -97,8 +100,7 @@ export function installInventory(
       tx.pure.u64(args.componentId),
       tx.pure.u64(args.typeId),
       tx.pure.option('string', args.name ?? null),
-      tx.pure.u64(args.mainCapacity),
-      tx.pure.u64(args.ephemeralCapacity),
+      tx.pure.u64(args.capacity),
     ],
   })
   verifyAdmin(tx, config, request)
@@ -126,8 +128,7 @@ export interface CreateStorageUnitArgs {
   componentId: bigint
   typeId: bigint
   name?: string | null
-  mainCapacity: bigint
-  ephemeralCapacity: bigint
+  capacity: bigint
 }
 
 /**
@@ -149,21 +150,18 @@ export function createStorageUnit(
     componentId: args.componentId,
     typeId: args.typeId,
     name: args.name,
-    mainCapacity: args.mainCapacity,
-    ephemeralCapacity: args.ephemeralCapacity,
+    capacity: args.capacity,
   })
   shareEntity(tx, config, entity)
 }
 
 export interface BalanceOfArgs {
   componentId: bigint
-  authorizedId: string
   typeId: bigint
 }
 
 /**
- * Read the balance of `typeId` in the inventory routed to `authorizedId` (the
- * entity's own id for main, a caller's id for ephemeral). Read-only; run under
+ * Read the balance of `typeId` in the entity's inventory. Read-only; run under
  * `simulateTransaction` and decode the returned `u64`.
  */
 export function balanceOf(
@@ -177,7 +175,6 @@ export function balanceOf(
     arguments: [
       entity,
       tx.pure.u64(args.componentId),
-      tx.pure.address(args.authorizedId),
       tx.pure.u64(args.typeId),
     ],
   })
@@ -189,7 +186,7 @@ export interface BridgeInArgs {
   volume: bigint
 }
 
-/** Game-to-chain bridge: mint a balance into the caller's routed inventory. */
+/** Game-to-chain bridge: mint a balance into the entity's inventory. */
 export function gameItemToChain(
   tx: Transaction,
   config: WorldConfig,
@@ -207,6 +204,7 @@ export function gameItemToChain(
       tx.pure.u64(args.volume),
     ],
   })
+  verifySponsor(tx, config, request)
 }
 
 export interface ItemAmount {
@@ -214,7 +212,7 @@ export interface ItemAmount {
   quantity: bigint
 }
 
-/** Chain-to-game bridge: burn a balance from the caller's routed inventory. */
+/** Chain-to-game bridge: burn a balance from the entity's inventory. */
 export function chainItemToGame(
   tx: Transaction,
   config: WorldConfig,
@@ -231,9 +229,10 @@ export function chainItemToGame(
       tx.pure.u64(args.quantity),
     ],
   })
+  verifySponsor(tx, config, request)
 }
 
-/** Deposit a standalone `Item` into the caller's routed inventory. */
+/** Deposit a standalone `Item` into the entity's inventory. */
 export function deposit(
   tx: Transaction,
   config: WorldConfig,
@@ -247,7 +246,7 @@ export function deposit(
   })
 }
 
-/** Withdraw a balance from the caller's routed inventory as a fresh `Item`. */
+/** Withdraw a balance from the entity's inventory as a fresh `Item`. */
 export function withdraw(
   tx: Transaction,
   config: WorldConfig,

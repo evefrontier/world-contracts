@@ -1,6 +1,6 @@
 # Docker
 
-Two Dockerfiles. One pinned toolchain: `SUI_VERSION=testnet-v1.69.1` (plus
+Two Dockerfiles. One pinned toolchain: `SUI_VERSION=testnet-v1.78.0` (plus
 `PNPM_VERSION=9`), declared as build `ARG`s in each Dockerfile. To bump, update
 together: both Dockerfiles, this README, and `genesis/genesis-config.yaml`'s
 `protocol_version` (which must match the Sui version). The CI workflows build
@@ -45,8 +45,10 @@ docker compose -f docker/docker-compose-snapshot-image.yml up
 Runs a pre-baked chain (with Postgres for indexer + GraphQL) without deploying
 anything. `world.json`, `accounts.json`, and `test-resources.json` are copied to
 the host at `deployments/localnet-snapshot/`. Ports: `9000` RPC · `9123` faucet ·
-`9125` GraphQL. Bake one with
-[`../scripts/bake-snapshot-image.sh`](../scripts/bake-snapshot-image.sh).
+`9125` GraphQL. Bake one per-arch, then join, with
+[`../scripts/bake-snapshot-image.sh`](../scripts/bake-snapshot-image.sh):
+`bake <amd64|arm64>` builds and pushes that arch's image, `join` combines the
+pushed arches into one multi-arch manifest.
 
 `accounts.json` is [`genesis/accounts.json`](genesis/accounts.json) copied out at
 bake time: the `role`, `address` and bech32 `privateKey` (`suiprivkey1…`, what

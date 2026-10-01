@@ -29,6 +29,9 @@ and the [Move Book code-quality checklist](https://move-book.com/guides/code-qua
 - Modules: `snake_case` (`entity`, `location_service`, `owner_service`).
 - Structs: `PascalCase` (`Entity`, `Component`, `Requirement`, `OwnerCap`).
 - Functions / variables: `snake_case`. Constants: `SCREAMING_SNAKE_CASE` (`VERSION`).
+- No single-letter variable or parameter names, except a loop index (`i`, `j`).
+- Name the domain thing, not the type. Avoid generic names such as `bytes`, `string`, `data`,
+  `value`, or `result` (`docking_payload`, not `bytes`).
 - Error constants: `E` + PascalCase (`EWrongVersion`, `EComponentMissing`).
 
 ## Module layout & function order

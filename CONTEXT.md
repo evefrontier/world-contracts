@@ -48,7 +48,8 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   deterministically from the `ObjectRegistry`. A single Entity type plays one of two **roles**,
   not a fixed sub-type:
   - **Structure** (Creation) — a spatial Entity (gate, storage unit, turret, ship). Components
-    define behavior; location is supplied at interact time, not stored on the Entity.
+    define behavior. Location is not stored on the Entity; relationships between Structures are
+    proven per transaction (see **Proof**).
   - **Principal** — an Entity that represents an account-like actor and **owns AccessCaps**
     (a Character or a Tribe). See **Keychain**.
 - **Component** — typed state installed on an Entity
@@ -96,11 +97,11 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   Maps an in-game ID to exactly one on-chain object.
 - **ObjectRegistry** — shared object that derives and tracks Entity object IDs, guaranteeing one
   on-chain object per `EntityKey` ([`object_registry.move`](contracts/core/sources/object_registry.move)).
-- **Location service / Proximity** — `interact` injects a `Proximity` requirement carrying the
-  target location hash. The caller satisfies it with `verify_proximity` by supplying their
-  caller location hash (player, or the ship/structure they are boarded on). v1 is an exact match
-  ([`services/location_service.move`](contracts/core/sources/services/location_service.move)).
-
+- **Proof** — server-signed bytes: a signed proof (server, sender, kind, deadline) plus a
+  use-case payload. `core::proof` checks the signed proof; the module that owns the payload type
+  decodes it (e.g. `core::docking::verify` for `Docking`), keeping the result in the transaction
+  scratchpad so components can check it during the same transaction.
+  
 ## Installed components
 
 Concrete `T` values installed on Entities. Migrated from the legacy assembly model.
