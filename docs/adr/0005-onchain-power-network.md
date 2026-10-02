@@ -66,7 +66,7 @@ mutating transaction; view functions only expose the projected fuel/capacity.
 However in-game client will have the updated state via our internal cron job.
 
 When capacity returns (new generator, refuel, or Power On) the same
-transaction regrants: Firm rows in insertion order get a full grant or stay at
+transaction regrants: Firm rows in priority order get a full grant or stay at
 `0`; leftover then fills Elastic rows up to each `requested`. 
 
 Power On/Off is one master switch for the whole Creation. Off treats capacity
