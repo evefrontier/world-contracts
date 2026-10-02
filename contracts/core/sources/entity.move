@@ -61,8 +61,13 @@ const VERSION: u64 = 1;
 // === Structs ===
 
 public struct ComponentKey(u64) has copy, drop, store;
-public struct ActionsKey() has copy, drop, store;
 public struct InFlight() has copy, drop, store;
+
+/// Actions the owner manages with `enable_action` and `disable_action`.
+public struct OwnerActionsKey() has copy, drop, store;
+
+/// Actions an admin manages with `enable_admin_action` and `disable_admin_action`.
+public struct AdminActionsKey() has copy, drop, store;
 
 public struct Entity has key {
     id: UID,
@@ -110,7 +115,8 @@ public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity,
         access_cap_id: option::none(),
         component_ids: vec_set::empty(),
     };
-    df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
+    df::add(&mut entity.id, OwnerActionsKey(), vec_map::empty<String, Action>());
+    df::add(&mut entity.id, AdminActionsKey(), vec_map::empty<String, Action>());
 
     event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
     entity.lock();
@@ -220,53 +226,59 @@ public fun enable_action(
     action: Action,
     _ctx: &mut TxContext,
 ): Request {
-    add_action(entity, name, action);
+    add_action(entity, OwnerActionsKey(), name, action);
     request::new(
         option::some(entity.id.to_inner()),
         vector[access_cap::owner_requirement()],
     )
 }
 
-/// Expose `action` under `name`. Admin-gated. Same insert as `enable_action`.
+/// Expose `action` under `name` in the admin map. Admin-gated. `interact` looks in
+/// this map before the owner's, so an admin action shadows an owner action with the
+/// same name.
 public fun enable_admin_action(
     entity: &mut Entity,
     name: String,
     action: Action,
     _ctx: &mut TxContext,
 ): Request {
-    add_action(entity, name, action);
+    add_action(entity, AdminActionsKey(), name, action);
     request::new(
         option::some(entity.id.to_inner()),
         vector[admin_service::admin_requirement()],
     )
 }
 
-/// Remove a previously-exposed action. Owner-gated, like `enable_action`.
-/// Admins can also remove actions via `disable_admin_action`.
+/// Remove an action the owner exposed. Owner-gated, like `enable_action`. It does
+/// not touch admin actions.
 public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContext): Request {
-    remove_action(entity, name);
+    remove_action(entity, OwnerActionsKey(), name);
     request::new(
         option::some(entity.id.to_inner()),
         vector[access_cap::owner_requirement()],
     )
 }
 
-/// Remove the action under `name`. Admin-gated. Same removal as `disable_action`.
-/// Works on any action, also one that the owner enabled. Use it to remove the
-/// actions that target a component before you uninstall that component.
+/// Remove an action an admin exposed. Admin-gated. It does not touch the owner's
+/// actions. Use it to remove the admin actions that target a component before you
+/// uninstall that component.
 public fun disable_admin_action(entity: &mut Entity, name: String, _ctx: &mut TxContext): Request {
-    remove_action(entity, name);
+    remove_action(entity, AdminActionsKey(), name);
     request::new(
         option::some(entity.id.to_inner()),
         vector[admin_service::admin_requirement()],
     )
 }
 
-/// Interact with a registered action, producing the `Request` to satisfy.
+/// Interact with a registered action, producing the `Request` to satisfy. Admin
+/// actions are checked first, then the owner's.
 public fun interact(entity: &mut Entity, action: String, _ctx: &mut TxContext): Request {
     assert!(entity.version == VERSION, EWrongVersion);
 
-    let actions: &VecMap<String, Action> = df::borrow(&entity.id, ActionsKey());
+    let admin_actions: &VecMap<String, Action> = df::borrow(&entity.id, AdminActionsKey());
+    let owner_actions: &VecMap<String, Action> = df::borrow(&entity.id, OwnerActionsKey());
+    // An admin action shadows an owner action with the same name.
+    let actions = if (admin_actions.contains(&action)) admin_actions else owner_actions;
     assert!(actions.contains(&action), EUnknownAction);
     let request = actions.get(&action).to_request(option::some(entity.id.to_inner()), vector[]);
 
@@ -334,7 +346,8 @@ public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     req.complete();
     entity.unlock();
 
-    let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
+    let _: VecMap<String, Action> = df::remove(&mut entity.id, OwnerActionsKey());
+    let _: VecMap<String, Action> = df::remove(&mut entity.id, AdminActionsKey());
     let Entity { id, version: _, key, access_cap_id: _, component_ids: _ } = entity;
     event::emit(EntityDeleted { entity_id: id.to_inner(), key });
     id.delete();
@@ -381,17 +394,17 @@ public fun version(entity: &Entity): u64 {
 
 // === Private Functions ===
 
-fun add_action(entity: &mut Entity, name: String, action: Action) {
+fun add_action<K: copy + drop + store>(entity: &mut Entity, key: K, name: String, action: Action) {
     assert!(entity.version == VERSION, EWrongVersion);
-    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
+    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, key);
     assert!(!actions.contains(&name), EActionExists);
     actions.insert(name, action);
     entity.lock();
 }
 
-fun remove_action(entity: &mut Entity, name: String) {
+fun remove_action<K: copy + drop + store>(entity: &mut Entity, key: K, name: String) {
     assert!(entity.version == VERSION, EWrongVersion);
-    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
+    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, key);
     assert!(actions.contains(&name), EUnknownAction);
     let (_, _action) = actions.remove(&name);
     entity.lock();

@@ -3,6 +3,7 @@ import { describe, it } from 'vitest'
 import {
   completeRequest,
   deriveObjectId,
+  disableAction,
   disableAdminAction,
   enableAction,
   enableAdminAction,
@@ -23,10 +24,10 @@ import {
   signer,
 } from './helpers.js'
 
-// An admin removes an inventory module. First the admin disables the actions
-// that target the module: one that the admin enabled, one that the owner
-// enabled. Then the admin uninstalls the module. After that, an interaction
-// with each action aborts.
+// An admin removes an inventory module. Admin actions and owner actions live in
+// two maps. The admin disables the admin action, the owner disables the owner
+// action, then the admin uninstalls the module. After that, an interaction with
+// each action aborts.
 const MODULE_ID = 0x53n
 const UNIT = 'SU-03'
 
@@ -76,16 +77,26 @@ describe('inventory uninstall with action cleanup (localnet)', () => {
     )
     await expectSuccess(client, enableTx)
 
-    // the admin disables both actions and uninstalls the inventory.
-    // The transaction does not use the owner cap.
+    // the admin map does not hold the owner's action.
+    const wrongMapTx = new Transaction()
+    disableAdminAction(
+      wrongMapTx,
+      config,
+      wrongMapTx.object(entityId),
+      'withdraw',
+    )
+    await expectAbort(client, wrongMapTx, signer, /EUnknownAction/)
+
+    // the admin disables deposit, the owner disables withdraw, then the admin
+    // uninstalls the inventory. The signer is admin and owner here.
     const removeTx = new Transaction()
     const e = removeTx.object(entityId)
     disableAdminAction(removeTx, config, e, 'deposit')
-    disableAdminAction(removeTx, config, e, 'withdraw')
+    disableAction(removeTx, config, e, 'withdraw', capId)
     uninstallInventory(removeTx, config, e, MODULE_ID)
     await expectSuccess(client, removeTx)
 
-    // The actions are gone, so an interaction with each one aborts.
+    // the actions are gone, so an interaction with each one aborts.
     for (const action of ['deposit', 'withdraw']) {
       const tx = new Transaction()
       const target = tx.object(entityId)
