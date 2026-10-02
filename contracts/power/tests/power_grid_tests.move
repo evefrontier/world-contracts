@@ -17,7 +17,6 @@ use sui::{clock::{Self, Clock}, event, test_scenario as ts};
 
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
-const CONTAINMENT: u64 = 5;
 const POWER_ON: vector<u8> = b"power_on";
 const POWER_OFF: vector<u8> = b"power_off";
 
@@ -29,7 +28,7 @@ fun build_entity(
     clock: &Clock,
 ): Entity {
     let mut e = claim(registry, acl, 1, scenario.ctx());
-    let mut req = power_grid::install(&mut e, CONTAINMENT, clock, scenario.ctx());
+    let mut req = power_grid::install(&mut e, clock, scenario.ctx());
     admin_service::verify_admin(&mut req, acl, scenario.ctx());
     e.complete_request(req);
     e
@@ -107,19 +106,20 @@ fun install_starts_off_and_empty() {
     assert!(grid.used_mw() == 0);
     assert!(grid.fuel_capacity() == 0);
     assert!(grid.settled_fuel_quantity() == 0);
-    assert!(grid.containment_reduction() == CONTAINMENT);
+    assert!(grid.fuel_impulse() == 0);
+    assert!(grid.fuel_containment_burden() == 0);
     assert!(grid.last_settled_ms() == 1_000);
     assert!(grid.connected().is_empty());
-    assert!(grid.power_sources().is_empty());
+    assert!(grid.generators().is_empty());
+    assert!(grid.fuel_sources().is_empty());
     assert!(grid.reservations().is_empty());
     assert!(grid.effective_capacity_mw() == 0);
 
     let installed = event::events_by_type<PowerGridInstalled>();
     assert!(installed.length() == 1);
-    let (entity_id, component_id, containment) = installed[0].installed_fields();
+    let (entity_id, component_id) = installed[0].installed_fields();
     assert!(entity_id == e.id());
     assert!(component_id == power_grid::component_id());
-    assert!(containment == CONTAINMENT);
 
     e.share();
     clock.destroy_for_testing();
@@ -138,7 +138,7 @@ fun install_twice_aborts() {
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
     let mut e = build_entity(&mut scenario, &mut registry, &acl, &clock);
-    let _req = power_grid::install(&mut e, CONTAINMENT, &clock, scenario.ctx());
+    let _req = power_grid::install(&mut e, &clock, scenario.ctx());
 
     abort
 }
@@ -238,16 +238,12 @@ fun power_on_with_other_entity_cap_aborts() {
 }
 
 #[test]
-fun effective_capacity_subtracts_containment_and_floors_at_zero() {
-    let grid = power_grid::new_for_testing(true, 50, 5);
-    assert!(grid.effective_capacity_mw() == 45);
+fun effective_capacity_is_zero_while_off() {
+    let grid = power_grid::new_for_testing(true, 50);
+    assert!(grid.effective_capacity_mw() == 50);
     grid.destroy_for_testing();
 
-    let grid = power_grid::new_for_testing(true, 3, 5);
-    assert!(grid.effective_capacity_mw() == 0);
-    grid.destroy_for_testing();
-
-    let grid = power_grid::new_for_testing(false, 50, 5);
+    let grid = power_grid::new_for_testing(false, 50);
     assert!(grid.effective_capacity_mw() == 0);
     grid.destroy_for_testing();
 }

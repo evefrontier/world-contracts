@@ -30,7 +30,7 @@ const EAlreadyOff: vector<u8> = b"Power grid is already off";
 #[error(code = 4)]
 const EModulesConnected: vector<u8> = b"Power grid still has connected modules";
 #[error(code = 5)]
-const EPowerSourcesPresent: vector<u8> = b"Power grid still has power sources";
+const EPowerSourcesPresent: vector<u8> = b"Power grid still has generators or fuel sources";
 
 // === Constants ===
 
@@ -48,20 +48,24 @@ public struct PowerGrid has store {
     fuel_capacity: u64,
     /// Blended (weighted-average) fuel quality, fixed point.
     fuel_impulse: u64,
+    /// Blended (weighted-average) fuel containment burden. Each
+    /// Generator's `containment_reduction` offsets it when computing how
+    /// efficiently that Generator burns the pooled fuel.
+    fuel_containment_burden: u64,
     /// Sum of online Generators' rated output, in MW.
     capacity_mw: u64,
     /// Sum of reservations' `active_draw`, in MW.
     used_mw: u64,
-    /// Grid-level constant subtracted from `capacity_mw`, in MW.
-    /// TODO: This will be per generator later.
-    containment_reduction: u64,
     /// Timestamp `settled_fuel_quantity` was last computed at.
     last_settled_ms: u64,
-    /// Connected modules: component id & priority (lower value = higher priority, by default all priority = 0).
     // TODO: this can be a category later and priority can be a sibling of it.
+    /// Connected modules: component id & priority (lower value = higher priority, by default all priority = 0).
     connected: VecMap<u64, u64>,
-    /// Component ids of Generators and Fuel components feeding the grid.
-    power_sources: VecSet<u64>,
+    /// Generators feeding the grid: component id => state, pushed by the
+    /// Generator on install/online/offline so `settle` never reads siblings.
+    generators: VecMap<u64, GeneratorState>,
+    /// Component ids of Fuel components feeding the grid.
+    fuel_sources: VecSet<u64>,
     /// Power reservations by module component id (priority lives in `connected`).
     reservations: VecMap<u64, Reservation>,
 }
@@ -70,6 +74,15 @@ public struct PowerGrid has store {
 public enum DrawKind has copy, drop, store {
     Firm,
     Elastic,
+}
+
+/// The grid's copy of a Generator's state (not the `Generator` component
+/// itself). The fuel factor for this Generator is computed from the blended
+/// fuel and `containment_reduction`.
+public struct GeneratorState has copy, drop, store {
+    max_output_mw: u64,
+    containment_reduction: u64,
+    online: bool,
 }
 
 /// One module's power ask and its current grant.
@@ -93,7 +106,6 @@ public struct PowerOff() has drop;
 public struct PowerGridInstalled has copy, drop {
     entity_id: ID,
     component_id: u64,
-    containment_reduction: u64,
 }
 
 public struct PowerGridUninstalled has copy, drop {
@@ -110,24 +122,20 @@ public struct PowerToggled has copy, drop {
 
 /// Build and install the power grid at its well-known slot, switched off and
 /// empty. Admin-gated by `entity::install`.
-public fun install(
-    entity: &mut Entity,
-    containment_reduction: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): Request {
+public fun install(entity: &mut Entity, clock: &Clock, ctx: &mut TxContext): Request {
     let entity_id = entity.id();
     let grid = PowerGrid {
         on: false,
         settled_fuel_quantity: 0,
         fuel_capacity: 0,
         fuel_impulse: 0,
+        fuel_containment_burden: 0,
         capacity_mw: 0,
         used_mw: 0,
-        containment_reduction,
         last_settled_ms: clock.timestamp_ms(),
         connected: vec_map::empty(),
-        power_sources: vec_set::empty(),
+        generators: vec_map::empty(),
+        fuel_sources: vec_set::empty(),
         reservations: vec_map::empty(),
     };
     let req = entity.install(
@@ -138,16 +146,12 @@ public fun install(
         power_grid_permit(),
         ctx,
     );
-    event::emit(PowerGridInstalled {
-        entity_id,
-        component_id: component_id(),
-        containment_reduction,
-    });
+    event::emit(PowerGridInstalled { entity_id, component_id: component_id() });
     req
 }
 
 /// Remove the power grid. Aborts while any module is connected or any
-/// Generator or Fuel component is still a power source.
+/// Generator or Fuel component still feeds it.
 public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     assert!(entity.has_component_with_type<PowerGrid>(component_id()), EComponentMissing);
 
@@ -159,7 +163,7 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     assert!(component::version(&grid_component) == VERSION, EWrongVersion);
     let grid = grid_component.unwrap(power_grid_permit());
     assert!(grid.connected.is_empty(), EModulesConnected);
-    assert!(grid.power_sources.is_empty(), EPowerSourcesPresent);
+    assert!(grid.generators.is_empty() && grid.fuel_sources.is_empty(), EPowerSourcesPresent);
     let PowerGrid { .. } = grid;
     event::emit(PowerGridUninstalled { entity_id: entity.id(), component_id: component_id() });
     req
@@ -207,11 +211,9 @@ public fun power_grid(entity: &Entity): &PowerGrid {
     c.inner()
 }
 
-/// Capacity available to reservations: zero while off, else `capacity_mw`
-/// less `containment_reduction`, floored at zero.
+/// Capacity available to reservations: zero while off, else `capacity_mw`.
 public fun effective_capacity_mw(grid: &PowerGrid): u64 {
-    if (!grid.on || grid.capacity_mw <= grid.containment_reduction) 0
-    else grid.capacity_mw - grid.containment_reduction
+    if (grid.on) grid.capacity_mw else 0
 }
 
 public fun component_id(): u64 {
@@ -242,8 +244,8 @@ public fun used_mw(grid: &PowerGrid): u64 {
     grid.used_mw
 }
 
-public fun containment_reduction(grid: &PowerGrid): u64 {
-    grid.containment_reduction
+public fun fuel_containment_burden(grid: &PowerGrid): u64 {
+    grid.fuel_containment_burden
 }
 
 public fun last_settled_ms(grid: &PowerGrid): u64 {
@@ -254,12 +256,28 @@ public fun connected(grid: &PowerGrid): &VecMap<u64, u64> {
     &grid.connected
 }
 
-public fun power_sources(grid: &PowerGrid): &VecSet<u64> {
-    &grid.power_sources
+public fun generators(grid: &PowerGrid): &VecMap<u64, GeneratorState> {
+    &grid.generators
+}
+
+public fun fuel_sources(grid: &PowerGrid): &VecSet<u64> {
+    &grid.fuel_sources
 }
 
 public fun reservations(grid: &PowerGrid): &VecMap<u64, Reservation> {
     &grid.reservations
+}
+
+public fun max_output_mw(state: &GeneratorState): u64 {
+    state.max_output_mw
+}
+
+public fun containment_reduction(state: &GeneratorState): u64 {
+    state.containment_reduction
+}
+
+public fun online(state: &GeneratorState): bool {
+    state.online
 }
 
 public fun requested(reservation: &Reservation): u64 {
@@ -325,18 +343,19 @@ fun power_off_permit(): Permit<PowerOff> {
 
 /// Standalone grid for unit-testing pure views.
 #[test_only]
-public fun new_for_testing(on: bool, capacity_mw: u64, containment_reduction: u64): PowerGrid {
+public fun new_for_testing(on: bool, capacity_mw: u64): PowerGrid {
     PowerGrid {
         on,
         settled_fuel_quantity: 0,
         fuel_capacity: 0,
         fuel_impulse: 0,
+        fuel_containment_burden: 0,
         capacity_mw,
         used_mw: 0,
-        containment_reduction,
         last_settled_ms: 0,
         connected: vec_map::empty(),
-        power_sources: vec_set::empty(),
+        generators: vec_map::empty(),
+        fuel_sources: vec_set::empty(),
         reservations: vec_map::empty(),
     }
 }
@@ -346,10 +365,10 @@ public fun destroy_for_testing(grid: PowerGrid) {
     let PowerGrid { .. } = grid;
 }
 
-/// `(entity_id, component_id, containment_reduction)`.
+/// `(entity_id, component_id)`.
 #[test_only]
-public fun installed_fields(e: &PowerGridInstalled): (ID, u64, u64) {
-    (e.entity_id, e.component_id, e.containment_reduction)
+public fun installed_fields(e: &PowerGridInstalled): (ID, u64) {
+    (e.entity_id, e.component_id)
 }
 
 /// `(entity_id, on)`.
