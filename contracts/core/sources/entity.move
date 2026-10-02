@@ -20,7 +20,14 @@ use core::{
     request::{Self, Request}
 };
 use std::{internal::Permit, string::String};
-use sui::{derived_object, dynamic_field as df, event, transfer::Receiving, vec_map::{Self, VecMap}};
+use sui::{
+    derived_object,
+    dynamic_field as df,
+    event,
+    transfer::Receiving,
+    vec_map::{Self, VecMap},
+    vec_set::{Self, VecSet}
+};
 
 // === Errors ===
 
@@ -44,6 +51,8 @@ const EActionExists: vector<u8> = b"Action is already enabled";
 const EEntityAlreadyExists: vector<u8> = b"Entity already exists for this key";
 #[error(code = 10)]
 const ELocked: vector<u8> = b"Entity is locked";
+#[error(code = 11)]
+const EComponentsInstalled: vector<u8> = b"Entity still has components installed";
 
 // === Constants ===
 
@@ -61,6 +70,8 @@ public struct Entity has key {
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
     access_cap_id: Option<ID>,
+    /// Ids of the installed components. Must be empty on `delete`.
+    component_ids: VecSet<u64>,
 }
 
 /// Proof that delete started via `request_delete`.
@@ -97,6 +108,7 @@ public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity,
         version: VERSION,
         key,
         access_cap_id: option::none(),
+        component_ids: vec_set::empty(),
     };
     df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
 
@@ -168,6 +180,7 @@ public fun install<T: store>(
     assert!(!df::exists(&entity.id, ComponentKey(component_id)), EComponentExists);
 
     df::add(&mut entity.id, ComponentKey(component_id), component::new(name, inner, version));
+    entity.component_ids.insert(component_id);
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
@@ -189,6 +202,7 @@ public fun uninstall<T: store>(
     );
 
     let c: Component<T> = df::remove(&mut entity.id, ComponentKey(component_id));
+    entity.component_ids.remove(&component_id);
     entity.lock();
     let req = request::new(
         option::some(entity.id.to_inner()),
@@ -307,14 +321,13 @@ public fun request_delete(entity: &mut Entity): (Request, DeleteTicket) {
     (req, DeleteTicket { entity_id })
 }
 
-/// Consume the entity after `request_delete` and a completed request. Strips
-/// remaining DFs and deletes the UID. The derived `EntityKey` stays claimed.
-///
-/// TODO: check for orphaned components. Delete no longer checks
-/// installed components; leftover component DFs are orphaned.
+/// Consume the entity after `request_delete` and a completed request. Aborts
+/// while a component is installed: uninstall every component first. Strips the
+/// actions DF and deletes the UID. The derived `EntityKey` stays claimed.
 public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(entity.is_locked(), ENotLocked);
+    assert!(entity.component_ids.is_empty(), EComponentsInstalled);
     let DeleteTicket { entity_id } = ticket;
     assert!(entity_id == entity.id.to_inner(), EWrongEntity);
     req.entity_id().do!(|id| assert!(id == entity.id.to_inner(), EWrongEntity));
@@ -322,7 +335,7 @@ public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     entity.unlock();
 
     let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
-    let Entity { id, version: _, key, access_cap_id: _ } = entity;
+    let Entity { id, version: _, key, access_cap_id: _, component_ids: _ } = entity;
     event::emit(EntityDeleted { entity_id: id.to_inner(), key });
     id.delete();
 }
@@ -348,6 +361,10 @@ public fun key(entity: &Entity): EntityKey {
 
 public fun access_cap_id(entity: &Entity): Option<ID> {
     entity.access_cap_id
+}
+
+public fun component_ids(entity: &Entity): vector<u64> {
+    *entity.component_ids.keys()
 }
 
 public fun has_component(entity: &Entity, component_id: u64): bool {

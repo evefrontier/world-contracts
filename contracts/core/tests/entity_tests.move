@@ -43,6 +43,7 @@ fun new_sets_initial_fields() {
         assert!(entity::key(&e).id() == 1);
         assert!(entity::key(&e).tenant() == tenant());
         assert!(!entity::has_component(&e, counter_id()));
+        assert!(entity::component_ids(&e).is_empty());
 
         entity::share(e);
         ts::return_shared(acl);
@@ -113,6 +114,7 @@ fun install_adds_module() {
 
     assert!(e.has_component(counter_id()));
     assert!(e.has_component_with_type<Counter>(counter_id()));
+    assert!(e.component_ids() == vector[counter_id()]);
 
     entity::share(e);
     ts::return_shared(acl);
@@ -182,6 +184,7 @@ fun uninstall_removes_and_returns_module() {
     e.complete_request(req);
 
     assert!(!e.has_component(counter_id()));
+    assert!(e.component_ids().is_empty());
     let Counter { value } = m.unwrap(internal::permit<Counter>());
     assert!(value == 9);
 
@@ -245,6 +248,57 @@ fun install_two_modules_of_same_type() {
     assert!(e.has_component_with_type<Counter>(second_id));
     assert!(e.component_ref<Counter>(counter_id(), internal::permit<Counter>()).inner().value == 0);
     assert!(e.component_ref<Counter>(second_id, internal::permit<Counter>()).inner().value == 1);
+    assert!(e.component_ids() == vector[counter_id(), second_id]);
+
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test]
+fun uninstall_one_of_two_keeps_the_other_listed() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+    let second_id = 0xC1;
+
+    let mut req = e.install(
+        counter_id(),
+        option::some(counter_name()),
+        Counter { value: 0 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    let mut req = e.install(
+        second_id,
+        option::some(string::utf8(b"counter-2")),
+        Counter { value: 1 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    // Remove the first component. The list keeps the second one only.
+    let (m, mut req) = e.uninstall<Counter>(counter_id(), internal::permit<Counter>(), ctx);
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+    let Counter { value: _ } = m.unwrap(internal::permit<Counter>());
+
+    assert!(e.component_ids() == vector[second_id]);
+    assert!(!e.has_component(counter_id()));
+    assert!(e.has_component(second_id));
 
     entity::share(e);
     ts::return_shared(acl);
@@ -620,6 +674,35 @@ fun delete_shared_entity() {
     e.delete(req, ticket);
     ts::return_shared(acl);
     scenario.end();
+}
+
+#[test, expected_failure(abort_code = entity::EComponentsInstalled)]
+fun delete_with_component_installed_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+
+    let mut req = e.install(
+        counter_id(),
+        option::some(counter_name()),
+        Counter { value: 0 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    let (mut req, ticket) = e.request_delete();
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.delete(req, ticket);
+
+    abort
 }
 
 #[test, expected_failure(abort_code = entity::ELocked)]

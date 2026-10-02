@@ -138,6 +138,20 @@ export function deleteEntity(
   })
 }
 
+/**
+ * Read the ids of the components installed on `entity`.
+ */
+export function componentIds(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): TransactionResult {
+  return tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::component_ids`,
+    arguments: [entity],
+  })
+}
+
 /** Share a configured entity. */
 export function shareEntity(
   tx: Transaction,
