@@ -43,6 +43,7 @@ export {
   type CapObjectRef,
   callerRequirement,
   completeRequest,
+  componentIds,
   deleteEntity,
   deriveObjectId,
   disableAction,
