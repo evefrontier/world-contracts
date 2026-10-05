@@ -277,7 +277,8 @@ public fun interact(entity: &mut Entity, action: String, _ctx: &mut TxContext): 
 
     let admin_actions: &VecMap<String, Action> = df::borrow(&entity.id, AdminActionsKey());
     let owner_actions: &VecMap<String, Action> = df::borrow(&entity.id, OwnerActionsKey());
-    // An admin action shadows an owner action with the same name.
+    // An admin action shadows an owner action with the same name. An owner should
+    // give its actions names that no admin action uses, or they are unreachable.
     let actions = if (admin_actions.contains(&action)) admin_actions else owner_actions;
     assert!(actions.contains(&action), EUnknownAction);
     let request = actions.get(&action).to_request(option::some(entity.id.to_inner()), vector[]);
