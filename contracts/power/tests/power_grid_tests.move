@@ -11,13 +11,13 @@ use core::{
     requirement::Requirement,
     test_helpers::{claim, setup, take_acl, take_registry}
 };
-use power::power_grid::{Self, PowerGridInstalled, PowerToggled};
+use power::{grid_scenario, power_grid::{Self, PowerGridInstalled, PowerToggled}};
 use std::string;
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
 
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
-const SET_POWER_GRID: vector<u8> = b"set_power_grid";
+const OPERATE: vector<u8> = b"operate_grid";
 const CHECK_GRID: vector<u8> = b"check_grid";
 
 /// Install a grid on a fresh entity. No access caps yet.
@@ -35,7 +35,7 @@ fun build_entity(
 }
 
 /// Share an entity with a grid, mint its AccessCap to OWNER and enable the
-/// owner-gated `set_power_grid` action. Returns the entity id.
+/// owner-gated `operate_grid` action. Returns the entity id.
 fun setup_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {
     ts::next_tx(scenario, ADMIN);
     let mut registry = take_registry(scenario);
@@ -52,7 +52,7 @@ fun setup_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {
     ts::next_tx(scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
-    enable(scenario, &mut e, &cap, SET_POWER_GRID, power_grid::set_power_grid_requirement());
+    enable(scenario, &mut e, &cap, OPERATE, power_grid::operate_grid_requirement());
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
     entity_id
@@ -96,7 +96,7 @@ fun toggle(scenario: &mut ts::Scenario, entity_id: ID, on: bool, clock: &Clock) 
     ts::next_tx(scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
-    let mut req = e.interact(string::utf8(SET_POWER_GRID), scenario.ctx());
+    let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
     access_cap::verify(&mut req, &cap);
     power_grid::set_power_grid(&mut e, &mut req, on, clock);
     e.complete_request(req);
@@ -129,7 +129,7 @@ fun install_starts_off_and_empty() {
     assert!(grid.connected().is_empty());
     assert!(grid.generators().is_empty());
     assert!(grid.fuel_sources().is_empty());
-    assert!(grid.reservations().is_empty());
+    assert!(grid.modules().is_empty());
     assert!(grid.effective_capacity_mw() == 0);
 
     let installed = event::events_by_type<PowerGridInstalled>();
@@ -248,7 +248,7 @@ fun power_on_with_other_entity_cap_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
     let other_cap = ts::take_from_sender<AccessCap>(&scenario);
     assert!(other_cap.entity() == other_cap_owner_id);
-    let mut req = e.interact(string::utf8(SET_POWER_GRID), scenario.ctx());
+    let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
     access_cap::verify(&mut req, &other_cap);
 
     abort
@@ -428,22 +428,25 @@ fun grid_check_aborts_when_capacity_below() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EUsedBelowMin)]
-fun grid_check_aborts_when_used_below() {
+#[test, expected_failure(abort_code = power_grid::EUsedAboveMax)]
+fun grid_check_aborts_when_used_above() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_grid(&mut scenario, &clock);
+    let entity_id = grid_scenario::setup_entity(&mut scenario, vector[50], vector[201], &clock);
+    grid_scenario::power_up(&mut scenario, entity_id, 1, &clock);
+    grid_scenario::connect(&mut scenario, entity_id, 201, 0, 0, &clock);
+    grid_scenario::reserve_firm(&mut scenario, entity_id, 201, 1, &clock);
 
     run_grid_check(
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(
-            false,
+            true,
             option::none(),
             option::none(),
             0,
-            option::some(1),
+            option::some(0),
         ),
     );
 

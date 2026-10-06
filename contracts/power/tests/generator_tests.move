@@ -25,6 +25,7 @@ const OUTPUT_B: u64 = 30;
 const CONTAINMENT: u64 = 10;
 
 const MANAGE: vector<u8> = b"manage_generator";
+const OPERATE: vector<u8> = b"operate_grid";
 const OP_ONLINE: u8 = 0;
 const OP_OFFLINE: u8 = 1;
 const OP_POWER_ON: u8 = 2;
@@ -33,7 +34,7 @@ const OP_POWER_ON: u8 = 2;
 
 /// Share an entity with a grid and Generator components A and B (unregistered),
 /// the admin `manage_generator` action, OWNER's
-/// AccessCap, and owner-gated online/offline actions per Generator.
+/// AccessCap, and the owner-gated `operate_grid` action.
 fun setup_entity(scenario: &mut ts::Scenario, clock: &Clock): ID {
     ts::next_tx(scenario, ADMIN);
     let mut registry = take_registry(scenario);
@@ -54,27 +55,7 @@ fun setup_entity(scenario: &mut ts::Scenario, clock: &Clock): ID {
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
-
-    enable(
-        scenario,
-        entity_id,
-        action_name(OP_POWER_ON, 0),
-        power_grid::set_power_grid_requirement(),
-    );
-    vector[GEN_A, GEN_B].do!(|id| {
-        enable(
-            scenario,
-            entity_id,
-            action_name(OP_ONLINE, id),
-            power_grid::set_generator_requirement(),
-        );
-        enable(
-            scenario,
-            entity_id,
-            action_name(OP_OFFLINE, id),
-            power_grid::set_generator_requirement(),
-        );
-    });
+    enable(scenario, entity_id, OPERATE, power_grid::operate_grid_requirement());
     entity_id
 }
 
@@ -167,31 +148,10 @@ fun owner_runs_operation(
     ts::next_tx(scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
-    let mut req = e.interact(string::utf8(action_name(op, id)), scenario.ctx());
+    let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
     access_cap::verify(&mut req, &cap);
     if (op == OP_POWER_ON) power_grid::set_power_grid(&mut e, &mut req, true, clock)
-    else if (op == OP_ONLINE) power_grid::set_generator(&mut e, &mut req, id, true, clock)
-    else power_grid::set_generator(&mut e, &mut req, id, false, clock);
-    e.complete_request(req);
-    ts::return_to_sender(scenario, cap);
-    ts::return_shared(e);
-}
-
-/// Owner runs the named action, calling `set_generator` for Generator `id`.
-fun owner_sets_generator(
-    scenario: &mut ts::Scenario,
-    entity_id: ID,
-    name: vector<u8>,
-    id: u64,
-    online: bool,
-    clock: &Clock,
-) {
-    ts::next_tx(scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let cap = ts::take_from_sender<AccessCap>(scenario);
-    let mut req = e.interact(string::utf8(name), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
-    power_grid::set_generator(&mut e, &mut req, id, online, clock);
+    else power_grid::set_generator(&mut e, &mut req, id, op == OP_ONLINE, clock);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
@@ -207,20 +167,6 @@ fun register_and_online(
 ) {
     register(scenario, entity_id, id, output, clock);
     owner_runs_operation(scenario, entity_id, OP_ONLINE, id, clock);
-}
-
-fun action_name(op: u8, generator_id: u64): vector<u8> {
-    if (op == OP_POWER_ON) {
-        b"power_on"
-    } else if (op == OP_ONLINE) {
-        let mut name = b"online_";
-        name.append(generator_id.to_string().into_bytes());
-        name
-    } else {
-        let mut name = b"offline_";
-        name.append(generator_id.to_string().into_bytes());
-        name
-    }
 }
 
 /// Read the grid's `capacity_mw` and `effective_capacity_mw`.
@@ -518,22 +464,15 @@ fun state_without_generator_aborts() {
 }
 
 #[test]
-fun online_any_generator() {
+fun online_multiple_generators() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, &clock);
-    enable(
-        &mut scenario,
-        entity_id,
-        b"online_any",
-        power_grid::set_generator_requirement(),
-    );
-
     register(&mut scenario, entity_id, GEN_A, OUTPUT_A, &clock);
     register(&mut scenario, entity_id, GEN_B, OUTPUT_B, &clock);
-    owner_sets_generator(&mut scenario, entity_id, b"online_any", GEN_A, true, &clock);
-    owner_sets_generator(&mut scenario, entity_id, b"online_any", GEN_B, true, &clock);
+    owner_runs_operation(&mut scenario, entity_id, OP_ONLINE, GEN_A, &clock);
+    owner_runs_operation(&mut scenario, entity_id, OP_ONLINE, GEN_B, &clock);
     let (total, _) = capacity(&mut scenario, entity_id);
     assert!(total == OUTPUT_A + OUTPUT_B);
 
@@ -597,7 +536,7 @@ fun generator_check_passes_when_online() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EGeneratorState)]
+#[test, expected_failure(abort_code = power_grid::EGenNotOnline)]
 fun generator_check_aborts_when_online_required() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);

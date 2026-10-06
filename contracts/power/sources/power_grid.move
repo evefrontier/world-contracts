@@ -1,16 +1,6 @@
-/// Power grid component installed on an `Entity`: one per Creation, at a
-/// well-known component slot. Pools the capacity of its Generators and the fuel
-/// of its Fuel components, and grants Firm or Elastic draws to connected modules.
-///
-/// Power On/Off is the Creation-level master switch. Off treats capacity as
-/// zero. The owner or admin bundles `set_power_grid_requirement` into an
-/// action; the caller passes on or off when the action runs.
-///
-/// Any action can also require a minimum grid state with
-/// `power_grid_requirement`, checked by `assert_power_grid`, or a generator
-/// state with `generator_requirement`, checked by `assert_generator`.
-///
-/// See `docs/adr/0005-onchain-power-network.md`.
+/// Power grid component: one per Creation, at a well-known slot. Pools
+/// Generator capacity and fuel, and grants Firm or Elastic power draws to
+/// connected modules. See `docs/adr/0005-onchain-power-network.md`.
 module power::power_grid;
 
 use core::{
@@ -61,22 +51,48 @@ const EImpulseBelowMin: vector<u8> = b"Fuel impulse is below the requirement";
 #[error(code = 15)]
 const ECapacityBelowMin: vector<u8> = b"Rated capacity is below the requirement";
 #[error(code = 16)]
-const EUsedBelowMin: vector<u8> = b"Used power is below the requirement";
+const EUsedAboveMax: vector<u8> = b"Used power is above the requirement";
 #[error(code = 17)]
-const EGeneratorState: vector<u8> = b"Generator online state does not match the requirement";
+const EGenNotOnline: vector<u8> = b"Generator is not online";
 #[error(code = 18)]
 const EOutputBelowMin: vector<u8> = b"Generator output is below the requirement";
 #[error(code = 19)]
 const EContainmentBelowMin: vector<u8> = b"Containment reduction is below the requirement";
+#[error(code = 20)]
+const EModuleMissing: vector<u8> = b"Module component is not installed on this entity";
+#[error(code = 21)]
+const EModuleAlreadyRegistered: vector<u8> = b"Module is already registered with this power grid";
+#[error(code = 22)]
+const EModuleNotRegistered: vector<u8> = b"Module is not registered with this power grid";
+#[error(code = 23)]
+const ETooManyConnected: vector<u8> = b"Power grid has reached its maximum connected modules";
+#[error(code = 24)]
+const ENotConnected: vector<u8> = b"Module is not connected to this power grid";
+#[error(code = 25)]
+const EAlreadyReserved: vector<u8> = b"Module already has a power reservation";
+#[error(code = 26)]
+const ENotReserved: vector<u8> = b"Module has no power reservation";
+#[error(code = 27)]
+const EZeroDraw: vector<u8> = b"Power draw must be greater than zero";
+#[error(code = 28)]
+const EUnknownDrawKind: vector<u8> = b"Unknown draw kind";
+#[error(code = 29)]
+const EInsufficientPower: vector<u8> = b"Power grid does not have enough capacity for this draw";
+#[error(code = 30)]
+const EDrawBelowMin: vector<u8> = b"Module's granted draw is below the requirement";
+#[error(code = 31)]
+const EDrawKindMismatch: vector<u8> = b"Module's draw kind does not match the requirement";
 
 // === Constants ===
 
 const VERSION: u64 = 1;
 const NAME: vector<u8> = b"power_grid";
+/// Cap on registered modules.
+const MAX_CONNECTED: u64 = 100;
 
 // === Structs ===
 
-/// Pooled fuel and capacity for one Creation, plus who is connected and who is drawing.
+/// Pooled fuel and capacity, plus connected modules and their reservations.
 public struct PowerGrid has store {
     on: bool,
     /// Fuel remaining as of `last_settled_ms`, not live.
@@ -85,25 +101,46 @@ public struct PowerGrid has store {
     fuel_capacity: u64,
     /// Blended (weighted-average) fuel quality, fixed point.
     fuel_impulse: u64,
-    /// Blended (weighted-average) fuel containment burden. Each
-    /// Generator's `containment_reduction` offsets it when computing how
-    /// efficiently that Generator burns the pooled fuel.
+    /// Blended (weighted-average) fuel containment burden.
     fuel_containment_burden: u64,
     /// Sum of online Generators' rated output, in MW.
     capacity_mw: u64,
-    /// Sum of reservations' `active_draw`, in MW.
+    /// Sum of granted reservations' `active_draw + line_loss`, in MW.
     used_mw: u64,
     /// Timestamp `settled_fuel_quantity` was last computed at.
     last_settled_ms: u64,
-    // TODO: this can be a category later and priority can be a sibling of it.
-    /// Connected modules: component id & priority (lower value = higher priority, by default all priority = 0).
+    /// Registered modules by component id: line loss and reservation.
+    modules: VecMap<u64, ModuleState>,
+    // TODO: this can gain a category later, with the priority group as a sibling of it.
+    /// Connected modules: component id, priority group. A higher group number is shed first. Group 0 is last.
     connected: VecMap<u64, u64>,
     /// Generators feeding the grid by component id.
     generators: VecMap<u64, GeneratorState>,
     /// Component ids of Fuel components feeding the grid.
     fuel_sources: VecSet<u64>,
-    /// Power reservations by module component id (priority lives in `connected`).
-    reservations: VecMap<u64, Reservation>,
+}
+
+/// A Generator's fixed stats and online state, held by the grid.
+public struct GeneratorState has copy, drop, store {
+    max_output_mw: u64,
+    containment_reduction: u64,
+    online: bool,
+}
+
+/// A registered module's admin-set line loss and its reservation, if any.
+public struct ModuleState has copy, drop, store {
+    /// MW of overhead the module costs the grid while granted.
+    line_loss: u64,
+    reservation: Option<Reservation>,
+}
+
+/// One module's power ask and its current grant.
+public struct Reservation has copy, drop, store {
+    /// MW asked.
+    requested: u64,
+    /// MW granted: `requested` for Firm, up to `requested` for Elastic.
+    active_draw: u64,
+    kind: DrawKind,
 }
 
 /// How a reservation is granted: Firm is all-or-nothing, Elastic takes leftover.
@@ -112,31 +149,17 @@ public enum DrawKind has copy, drop, store {
     Elastic,
 }
 
-/// A Generator's stats and online state, held only by the grid. Stats are
-/// fixed from install to uninstall. The fuel factor for this Generator is
-/// computed from the blended fuel and `containment_reduction`.
-public struct GeneratorState has copy, drop, store {
-    max_output_mw: u64,
-    containment_reduction: u64,
-    online: bool,
-}
+/// Marker for `register_generator` / `unregister_generator`.
+public struct ManageGenerator() has drop;
 
-/// One module's power ask and its current grant.
-public struct Reservation has drop, store {
-    /// MW asked.
-    requested: u64,
-    line_loss: u64,
-    /// MW granted right now; 0 = none. Firm is 0 or `requested`.
-    active_draw: u64,
-    kind: DrawKind,
-}
+/// Marker for the owner's grid operations: `set_power_grid`, `set_generator`,
+/// `set_priority`, `reserve`, `release` and `release_priority`.
+public struct OperateGrid() has drop;
 
-/// Requirement marker satisfied by `set_power_grid`.
-public struct SetPowerGrid() has drop;
+/// Marker for `connect_module` / `disconnect_module`.
+public struct ManageModule() has drop;
 
-/// Minimum grid state any action can require. `assert_power_grid` checks it
-/// against stored state. Each number is a minimum (`>=`). `None` skips that
-/// check. `capacity_mw` is always checked; pass 0 to allow any rated output.
+/// Minimum grid state an action can require. `None` skips a check.
 public struct PowerGridRequirement has drop {
     on: bool,
     /// Minimum `settled_fuel_quantity`, if set.
@@ -145,21 +168,12 @@ public struct PowerGridRequirement has drop {
     fuel_impulse: Option<u64>,
     /// Minimum rated `capacity_mw`.
     capacity_mw: u64,
-    /// Minimum `used_mw`, if set.
+    /// Maximum `used_mw`, if set.
     used_mw: Option<u64>,
 }
 
-/// Requirement marker satisfied by `register_generator` or
-/// `unregister_generator`. Both push an admin requirement, so one admin-only
-/// marker covers both.
-public struct ManageGenerator() has drop;
-
-/// Requirement marker satisfied by `set_generator`. Which generator and whether
-/// it comes online are call arguments.
-public struct SetGenerator() has drop;
-
-/// Minimum state of one registered Generator. `assert_generator` checks it.
-/// Each number is a minimum (`>=`). `None` skips that check.
+// TODO: this is not very essential
+/// Minimum state of one Generator. `None` skips a check.
 public struct GeneratorRequirement has drop {
     generator_id: u64,
     online: bool,
@@ -167,6 +181,13 @@ public struct GeneratorRequirement has drop {
     max_output_mw: Option<u64>,
     /// Minimum `containment_reduction`, if set.
     containment_reduction: Option<u64>,
+}
+
+/// `module_id` holds a reservation of `kind` with at least `draw` MW granted.
+public struct ReserveRequirement has drop {
+    module_id: u64,
+    draw: u64,
+    kind: DrawKind,
 }
 
 // === Events ===
@@ -186,7 +207,7 @@ public struct PowerToggled has copy, drop {
     on: bool,
 }
 
-/// Emitted when online Generator output changes the grid's `capacity_mw`.
+/// The grid's `capacity_mw` changed.
 public struct CapacityChanged has copy, drop {
     entity_id: ID,
     capacity_mw: u64,
@@ -210,10 +231,50 @@ public struct GeneratorToggled has copy, drop {
     online: bool,
 }
 
+public struct ModuleConnected has copy, drop {
+    entity_id: ID,
+    module_id: u64,
+    line_loss: u64,
+    /// Priority group. A new connection starts in group 0.
+    priority: u64,
+}
+
+public struct ModuleDisconnected has copy, drop {
+    entity_id: ID,
+    module_id: u64,
+}
+
+public struct PriorityChanged has copy, drop {
+    entity_id: ID,
+    module_id: u64,
+    /// Priority group the module moved into.
+    priority: u64,
+}
+
+/// A reservation was granted.
+public struct Reserved has copy, drop {
+    entity_id: ID,
+    module_id: u64,
+    kind: DrawKind,
+    requested: u64,
+    line_loss: u64,
+    active_draw: u64,
+}
+
+public struct Released has copy, drop {
+    entity_id: ID,
+    module_id: u64,
+}
+
+/// A reservation was released because capacity dropped below usage.
+public struct Shed has copy, drop {
+    entity_id: ID,
+    module_id: u64,
+}
+
 // === Public Functions ===
 
-/// Build and install the power grid at its well-known slot, switched off and
-/// empty. Admin-gated by `entity::install`.
+/// Install the grid, off and empty. Admin-gated.
 public fun install(entity: &mut Entity, clock: &Clock, ctx: &mut TxContext): Request {
     let entity_id = entity.id();
     let grid = PowerGrid {
@@ -225,10 +286,10 @@ public fun install(entity: &mut Entity, clock: &Clock, ctx: &mut TxContext): Req
         capacity_mw: 0,
         used_mw: 0,
         last_settled_ms: clock.timestamp_ms(),
+        modules: vec_map::empty(),
         connected: vec_map::empty(),
         generators: vec_map::empty(),
         fuel_sources: vec_set::empty(),
-        reservations: vec_map::empty(),
     };
     let req = entity.install(
         component_id(),
@@ -243,8 +304,7 @@ public fun install(entity: &mut Entity, clock: &Clock, ctx: &mut TxContext): Req
 }
 
 // TODO: this is only for admin ops while to clear the orphaned data during entity uninstall
-/// Remove the power grid. Aborts while any module is connected or any
-/// Generator or Fuel component still feeds it.
+/// Remove the grid. Aborts while anything is registered or connected.
 public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     assert!(entity.has_component_with_type<PowerGrid>(component_id()), EComponentMissing);
 
@@ -255,7 +315,7 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     );
     assert!(component::version(&grid_component) == VERSION, EWrongVersion);
     let grid = grid_component.unwrap(power_grid_permit());
-    assert!(grid.connected.is_empty(), EModulesConnected);
+    assert!(grid.modules.is_empty(), EModulesConnected);
     assert!(grid.generators.is_empty() && grid.fuel_sources.is_empty(), EPowerSourcesPresent);
     let PowerGrid { .. } = grid;
     event::emit(PowerGridUninstalled { entity_id: entity.id(), component_id: component_id() });
@@ -266,29 +326,29 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
 /// Switch the grid on or off.
 public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, clock: &Clock) {
     let entity_id = entity.id();
-    let (_requirement, frame, grid) = take(entity, req, set_power_grid_permit());
+    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
     if (on) assert!(!grid.on, EAlreadyOn) else assert!(grid.on, EAlreadyOff);
     grid.settle(clock);
     grid.on = on;
     event::emit(PowerToggled { entity_id, on });
+    grid.shed(entity_id);
     frame.destroy_empty_frame();
 }
 
-/// Build the requirement satisfied by `set_power_grid`. On or off is not
-/// stored here; the caller passes it.
-public fun set_power_grid_requirement(): Requirement {
-    requirement::from_config(option::some(component_id()), SetPowerGrid())
+/// Requirement satisfied by `set_power_grid`, `set_generator`, `set_priority`,
+/// `reserve`, `release` and `release_priority`; one per call.
+public fun operate_grid_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), OperateGrid())
 }
 
-/// Abort unless the installed grid meets the next `PowerGridRequirement`.
-/// Reads stored state and does not settle fuel.
+/// Abort unless the grid meets the next `PowerGridRequirement`.
 public fun assert_power_grid(entity: &mut Entity, req: &mut Request) {
     let (requirement, frame, grid) = take(entity, req, power_grid_requirement_permit());
     enforce_power_grid(&requirement, grid);
     frame.destroy_empty_frame();
 }
 
-/// Build a `PowerGridRequirement` on this grid. See that struct for the checks.
+/// Build a `PowerGridRequirement`.
 public fun power_grid_requirement(
     on: bool,
     fuel_quantity: Option<u64>,
@@ -302,9 +362,7 @@ public fun power_grid_requirement(
     )
 }
 
-/// Register the installed Generator `generator_id` with the grid, offline, with
-/// its fixed stats. Next requirement must be `ManageGenerator`. Pushes an admin
-/// requirement.
+/// Register an installed Generator with its stats, offline. Admin-only.
 public fun register_generator(
     entity: &mut Entity,
     req: &mut Request,
@@ -334,8 +392,7 @@ public fun register_generator(
     req.enqueue(frame);
 }
 
-/// Remove offline Generator `generator_id` from the grid. Next requirement must
-/// be `ManageGenerator`. Pushes an admin requirement.
+/// Remove an offline Generator from the grid. Admin-only.
 public fun unregister_generator(
     entity: &mut Entity,
     req: &mut Request,
@@ -354,8 +411,7 @@ public fun unregister_generator(
     req.enqueue(frame);
 }
 
-/// Uninstall Generator `generator_id`. Aborts while it is registered with the
-/// grid. Admin-gated by `entity::uninstall`.
+/// Uninstall an unregistered Generator. Admin-gated.
 public fun uninstall_generator(
     entity: &mut Entity,
     generator_id: u64,
@@ -366,9 +422,7 @@ public fun uninstall_generator(
     generator::uninstall(entity, generator_id, ctx)
 }
 
-/// Bring Generator `generator_id` online or offline. `online` is chosen by the
-/// caller. The next requirement must be `SetGenerator`
-/// (`set_generator_requirement`).
+/// Bring a Generator online or offline.
 public fun set_generator(
     entity: &mut Entity,
     req: &mut Request,
@@ -377,25 +431,19 @@ public fun set_generator(
     clock: &Clock,
 ) {
     let entity_id = entity.id();
-    let (_requirement, frame, grid) = take(entity, req, set_generator_permit());
+    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
     grid.set_generator_online(entity_id, generator_id, online, clock);
     frame.destroy_empty_frame();
 }
 
-/// Build the requirement satisfied by `set_generator`.
-public fun set_generator_requirement(): Requirement {
-    requirement::from_config(option::some(component_id()), SetGenerator())
-}
-
-/// Abort unless Generator `generator_id` on the grid meets the next
-/// `GeneratorRequirement`. Reads stored state.
+/// Abort unless a Generator meets the next `GeneratorRequirement`.
 public fun assert_generator(entity: &mut Entity, req: &mut Request) {
     let (requirement, frame, grid) = take(entity, req, generator_requirement_permit());
     enforce_generator(&requirement, grid);
     frame.destroy_empty_frame();
 }
 
-/// Build a `GeneratorRequirement` on this grid. See that struct for the checks.
+/// Build a `GeneratorRequirement`.
 public fun generator_requirement(
     generator_id: u64,
     online: bool,
@@ -408,9 +456,144 @@ public fun generator_requirement(
     )
 }
 
+/// Connect an installed module to the grid in priority group 0, with its line loss. Admin-only.
+public fun connect_module(
+    entity: &mut Entity,
+    req: &mut Request,
+    module_id: u64,
+    line_loss: u64,
+    clock: &Clock,
+) {
+    assert!(entity.has_component(module_id), EModuleMissing);
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = take(entity, req, manage_module_permit());
+    assert!(!grid.modules.contains(&module_id), EModuleAlreadyRegistered);
+    assert!(grid.modules.length() < MAX_CONNECTED, ETooManyConnected);
+    grid.settle(clock);
+    grid.modules.insert(module_id, ModuleState { line_loss, reservation: option::none() });
+    grid.connected.insert(module_id, 0);
+    event::emit(ModuleConnected { entity_id, module_id, line_loss, priority: 0 });
+    frame.require(admin_service::admin_requirement());
+    req.enqueue(frame);
+}
+
+/// Disconnect a module from the grid, releasing its reservation if any. Admin-only.
+public fun disconnect_module(
+    entity: &mut Entity,
+    req: &mut Request,
+    module_id: u64,
+    clock: &Clock,
+) {
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = take(entity, req, manage_module_permit());
+    assert!(grid.modules.contains(&module_id), EModuleNotRegistered);
+    grid.settle(clock);
+    if (grid.has_reservation(module_id)) {
+        grid.release_module(module_id);
+        event::emit(Released { entity_id, module_id });
+    };
+    grid.modules.remove(&module_id);
+    if (grid.connected.contains(&module_id)) {
+        grid.connected.remove(&module_id);
+    };
+    event::emit(ModuleDisconnected { entity_id, module_id });
+    frame.require(admin_service::admin_requirement());
+    req.enqueue(frame);
+}
+
+/// Move a connected module into priority group `priority`.
+public fun set_priority(
+    entity: &mut Entity,
+    req: &mut Request,
+    module_id: u64,
+    priority: u64,
+    clock: &Clock,
+) {
+    let entity_id = entity.id();
+    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    assert!(grid.connected.contains(&module_id), ENotConnected);
+    grid.settle(clock);
+    *&mut grid.connected[&module_id] = priority;
+    event::emit(PriorityChanged { entity_id, module_id, priority });
+    frame.destroy_empty_frame();
+}
+
+/// Reserve `draw` MW of `kind` for `module_id`. Aborts if it does not fit.
+public fun reserve(
+    entity: &mut Entity,
+    req: &mut Request,
+    module_id: u64,
+    draw: u64,
+    kind: DrawKind,
+    clock: &Clock,
+) {
+    let entity_id = entity.id();
+    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    assert!(draw > 0, EZeroDraw);
+    assert!(grid.connected.contains(&module_id), ENotConnected);
+    // TODO: may later replace the existing reservation instead of aborting.
+    assert!(!grid.has_reservation(module_id), EAlreadyReserved);
+    grid.settle(clock);
+    let line_loss = grid.modules[&module_id].line_loss;
+    let effective = grid.effective_capacity_mw();
+    let leftover = if (effective > grid.used_mw) effective - grid.used_mw else 0;
+    assert!(leftover > line_loss, EInsufficientPower);
+    let active_draw = if (kind.is_firm()) draw else draw.min(leftover - line_loss);
+    assert!(active_draw + line_loss <= leftover, EInsufficientPower);
+    grid.used_mw = grid.used_mw + active_draw + line_loss;
+    grid.modules[&module_id].reservation.fill(Reservation { requested: draw, active_draw, kind });
+    event::emit(Reserved { entity_id, module_id, kind, requested: draw, line_loss, active_draw });
+    frame.destroy_empty_frame();
+}
+
+/// Release `module_id`'s reservation.
+public fun release(entity: &mut Entity, req: &mut Request, module_id: u64, clock: &Clock) {
+    let entity_id = entity.id();
+    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    assert!(grid.has_reservation(module_id), ENotReserved);
+    grid.settle(clock);
+    grid.release_module(module_id);
+    event::emit(Released { entity_id, module_id });
+    frame.destroy_empty_frame();
+}
+
+/// Release every reservation in priority group `priority`.
+public fun release_priority(entity: &mut Entity, req: &mut Request, priority: u64, clock: &Clock) {
+    let entity_id = entity.id();
+    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    grid.settle(clock);
+    grid.reserved_at(priority).do!(|module_id| {
+        grid.release_module(module_id);
+        event::emit(Released { entity_id, module_id });
+    });
+    frame.destroy_empty_frame();
+}
+
+/// Abort unless the module in the next `ReserveRequirement` holds a matching
+/// reservation.
+public fun assert_reserved(entity: &mut Entity, req: &mut Request) {
+    let (requirement, frame, grid) = take(entity, req, reserve_permit());
+    enforce_reserved(&requirement, grid);
+    frame.destroy_empty_frame();
+}
+
+/// Build a `ReserveRequirement` for `module_id`.
+public fun reserve_requirement(module_id: u64, draw: u64, kind: DrawKind): Requirement {
+    requirement::from_config(
+        option::some(component_id()),
+        ReserveRequirement { module_id, draw, kind },
+    )
+}
+
+/// Firm: all or nothing.
+public fun firm(): DrawKind { DrawKind::Firm }
+
+/// Elastic: up to the ask, from what is left.
+public fun elastic(): DrawKind { DrawKind::Elastic }
+
 // === View Functions ===
 
-/// Borrow the installed power grid. Aborts if missing.
+/// Borrow the installed grid. Aborts if missing.
 public fun power_grid(entity: &Entity): &PowerGrid {
     assert!(entity.has_component_with_type<PowerGrid>(component_id()), EComponentMissing);
     let c: &Component<PowerGrid> = entity.component_ref(component_id(), power_grid_permit());
@@ -418,20 +601,19 @@ public fun power_grid(entity: &Entity): &PowerGrid {
     c.inner()
 }
 
-/// The grid's state for Generator `generator_id`. Aborts if the Generator is
-/// not installed, the grid is missing, or the Generator is not registered.
+/// A registered Generator's state.
 public fun generator_state(entity: &Entity, generator_id: u64): GeneratorState {
     generator::assert_installed(entity, generator_id);
     *power_grid(entity).generators.get(&generator_id)
 }
 
-/// True if Generator `generator_id` is registered with an installed grid.
+/// True if the Generator is registered with an installed grid.
 public fun is_generator_registered(entity: &Entity, generator_id: u64): bool {
     entity.has_component_with_type<PowerGrid>(component_id())
         && power_grid(entity).generators.contains(&generator_id)
 }
 
-/// Capacity available to reservations: zero while off, else `capacity_mw`.
+/// Capacity available to reservations: 0 while off.
 public fun effective_capacity_mw(grid: &PowerGrid): u64 {
     if (grid.on) grid.capacity_mw else 0
 }
@@ -472,8 +654,36 @@ public fun last_settled_ms(grid: &PowerGrid): u64 {
     grid.last_settled_ms
 }
 
+public fun modules(grid: &PowerGrid): &VecMap<u64, ModuleState> {
+    &grid.modules
+}
+
+public fun is_module_registered(grid: &PowerGrid, module_id: u64): bool {
+    grid.modules.contains(&module_id)
+}
+
+/// A registered module's state.
+public fun module_state(grid: &PowerGrid, module_id: u64): ModuleState {
+    assert!(grid.modules.contains(&module_id), EModuleNotRegistered);
+    grid.modules[&module_id]
+}
+
 public fun connected(grid: &PowerGrid): &VecMap<u64, u64> {
     &grid.connected
+}
+
+public fun is_connected(grid: &PowerGrid, module_id: u64): bool {
+    grid.connected.contains(&module_id)
+}
+
+/// The priority group of a connected module.
+public fun priority(grid: &PowerGrid, module_id: u64): u64 {
+    assert!(grid.connected.contains(&module_id), ENotConnected);
+    grid.connected[&module_id]
+}
+
+public fun has_reservation(grid: &PowerGrid, module_id: u64): bool {
+    grid.modules.contains(&module_id) && grid.modules[&module_id].reservation.is_some()
 }
 
 public fun generators(grid: &PowerGrid): &VecMap<u64, GeneratorState> {
@@ -482,10 +692,6 @@ public fun generators(grid: &PowerGrid): &VecMap<u64, GeneratorState> {
 
 public fun fuel_sources(grid: &PowerGrid): &VecSet<u64> {
     &grid.fuel_sources
-}
-
-public fun reservations(grid: &PowerGrid): &VecMap<u64, Reservation> {
-    &grid.reservations
 }
 
 public fun max_output_mw(state: &GeneratorState): u64 {
@@ -500,12 +706,16 @@ public fun online(state: &GeneratorState): bool {
     state.online
 }
 
-public fun requested(reservation: &Reservation): u64 {
-    reservation.requested
+public fun line_loss(state: &ModuleState): u64 {
+    state.line_loss
 }
 
-public fun line_loss(reservation: &Reservation): u64 {
-    reservation.line_loss
+public fun reservation(state: &ModuleState): Option<Reservation> {
+    state.reservation
+}
+
+public fun requested(reservation: &Reservation): u64 {
+    reservation.requested
 }
 
 public fun active_draw(reservation: &Reservation): u64 {
@@ -552,6 +762,18 @@ public fun required_containment_reduction(rule: &GeneratorRequirement): Option<u
     rule.containment_reduction
 }
 
+public fun reserve_module_id(rule: &ReserveRequirement): u64 {
+    rule.module_id
+}
+
+public fun required_draw(rule: &ReserveRequirement): u64 {
+    rule.draw
+}
+
+public fun required_kind(rule: &ReserveRequirement): DrawKind {
+    rule.kind
+}
+
 public fun is_firm(kind: &DrawKind): bool {
     match (kind) {
         DrawKind::Firm => true,
@@ -561,7 +783,7 @@ public fun is_firm(kind: &DrawKind): bool {
 
 // === Private Functions ===
 
-/// Borrow the grid mid-interaction, popping the next requirement of type `T`.
+/// Borrow the grid mid-interaction and pop the next requirement.
 fun take<T: drop>(
     entity: &mut Entity,
     req: &mut Request,
@@ -574,8 +796,7 @@ fun take<T: drop>(
     (requirement, frame, grid)
 }
 
-/// Flip a registered Generator online or offline and adjust `capacity_mw` by
-/// its rated output.
+/// Toggle a Generator and adjust `capacity_mw`.
 fun set_generator_online(
     grid: &mut PowerGrid,
     entity_id: ID,
@@ -592,13 +813,66 @@ fun set_generator_online(
     state.online = online;
     let output = state.max_output_mw;
     grid.capacity_mw = if (online) grid.capacity_mw + output else grid.capacity_mw - output;
-    // TODO(slice 4): rebalance reservations against the new capacity.
     event::emit(GeneratorToggled { entity_id, generator_id, online });
     event::emit(CapacityChanged { entity_id, capacity_mw: grid.capacity_mw });
+    grid.shed(entity_id);
 }
 
-/// Decode a `PowerGridRequirement` and abort if the grid is short of it.
-/// Field order matches the struct.
+/// Drop `module_id`'s reservation and free its draw and line loss.
+fun release_module(grid: &mut PowerGrid, module_id: u64) {
+    let state = &mut grid.modules[&module_id];
+    let reservation = state.reservation.extract();
+    grid.used_mw = grid.used_mw - (reservation.active_draw + state.line_loss);
+}
+
+/// Module ids with a reservation in priority group `priority`.
+fun reserved_at(grid: &PowerGrid, priority: u64): vector<u64> {
+    let mut module_ids = vector[];
+    grid.modules.length().do!(|i| {
+        let (module_id, state) = grid.modules.get_entry_by_index(i);
+        if (state.reservation.is_some() && grid.connected[module_id] == priority) {
+            module_ids.push_back(*module_id);
+        };
+    });
+    module_ids
+}
+
+/// Module ids that hold a reservation, in connect order.
+fun reserved_modules(grid: &PowerGrid): vector<u64> {
+    let mut module_ids = vector[];
+    grid.modules.length().do!(|i| {
+        let (module_id, state) = grid.modules.get_entry_by_index(i);
+        if (state.reservation.is_some()) module_ids.push_back(*module_id);
+    });
+    module_ids
+}
+
+/// Release reservations until usage fits. Usable power of 0 releases every
+/// reservation in one pass. Otherwise whole priority groups go, highest
+/// group number first. Group 0 is last.
+fun shed(grid: &mut PowerGrid, entity_id: ID) {
+    if (grid.effective_capacity_mw() == 0) {
+        grid.reserved_modules().do!(|module_id| {
+            grid.release_module(module_id);
+            event::emit(Shed { entity_id, module_id });
+        });
+        return
+    };
+    while (grid.used_mw > grid.effective_capacity_mw()) {
+        let mut highest = 0;
+        grid.modules.length().do!(|i| {
+            let (module_id, state) = grid.modules.get_entry_by_index(i);
+            let priority = grid.connected[module_id];
+            if (state.reservation.is_some() && priority > highest) highest = priority;
+        });
+        grid.reserved_at(highest).do!(|module_id| {
+            grid.release_module(module_id);
+            event::emit(Shed { entity_id, module_id });
+        });
+    };
+}
+
+/// Abort if the grid is short of a `PowerGridRequirement`.
 fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
     let mut encoded = bcs::new(requirement.data());
     let on = encoded.peel_bool();
@@ -610,11 +884,10 @@ fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
     fuel_quantity.do!(|min_fuel| assert!(grid.settled_fuel_quantity >= min_fuel, EFuelBelowMin));
     fuel_impulse.do!(|min_impulse| assert!(grid.fuel_impulse >= min_impulse, EImpulseBelowMin));
     assert!(grid.capacity_mw >= capacity_mw, ECapacityBelowMin);
-    used_mw.do!(|min_used| assert!(grid.used_mw >= min_used, EUsedBelowMin));
+    used_mw.do!(|max_used| assert!(grid.used_mw <= max_used, EUsedAboveMax));
 }
 
-/// Decode a `GeneratorRequirement` and abort if that Generator is short of it.
-/// Field order matches the struct.
+/// Abort if a Generator is short of a `GeneratorRequirement`.
 fun enforce_generator(requirement: &Requirement, grid: &PowerGrid) {
     let mut encoded = bcs::new(requirement.data());
     let generator_id = encoded.peel_u64();
@@ -623,11 +896,27 @@ fun enforce_generator(requirement: &Requirement, grid: &PowerGrid) {
     let containment_reduction = encoded.peel_option_u64();
     assert!(grid.generators.contains(&generator_id), EGeneratorNotRegistered);
     let state = grid.generators.get(&generator_id);
-    assert!(state.online == online, EGeneratorState);
+    assert!(state.online == online, EGenNotOnline);
     max_output_mw.do!(|min_output| assert!(state.max_output_mw >= min_output, EOutputBelowMin));
     containment_reduction.do!(|min_containment| {
         assert!(state.containment_reduction >= min_containment, EContainmentBelowMin)
     });
+}
+
+/// Abort if a module's reservation is short of a `ReserveRequirement`.
+fun enforce_reserved(requirement: &Requirement, grid: &PowerGrid) {
+    let mut encoded = bcs::new(requirement.data());
+    let module_id = encoded.peel_u64();
+    let draw = encoded.peel_u64();
+    let firm = match (encoded.peel_enum_tag()) {
+        0 => true,
+        1 => false,
+        _ => abort EUnknownDrawKind,
+    };
+    assert!(grid.has_reservation(module_id), ENotReserved);
+    let reservation = grid.modules[&module_id].reservation.borrow();
+    assert!(reservation.kind.is_firm() == firm, EDrawKindMismatch);
+    assert!(reservation.active_draw >= draw, EDrawBelowMin);
 }
 
 /// Advance fuel state to now.
@@ -643,24 +932,28 @@ fun power_grid_permit(): Permit<PowerGrid> {
     internal::permit<PowerGrid>()
 }
 
-fun set_power_grid_permit(): Permit<SetPowerGrid> {
-    internal::permit<SetPowerGrid>()
-}
-
 fun power_grid_requirement_permit(): Permit<PowerGridRequirement> {
     internal::permit<PowerGridRequirement>()
+}
+
+fun operate_grid_permit(): Permit<OperateGrid> {
+    internal::permit<OperateGrid>()
 }
 
 fun manage_generator_permit(): Permit<ManageGenerator> {
     internal::permit<ManageGenerator>()
 }
 
-fun set_generator_permit(): Permit<SetGenerator> {
-    internal::permit<SetGenerator>()
-}
-
 fun generator_requirement_permit(): Permit<GeneratorRequirement> {
     internal::permit<GeneratorRequirement>()
+}
+
+fun manage_module_permit(): Permit<ManageModule> {
+    internal::permit<ManageModule>()
+}
+
+fun reserve_permit(): Permit<ReserveRequirement> {
+    internal::permit<ReserveRequirement>()
 }
 
 // === Test Functions ===
@@ -668,6 +961,11 @@ fun generator_requirement_permit(): Permit<GeneratorRequirement> {
 #[test_only]
 public fun manage_generator_requirement(): Requirement {
     requirement::from_config(option::some(component_id()), ManageGenerator())
+}
+
+#[test_only]
+public fun manage_module_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), ManageModule())
 }
 
 /// `(entity_id, component_id)`.
@@ -680,4 +978,34 @@ public fun installed_fields(e: &PowerGridInstalled): (ID, u64) {
 #[test_only]
 public fun toggled_fields(e: &PowerToggled): (ID, bool) {
     (e.entity_id, e.on)
+}
+
+/// `(entity_id, module_id, line_loss, priority)`.
+#[test_only]
+public fun module_connected_fields(e: &ModuleConnected): (ID, u64, u64, u64) {
+    (e.entity_id, e.module_id, e.line_loss, e.priority)
+}
+
+/// `(entity_id, module_id, priority)`.
+#[test_only]
+public fun priority_changed_fields(e: &PriorityChanged): (ID, u64, u64) {
+    (e.entity_id, e.module_id, e.priority)
+}
+
+/// `(entity_id, module_id, kind, requested, line_loss, active_draw)`.
+#[test_only]
+public fun reserved_fields(e: &Reserved): (ID, u64, DrawKind, u64, u64, u64) {
+    (e.entity_id, e.module_id, e.kind, e.requested, e.line_loss, e.active_draw)
+}
+
+/// `(entity_id, module_id)`.
+#[test_only]
+public fun shed_fields(e: &Shed): (ID, u64) {
+    (e.entity_id, e.module_id)
+}
+
+/// `(entity_id, module_id)`.
+#[test_only]
+public fun released_fields(e: &Released): (ID, u64) {
+    (e.entity_id, e.module_id)
 }

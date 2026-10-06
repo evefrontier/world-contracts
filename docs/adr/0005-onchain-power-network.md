@@ -15,7 +15,7 @@ through the game client.
 let better fuel last longer.
 - Budget fittings arithmetically against a known power ceiling, instead of
 guessing.
-- Shut modules down in a priority order when power runs short.
+- Shut modules down by priority group when power runs short.
 - Let a tribe assign power-management actions to different members through contract-level
 permissions.
 
@@ -66,7 +66,7 @@ mutating transaction; view functions only expose the projected fuel/capacity.
 However in-game client will have the updated state via our internal cron job.
 
 When capacity returns (new generator, refuel, or Power On) the same
-transaction regrants: Firm rows in priority order get a full grant or stay at
+transaction regrants: Firm rows in priority-group order get a full grant or stay at
 `0`; leftover then fills Elastic rows up to each `requested`. 
 
 Power On/Off is one master switch for the whole Creation. Off treats capacity
@@ -139,7 +139,7 @@ value <= requested.
 requests, no reserve supply. If a capacitor exists in the client, it is
 off-chain state only.
 - Cross-Creation power sharing (Links/couplers).
-- Builder-customizable shed priority.
+- Builder-customizable shed priority groups.
 
 ## On-chain design
 
@@ -179,7 +179,7 @@ public struct Reservation has store, drop {
     line_loss: u64,
     active_draw_at_last_settled : u64,   // MW granted right now; 0 = none. Firm is 0 or requested.
     kind: DrawKind,
-    // Can add priority later
+    // Can add a priority group later
 }
 
 // Requirement configs. power_grid owns these types, so it alone can obtain
