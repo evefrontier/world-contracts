@@ -829,7 +829,7 @@ fun release_module(grid: &mut PowerGrid, module_id: u64) {
 fun reserved_at(grid: &PowerGrid, priority: u64): vector<u64> {
     let mut module_ids = vector[];
     grid.modules.length().do!(|i| {
-        let (module_id, state) = grid.modules.get_entry_by_index(i);
+        let (module_id, state) = grid.modules.get_entry_by_idx(i);
         if (state.reservation.is_some() && grid.connected[module_id] == priority) {
             module_ids.push_back(*module_id);
         };
@@ -841,7 +841,7 @@ fun reserved_at(grid: &PowerGrid, priority: u64): vector<u64> {
 fun reserved_modules(grid: &PowerGrid): vector<u64> {
     let mut module_ids = vector[];
     grid.modules.length().do!(|i| {
-        let (module_id, state) = grid.modules.get_entry_by_index(i);
+        let (module_id, state) = grid.modules.get_entry_by_idx(i);
         if (state.reservation.is_some()) module_ids.push_back(*module_id);
     });
     module_ids
@@ -861,7 +861,7 @@ fun shed(grid: &mut PowerGrid, entity_id: ID) {
     while (grid.used_mw > grid.effective_capacity_mw()) {
         let mut highest = 0;
         grid.modules.length().do!(|i| {
-            let (module_id, state) = grid.modules.get_entry_by_index(i);
+            let (module_id, state) = grid.modules.get_entry_by_idx(i);
             let priority = grid.connected[module_id];
             if (state.reservation.is_some() && priority > highest) highest = priority;
         });
