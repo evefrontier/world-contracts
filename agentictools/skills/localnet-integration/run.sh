@@ -69,6 +69,7 @@ case "$cmd" in
     ;;
   host-test)
     [ -f "$ROOT/deployments/localnet/world.json" ] || die "no deployments/localnet/world.json — run: run.sh up"
+    docker ps -q -f "name=^${CONTAINER}$" | grep -q . || die "container $CONTAINER is not running — run: run.sh up"
     cd "$ROOT"
     # The container ran `pnpm install` into the mounted repo with Linux binaries;
     # reinstall so host-native deps (esbuild, biome) match this machine.
@@ -84,7 +85,7 @@ case "$cmd" in
     docker rm -f "$CONTAINER" >/dev/null 2>&1 && log "Stopped $CONTAINER." || log "Nothing to stop."
     ;;
   snapshot-up)
-    preflight; port_free 9000
+    preflight; port_free 5432; port_free 9000; port_free 9123; port_free 9125
     docker compose -f "$SNAPSHOT_COMPOSE" up -d --wait
     log "Snapshot chain up. Artifacts: deployments/localnet-snapshot/ · RPC :9000 · faucet :9123 · GraphQL :9125"
     ;;

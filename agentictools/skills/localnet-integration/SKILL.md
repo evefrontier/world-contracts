@@ -1,7 +1,7 @@
 ---
-
-## name: localnet-integration
+name: localnet-integration
 description: Launch a deterministic local Sui network with the world contracts deployed, and run the SDK integration tests against it. Use when asked to "run integration tests", "start/stop localnet", "test against a local chain", "deploy to localnet", "spin up the snapshot chain", or to verify a Move/SDK change end-to-end on a real node.
+---
 
 # Localnet + integration tests
 
