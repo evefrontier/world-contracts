@@ -46,5 +46,6 @@ dist/
 docs/v1/
 .secrets
 .vars
-.claude/skills/
+.claude/skills/*
+!.claude/skills/localnet-integration
 .cursor/rules/
