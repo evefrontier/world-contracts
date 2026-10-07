@@ -20,7 +20,14 @@ use core::{
     request::{Self, Request}
 };
 use std::{internal::Permit, string::String};
-use sui::{derived_object, dynamic_field as df, event, transfer::Receiving, vec_map::{Self, VecMap}};
+use sui::{
+    derived_object,
+    dynamic_field as df,
+    event,
+    transfer::Receiving,
+    vec_map::{Self, VecMap},
+    vec_set::{Self, VecSet}
+};
 
 // === Errors ===
 
@@ -44,6 +51,8 @@ const EActionExists: vector<u8> = b"Action is already enabled";
 const EEntityAlreadyExists: vector<u8> = b"Entity already exists for this key";
 #[error(code = 10)]
 const ELocked: vector<u8> = b"Entity is locked";
+#[error(code = 11)]
+const EComponentsInstalled: vector<u8> = b"Entity still has components installed";
 
 // === Constants ===
 
@@ -52,8 +61,13 @@ const VERSION: u64 = 1;
 // === Structs ===
 
 public struct ComponentKey(u64) has copy, drop, store;
-public struct ActionsKey() has copy, drop, store;
 public struct InFlight() has copy, drop, store;
+
+/// Actions the owner manages with `enable_action` and `disable_action`.
+public struct OwnerActionsKey() has copy, drop, store;
+
+/// Actions an admin manages with `enable_admin_action` and `disable_admin_action`.
+public struct AdminActionsKey() has copy, drop, store;
 
 public struct Entity has key {
     id: UID,
@@ -61,6 +75,8 @@ public struct Entity has key {
     /// Tenant-scoped game identifier used to derive this entity's object ID.
     key: EntityKey,
     access_cap_id: Option<ID>,
+    /// Ids of the installed components. Must be empty on `delete`.
+    component_ids: VecSet<u64>,
 }
 
 /// Proof that delete started via `request_delete`.
@@ -97,8 +113,10 @@ public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity,
         version: VERSION,
         key,
         access_cap_id: option::none(),
+        component_ids: vec_set::empty(),
     };
-    df::add(&mut entity.id, ActionsKey(), vec_map::empty<String, Action>());
+    df::add(&mut entity.id, OwnerActionsKey(), vec_map::empty<String, Action>());
+    df::add(&mut entity.id, AdminActionsKey(), vec_map::empty<String, Action>());
 
     event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
     entity.lock();
@@ -168,6 +186,7 @@ public fun install<T: store>(
     assert!(!df::exists(&entity.id, ComponentKey(component_id)), EComponentExists);
 
     df::add(&mut entity.id, ComponentKey(component_id), component::new(name, inner, version));
+    entity.component_ids.insert(component_id);
     entity.lock();
     request::new(
         option::some(entity.id.to_inner()),
@@ -189,6 +208,7 @@ public fun uninstall<T: store>(
     );
 
     let c: Component<T> = df::remove(&mut entity.id, ComponentKey(component_id));
+    entity.component_ids.remove(&component_id);
     entity.lock();
     let req = request::new(
         option::some(entity.id.to_inner()),
@@ -206,53 +226,60 @@ public fun enable_action(
     action: Action,
     _ctx: &mut TxContext,
 ): Request {
-    add_action(entity, name, action);
+    add_action(entity, OwnerActionsKey(), name, action);
     request::new(
         option::some(entity.id.to_inner()),
         vector[access_cap::owner_requirement()],
     )
 }
 
-/// Expose `action` under `name`. Admin-gated. Same insert as `enable_action`.
+/// Expose `action` under `name` in the admin map. Admin-gated. `interact` looks in
+/// this map before the owner's, so an admin action shadows an owner action with the
+/// same name.
 public fun enable_admin_action(
     entity: &mut Entity,
     name: String,
     action: Action,
     _ctx: &mut TxContext,
 ): Request {
-    add_action(entity, name, action);
+    add_action(entity, AdminActionsKey(), name, action);
     request::new(
         option::some(entity.id.to_inner()),
         vector[admin_service::admin_requirement()],
     )
 }
 
-/// Remove a previously-exposed action. Owner-gated, like `enable_action`.
-/// Admins can also remove actions via `disable_admin_action`.
+/// Remove an action the owner exposed. Owner-gated, like `enable_action`. It does
+/// not touch admin actions.
 public fun disable_action(entity: &mut Entity, name: String, _ctx: &mut TxContext): Request {
-    remove_action(entity, name);
+    remove_action(entity, OwnerActionsKey(), name);
     request::new(
         option::some(entity.id.to_inner()),
         vector[access_cap::owner_requirement()],
     )
 }
 
-/// Remove the action under `name`. Admin-gated. Same removal as `disable_action`.
-/// Works on any action, also one that the owner enabled. Use it to remove the
-/// actions that target a component before you uninstall that component.
+/// Remove an action an admin exposed. Admin-gated. It does not touch the owner's
+/// actions. Use it to remove the admin actions that target a component before you
+/// uninstall that component.
 public fun disable_admin_action(entity: &mut Entity, name: String, _ctx: &mut TxContext): Request {
-    remove_action(entity, name);
+    remove_action(entity, AdminActionsKey(), name);
     request::new(
         option::some(entity.id.to_inner()),
         vector[admin_service::admin_requirement()],
     )
 }
 
-/// Interact with a registered action, producing the `Request` to satisfy.
+/// Interact with a registered action, producing the `Request` to satisfy. Admin
+/// actions are checked first, then the owner's.
 public fun interact(entity: &mut Entity, action: String, _ctx: &mut TxContext): Request {
     assert!(entity.version == VERSION, EWrongVersion);
 
-    let actions: &VecMap<String, Action> = df::borrow(&entity.id, ActionsKey());
+    let admin_actions: &VecMap<String, Action> = df::borrow(&entity.id, AdminActionsKey());
+    let owner_actions: &VecMap<String, Action> = df::borrow(&entity.id, OwnerActionsKey());
+    // An admin action shadows an owner action with the same name. An owner should
+    // give its actions names that no admin action uses, or they are unreachable.
+    let actions = if (admin_actions.contains(&action)) admin_actions else owner_actions;
     assert!(actions.contains(&action), EUnknownAction);
     let request = actions.get(&action).to_request(option::some(entity.id.to_inner()), vector[]);
 
@@ -307,22 +334,22 @@ public fun request_delete(entity: &mut Entity): (Request, DeleteTicket) {
     (req, DeleteTicket { entity_id })
 }
 
-/// Consume the entity after `request_delete` and a completed request. Strips
-/// remaining DFs and deletes the UID. The derived `EntityKey` stays claimed.
-///
-/// TODO: check for orphaned components. Delete no longer checks
-/// installed components; leftover component DFs are orphaned.
+/// Consume the entity after `request_delete` and a completed request. Aborts
+/// while a component is installed: uninstall every component first. Strips the
+/// actions DF and deletes the UID. The derived `EntityKey` stays claimed.
 public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
     assert!(entity.version == VERSION, EWrongVersion);
     assert!(entity.is_locked(), ENotLocked);
+    assert!(entity.component_ids.is_empty(), EComponentsInstalled);
     let DeleteTicket { entity_id } = ticket;
     assert!(entity_id == entity.id.to_inner(), EWrongEntity);
     req.entity_id().do!(|id| assert!(id == entity.id.to_inner(), EWrongEntity));
     req.complete();
     entity.unlock();
 
-    let _: VecMap<String, Action> = df::remove(&mut entity.id, ActionsKey());
-    let Entity { id, version: _, key, access_cap_id: _ } = entity;
+    let _: VecMap<String, Action> = df::remove(&mut entity.id, OwnerActionsKey());
+    let _: VecMap<String, Action> = df::remove(&mut entity.id, AdminActionsKey());
+    let Entity { id, version: _, key, access_cap_id: _, component_ids: _ } = entity;
     event::emit(EntityDeleted { entity_id: id.to_inner(), key });
     id.delete();
 }
@@ -350,6 +377,10 @@ public fun access_cap_id(entity: &Entity): Option<ID> {
     entity.access_cap_id
 }
 
+public fun component_ids(entity: &Entity): vector<u64> {
+    *entity.component_ids.keys()
+}
+
 public fun has_component(entity: &Entity, component_id: u64): bool {
     df::exists(&entity.id, ComponentKey(component_id))
 }
@@ -364,17 +395,17 @@ public fun version(entity: &Entity): u64 {
 
 // === Private Functions ===
 
-fun add_action(entity: &mut Entity, name: String, action: Action) {
+fun add_action<K: copy + drop + store>(entity: &mut Entity, key: K, name: String, action: Action) {
     assert!(entity.version == VERSION, EWrongVersion);
-    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
+    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, key);
     assert!(!actions.contains(&name), EActionExists);
     actions.insert(name, action);
     entity.lock();
 }
 
-fun remove_action(entity: &mut Entity, name: String) {
+fun remove_action<K: copy + drop + store>(entity: &mut Entity, key: K, name: String) {
     assert!(entity.version == VERSION, EWrongVersion);
-    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, ActionsKey());
+    let actions: &mut VecMap<String, Action> = df::borrow_mut(&mut entity.id, key);
     assert!(actions.contains(&name), EUnknownAction);
     let (_, _action) = actions.remove(&name);
     entity.lock();

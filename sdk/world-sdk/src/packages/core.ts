@@ -138,6 +138,20 @@ export function deleteEntity(
   })
 }
 
+/**
+ * Read the ids of the components installed on `entity`.
+ */
+export function componentIds(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): TransactionResult {
+  return tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::component_ids`,
+    arguments: [entity],
+  })
+}
+
 /** Share a configured entity. */
 export function shareEntity(
   tx: Transaction,
@@ -305,7 +319,9 @@ export function enableAction(
 
 /**
  * Expose an action under `name` from `requirements` and close its admin-gated
- * request. Signer must be an admin. The owner can still disable it later.
+ * request. Signer must be an admin. The action goes in the admin map: `interact`
+ * resolves it before an owner action with the same name, and only
+ * `disableAdminAction` removes it.
  */
 export function enableAdminAction(
   tx: Transaction,
@@ -333,7 +349,10 @@ export function enableAdminAction(
   completeRequest(tx, config, entity, request)
 }
 
-/** Remove a previously-exposed action, closing its owner-gated request. */
+/**
+ * Remove an action the owner exposed, closing its owner-gated request. It does
+ * not touch admin actions.
+ */
 export function disableAction(
   tx: Transaction,
   config: WorldConfig,
@@ -350,9 +369,9 @@ export function disableAction(
 }
 
 /**
- * Remove the action under `name` and close its admin-gated request. Signer
- * must be an admin. Works on any action, also one that the owner enabled. Call
- * it before you uninstall the component that the action targets.
+ * Remove an action an admin exposed and close its admin-gated request. Signer
+ * must be an admin. It does not touch the owner's actions. Call it before you
+ * uninstall the component that the action targets.
  */
 export function disableAdminAction(
   tx: Transaction,

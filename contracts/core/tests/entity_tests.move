@@ -43,6 +43,7 @@ fun new_sets_initial_fields() {
         assert!(entity::key(&e).id() == 1);
         assert!(entity::key(&e).tenant() == tenant());
         assert!(!entity::has_component(&e, counter_id()));
+        assert!(entity::component_ids(&e).is_empty());
 
         entity::share(e);
         ts::return_shared(acl);
@@ -113,6 +114,7 @@ fun install_adds_module() {
 
     assert!(e.has_component(counter_id()));
     assert!(e.has_component_with_type<Counter>(counter_id()));
+    assert!(e.component_ids() == vector[counter_id()]);
 
     entity::share(e);
     ts::return_shared(acl);
@@ -182,6 +184,7 @@ fun uninstall_removes_and_returns_module() {
     e.complete_request(req);
 
     assert!(!e.has_component(counter_id()));
+    assert!(e.component_ids().is_empty());
     let Counter { value } = m.unwrap(internal::permit<Counter>());
     assert!(value == 9);
 
@@ -245,6 +248,57 @@ fun install_two_modules_of_same_type() {
     assert!(e.has_component_with_type<Counter>(second_id));
     assert!(e.component_ref<Counter>(counter_id(), internal::permit<Counter>()).inner().value == 0);
     assert!(e.component_ref<Counter>(second_id, internal::permit<Counter>()).inner().value == 1);
+    assert!(e.component_ids() == vector[counter_id(), second_id]);
+
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test]
+fun uninstall_one_of_two_keeps_the_other_listed() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+    let second_id = 0xC1;
+
+    let mut req = e.install(
+        counter_id(),
+        option::some(counter_name()),
+        Counter { value: 0 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    let mut req = e.install(
+        second_id,
+        option::some(string::utf8(b"counter-2")),
+        Counter { value: 1 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    // Remove the first component. The list keeps the second one only.
+    let (m, mut req) = e.uninstall<Counter>(counter_id(), internal::permit<Counter>(), ctx);
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+    let Counter { value: _ } = m.unwrap(internal::permit<Counter>());
+
+    assert!(e.component_ids() == vector[second_id]);
+    assert!(!e.has_component(counter_id()));
+    assert!(e.has_component(second_id));
 
     entity::share(e);
     ts::return_shared(acl);
@@ -288,8 +342,8 @@ fun enable_then_disable_action() {
     scenario.end();
 }
 
-#[test]
-fun admin_enables_action_owner_disables_it() {
+#[test, expected_failure(abort_code = entity::EUnknownAction)]
+fun owner_cannot_disable_admin_action_aborts() {
     let mut scenario = ts::begin(@0xA);
     setup(&mut scenario);
 
@@ -312,15 +366,13 @@ fun admin_enables_action_owner_disables_it() {
     ts::return_shared(acl);
     ts::return_shared(registry);
 
+    // The admin action is not in the owner's map, so the owner cannot remove it.
     ts::next_tx(&mut scenario, @0xB);
     let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
-    let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let mut req = e.disable_action(string::utf8(b"act"), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    let req = e.disable_action(string::utf8(b"act"), scenario.ctx());
     e.complete_request(req);
-    ts::return_to_sender(&scenario, cap);
-    ts::return_shared(e);
-    scenario.end();
+
+    abort
 }
 
 #[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
@@ -349,8 +401,8 @@ fun enable_admin_action_by_non_admin_aborts() {
     abort
 }
 
-#[test]
-fun owner_enables_action_admin_disables_it() {
+#[test, expected_failure(abort_code = entity::EUnknownAction)]
+fun admin_cannot_disable_owner_action_aborts() {
     let mut scenario = ts::begin(@0xA);
     setup(&mut scenario);
 
@@ -379,14 +431,95 @@ fun owner_enables_action_admin_disables_it() {
     ts::return_to_sender(&scenario, cap);
     ts::return_shared(e);
 
-    // The admin removes the owner's action. The admin does not hold the owner cap.
+    // The owner's action is not in the admin map, so the admin cannot remove it.
+    ts::next_tx(&mut scenario, @0xA);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let req = e.disable_admin_action(string::utf8(b"retrieve_the_one_piece"), scenario.ctx());
+    e.complete_request(req);
+
+    abort
+}
+
+#[test]
+fun interact_prefers_admin_action() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.mint_access(@0xB, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    // The admin action needs an admin. The owner's action, below, needs nothing.
+    let mut req = e.enable_admin_action(
+        string::utf8(b"give_unlimited_lux"),
+        action::new(vector[admin_service::admin_requirement()]),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    // The same name in the owner's map is allowed.
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(
+        string::utf8(b"give_unlimited_lux"),
+        action::new(vector[]),
+        scenario.ctx(),
+    );
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+
+    // The request carries the admin requirement, so the admin action was chosen.
     ts::next_tx(&mut scenario, @0xA);
     let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
     let acl = take_acl(&scenario);
-    let mut req = e.disable_admin_action(string::utf8(b"retrieve_the_one_piece"), scenario.ctx());
+    let mut req = e.interact(string::utf8(b"give_unlimited_lux"), scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     ts::return_shared(acl);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test]
+fun interact_falls_back_to_owner_action() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.mint_access(@0xB, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+
+    // No admin action has this name, so the owner's action is used.
+    let req = e.interact(string::utf8(b"act"), scenario.ctx());
+    e.complete_request(req);
+
+    ts::return_to_sender(&scenario, cap);
     ts::return_shared(e);
     scenario.end();
 }
@@ -620,6 +753,35 @@ fun delete_shared_entity() {
     e.delete(req, ticket);
     ts::return_shared(acl);
     scenario.end();
+}
+
+#[test, expected_failure(abort_code = entity::EComponentsInstalled)]
+fun delete_with_component_installed_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ctx = scenario.ctx();
+
+    let mut req = e.install(
+        counter_id(),
+        option::some(counter_name()),
+        Counter { value: 0 },
+        1,
+        internal::permit<Counter>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.complete_request(req);
+
+    let (mut req, ticket) = e.request_delete();
+    admin_service::verify_admin(&mut req, &acl, ctx);
+    e.delete(req, ticket);
+
+    abort
 }
 
 #[test, expected_failure(abort_code = entity::ELocked)]
