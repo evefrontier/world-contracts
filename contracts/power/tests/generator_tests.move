@@ -22,7 +22,8 @@ const GEN_A: u64 = 101;
 const GEN_B: u64 = 102;
 const OUTPUT_A: u64 = 50;
 const OUTPUT_B: u64 = 30;
-const CONTAINMENT: u64 = 10;
+/// Containment reduction 10 at `SCALE`.
+const CONTAINMENT: u64 = 100_000;
 
 const MANAGE: vector<u8> = b"manage_generator";
 const OPERATE: vector<u8> = b"operate_grid";
@@ -299,8 +300,9 @@ fun online_and_offline_sum_capacity() {
     scenario.end();
 }
 
+// With fuel, power on gives full capacity: see `fuel_tests`.
 #[test]
-fun effective_capacity_follows_power_switch() {
+fun effective_capacity_is_zero_without_fuel() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
@@ -312,8 +314,9 @@ fun effective_capacity_follows_power_switch() {
     assert!(effective == 0);
 
     owner_runs_operation(&mut scenario, entity_id, OP_POWER_ON, 0, &clock);
-    let (_, effective) = capacity(&mut scenario, entity_id);
-    assert!(effective == OUTPUT_A);
+    let (total, effective) = capacity(&mut scenario, entity_id);
+    assert!(total == OUTPUT_A);
+    assert!(effective == 0);
 
     clock.destroy_for_testing();
     scenario.end();

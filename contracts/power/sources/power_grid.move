@@ -1,6 +1,8 @@
 /// Power grid component: one per Creation, at a well-known slot. Pools
 /// Generator capacity and fuel, and grants Firm or Elastic power draws to
-/// connected modules. See `docs/adr/0005-onchain-power-network.md`.
+/// connected modules. Fuel burns lazily: every mutating handler settles the
+/// burn since the last touch, and views project it to now. Power, fuel and
+/// fuel stats are fixed point at `SCALE`. See `docs/adr/0005-onchain-power-network.md`.
 module power::power_grid;
 
 use core::{
@@ -10,9 +12,9 @@ use core::{
     request::{Request, Frame},
     requirement::{Self, Requirement}
 };
-use power::generator;
+use power::{fuel, generator};
 use std::{internal::Permit, string::{Self, String}};
-use sui::{bcs, clock::Clock, event, vec_map::{Self, VecMap}, vec_set::{Self, VecSet}};
+use sui::{bcs, clock::Clock, event, vec_map::{Self, VecMap}};
 
 // === Errors ===
 
@@ -82,6 +84,26 @@ const EInsufficientPower: vector<u8> = b"Power grid does not have enough capacit
 const EDrawBelowMin: vector<u8> = b"Module's granted draw is below the requirement";
 #[error(code = 31)]
 const EDrawKindMismatch: vector<u8> = b"Module's draw kind does not match the requirement";
+#[error(code = 32)]
+const EFuelSourceAlreadyRegistered: vector<u8> =
+    b"Fuel source is already registered with this power grid";
+#[error(code = 33)]
+const EFuelSourceNotRegistered: vector<u8> = b"Fuel source is not registered with this power grid";
+#[error(code = 34)]
+const EFuelSourceStillRegistered: vector<u8> =
+    b"Fuel source must be unregistered from the power grid before uninstall";
+#[error(code = 35)]
+const EFuelOverCapacity: vector<u8> = b"Fuel quantity would exceed the grid's fuel capacity";
+#[error(code = 36)]
+const EZeroFuel: vector<u8> = b"Fuel amount must be greater than zero";
+#[error(code = 37)]
+const EFuelTypeNotAllowed: vector<u8> = b"Fuel type is not allowed by the requirement";
+#[error(code = 38)]
+const EBurdenAboveMax: vector<u8> = b"Fuel containment burden is above the requirement";
+#[error(code = 39)]
+const EFuelAmountBelowMin: vector<u8> = b"Fuel amount is below the requirement";
+#[error(code = 40)]
+const EFuelAmountAboveMax: vector<u8> = b"Fuel amount is above the requirement";
 
 // === Constants ===
 
@@ -89,23 +111,29 @@ const VERSION: u64 = 1;
 const NAME: vector<u8> = b"power_grid";
 /// Cap on registered modules.
 const MAX_CONNECTED: u64 = 100;
+/// Fixed-point scale for power, fuel and fuel stats: 4 decimals.
+const SCALE: u64 = 10_000;
+const MS_PER_SECOND: u64 = 1_000;
+/// Fuel factor bounds, matching the game client: [1, 100] at `SCALE`.
+const MIN_FUEL_FACTOR: u64 = 10_000;
+const MAX_FUEL_FACTOR: u64 = 1_000_000;
 
 // === Structs ===
 
 /// Pooled fuel and capacity, plus connected modules and their reservations.
 public struct PowerGrid has store {
     on: bool,
-    /// Fuel remaining as of `last_settled_ms`, not live.
+    /// Fuel remaining as of `last_settled_ms`, not live. Units at `SCALE`.
     settled_fuel_quantity: u64,
-    /// Sum of Fuel components' rated capacity.
+    /// Sum of registered Fuel sources' capacity. Units at `SCALE`.
     fuel_capacity: u64,
-    /// Blended (weighted-average) fuel quality, fixed point.
+    /// Blended (weighted-average) fuel impulse, at `SCALE`.
     fuel_impulse: u64,
-    /// Blended (weighted-average) fuel containment burden.
+    /// Blended (weighted-average) fuel containment burden, at `SCALE`.
     fuel_containment_burden: u64,
-    /// Sum of online Generators' rated output, in MW.
+    /// Sum of online Generators' rated output, MW at `SCALE`.
     capacity_mw: u64,
-    /// Sum of granted reservations' `active_draw + line_loss`, in MW.
+    /// Sum of granted reservations' `active_draw + line_loss`, MW at `SCALE`.
     used_mw: u64,
     /// Timestamp `settled_fuel_quantity` was last computed at.
     last_settled_ms: u64,
@@ -116,13 +144,15 @@ public struct PowerGrid has store {
     connected: VecMap<u64, u64>,
     /// Generators feeding the grid by component id.
     generators: VecMap<u64, GeneratorState>,
-    /// Component ids of Fuel components feeding the grid.
-    fuel_sources: VecSet<u64>,
+    /// Fuel sources feeding the grid: component id, capacity (units at `SCALE`).
+    fuel_sources: VecMap<u64, u64>,
 }
 
 /// A Generator's fixed stats and online state, held by the grid.
 public struct GeneratorState has copy, drop, store {
+    /// MW at `SCALE`.
     max_output_mw: u64,
+    /// At `SCALE`. Softens the fuel's containment burden for this Generator's burn.
     containment_reduction: u64,
     online: bool,
 }
@@ -159,6 +189,9 @@ public struct OperateGrid() has drop;
 /// Marker for `connect_module` / `disconnect_module`.
 public struct ManageModule() has drop;
 
+/// Marker for `register_fuel_source` / `unregister_fuel_source`.
+public struct ManageFuel() has drop;
+
 /// Minimum grid state an action can require. `None` skips a check.
 public struct PowerGridRequirement has drop {
     on: bool,
@@ -182,6 +215,20 @@ public struct GeneratorRequirement has drop {
     /// Minimum `containment_reduction`, if set.
     containment_reduction: Option<u64>,
 }
+
+/// The owner's rules for which fuel `deposit_fuel` accepts. Empty `fuel_types`
+/// or `None` skips a check. Stats and amounts at `SCALE`.
+public struct FuelRequirement has drop {
+    /// Allowed fuel type ids; empty allows any.
+    fuel_types: vector<u64>,
+    min_impulse: Option<u64>,
+    max_containment_burden: Option<u64>,
+    min_amount: Option<u64>,
+    max_amount: Option<u64>,
+}
+
+/// Requirement satisfied by `deposit_fuel`, carrying the owner's `FuelRequirement`.
+public struct DepositFuel(FuelRequirement) has drop;
 
 /// `module_id` holds a reservation of `kind` with at least `draw` MW granted.
 public struct ReserveRequirement has drop {
@@ -272,6 +319,32 @@ public struct Shed has copy, drop {
     module_id: u64,
 }
 
+public struct FuelSourceRegistered has copy, drop {
+    entity_id: ID,
+    fuel_id: u64,
+    capacity: u64,
+}
+
+public struct FuelSourceUnregistered has copy, drop {
+    entity_id: ID,
+    fuel_id: u64,
+}
+
+/// Fuel was deposited; the `resulting_*` values are the pool after blending.
+public struct FuelAdded has copy, drop {
+    entity_id: ID,
+    fuel_type: u64,
+    amount: u64,
+    resulting_quantity: u64,
+    resulting_impulse: u64,
+    resulting_containment_burden: u64,
+}
+
+/// Settling burned the last of the fuel.
+public struct FuelDepleted has copy, drop {
+    entity_id: ID,
+}
+
 // === Public Functions ===
 
 /// Install the grid, off and empty. Admin-gated.
@@ -289,7 +362,7 @@ public fun install(entity: &mut Entity, clock: &Clock, ctx: &mut TxContext): Req
         modules: vec_map::empty(),
         connected: vec_map::empty(),
         generators: vec_map::empty(),
-        fuel_sources: vec_set::empty(),
+        fuel_sources: vec_map::empty(),
     };
     let req = entity.install(
         component_id(),
@@ -328,7 +401,7 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
     let entity_id = entity.id();
     let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
     if (on) assert!(!grid.on, EAlreadyOn) else assert!(grid.on, EAlreadyOff);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.on = on;
     event::emit(PowerToggled { entity_id, on });
     grid.shed(entity_id);
@@ -375,7 +448,7 @@ public fun register_generator(
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take(entity, req, manage_generator_permit());
     assert!(!grid.generators.contains(&generator_id), EGeneratorAlreadyRegistered);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid
         .generators
         .insert(
@@ -404,7 +477,7 @@ public fun unregister_generator(
     assert!(grid.generators.contains(&generator_id), EGeneratorNotRegistered);
     // TODO: we can automatically offline and unregister if needed
     assert!(!grid.generators.get(&generator_id).online, EGeneratorOnline);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.generators.remove(&generator_id);
     event::emit(GeneratorUnregistered { entity_id, generator_id });
     frame.require(admin_service::admin_requirement());
@@ -469,7 +542,7 @@ public fun connect_module(
     let (_requirement, mut frame, grid) = take(entity, req, manage_module_permit());
     assert!(!grid.modules.contains(&module_id), EModuleAlreadyRegistered);
     assert!(grid.modules.length() < MAX_CONNECTED, ETooManyConnected);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.modules.insert(module_id, ModuleState { line_loss, reservation: option::none() });
     grid.connected.insert(module_id, 0);
     event::emit(ModuleConnected { entity_id, module_id, line_loss, priority: 0 });
@@ -487,7 +560,7 @@ public fun disconnect_module(
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take(entity, req, manage_module_permit());
     assert!(grid.modules.contains(&module_id), EModuleNotRegistered);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     if (grid.has_reservation(module_id)) {
         grid.release_module(module_id);
         event::emit(Released { entity_id, module_id });
@@ -512,7 +585,7 @@ public fun set_priority(
     let entity_id = entity.id();
     let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
     assert!(grid.connected.contains(&module_id), ENotConnected);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     *&mut grid.connected[&module_id] = priority;
     event::emit(PriorityChanged { entity_id, module_id, priority });
     frame.destroy_empty_frame();
@@ -533,7 +606,7 @@ public fun reserve(
     assert!(grid.connected.contains(&module_id), ENotConnected);
     // TODO: may later replace the existing reservation instead of aborting.
     assert!(!grid.has_reservation(module_id), EAlreadyReserved);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     let line_loss = grid.modules[&module_id].line_loss;
     let effective = grid.effective_capacity_mw();
     let leftover = if (effective > grid.used_mw) effective - grid.used_mw else 0;
@@ -551,7 +624,7 @@ public fun release(entity: &mut Entity, req: &mut Request, module_id: u64, clock
     let entity_id = entity.id();
     let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
     assert!(grid.has_reservation(module_id), ENotReserved);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.release_module(module_id);
     event::emit(Released { entity_id, module_id });
     frame.destroy_empty_frame();
@@ -561,7 +634,7 @@ public fun release(entity: &mut Entity, req: &mut Request, module_id: u64, clock
 public fun release_priority(entity: &mut Entity, req: &mut Request, priority: u64, clock: &Clock) {
     let entity_id = entity.id();
     let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.reserved_at(priority).do!(|module_id| {
         grid.release_module(module_id);
         event::emit(Released { entity_id, module_id });
@@ -582,6 +655,109 @@ public fun reserve_requirement(module_id: u64, draw: u64, kind: DrawKind): Requi
     requirement::from_config(
         option::some(component_id()),
         ReserveRequirement { module_id, draw, kind },
+    )
+}
+
+/// Register an installed Fuel source with its `capacity` (units at `SCALE`). Admin-only.
+public fun register_fuel_source(
+    entity: &mut Entity,
+    req: &mut Request,
+    fuel_id: u64,
+    capacity: u64,
+    clock: &Clock,
+) {
+    fuel::assert_installed(entity, fuel_id);
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = take(entity, req, manage_fuel_permit());
+    assert!(!grid.fuel_sources.contains(&fuel_id), EFuelSourceAlreadyRegistered);
+    grid.settle(entity_id, clock);
+    grid.fuel_sources.insert(fuel_id, capacity);
+    grid.fuel_capacity = grid.fuel_capacity + capacity;
+    event::emit(FuelSourceRegistered { entity_id, fuel_id, capacity });
+    frame.require(admin_service::admin_requirement());
+    req.enqueue(frame);
+}
+
+/// Remove a Fuel source from the grid. Aborts if the settled fuel would not
+/// fit the reduced capacity. Admin-only.
+public fun unregister_fuel_source(
+    entity: &mut Entity,
+    req: &mut Request,
+    fuel_id: u64,
+    clock: &Clock,
+) {
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = take(entity, req, manage_fuel_permit());
+    assert!(grid.fuel_sources.contains(&fuel_id), EFuelSourceNotRegistered);
+    grid.settle(entity_id, clock);
+    let remaining = grid.fuel_capacity - grid.fuel_sources[&fuel_id];
+    assert!(grid.settled_fuel_quantity <= remaining, EFuelOverCapacity);
+    grid.fuel_sources.remove(&fuel_id);
+    grid.fuel_capacity = remaining;
+    event::emit(FuelSourceUnregistered { entity_id, fuel_id });
+    frame.require(admin_service::admin_requirement());
+    req.enqueue(frame);
+}
+
+/// Uninstall an unregistered Fuel source. Admin-gated.
+public fun uninstall_fuel_source(entity: &mut Entity, fuel_id: u64, ctx: &mut TxContext): Request {
+    assert!(!is_fuel_source_registered(entity, fuel_id), EFuelSourceStillRegistered);
+    fuel::uninstall(entity, fuel_id, ctx)
+}
+
+// TODO: an `Item`to fuel path once inventory can connect to the fuel bay.
+/// Bridge `amount` of fuel into the pool and blend its stats by weighted
+/// average, if it meets the owner's `FuelRequirement`. All values at `SCALE`,
+/// supplied by the game server. The gas sponsor must be on `AdminACL`.
+public fun deposit_fuel(
+    entity: &mut Entity,
+    req: &mut Request,
+    fuel_type: u64,
+    amount: u64,
+    impulse: u64,
+    containment_burden: u64,
+    clock: &Clock,
+) {
+    let entity_id = entity.id();
+    let (requirement, mut frame, grid) = take(entity, req, deposit_fuel_permit());
+    assert!(amount > 0, EZeroFuel);
+    enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
+    grid.settle(entity_id, clock);
+    let old_quantity = grid.settled_fuel_quantity;
+    assert!(old_quantity + amount <= grid.fuel_capacity, EFuelOverCapacity);
+    grid.fuel_impulse = blend(grid.fuel_impulse, old_quantity, impulse, amount);
+    grid.fuel_containment_burden =
+        blend(grid.fuel_containment_burden, old_quantity, containment_burden, amount);
+    grid.settled_fuel_quantity = old_quantity + amount;
+    event::emit(FuelAdded {
+        entity_id,
+        fuel_type,
+        amount,
+        resulting_quantity: grid.settled_fuel_quantity,
+        resulting_impulse: grid.fuel_impulse,
+        resulting_containment_burden: grid.fuel_containment_burden,
+    });
+    frame.require(admin_service::sponsor_requirement());
+    req.enqueue(frame);
+}
+
+/// Build a `DepositFuel` requirement with the owner's fuel rules.
+public fun deposit_fuel_requirement(
+    fuel_types: vector<u64>,
+    min_impulse: Option<u64>,
+    max_containment_burden: Option<u64>,
+    min_amount: Option<u64>,
+    max_amount: Option<u64>,
+): Requirement {
+    requirement::from_config(
+        option::some(component_id()),
+        DepositFuel(FuelRequirement {
+            fuel_types,
+            min_impulse,
+            max_containment_burden,
+            min_amount,
+            max_amount,
+        }),
     )
 }
 
@@ -613,9 +789,43 @@ public fun is_generator_registered(entity: &Entity, generator_id: u64): bool {
         && power_grid(entity).generators.contains(&generator_id)
 }
 
-/// Capacity available to reservations: 0 while off.
+/// True if the Fuel source is registered with an installed grid.
+public fun is_fuel_source_registered(entity: &Entity, fuel_id: u64): bool {
+    entity.has_component_with_type<PowerGrid>(component_id())
+        && power_grid(entity).fuel_sources.contains(&fuel_id)
+}
+
+/// Capacity available to reservations, as of the last settle: 0 while off or out of fuel.
 public fun effective_capacity_mw(grid: &PowerGrid): u64 {
-    if (grid.on) grid.capacity_mw else 0
+    if (grid.on && grid.settled_fuel_quantity > 0) grid.capacity_mw else 0
+}
+
+/// Fuel left now, with the burn since the last settle applied.
+public fun projected_fuel(grid: &PowerGrid, clock: &Clock): u64 {
+    grid.settled_fuel_quantity - grid.fuel_burn(clock.timestamp_ms())
+}
+
+// TODO: Should we have a update function that can be called by the owner if he wants spend for upto date values ?
+/// `(effective_capacity_mw, used_mw, reserved module ids)` now. If the fuel
+/// has run out since the last settle, everything reads as shed.
+public fun projected_status(grid: &PowerGrid, clock: &Clock): (u64, u64, vector<u64>) {
+    if (grid.projected_fuel(clock) == 0) return (0, 0, vector[]);
+    (grid.effective_capacity_mw(), grid.used_mw, grid.reserved_modules())
+}
+
+/// Fuel burned per second of load: `impulse / max(1, burden / containment_reduction)`,
+/// clamped to [1, 100]. All values at `SCALE`.
+public fun fuel_factor(impulse: u64, containment_burden: u64, containment_reduction: u64): u64 {
+    let reduction = containment_reduction.max(SCALE) as u128;
+    let burden_ratio = ((containment_burden as u128) * (SCALE as u128) / reduction).max(
+        SCALE as u128,
+    );
+    let factor = (impulse as u128) * (SCALE as u128) / burden_ratio;
+    (factor.min(MAX_FUEL_FACTOR as u128) as u64).max(MIN_FUEL_FACTOR)
+}
+
+public fun scale(): u64 {
+    SCALE
 }
 
 public fun component_id(): u64 {
@@ -690,8 +900,14 @@ public fun generators(grid: &PowerGrid): &VecMap<u64, GeneratorState> {
     &grid.generators
 }
 
-public fun fuel_sources(grid: &PowerGrid): &VecSet<u64> {
+public fun fuel_sources(grid: &PowerGrid): &VecMap<u64, u64> {
     &grid.fuel_sources
+}
+
+/// A registered Fuel source's capacity.
+public fun fuel_source_capacity(grid: &PowerGrid, fuel_id: u64): u64 {
+    assert!(grid.fuel_sources.contains(&fuel_id), EFuelSourceNotRegistered);
+    grid.fuel_sources[&fuel_id]
 }
 
 public fun max_output_mw(state: &GeneratorState): u64 {
@@ -774,6 +990,26 @@ public fun required_kind(rule: &ReserveRequirement): DrawKind {
     rule.kind
 }
 
+public fun fuel_types(rule: &FuelRequirement): &vector<u64> {
+    &rule.fuel_types
+}
+
+public fun min_impulse(rule: &FuelRequirement): Option<u64> {
+    rule.min_impulse
+}
+
+public fun max_containment_burden(rule: &FuelRequirement): Option<u64> {
+    rule.max_containment_burden
+}
+
+public fun min_amount(rule: &FuelRequirement): Option<u64> {
+    rule.min_amount
+}
+
+public fun max_amount(rule: &FuelRequirement): Option<u64> {
+    rule.max_amount
+}
+
 public fun is_firm(kind: &DrawKind): bool {
     match (kind) {
         DrawKind::Firm => true,
@@ -806,7 +1042,7 @@ fun set_generator_online(
 ) {
     assert!(grid.generators.contains(&generator_id), EGeneratorNotRegistered);
     // Settle before capacity changes: fuel burn depends on which Generators run.
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     let state = grid.generators.get_mut(&generator_id);
     if (online) assert!(!state.online, EGeneratorAlreadyOnline)
     else assert!(state.online, EGeneratorAlreadyOffline);
@@ -919,9 +1155,79 @@ fun enforce_reserved(requirement: &Requirement, grid: &PowerGrid) {
     assert!(reservation.active_draw >= draw, EDrawBelowMin);
 }
 
-/// Advance fuel state to now.
-fun settle(grid: &mut PowerGrid, clock: &Clock) {
-    grid.last_settled_ms = clock.timestamp_ms();
+/// Abort if a deposit breaks a `FuelRequirement`. Mirrors its field order.
+fun enforce_fuel(
+    requirement: &Requirement,
+    fuel_type: u64,
+    amount: u64,
+    impulse: u64,
+    containment_burden: u64,
+) {
+    let mut encoded = bcs::new(requirement.data());
+    let fuel_types = encoded.peel_vec_u64();
+    let min_impulse = encoded.peel_option_u64();
+    let max_containment_burden = encoded.peel_option_u64();
+    let min_amount = encoded.peel_option_u64();
+    let max_amount = encoded.peel_option_u64();
+    assert!(fuel_types.is_empty() || fuel_types.contains(&fuel_type), EFuelTypeNotAllowed);
+    min_impulse.do!(|min| assert!(impulse >= min, EImpulseBelowMin));
+    max_containment_burden.do!(|max| assert!(containment_burden <= max, EBurdenAboveMax));
+    min_amount.do!(|min| assert!(amount >= min, EFuelAmountBelowMin));
+    max_amount.do!(|max| assert!(amount <= max, EFuelAmountAboveMax));
+}
+
+/// Burn the fuel used since the last settle and advance to now. Running dry
+/// zeroes effective capacity, so every reservation is shed.
+fun settle(grid: &mut PowerGrid, entity_id: ID, clock: &Clock) {
+    let now_ms = clock.timestamp_ms();
+    let burn = grid.fuel_burn(now_ms);
+    grid.last_settled_ms = now_ms.max(grid.last_settled_ms);
+    if (burn == 0) return;
+    grid.settled_fuel_quantity = grid.settled_fuel_quantity - burn;
+    if (grid.settled_fuel_quantity == 0) {
+        event::emit(FuelDepleted { entity_id });
+        grid.shed(entity_id);
+    };
+}
+
+/// Fuel burned between `last_settled_ms` and `now_ms`, capped at what is left.
+/// Each online Generator serves load in proportion to its output and burns
+/// `load / factor` units per second at its own containment. Rounds up, so
+/// frequent settles never burn less than the true amount.
+fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
+    if (now_ms <= grid.last_settled_ms || grid.fuel_impulse == 0) return 0;
+    let load = grid.used_mw.min(grid.capacity_mw) as u128;
+    if (load == 0 || grid.settled_fuel_quantity == 0) return 0;
+    let elapsed_ms = (now_ms - grid.last_settled_ms) as u128;
+    let mut burn = 0u128;
+    grid.generators.length().do!(|i| {
+        let (_, state) = grid.generators.get_entry_by_idx(i);
+        if (state.online) {
+            let share = load * (state.max_output_mw as u128) / (grid.capacity_mw as u128);
+            let factor = fuel_factor(
+                grid.fuel_impulse,
+                grid.fuel_containment_burden,
+                state.containment_reduction,
+            );
+            burn =
+                burn + divide_round_up(
+                    share * (SCALE as u128) * elapsed_ms,
+                    (factor as u128) * (MS_PER_SECOND as u128),
+                );
+        };
+    });
+    (burn.min(grid.settled_fuel_quantity as u128)) as u64
+}
+
+/// Quantity-weighted average of the pool's `value` and an added `added_value`.
+fun blend(value: u64, quantity: u64, added_value: u64, added_quantity: u64): u64 {
+    let total =
+        (value as u128) * (quantity as u128) + (added_value as u128) * (added_quantity as u128);
+    (total / ((quantity + added_quantity) as u128)) as u64
+}
+
+fun divide_round_up(numerator: u128, denominator: u128): u128 {
+    (numerator + denominator - 1) / denominator
 }
 
 fun component_label(): String {
@@ -956,6 +1262,14 @@ fun reserve_permit(): Permit<ReserveRequirement> {
     internal::permit<ReserveRequirement>()
 }
 
+fun manage_fuel_permit(): Permit<ManageFuel> {
+    internal::permit<ManageFuel>()
+}
+
+fun deposit_fuel_permit(): Permit<DepositFuel> {
+    internal::permit<DepositFuel>()
+}
+
 // === Test Functions ===
 
 #[test_only]
@@ -966,6 +1280,24 @@ public fun manage_generator_requirement(): Requirement {
 #[test_only]
 public fun manage_module_requirement(): Requirement {
     requirement::from_config(option::some(component_id()), ManageModule())
+}
+
+#[test_only]
+public fun manage_fuel_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), ManageFuel())
+}
+
+/// `(entity_id, fuel_type, amount, resulting_quantity, resulting_impulse, resulting_containment_burden)`.
+#[test_only]
+public fun fuel_added_fields(e: &FuelAdded): (ID, u64, u64, u64, u64, u64) {
+    (
+        e.entity_id,
+        e.fuel_type,
+        e.amount,
+        e.resulting_quantity,
+        e.resulting_impulse,
+        e.resulting_containment_burden,
+    )
 }
 
 /// `(entity_id, component_id)`.
