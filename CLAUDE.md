@@ -11,6 +11,8 @@ Request / Requirement** architecture.
   copy its patterns (`StorageUnit`, `assemblies/`, `primitives/`, `GovernorCap`/`AdminACL`/`OwnerCap`).
 - **`tools/error-decoder/`** — TypeScript tool for decoding Move abort codes.
 - **`scripts/`** — bash deploy/test helpers.
+- **`agentictools/skills/`** — agent-agnostic skills (e.g. `localnet-integration`: launch localnet,
+  run integration tests); symlinked into `.claude/skills/`.
 - **`docker/`** — containerized deploy and localnet snapshot stack (see [`docker/README.md`](docker/README.md)).
 
 ## Read before working
