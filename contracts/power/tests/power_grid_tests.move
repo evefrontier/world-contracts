@@ -52,7 +52,10 @@ fun setup_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {
     ts::next_tx(scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
-    enable(scenario, &mut e, &cap, OPERATE, power_grid::operate_grid_requirement());
+    let act = action::new(vector[power_grid::operate_grid_requirement()]);
+    let mut req = e.enable_action(string::utf8(OPERATE), act, scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
     entity_id
@@ -97,8 +100,8 @@ fun toggle(scenario: &mut ts::Scenario, entity_id: ID, on: bool, clock: &Clock) 
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
     power_grid::set_power_grid(&mut e, &mut req, on, clock);
+    access_cap::verify(&mut req, &cap);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
@@ -249,6 +252,7 @@ fun power_on_with_other_entity_cap_aborts() {
     let other_cap = ts::take_from_sender<AccessCap>(&scenario);
     assert!(other_cap.entity() == other_cap_owner_id);
     let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
+    power_grid::set_power_grid(&mut e, &mut req, true, &clock);
     access_cap::verify(&mut req, &other_cap);
 
     abort

@@ -23,6 +23,7 @@ import {
   installFuel,
   installGenerator,
   installPowerGrid,
+  inventoryModuleType,
   manageFuelRequirement,
   manageGeneratorRequirement,
   manageModuleRequirement,
@@ -113,15 +114,12 @@ describe('power grid powers an inventory (localnet)', () => {
       manageFuelRequirement(enableTx, config),
     ])
     enableAdminAction(enableTx, config, enableEntity, 'set_power_grid', [
-      ownerRequirement(enableTx, config),
       operateGridRequirement(enableTx, config),
     ])
     enableAdminAction(enableTx, config, enableEntity, 'set_generator', [
-      ownerRequirement(enableTx, config),
       operateGridRequirement(enableTx, config),
     ])
     enableAdminAction(enableTx, config, enableEntity, 'reserve', [
-      ownerRequirement(enableTx, config),
       operateGridRequirement(enableTx, config),
     ])
     enableAdminAction(enableTx, config, enableEntity, 'deposit_fuel', [
@@ -196,6 +194,7 @@ describe('power grid powers an inventory (localnet)', () => {
       connectModuleRequest,
       INVENTORY_ID,
       0n,
+      inventoryModuleType(config),
     )
     completeRequest(
       attachModuleTx,
@@ -230,8 +229,7 @@ describe('power grid powers an inventory (localnet)', () => {
       onlineEntity,
       'set_power_grid',
     )
-    verifyOwner(onlineTx, config, setPowerGridRequest, cap)
-    setPowerGrid(onlineTx, config, onlineEntity, setPowerGridRequest, true)
+    setPowerGrid(onlineTx, config, onlineEntity, setPowerGridRequest, cap, true)
     completeRequest(onlineTx, config, onlineEntity, setPowerGridRequest)
     const setGeneratorOnlineRequest = interact(
       onlineTx,
@@ -239,23 +237,23 @@ describe('power grid powers an inventory (localnet)', () => {
       onlineEntity,
       'set_generator',
     )
-    verifyOwner(onlineTx, config, setGeneratorOnlineRequest, cap)
     setGenerator(
       onlineTx,
       config,
       onlineEntity,
       setGeneratorOnlineRequest,
+      cap,
       GENERATOR_ID,
       true,
     )
     completeRequest(onlineTx, config, onlineEntity, setGeneratorOnlineRequest)
     const reserveRequest = interact(onlineTx, config, onlineEntity, 'reserve')
-    verifyOwner(onlineTx, config, reserveRequest, cap)
     reserve(
       onlineTx,
       config,
       onlineEntity,
       reserveRequest,
+      cap,
       INVENTORY_ID,
       DRAW,
       'firm',
@@ -302,17 +300,12 @@ describe('power grid powers an inventory (localnet)', () => {
       offlineEntity,
       'set_generator',
     )
-    verifyOwner(
-      offlineTx,
-      config,
-      setGeneratorOfflineRequest,
-      offlineTx.object(capId),
-    )
     setGenerator(
       offlineTx,
       config,
       offlineEntity,
       setGeneratorOfflineRequest,
+      offlineTx.object(capId),
       GENERATOR_ID,
       false,
     )

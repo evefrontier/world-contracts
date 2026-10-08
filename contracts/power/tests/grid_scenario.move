@@ -134,14 +134,14 @@ public fun setup_entity_with_containments(
 
     register_fuel_source(scenario, entity_id, FUEL_ID, FUEL_CAPACITY, clock);
     let any = option::none();
-    enable_deposit(
+    enable_owner_in_handler(
         scenario,
         entity_id,
         DEPOSIT_FUEL,
         power_grid::deposit_fuel_requirement(vector[], any, any, any, any),
     );
     deposit_fuel(scenario, entity_id, STARTING_FUEL, IMPULSE, BURDEN, clock);
-    enable(scenario, entity_id, OPERATE, power_grid::operate_grid_requirement());
+    enable_owner_in_handler(scenario, entity_id, OPERATE, power_grid::operate_grid_requirement());
     entity_id
 }
 
@@ -206,8 +206,8 @@ public macro fun as_owner(
     let mut e = ts::take_shared_by_id<Entity>(scenario, $entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = e.interact(string::utf8($name), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
     $handler(&mut e, &mut req);
+    access_cap::verify(&mut req, &cap);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
@@ -225,7 +225,7 @@ public fun enable(
 
 /// Expose `name` as an owner action requiring only `target`. The owner's cap is
 /// not part of the action: `deposit_fuel` requires it in its own handler.
-public fun enable_deposit(
+public fun enable_owner_in_handler(
     scenario: &mut ts::Scenario,
     entity_id: ID,
     name: vector<u8>,
@@ -324,7 +324,7 @@ public fun connect_module_as(
         signer,
         entity_id,
         MANAGE_MODULE,
-        |e, req| power_grid::connect_module(e, req, module_id, line_loss, clock),
+        |e, req| power_grid::connect_module<Consumer>(e, req, module_id, line_loss, clock),
     );
 }
 

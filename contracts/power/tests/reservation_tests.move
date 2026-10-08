@@ -65,9 +65,11 @@ fun register_stores_line_loss_and_connects() {
     let entity_id = setup_entity(&mut scenario, false, &clock);
 
     connect_module(&mut scenario, entity_id, MOD_A, 5, &clock);
-    let connected = event::events_by_type<ModuleConnected>();
-    assert!(connected.length() == 1);
-    let (event_entity, module_id, line_loss, priority) = connected[0].module_connected_fields();
+    let connect_events = event::events_by_type<ModuleConnected>();
+    assert!(connect_events.length() == 1);
+    let (event_entity, module_id, line_loss, priority) = connect_events[
+        0,
+    ].module_connected_fields();
     assert!(event_entity == entity_id && module_id == MOD_A);
     assert!(line_loss == 5 && priority == 0);
 
@@ -452,6 +454,7 @@ fun reserve_with_other_entity_cap_aborts() {
     let other_cap = ts::take_from_sender<AccessCap>(&scenario);
     assert!(other_cap.entity() == other_id);
     let mut req = e.interact(string::utf8(b"operate_grid"), scenario.ctx());
+    power_grid::reserve(&mut e, &mut req, MOD_A, 10, power_grid::firm(), &clock);
     access_cap::verify(&mut req, &other_cap);
 
     abort
@@ -558,10 +561,39 @@ fun grid_uninstall_with_registered_module_aborts() {
         scenario.ctx(),
     );
     let mut req = e.interact(string::utf8(b"manage_module"), scenario.ctx());
-    power_grid::connect_module(&mut e, &mut req, MOD_A, 0, &clock);
+    power_grid::connect_module<grid_scenario::Consumer>(&mut e, &mut req, MOD_A, 0, &clock);
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     let _req = power_grid::uninstall(&mut e, scenario.ctx());
+
+    abort
+}
+
+/// A module must be installed as the type the caller names, so a Generator slot
+/// cannot be connected as a Consumer module.
+#[test, expected_failure(abort_code = power_grid::EModuleMissing)]
+fun connect_with_wrong_module_type_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = power_grid::install(&mut e, &clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    install_consumer(&mut e, &acl, MOD_A, scenario.ctx());
+    enable_admin(
+        &mut e,
+        &acl,
+        b"manage_module",
+        power_grid::manage_module_requirement(),
+        scenario.ctx(),
+    );
+    let mut req = e.interact(string::utf8(b"manage_module"), scenario.ctx());
+    power_grid::connect_module<power::generator::Generator>(&mut e, &mut req, MOD_A, 0, &clock);
 
     abort
 }

@@ -57,7 +57,7 @@ fun setup_entity(scenario: &mut ts::Scenario, clock: &Clock): ID {
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
-    enable(scenario, entity_id, OPERATE, power_grid::operate_grid_requirement());
+    enable_owner_in_handler(scenario, entity_id, OPERATE, power_grid::operate_grid_requirement());
     entity_id
 }
 
@@ -77,6 +77,24 @@ fun enable_admin(
     let mut req = e.enable_admin_action(string::utf8(name), action::new(vector[target]), ctx);
     admin_service::verify_admin(&mut req, acl, ctx);
     e.complete_request(req);
+}
+
+/// Enable an owner action whose handler requires the owner itself, so the owner
+/// is not part of the action.
+fun enable_owner_in_handler(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    name: vector<u8>,
+    target: Requirement,
+) {
+    ts::next_tx(scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let mut req = e.enable_action(string::utf8(name), action::new(vector[target]), scenario.ctx());
+    access_cap::verify(&mut req, &cap);
+    e.complete_request(req);
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(e);
 }
 
 fun enable(scenario: &mut ts::Scenario, entity_id: ID, name: vector<u8>, target: Requirement) {
@@ -159,9 +177,9 @@ fun owner_runs_operation(
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
     if (op == OP_POWER_ON) power_grid::set_power_grid(&mut e, &mut req, true, clock)
     else power_grid::set_generator(&mut e, &mut req, id, op == OP_ONLINE, clock);
+    access_cap::verify(&mut req, &cap);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);

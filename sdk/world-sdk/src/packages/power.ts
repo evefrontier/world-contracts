@@ -38,6 +38,11 @@ function drawKind(
   return tx.moveCall({ target: grid(config, kind) })
 }
 
+/** Full type of the Inventory component, the module `connectModule` attaches. */
+export function inventoryModuleType(config: WorldConfig): string {
+  return `${mvrName(config.env, 'inventory')}::inventory::Inventory`
+}
+
 // === Install ===
 
 /** Install the power grid (off, empty) and close its admin-gated request. */
@@ -96,7 +101,10 @@ export function installFuel(
 
 // === Requirements ===
 
-/** Satisfied by `setPowerGrid`, `setGenerator`, `setPriority`, `reserve` and `release`. */
+/**
+ * Satisfied by `setPowerGrid`, `setGenerator`, `setPriority`, `reserve`, `release`
+ * and `releasePriority`. Each handler also takes the owner's cap.
+ */
 export function operateGridRequirement(
   tx: Transaction,
   config: WorldConfig,
@@ -227,7 +235,10 @@ export function registerFuelSource(
   verifyAdmin(tx, config, request)
 }
 
-/** Connect a module with its line loss. Satisfies the admin follow-up too. */
+/**
+ * Connect a module with its line loss. `moduleType` is the installed component's
+ * full type, e.g. `${inventoryPkg}::inventory::Inventory`. Satisfies the admin follow-up too.
+ */
 export function connectModule(
   tx: Transaction,
   config: WorldConfig,
@@ -235,9 +246,11 @@ export function connectModule(
   request: TransactionArgument,
   moduleId: bigint,
   lineLoss: bigint,
+  moduleType: string,
 ): void {
   tx.moveCall({
     target: grid(config, 'connect_module'),
+    typeArguments: [moduleType],
     arguments: [
       entity,
       request,
@@ -284,26 +297,29 @@ export function depositFuel(
   verifySponsor(tx, config, request)
 }
 
-/** Switch the grid on or off. */
+/** Switch the grid on or off. Owner-gated. */
 export function setPowerGrid(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
   on: boolean,
 ): void {
   tx.moveCall({
     target: grid(config, 'set_power_grid'),
     arguments: [entity, request, tx.pure.bool(on), tx.object.clock()],
   })
+  verifyOwner(tx, config, request, ownerCap)
 }
 
-/** Bring a Generator online or offline. Offline sheds what no longer fits. */
+/** Bring a Generator online or offline. Offline sheds what no longer fits. Owner-gated. */
 export function setGenerator(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
   generatorId: bigint,
   online: boolean,
 ): void {
@@ -317,6 +333,7 @@ export function setGenerator(
       tx.object.clock(),
     ],
   })
+  verifyOwner(tx, config, request, ownerCap)
 }
 
 /** Disconnect a module, releasing its reservation. Satisfies the admin follow-up too. */
@@ -334,12 +351,13 @@ export function disconnectModule(
   verifyAdmin(tx, config, request)
 }
 
-/** Reserve `draw` for `moduleId`. Aborts if it does not fit. */
+/** Reserve `draw` for `moduleId`. Aborts if it does not fit. Owner-gated. */
 export function reserve(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
   moduleId: bigint,
   draw: bigint,
   kind: DrawKind,
@@ -355,14 +373,16 @@ export function reserve(
       tx.object.clock(),
     ],
   })
+  verifyOwner(tx, config, request, ownerCap)
 }
 
-/** Move a connected module into priority group `priority`. Higher groups are shed first. */
+/** Move a connected module into priority group `priority`. Higher groups are shed first. Owner-gated. */
 export function setPriority(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
   moduleId: bigint,
   priority: bigint,
 ): void {
@@ -376,34 +396,39 @@ export function setPriority(
       tx.object.clock(),
     ],
   })
+  verifyOwner(tx, config, request, ownerCap)
 }
 
-/** Release every reservation in priority group `priority`. */
+/** Release every reservation in priority group `priority`. Owner-gated. */
 export function releasePriority(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
   priority: bigint,
 ): void {
   tx.moveCall({
     target: grid(config, 'release_priority'),
     arguments: [entity, request, tx.pure.u64(priority), tx.object.clock()],
   })
+  verifyOwner(tx, config, request, ownerCap)
 }
 
-/** Release `moduleId`'s reservation. */
+/** Release `moduleId`'s reservation. Owner-gated. */
 export function release(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
   moduleId: bigint,
 ): void {
   tx.moveCall({
     target: grid(config, 'release'),
     arguments: [entity, request, tx.pure.u64(moduleId), tx.object.clock()],
   })
+  verifyOwner(tx, config, request, ownerCap)
 }
 
 /** Satisfy a `reserveRequirement`: the module is still powered and the grid still has fuel. */

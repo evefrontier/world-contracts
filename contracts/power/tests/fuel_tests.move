@@ -13,7 +13,7 @@ use power::{
         connect,
         deposit_fuel,
         deposit_fuel_via,
-        enable_deposit,
+        enable_owner_in_handler,
         fuel_capacity,
         fuel_id,
         fuel_type,
@@ -99,7 +99,7 @@ fun fuel_stats(scenario: &mut ts::Scenario, entity_id: ID): (u64, u64, u64) {
 /// `OTHER_TYPE`, impulse >= 50, burden <= 15, and 0.1 to 1_000 units per deposit.
 fun gated_deposit(scenario: &mut ts::Scenario, clock: &Clock): ID {
     let entity_id = setup_entity(scenario, vector[], vector[], clock);
-    enable_deposit(
+    enable_owner_in_handler(
         scenario,
         entity_id,
         GATED_DEPOSIT,

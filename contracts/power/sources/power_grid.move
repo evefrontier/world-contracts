@@ -82,7 +82,7 @@ const EUnknownDrawKind: vector<u8> = b"Unknown draw kind";
 #[error(code = 29)]
 const EInsufficientPower: vector<u8> = b"Power grid does not have enough capacity for this draw";
 #[error(code = 30)]
-const EDrawBelowMin: vector<u8> = b"Module's granted draw is below the requirement";
+const EDrawBelowMin: vector<u8> = b"Module's active_draw draw is below the requirement";
 #[error(code = 31)]
 const EDrawKindMismatch: vector<u8> = b"Module's draw kind does not match the requirement";
 #[error(code = 32)]
@@ -112,6 +112,9 @@ const EZeroBaseFuelRate: vector<u8> = b"Generator base fuel rate must be greater
 #[error(code = 43)]
 const EModuleStillConnected: vector<u8> =
     b"Module must be disconnected from the power grid before uninstall";
+#[error(code = 44)]
+const EUsageExceedsReservations: vector<u8> =
+    b"Grid usage is above capacity with no reservation left to shed";
 
 // === Constants ===
 
@@ -192,7 +195,8 @@ public enum DrawKind has copy, drop, store {
 public struct ManageGenerator() has drop;
 
 /// Marker for the owner's grid operations: `set_power_grid`, `set_generator`,
-/// `set_priority`, `reserve`, `release` and `release_priority`.
+/// `set_priority`, `reserve`, `release` and `release_priority`. Each also
+/// requires the owner in its own frame.
 public struct OperateGrid() has drop;
 
 /// Marker for `connect_module` / `disconnect_module`.
@@ -408,13 +412,14 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
 /// Switch the grid on or off.
 public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, clock: &Clock) {
     let entity_id = entity.id();
-    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    let (_requirement, mut frame, grid) = take(entity, req, operate_grid_permit());
     if (on) assert!(!grid.on, EAlreadyOn) else assert!(grid.on, EAlreadyOff);
     grid.settle(entity_id, clock);
     grid.on = on;
     event::emit(PowerToggled { entity_id, on });
     grid.shed(entity_id);
-    frame.destroy_empty_frame();
+    frame.require(access_cap::owner_requirement());
+    req.enqueue(frame);
 }
 
 /// Requirement satisfied by `set_power_grid`, `set_generator`, `set_priority`,
@@ -534,9 +539,10 @@ public fun set_generator(
     clock: &Clock,
 ) {
     let entity_id = entity.id();
-    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    let (_requirement, mut frame, grid) = take(entity, req, operate_grid_permit());
     grid.set_generator_online(entity_id, generator_id, online, clock);
-    frame.destroy_empty_frame();
+    frame.require(access_cap::owner_requirement());
+    req.enqueue(frame);
 }
 
 /// Abort unless a Generator meets the next `GeneratorRequirement`.
@@ -559,15 +565,16 @@ public fun generator_requirement(
     )
 }
 
-/// Connect an installed module to the grid in priority group 0, with its line loss. Admin-only.
-public fun connect_module(
+/// Connect an installed module of type `Module` to the grid in priority group 0,
+/// with its line loss. Admin-only.
+public fun connect_module<Module: store>(
     entity: &mut Entity,
     req: &mut Request,
     module_id: u64,
     line_loss: u64,
     clock: &Clock,
 ) {
-    assert!(entity.has_component(module_id), EModuleMissing);
+    assert!(entity.has_component_with_type<Module>(module_id), EModuleMissing);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take(entity, req, manage_module_permit());
     assert!(!grid.modules.contains(&module_id), EModuleAlreadyRegistered);
@@ -611,12 +618,13 @@ public fun set_priority(
     clock: &Clock,
 ) {
     let entity_id = entity.id();
-    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    let (_requirement, mut frame, grid) = take(entity, req, operate_grid_permit());
     assert!(grid.modules.contains(&module_id), ENotConnected);
     grid.settle(entity_id, clock);
     grid.modules[&module_id].priority = priority;
     event::emit(PriorityChanged { entity_id, module_id, priority });
-    frame.destroy_empty_frame();
+    frame.require(access_cap::owner_requirement());
+    req.enqueue(frame);
 }
 
 /// Reserve `draw` MW of `kind` for `module_id`. Aborts if it does not fit.
@@ -629,7 +637,8 @@ public fun reserve(
     clock: &Clock,
 ) {
     let entity_id = entity.id();
-    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    assert!(entity.has_component(module_id), EModuleMissing);
+    let (_requirement, mut frame, grid) = take(entity, req, operate_grid_permit());
     assert!(draw > 0, EZeroDraw);
     assert!(grid.modules.contains(&module_id), ENotConnected);
     // TODO: may later replace the existing reservation instead of aborting.
@@ -644,30 +653,33 @@ public fun reserve(
     grid.used_mw = grid.used_mw + active_draw + line_loss;
     grid.modules[&module_id].reservation.fill(Reservation { requested: draw, active_draw, kind });
     event::emit(Reserved { entity_id, module_id, kind, requested: draw, line_loss, active_draw });
-    frame.destroy_empty_frame();
+    frame.require(access_cap::owner_requirement());
+    req.enqueue(frame);
 }
 
 /// Release `module_id`'s reservation.
 public fun release(entity: &mut Entity, req: &mut Request, module_id: u64, clock: &Clock) {
     let entity_id = entity.id();
-    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    let (_requirement, mut frame, grid) = take(entity, req, operate_grid_permit());
     assert!(grid.has_reservation(module_id), ENotReserved);
     grid.settle(entity_id, clock);
     grid.release_module(module_id);
     event::emit(Released { entity_id, module_id });
-    frame.destroy_empty_frame();
+    frame.require(access_cap::owner_requirement());
+    req.enqueue(frame);
 }
 
 /// Release every reservation in priority group `priority`.
 public fun release_priority(entity: &mut Entity, req: &mut Request, priority: u64, clock: &Clock) {
     let entity_id = entity.id();
-    let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
+    let (_requirement, mut frame, grid) = take(entity, req, operate_grid_permit());
     grid.settle(entity_id, clock);
     grid.reserved_at(priority).do!(|module_id| {
         grid.release_module(module_id);
         event::emit(Released { entity_id, module_id });
     });
-    frame.destroy_empty_frame();
+    frame.require(access_cap::owner_requirement());
+    req.enqueue(frame);
 }
 
 /// Abort unless the module in the next `ReserveRequirement` still holds a
@@ -1147,7 +1159,9 @@ fun shed(grid: &mut PowerGrid, entity_id: ID) {
             let (_, state) = grid.modules.get_entry_by_idx(i);
             if (state.reservation.is_some() && state.priority > highest) highest = state.priority;
         });
-        grid.reserved_at(highest).do!(|module_id| {
+        let module_ids = grid.reserved_at(highest);
+        assert!(!module_ids.is_empty(), EUsageExceedsReservations);
+        module_ids.do!(|module_id| {
             grid.release_module(module_id);
             event::emit(Shed { entity_id, module_id });
         });

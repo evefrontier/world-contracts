@@ -6,7 +6,6 @@ import {
   deriveObjectId,
   enableAdminAction,
   interact,
-  ownerRequirement,
 } from '../src/packages/core.js'
 import {
   connectModule,
@@ -14,6 +13,7 @@ import {
   installFuel,
   installGenerator,
   installPowerGrid,
+  inventoryModuleType,
   manageFuelRequirement,
   manageGeneratorRequirement,
   manageModuleRequirement,
@@ -68,15 +68,21 @@ for (const [alias, unit] of entries) {
     manageFuelRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'set_power_grid', [
-    ownerRequirement(tx, config),
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'set_generator', [
-    ownerRequirement(tx, config),
+    operateGridRequirement(tx, config),
+  ])
+  enableAdminAction(tx, config, entity, 'set_priority', [
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'reserve', [
-    ownerRequirement(tx, config),
+    operateGridRequirement(tx, config),
+  ])
+  enableAdminAction(tx, config, entity, 'release', [
+    operateGridRequirement(tx, config),
+  ])
+  enableAdminAction(tx, config, entity, 'release_priority', [
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'deposit_fuel', [
@@ -112,7 +118,15 @@ for (const [alias, unit] of entries) {
   )
   completeRequest(tx, config, entity, registerFuelSourceRequest)
   const connectModuleRequest = interact(tx, config, entity, 'connect_module')
-  connectModule(tx, config, entity, connectModuleRequest, inventoryId, 0n)
+  connectModule(
+    tx,
+    config,
+    entity,
+    connectModuleRequest,
+    inventoryId,
+    0n,
+    inventoryModuleType(config),
+  )
   completeRequest(tx, config, entity, connectModuleRequest)
 
   const result = await signAndExecute(client, {
