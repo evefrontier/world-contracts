@@ -31,6 +31,7 @@ const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
 const OUTPUT = 15n * POWER_SCALE
 const CONTAINMENT_REDUCTION = 10n * POWER_SCALE
+const BASE_FUEL_RATE = POWER_SCALE
 const FUEL_CAPACITY = 1000n * POWER_SCALE
 
 const { repoRoot, config, client, keypair } = loadScriptContext()
@@ -93,6 +94,7 @@ for (const [alias, unit] of entries) {
     generatorId: GENERATOR_ID,
     maxOutputMw: OUTPUT,
     containmentReduction: CONTAINMENT_REDUCTION,
+    baseFuelRate: BASE_FUEL_RATE,
   })
   completeRequest(tx, config, entity, registerGeneratorRequest)
   const registerFuelSourceRequest = interact(

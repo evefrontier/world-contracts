@@ -106,6 +106,8 @@ const EFuelAmountBelowMin: vector<u8> = b"Fuel amount is below the requirement";
 const EFuelAmountAboveMax: vector<u8> = b"Fuel amount is above the requirement";
 #[error(code = 41)]
 const EOutOfFuel: vector<u8> = b"Power grid has run out of fuel";
+#[error(code = 42)]
+const EZeroBaseFuelRate: vector<u8> = b"Generator base fuel rate must be greater than zero";
 
 // === Constants ===
 
@@ -156,6 +158,8 @@ public struct GeneratorState has copy, drop, store {
     max_output_mw: u64,
     /// At `SCALE`. Softens the fuel's containment burden for this Generator's burn.
     containment_reduction: u64,
+    /// At `SCALE`. Units per second burned while online and the fuel has zero impulse.
+    base_fuel_rate: u64,
     online: bool,
 }
 
@@ -267,6 +271,7 @@ public struct GeneratorRegistered has copy, drop {
     generator_id: u64,
     max_output_mw: u64,
     containment_reduction: u64,
+    base_fuel_rate: u64,
 }
 
 public struct GeneratorUnregistered has copy, drop {
@@ -462,8 +467,10 @@ public fun register_generator(
     generator_id: u64,
     max_output_mw: u64,
     containment_reduction: u64,
+    base_fuel_rate: u64,
     clock: &Clock,
 ) {
+    assert!(base_fuel_rate > 0, EZeroBaseFuelRate);
     generator::assert_installed(entity, generator_id);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take(entity, req, manage_generator_permit());
@@ -473,13 +480,14 @@ public fun register_generator(
         .generators
         .insert(
             generator_id,
-            GeneratorState { max_output_mw, containment_reduction, online: false },
+            GeneratorState { max_output_mw, containment_reduction, base_fuel_rate, online: false },
         );
     event::emit(GeneratorRegistered {
         entity_id,
         generator_id,
         max_output_mw,
         containment_reduction,
+        base_fuel_rate,
     });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
@@ -945,6 +953,10 @@ public fun containment_reduction(state: &GeneratorState): u64 {
     state.containment_reduction
 }
 
+public fun base_fuel_rate(state: &GeneratorState): u64 {
+    state.base_fuel_rate
+}
+
 public fun online(state: &GeneratorState): bool {
     state.online
 }
@@ -1221,11 +1233,9 @@ fun settle(grid: &mut PowerGrid, entity_id: ID, clock: &Clock) {
 }
 
 /// Fuel burned between `last_settled_ms` and `now_ms`, capped at what is left.
-/// Each online Generator serves load in proportion to its output and burns
-/// `load / factor` units per second at its own containment. Rounds up, so
-/// frequent settles never burn less than the true amount.
+/// Each online Generator burns its share of the load (see `generator_burn`).
 fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
-    if (now_ms <= grid.last_settled_ms || grid.fuel_impulse == 0) return 0;
+    if (now_ms <= grid.last_settled_ms) return 0;
     let load = grid.used_mw.min(grid.capacity_mw) as u128;
     if (load == 0 || grid.settled_fuel_quantity == 0) return 0;
     let elapsed_ms = (now_ms - grid.last_settled_ms) as u128;
@@ -1233,20 +1243,31 @@ fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
     grid.generators.length().do!(|i| {
         let (_, state) = grid.generators.get_entry_by_idx(i);
         if (state.online) {
-            let share = load * (state.max_output_mw as u128) / (grid.capacity_mw as u128);
-            let factor = fuel_factor(
-                grid.fuel_impulse,
-                grid.fuel_containment_burden,
-                state.containment_reduction,
-            );
-            burn =
-                burn + divide_round_up(
-                    share * (SCALE as u128) * elapsed_ms,
-                    (factor as u128) * (MS_PER_SECOND as u128),
-                );
+            burn = burn + generator_burn(grid, state, load, elapsed_ms);
         };
     });
     (burn.min(grid.settled_fuel_quantity as u128)) as u64
+}
+
+/// Rounds up, so frequent settles never burn less than the true amount.
+/// Zero impulse has no fuel factor, so the Generator burns its base rate instead.
+fun generator_burn(grid: &PowerGrid, state: &GeneratorState, load: u128, elapsed_ms: u128): u128 {
+    if (grid.fuel_impulse == 0) {
+        return divide_round_up(
+                (state.base_fuel_rate as u128) * elapsed_ms,
+                MS_PER_SECOND as u128,
+            )
+    };
+    let share = load * (state.max_output_mw as u128) / (grid.capacity_mw as u128);
+    let factor = fuel_factor(
+        grid.fuel_impulse,
+        grid.fuel_containment_burden,
+        state.containment_reduction,
+    );
+    divide_round_up(
+        share * (SCALE as u128) * elapsed_ms,
+        (factor as u128) * (MS_PER_SECOND as u128),
+    )
 }
 
 /// Quantity-weighted average of the pool's stat and the stat just added.

@@ -56,6 +56,7 @@ const VOL = 2n
 const OUTPUT = 15n * POWER_SCALE
 const DRAW = 10n * POWER_SCALE
 const CONT_REDUCTION = 10n * POWER_SCALE
+const BASE_FUEL_RATE = POWER_SCALE
 // 500 units of fuel: impulse 90, containment burden 14.
 const FUEL_AMOUNT = 500n * POWER_SCALE
 const IMPULSE = 90n * POWER_SCALE
@@ -154,6 +155,7 @@ describe('power grid powers an inventory (localnet)', () => {
         generatorId: GENERATOR_ID,
         maxOutputMw: OUTPUT,
         containmentReduction: CONT_REDUCTION,
+        baseFuelRate: BASE_FUEL_RATE,
       },
     )
     completeRequest(

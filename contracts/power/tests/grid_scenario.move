@@ -20,6 +20,8 @@ const OWNER: address = @0xB;
 const GENERATOR_BASE: u64 = 101;
 /// Containment reduction 10 at `SCALE`.
 const CONTAINMENT: u64 = 100_000;
+/// Base burn rate of every Generator, 1 unit per second at `SCALE`.
+const BASE_FUEL_RATE: u64 = 10_000;
 /// Component id of the Fuel source every `setup_entity` grid gets.
 const FUEL_ID: u64 = 9_001;
 /// Fuel capacity and starting fuel of that source, units at `SCALE`.
@@ -121,6 +123,7 @@ public fun setup_entity_with_containments(
             generator_id(i),
             max_outputs_mw[i],
             containments[i],
+            BASE_FUEL_RATE,
             clock,
         );
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());

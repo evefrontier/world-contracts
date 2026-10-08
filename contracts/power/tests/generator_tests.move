@@ -24,6 +24,7 @@ const OUTPUT_A: u64 = 50;
 const OUTPUT_B: u64 = 30;
 /// Containment reduction 10 at `SCALE`.
 const CONTAINMENT: u64 = 100_000;
+const BASE_FUEL_RATE: u64 = 10_000;
 
 const MANAGE: vector<u8> = b"manage_generator";
 const OPERATE: vector<u8> = b"operate_grid";
@@ -104,7 +105,15 @@ fun register_as(
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(MANAGE), scenario.ctx());
-    power_grid::register_generator(&mut e, &mut req, id, output, CONTAINMENT, clock);
+    power_grid::register_generator(
+        &mut e,
+        &mut req,
+        id,
+        output,
+        CONTAINMENT,
+        BASE_FUEL_RATE,
+        clock,
+    );
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     ts::return_shared(acl);
@@ -253,6 +262,21 @@ fun register_without_marker_aborts() {
     let entity_id = setup_entity(&mut scenario, &clock);
 
     register(&mut scenario, entity_id, 999, OUTPUT_A, &clock);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = power_grid::EZeroBaseFuelRate)]
+fun register_with_zero_base_fuel_rate_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, &clock);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let mut req = e.interact(string::utf8(MANAGE), scenario.ctx());
+    power_grid::register_generator(&mut e, &mut req, GEN_A, OUTPUT_A, CONTAINMENT, 0, &clock);
 
     abort
 }

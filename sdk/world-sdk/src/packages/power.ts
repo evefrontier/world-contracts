@@ -174,6 +174,7 @@ export interface RegisterGeneratorArgs {
   generatorId: bigint
   maxOutputMw: bigint
   containmentReduction: bigint
+  baseFuelRate: bigint
 }
 
 /** Register a Generator with its stats. Satisfies the admin follow-up too. */
@@ -192,6 +193,7 @@ export function registerGenerator(
       tx.pure.u64(args.generatorId),
       tx.pure.u64(args.maxOutputMw),
       tx.pure.u64(args.containmentReduction),
+      tx.pure.u64(args.baseFuelRate),
       tx.object.clock(),
     ],
   })
