@@ -11,7 +11,8 @@ use core::{
 };
 use power::{
     generator::{Self, GeneratorInstalled, GeneratorUninstalled},
-    power_grid::{Self, CapacityChanged, GeneratorRegistered, GeneratorToggled}
+    grid_generator::{Self, CapacityChanged, GeneratorRegistered, GeneratorToggled},
+    power_grid
 };
 use std::string;
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
@@ -123,7 +124,7 @@ fun register_as(
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(MANAGE), scenario.ctx());
-    power_grid::register_generator(
+    grid_generator::register_generator(
         &mut e,
         &mut req,
         id,
@@ -147,7 +148,7 @@ fun unregister(scenario: &mut ts::Scenario, entity_id: ID, id: u64, clock: &Cloc
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(MANAGE), scenario.ctx());
-    power_grid::unregister_generator(&mut e, &mut req, id, clock);
+    grid_generator::unregister_generator(&mut e, &mut req, id, clock);
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     ts::return_shared(acl);
@@ -158,7 +159,7 @@ fun uninstall_generator(scenario: &mut ts::Scenario, entity_id: ID, id: u64) {
     ts::next_tx(scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
-    let mut req = power_grid::uninstall_generator(&mut e, id, scenario.ctx());
+    let mut req = grid_generator::uninstall_generator(&mut e, id, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     ts::return_shared(acl);
@@ -178,7 +179,7 @@ fun owner_runs_operation(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
     if (op == OP_POWER_ON) power_grid::set_power_grid(&mut e, &mut req, true, clock)
-    else power_grid::set_generator(&mut e, &mut req, id, op == OP_ONLINE, clock);
+    else grid_generator::set_generator(&mut e, &mut req, id, op == OP_ONLINE, clock);
     access_cap::verify(&mut req, &cap);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
@@ -284,7 +285,7 @@ fun register_without_marker_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EZeroBaseFuelRate)]
+#[test, expected_failure(abort_code = grid_generator::EZeroBaseFuelRate)]
 fun register_with_zero_base_fuel_rate_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -294,12 +295,12 @@ fun register_with_zero_base_fuel_rate_aborts() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
     let mut req = e.interact(string::utf8(MANAGE), scenario.ctx());
-    power_grid::register_generator(&mut e, &mut req, GEN_A, OUTPUT_A, CONTAINMENT, 0, &clock);
+    grid_generator::register_generator(&mut e, &mut req, GEN_A, OUTPUT_A, CONTAINMENT, 0, &clock);
 
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EGeneratorAlreadyRegistered)]
+#[test, expected_failure(abort_code = grid_generator::EGeneratorAlreadyRegistered)]
 fun register_twice_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -414,7 +415,7 @@ fun full_lifecycle_frees_grid_for_uninstall() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EGeneratorNotRegistered)]
+#[test, expected_failure(abort_code = grid_generator::EGeneratorNotRegistered)]
 fun online_unregistered_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -426,7 +427,7 @@ fun online_unregistered_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EGeneratorAlreadyOnline)]
+#[test, expected_failure(abort_code = grid_generator::EGeneratorAlreadyOnline)]
 fun online_twice_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -439,7 +440,7 @@ fun online_twice_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EGeneratorAlreadyOffline)]
+#[test, expected_failure(abort_code = grid_generator::EGeneratorAlreadyOffline)]
 fun offline_while_offline_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -452,7 +453,7 @@ fun offline_while_offline_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EGeneratorOnline)]
+#[test, expected_failure(abort_code = grid_generator::EGeneratorOnline)]
 fun unregister_while_online_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -465,7 +466,7 @@ fun unregister_while_online_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EGeneratorStillRegistered)]
+#[test, expected_failure(abort_code = grid_generator::EGeneratorStillRegistered)]
 fun uninstall_while_registered_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -534,7 +535,7 @@ fun run_generator_check(scenario: &mut ts::Scenario, entity_id: ID, rule: Requir
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = e.interact(string::utf8(b"check_generator"), scenario.ctx());
     access_cap::verify(&mut req, &cap);
-    power_grid::assert_generator(&mut e, &mut req);
+    grid_generator::assert_generator(&mut e, &mut req);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
@@ -581,7 +582,7 @@ fun generator_check_passes_when_online() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EGenNotOnline)]
+#[test, expected_failure(abort_code = grid_generator::EGenNotOnline)]
 fun generator_check_aborts_when_online_required() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -598,7 +599,7 @@ fun generator_check_aborts_when_online_required() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EOutputBelowMin)]
+#[test, expected_failure(abort_code = grid_generator::EOutputBelowMin)]
 fun generator_check_aborts_when_output_below() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -615,7 +616,7 @@ fun generator_check_aborts_when_output_below() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EContainmentBelowMin)]
+#[test, expected_failure(abort_code = grid_generator::EContainmentBelowMin)]
 fun generator_check_aborts_when_containment_below() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);

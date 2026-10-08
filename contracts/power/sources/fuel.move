@@ -61,7 +61,7 @@ public fun assert_installed(entity: &Entity, component_id: u64) {
 
 // === Package Functions ===
 
-/// Remove the Fuel bay. Called by `power_grid::uninstall_fuel_source`.
+/// Remove the Fuel bay. Called by `grid_fuel::uninstall_fuel_source`.
 public(package) fun uninstall(
     entity: &mut Entity,
     component_id: u64,

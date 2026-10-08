@@ -9,6 +9,9 @@ use core::{
 };
 use power::{
     fuel,
+    fuel_math,
+    grid_fuel::{Self, FuelAdded},
+    grid_load,
     grid_scenario::{
         connect,
         deposit_fuel,
@@ -34,7 +37,7 @@ use power::{
         unregister_fuel_source,
         used
     },
-    power_grid::{Self, FuelAdded, FuelDepleted, Shed}
+    power_grid::{Self, FuelDepleted, Shed}
 };
 use std::string;
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
@@ -119,15 +122,15 @@ fun gated_deposit(scenario: &mut ts::Scenario, clock: &Clock): ID {
 #[test]
 fun fuel_factor_matches_client() {
     // impulse 90, burden 14, reduction 10 -> 90 / 1.4 = 64.2857
-    assert!(power_grid::fuel_factor(900_000, 140_000, 100_000) == 642_857);
+    assert!(fuel_math::fuel_factor(900_000, 140_000, 100_000) == 642_857);
     // impulse 10, burden 3, reduction 10 -> burden ratio floors at 1 -> 10
-    assert!(power_grid::fuel_factor(100_000, 30_000, 100_000) == 100_000);
+    assert!(fuel_math::fuel_factor(100_000, 30_000, 100_000) == 100_000);
     // impulse 0.4 clamps up to 1
-    assert!(power_grid::fuel_factor(4_000, 30_000, 100_000) == 10_000);
+    assert!(fuel_math::fuel_factor(4_000, 30_000, 100_000) == 10_000);
     // impulse 200 clamps down to 100
-    assert!(power_grid::fuel_factor(2_000_000, 30_000, 100_000) == 1_000_000);
+    assert!(fuel_math::fuel_factor(2_000_000, 30_000, 100_000) == 1_000_000);
     // reduction 0 floors at 1 -> 90 / 14 = 6.4285
-    assert!(power_grid::fuel_factor(900_000, 140_000, 0) == 64_285);
+    assert!(fuel_math::fuel_factor(900_000, 140_000, 0) == 64_285);
 }
 
 // === Fuel sources ===
@@ -164,7 +167,7 @@ fun register_missing_fuel_source_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EFuelSourceAlreadyRegistered)]
+#[test, expected_failure(abort_code = grid_fuel::EFuelSourceAlreadyRegistered)]
 fun register_fuel_source_twice_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -202,7 +205,7 @@ fun unregister_and_uninstall_fuel_source() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
     let acl = core::test_helpers::take_acl(&scenario);
-    let mut req = power_grid::uninstall_fuel_source(&mut e, FUEL_B, scenario.ctx());
+    let mut req = grid_fuel::uninstall_fuel_source(&mut e, FUEL_B, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     assert!(!e.has_component(FUEL_B));
@@ -214,7 +217,7 @@ fun unregister_and_uninstall_fuel_source() {
 }
 
 /// Removing the only source would leave the stored fuel with no capacity.
-#[test, expected_failure(abort_code = power_grid::EFuelOverCapacity)]
+#[test, expected_failure(abort_code = grid_fuel::EFuelOverCapacity)]
 fun unregister_aborts_when_fuel_exceeds_reduced_capacity() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -236,7 +239,7 @@ fun unregister_unknown_fuel_source_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EFuelSourceStillRegistered)]
+#[test, expected_failure(abort_code = grid_fuel::EFuelSourceStillRegistered)]
 fun uninstall_registered_fuel_source_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -244,7 +247,7 @@ fun uninstall_registered_fuel_source_aborts() {
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-    let _req = power_grid::uninstall_fuel_source(&mut e, fuel_id(), scenario.ctx());
+    let _req = grid_fuel::uninstall_fuel_source(&mut e, fuel_id(), scenario.ctx());
 
     abort
 }
@@ -291,7 +294,7 @@ fun deposit_blend_rounds_down() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EFuelOverCapacity)]
+#[test, expected_failure(abort_code = grid_fuel::EFuelOverCapacity)]
 fun deposit_over_capacity_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -302,7 +305,7 @@ fun deposit_over_capacity_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EZeroFuel)]
+#[test, expected_failure(abort_code = grid_fuel::EZeroFuel)]
 fun deposit_zero_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -512,7 +515,7 @@ fun refuel_then_reserve_again() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EInsufficientPower)]
+#[test, expected_failure(abort_code = grid_load::EInsufficientPower)]
 fun reserve_after_depletion_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -567,7 +570,7 @@ fun deposit_meeting_fuel_requirement_succeeds() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EFuelTypeNotAllowed)]
+#[test, expected_failure(abort_code = grid_fuel::EFuelTypeNotAllowed)]
 fun deposit_disallowed_fuel_type_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -607,7 +610,7 @@ fun deposit_low_impulse_fuel_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EBurdenAboveMax)]
+#[test, expected_failure(abort_code = grid_fuel::EBurdenAboveMax)]
 fun deposit_high_burden_fuel_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -627,7 +630,7 @@ fun deposit_high_burden_fuel_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EFuelAmountBelowMin)]
+#[test, expected_failure(abort_code = grid_fuel::EFuelAmountBelowMin)]
 fun deposit_below_min_amount_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -647,7 +650,7 @@ fun deposit_below_min_amount_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EFuelAmountAboveMax)]
+#[test, expected_failure(abort_code = grid_fuel::EFuelAmountAboveMax)]
 fun deposit_above_max_amount_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -688,7 +691,7 @@ fun deposit_without_sponsor_aborts() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let acl = take_acl(&scenario);
     let mut req = e.interact(string::utf8(GATED_DEPOSIT), scenario.ctx());
-    power_grid::deposit_fuel(&mut e, &mut req, fuel_type(), 1_000, 900_000, 140_000, &clock);
+    grid_fuel::deposit_fuel(&mut e, &mut req, fuel_type(), 1_000, 900_000, 140_000, &clock);
     access_cap::verify(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
 
@@ -715,7 +718,7 @@ fun deposit_without_owner_cap_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
     let acl = take_acl(&scenario);
     let mut req = e.interact(string::utf8(GATED_DEPOSIT), scenario.ctx());
-    power_grid::deposit_fuel(&mut e, &mut req, fuel_type(), 1_000, 900_000, 140_000, &clock);
+    grid_fuel::deposit_fuel(&mut e, &mut req, fuel_type(), 1_000, 900_000, 140_000, &clock);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
 
     abort
@@ -736,7 +739,7 @@ fun reserved_module_action_passes_while_fuelled() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_A, DRAW, power_grid::firm()),
-        |e, req| power_grid::assert_reserved(e, req, &clock),
+        |e, req| grid_load::assert_reserved(e, req, &clock),
     );
 
     clock.destroy_for_testing();
@@ -745,7 +748,7 @@ fun reserved_module_action_passes_while_fuelled() {
 
 /// Once the fuel has run out, the guarded action fails even though the stored
 /// reservation has not been shed yet.
-#[test, expected_failure(abort_code = power_grid::EOutOfFuel)]
+#[test, expected_failure(abort_code = grid_load::EOutOfFuel)]
 fun reserved_module_action_aborts_after_fuel_runs_out() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -757,7 +760,7 @@ fun reserved_module_action_aborts_after_fuel_runs_out() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_A, DRAW, power_grid::firm()),
-        |e, req| power_grid::assert_reserved(e, req, &clock),
+        |e, req| grid_load::assert_reserved(e, req, &clock),
     );
 
     abort

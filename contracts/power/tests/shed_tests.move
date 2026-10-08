@@ -3,6 +3,7 @@ module power::shed_tests;
 
 use core::test_helpers::setup;
 use power::{
+    grid_load::{Self, Reserved},
     grid_scenario::{
         active,
         connect,
@@ -15,7 +16,7 @@ use power::{
         setup_entity,
         used
     },
-    power_grid::{Self, Reserved, Shed}
+    power_grid::{Self, Shed}
 };
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
 
@@ -197,7 +198,7 @@ fun elastic_full_grant_when_it_fits() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EInsufficientPower)]
+#[test, expected_failure(abort_code = grid_load::EInsufficientPower)]
 fun elastic_aborts_when_leftover_only_covers_line_loss() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -211,7 +212,7 @@ fun elastic_aborts_when_leftover_only_covers_line_loss() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EZeroDraw)]
+#[test, expected_failure(abort_code = grid_load::EZeroDraw)]
 fun elastic_zero_draw_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -223,7 +224,7 @@ fun elastic_zero_draw_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EAlreadyReserved)]
+#[test, expected_failure(abort_code = grid_load::EAlreadyReserved)]
 fun elastic_after_firm_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);

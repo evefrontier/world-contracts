@@ -3,6 +3,7 @@ module power::rewire_tests;
 
 use core::{entity::Entity, test_helpers::setup};
 use power::{
+    grid_load::{Self, ModuleDisconnected, Released},
     grid_scenario::{
         Self,
         active,
@@ -14,7 +15,7 @@ use power::{
         set_priority,
         used
     },
-    power_grid::{Self, ModuleDisconnected, Released}
+    power_grid
 };
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
 
@@ -120,7 +121,7 @@ fun set_priority_after_disconnect_aborts() {
 }
 
 /// A connected module cannot be uninstalled until it is disconnected.
-#[test, expected_failure(abort_code = power_grid::EModuleStillConnected)]
+#[test, expected_failure(abort_code = grid_load::EModuleStillConnected)]
 fun uninstall_while_connected_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -130,7 +131,7 @@ fun uninstall_while_connected_aborts() {
 
     ts::next_tx(&mut scenario, ADMIN);
     let e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-    power_grid::assert_disconnected(&e, MOD_A);
+    grid_load::assert_disconnected(&e, MOD_A);
     abort
 }
 
@@ -146,7 +147,7 @@ fun uninstall_after_disconnect_passes() {
 
     ts::next_tx(&mut scenario, ADMIN);
     let e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-    power_grid::assert_disconnected(&e, MOD_A);
+    grid_load::assert_disconnected(&e, MOD_A);
     ts::return_shared(e);
     clock.destroy_for_testing();
     scenario.end();

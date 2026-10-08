@@ -64,7 +64,7 @@ public fun assert_installed(entity: &Entity, component_id: u64) {
 
 // === Package Functions ===
 
-/// Remove the Generator. Called by `power_grid::uninstall_generator`.
+/// Remove the Generator. Called by `grid_generator::uninstall_generator`.
 public(package) fun uninstall(
     entity: &mut Entity,
     component_id: u64,

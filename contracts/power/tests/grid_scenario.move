@@ -11,7 +11,7 @@ use core::{
     requirement::Requirement,
     test_helpers::{claim, take_acl, take_registry}
 };
-use power::{fuel, generator, power_grid::{Self, Reservation}};
+use power::{fuel, generator, grid_fuel, grid_generator, grid_load, power_grid::{Self, Reservation}};
 use std::string;
 use sui::{clock::Clock, test_scenario as ts};
 
@@ -117,7 +117,7 @@ public fun setup_entity_with_containments(
     let acl = take_acl(scenario);
     max_outputs_mw.length().do!(|i| {
         let mut req = e.interact(string::utf8(MANAGE), scenario.ctx());
-        power_grid::register_generator(
+        grid_generator::register_generator(
             &mut e,
             &mut req,
             generator_id(i),
@@ -279,7 +279,7 @@ public fun set_generator(
         scenario,
         entity_id,
         OPERATE,
-        |e, req| power_grid::set_generator(e, req, generator_id(index), online, clock),
+        |e, req| grid_generator::set_generator(e, req, generator_id(index), online, clock),
     );
 }
 
@@ -324,7 +324,7 @@ public fun connect_module_as(
         signer,
         entity_id,
         MANAGE_MODULE,
-        |e, req| power_grid::connect_module<Consumer>(e, req, module_id, line_loss, clock),
+        |e, req| grid_load::connect_module<Consumer>(e, req, module_id, line_loss, clock),
     );
 }
 
@@ -349,7 +349,7 @@ public fun disconnect_module(
         ADMIN,
         entity_id,
         MANAGE_MODULE,
-        |e, req| power_grid::disconnect_module(e, req, module_id, clock),
+        |e, req| grid_load::disconnect_module(e, req, module_id, clock),
     );
 }
 
@@ -365,7 +365,7 @@ public fun set_priority(
         scenario,
         entity_id,
         OPERATE,
-        |e, req| power_grid::set_priority(e, req, module_id, priority, clock),
+        |e, req| grid_load::set_priority(e, req, module_id, priority, clock),
     );
 }
 
@@ -393,7 +393,7 @@ public fun reserve_firm(
         scenario,
         entity_id,
         OPERATE,
-        |e, req| power_grid::reserve(e, req, module_id, draw, power_grid::firm(), clock),
+        |e, req| grid_load::reserve(e, req, module_id, draw, power_grid::firm(), clock),
     );
 }
 
@@ -408,12 +408,12 @@ public fun reserve_elastic(
         scenario,
         entity_id,
         OPERATE,
-        |e, req| power_grid::reserve(e, req, module_id, draw, power_grid::elastic(), clock),
+        |e, req| grid_load::reserve(e, req, module_id, draw, power_grid::elastic(), clock),
     );
 }
 
 public fun release(scenario: &mut ts::Scenario, entity_id: ID, module_id: u64, clock: &Clock) {
-    as_owner!(scenario, entity_id, OPERATE, |e, req| power_grid::release(e, req, module_id, clock));
+    as_owner!(scenario, entity_id, OPERATE, |e, req| grid_load::release(e, req, module_id, clock));
 }
 
 /// Release every reservation in priority group `priority`.
@@ -427,7 +427,7 @@ public fun release_priority(
         scenario,
         entity_id,
         OPERATE,
-        |e, req| power_grid::release_priority(e, req, priority, clock),
+        |e, req| grid_load::release_priority(e, req, priority, clock),
     );
 }
 
@@ -477,7 +477,7 @@ public fun register_fuel_source_as(
         signer,
         entity_id,
         MANAGE_FUEL,
-        |e, req| power_grid::register_fuel_source(e, req, fuel_id, capacity, clock),
+        |e, req| grid_fuel::register_fuel_source(e, req, fuel_id, capacity, clock),
     );
 }
 
@@ -502,7 +502,7 @@ public fun unregister_fuel_source(
         ADMIN,
         entity_id,
         MANAGE_FUEL,
-        |e, req| power_grid::unregister_fuel_source(e, req, fuel_id, clock),
+        |e, req| grid_fuel::unregister_fuel_source(e, req, fuel_id, clock),
     );
 }
 
@@ -548,7 +548,7 @@ public fun deposit_fuel_via(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(name), scenario.ctx());
-    power_grid::deposit_fuel(&mut e, &mut req, fuel_type, amount, impulse, burden, clock);
+    grid_fuel::deposit_fuel(&mut e, &mut req, fuel_type, amount, impulse, burden, clock);
     access_cap::verify(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     e.complete_request(req);

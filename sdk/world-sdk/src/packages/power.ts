@@ -21,11 +21,21 @@ function pkg(config: WorldConfig): string {
   return mvrName(config.env, POWER_PACKAGE)
 }
 
+type PowerModule = 'power_grid' | 'grid_fuel' | 'grid_generator' | 'grid_load'
+
+function moveCallTarget(
+  config: WorldConfig,
+  moduleName: PowerModule,
+  functionName: string,
+): `${string}::${string}::${string}` {
+  return `${pkg(config)}::${moduleName}::${functionName}`
+}
+
 function grid(
   config: WorldConfig,
-  fn: string,
+  functionName: string,
 ): `${string}::${string}::${string}` {
-  return `${pkg(config)}::power_grid::${fn}`
+  return moveCallTarget(config, 'power_grid', functionName)
 }
 
 export type DrawKind = 'firm' | 'elastic'
@@ -199,7 +209,7 @@ export function registerGenerator(
   args: RegisterGeneratorArgs,
 ): void {
   tx.moveCall({
-    target: grid(config, 'register_generator'),
+    target: moveCallTarget(config, 'grid_generator', 'register_generator'),
     arguments: [
       entity,
       request,
@@ -223,7 +233,7 @@ export function registerFuelSource(
   capacity: bigint,
 ): void {
   tx.moveCall({
-    target: grid(config, 'register_fuel_source'),
+    target: moveCallTarget(config, 'grid_fuel', 'register_fuel_source'),
     arguments: [
       entity,
       request,
@@ -249,7 +259,7 @@ export function connectModule(
   moduleType: string,
 ): void {
   tx.moveCall({
-    target: grid(config, 'connect_module'),
+    target: moveCallTarget(config, 'grid_load', 'connect_module'),
     typeArguments: [moduleType],
     arguments: [
       entity,
@@ -282,7 +292,7 @@ export function depositFuel(
   args: DepositFuelArgs,
 ): void {
   tx.moveCall({
-    target: grid(config, 'deposit_fuel'),
+    target: moveCallTarget(config, 'grid_fuel', 'deposit_fuel'),
     arguments: [
       entity,
       request,
@@ -324,7 +334,7 @@ export function setGenerator(
   online: boolean,
 ): void {
   tx.moveCall({
-    target: grid(config, 'set_generator'),
+    target: moveCallTarget(config, 'grid_generator', 'set_generator'),
     arguments: [
       entity,
       request,
@@ -345,7 +355,7 @@ export function disconnectModule(
   moduleId: bigint,
 ): void {
   tx.moveCall({
-    target: grid(config, 'disconnect_module'),
+    target: moveCallTarget(config, 'grid_load', 'disconnect_module'),
     arguments: [entity, request, tx.pure.u64(moduleId), tx.object.clock()],
   })
   verifyAdmin(tx, config, request)
@@ -363,7 +373,7 @@ export function reserve(
   kind: DrawKind,
 ): void {
   tx.moveCall({
-    target: grid(config, 'reserve'),
+    target: moveCallTarget(config, 'grid_load', 'reserve'),
     arguments: [
       entity,
       request,
@@ -387,7 +397,7 @@ export function setPriority(
   priority: bigint,
 ): void {
   tx.moveCall({
-    target: grid(config, 'set_priority'),
+    target: moveCallTarget(config, 'grid_load', 'set_priority'),
     arguments: [
       entity,
       request,
@@ -409,7 +419,7 @@ export function releasePriority(
   priority: bigint,
 ): void {
   tx.moveCall({
-    target: grid(config, 'release_priority'),
+    target: moveCallTarget(config, 'grid_load', 'release_priority'),
     arguments: [entity, request, tx.pure.u64(priority), tx.object.clock()],
   })
   verifyOwner(tx, config, request, ownerCap)
@@ -425,7 +435,7 @@ export function release(
   moduleId: bigint,
 ): void {
   tx.moveCall({
-    target: grid(config, 'release'),
+    target: moveCallTarget(config, 'grid_load', 'release'),
     arguments: [entity, request, tx.pure.u64(moduleId), tx.object.clock()],
   })
   verifyOwner(tx, config, request, ownerCap)
@@ -439,7 +449,7 @@ export function assertReserved(
   request: TransactionArgument,
 ): void {
   tx.moveCall({
-    target: grid(config, 'assert_reserved'),
+    target: moveCallTarget(config, 'grid_load', 'assert_reserved'),
     arguments: [entity, request, tx.object.clock()],
   })
 }

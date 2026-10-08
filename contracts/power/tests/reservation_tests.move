@@ -8,6 +8,7 @@ use core::{
     test_helpers::{claim, setup, take_acl, take_registry}
 };
 use power::{
+    grid_load::{Self, ModuleConnected, PriorityChanged, Released, Reserved},
     grid_scenario::{
         Self,
         active,
@@ -26,7 +27,7 @@ use power::{
         disconnect_module,
         used
     },
-    power_grid::{Self, ModuleConnected, PriorityChanged, Released, Reserved}
+    power_grid
 };
 use std::string;
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
@@ -141,7 +142,7 @@ fun reserve_grants_when_it_fits() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EInsufficientPower)]
+#[test, expected_failure(abort_code = grid_load::EInsufficientPower)]
 fun reserve_aborts_when_short() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -171,7 +172,7 @@ fun reserve_fills_capacity_exactly() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EInsufficientPower)]
+#[test, expected_failure(abort_code = grid_load::EInsufficientPower)]
 fun reserve_when_full_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -185,7 +186,7 @@ fun reserve_when_full_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EInsufficientPower)]
+#[test, expected_failure(abort_code = grid_load::EInsufficientPower)]
 fun reserve_while_off_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -235,7 +236,7 @@ fun release_frees_capacity() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EAlreadyReserved)]
+#[test, expected_failure(abort_code = grid_load::EAlreadyReserved)]
 fun duplicate_reserve_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -259,7 +260,7 @@ fun reserve_unconnected_module_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EZeroDraw)]
+#[test, expected_failure(abort_code = grid_load::EZeroDraw)]
 fun reserve_zero_draw_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -271,7 +272,7 @@ fun reserve_zero_draw_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::ENotReserved)]
+#[test, expected_failure(abort_code = grid_load::ENotReserved)]
 fun release_without_reservation_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -283,7 +284,7 @@ fun release_without_reservation_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EModuleMissing)]
+#[test, expected_failure(abort_code = grid_load::EModuleMissing)]
 fun register_missing_module_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -294,7 +295,7 @@ fun register_missing_module_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EModuleAlreadyRegistered)]
+#[test, expected_failure(abort_code = grid_load::EModuleAlreadyRegistered)]
 fun register_module_twice_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -454,7 +455,7 @@ fun reserve_with_other_entity_cap_aborts() {
     let other_cap = ts::take_from_sender<AccessCap>(&scenario);
     assert!(other_cap.entity() == other_id);
     let mut req = e.interact(string::utf8(b"operate_grid"), scenario.ctx());
-    power_grid::reserve(&mut e, &mut req, MOD_A, 10, power_grid::firm(), &clock);
+    grid_load::reserve(&mut e, &mut req, MOD_A, 10, power_grid::firm(), &clock);
     access_cap::verify(&mut req, &other_cap);
 
     abort
@@ -473,14 +474,14 @@ fun assert_reserved_passes_on_matching_reservation() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_A, 20, power_grid::firm()),
-        |e, req| power_grid::assert_reserved(e, req, &clock),
+        |e, req| grid_load::assert_reserved(e, req, &clock),
     );
 
     clock.destroy_for_testing();
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::ENotReserved)]
+#[test, expected_failure(abort_code = grid_load::ENotReserved)]
 fun assert_reserved_without_reservation_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -492,13 +493,13 @@ fun assert_reserved_without_reservation_aborts() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_A, 1, power_grid::firm()),
-        |e, req| power_grid::assert_reserved(e, req, &clock),
+        |e, req| grid_load::assert_reserved(e, req, &clock),
     );
 
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EDrawBelowMin)]
+#[test, expected_failure(abort_code = grid_load::EDrawBelowMin)]
 fun assert_reserved_short_draw_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -514,13 +515,13 @@ fun assert_reserved_short_draw_aborts() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_B, 30, power_grid::elastic()),
-        |e, req| power_grid::assert_reserved(e, req, &clock),
+        |e, req| grid_load::assert_reserved(e, req, &clock),
     );
 
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EDrawKindMismatch)]
+#[test, expected_failure(abort_code = grid_load::EDrawKindMismatch)]
 fun assert_reserved_wrong_kind_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -533,7 +534,7 @@ fun assert_reserved_wrong_kind_aborts() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_A, 10, power_grid::firm()),
-        |e, req| power_grid::assert_reserved(e, req, &clock),
+        |e, req| grid_load::assert_reserved(e, req, &clock),
     );
 
     abort
@@ -561,7 +562,7 @@ fun grid_uninstall_with_registered_module_aborts() {
         scenario.ctx(),
     );
     let mut req = e.interact(string::utf8(b"manage_module"), scenario.ctx());
-    power_grid::connect_module<grid_scenario::Consumer>(&mut e, &mut req, MOD_A, 0, &clock);
+    grid_load::connect_module<grid_scenario::Consumer>(&mut e, &mut req, MOD_A, 0, &clock);
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     let _req = power_grid::uninstall(&mut e, scenario.ctx());
@@ -571,7 +572,7 @@ fun grid_uninstall_with_registered_module_aborts() {
 
 /// A module must be installed as the type the caller names, so a Generator slot
 /// cannot be connected as a Consumer module.
-#[test, expected_failure(abort_code = power_grid::EModuleMissing)]
+#[test, expected_failure(abort_code = grid_load::EModuleMissing)]
 fun connect_with_wrong_module_type_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -593,12 +594,12 @@ fun connect_with_wrong_module_type_aborts() {
         scenario.ctx(),
     );
     let mut req = e.interact(string::utf8(b"manage_module"), scenario.ctx());
-    power_grid::connect_module<power::generator::Generator>(&mut e, &mut req, MOD_A, 0, &clock);
+    grid_load::connect_module<power::generator::Generator>(&mut e, &mut req, MOD_A, 0, &clock);
 
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::ETooManyConnected)]
+#[test, expected_failure(abort_code = grid_load::ETooManyConnected)]
 fun register_past_max_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
