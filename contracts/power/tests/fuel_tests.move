@@ -30,6 +30,7 @@ use power::{
         setup_entity,
         setup_entity_with_containments,
         starting_fuel,
+        temp_action,
         unregister_fuel_source,
         used
     },
@@ -332,6 +333,60 @@ fun burn_over_time_and_view_matches_settle() {
     assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel());
 
     simulate_catchup(&mut scenario, entity_id, &clock);
+    assert!(settled_fuel(&mut scenario, entity_id) == fuel_left);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Stored fuel still shows the full tank. The check must burn first, then fail.
+#[test, expected_failure(abort_code = power_grid::EFuelBelowMin)]
+fun assert_power_grid_rejects_fuel_already_burned() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = loaded(&mut scenario, &clock);
+
+    clock.set_for_testing(10_000);
+    assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel());
+    temp_action!(
+        &mut scenario,
+        entity_id,
+        power_grid::power_grid_requirement(
+            true,
+            option::some(starting_fuel()),
+            option::none(),
+            0,
+            option::none(),
+        ),
+        |e, req| power_grid::assert_power_grid(e, req, &clock),
+    );
+
+    abort
+}
+
+/// A passing check writes the burn, so the next read is the live tank.
+#[test]
+fun assert_power_grid_writes_burned_fuel() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = loaded(&mut scenario, &clock);
+
+    clock.set_for_testing(10_000);
+    let (fuel_left, _, _, _) = projected(&mut scenario, entity_id, &clock);
+    temp_action!(
+        &mut scenario,
+        entity_id,
+        power_grid::power_grid_requirement(
+            true,
+            option::some(fuel_left),
+            option::none(),
+            0,
+            option::none(),
+        ),
+        |e, req| power_grid::assert_power_grid(e, req, &clock),
+    );
     assert!(settled_fuel(&mut scenario, entity_id) == fuel_left);
 
     clock.destroy_for_testing();

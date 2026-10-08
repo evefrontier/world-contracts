@@ -27,7 +27,7 @@ const EAlreadyOn: vector<u8> = b"Power grid is already on";
 #[error(code = 3)]
 const EAlreadyOff: vector<u8> = b"Power grid is already off";
 #[error(code = 4)]
-const EModulesConnected: vector<u8> = b"Power grid still has connected modules";
+const EModulesRegistered: vector<u8> = b"Power grid still has registered modules";
 #[error(code = 5)]
 const EPowerSourcesPresent: vector<u8> = b"Power grid still has generators or fuel sources";
 #[error(code = 6)]
@@ -390,7 +390,7 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     );
     assert!(component::version(&grid_component) == VERSION, EWrongVersion);
     let grid = grid_component.unwrap(power_grid_permit());
-    assert!(grid.modules.is_empty(), EModulesConnected);
+    assert!(grid.modules.is_empty(), EModulesRegistered);
     assert!(grid.generators.is_empty() && grid.fuel_sources.is_empty(), EPowerSourcesPresent);
     let PowerGrid { .. } = grid;
     event::emit(PowerGridUninstalled { entity_id: entity.id(), component_id: component_id() });
@@ -432,8 +432,11 @@ public fun manage_fuel_requirement(): Requirement {
 }
 
 /// Abort unless the grid meets the next `PowerGridRequirement`.
-public fun assert_power_grid(entity: &mut Entity, req: &mut Request) {
+/// Settles first, so burned fuel counts before the check.
+public fun assert_power_grid(entity: &mut Entity, req: &mut Request, clock: &Clock) {
+    let entity_id = entity.id();
     let (requirement, frame, grid) = take(entity, req, power_grid_requirement_permit());
+    grid.settle(entity_id, clock);
     enforce_power_grid(&requirement, grid);
     frame.destroy_empty_frame();
 }
@@ -793,9 +796,12 @@ public fun elastic(): DrawKind { DrawKind::Elastic }
 /// Borrow the installed grid. Aborts if missing.
 public fun power_grid(entity: &Entity): &PowerGrid {
     assert!(entity.has_component_with_type<PowerGrid>(component_id()), EComponentMissing);
-    let c: &Component<PowerGrid> = entity.component_ref(component_id(), power_grid_permit());
-    assert!(component::version(c) == VERSION, EWrongVersion);
-    c.inner()
+    let grid_component: &Component<PowerGrid> = entity.component_ref(
+        component_id(),
+        power_grid_permit(),
+    );
+    assert!(component::version(grid_component) == VERSION, EWrongVersion);
+    grid_component.inner()
 }
 
 /// A registered Generator's state.
@@ -1046,9 +1052,12 @@ fun take<T: drop>(
     req: &mut Request,
     permit: Permit<T>,
 ): (Requirement, Frame, &mut PowerGrid) {
-    let c: &mut Component<PowerGrid> = entity.component_mut(req, power_grid_permit());
-    assert!(component::version(c) == VERSION, EWrongVersion);
-    let grid = c.inner_mut();
+    let grid_component: &mut Component<PowerGrid> = entity.component_mut(
+        req,
+        power_grid_permit(),
+    );
+    assert!(component::version(grid_component) == VERSION, EWrongVersion);
+    let grid = grid_component.inner_mut();
     let (requirement, frame) = req.take_next(permit);
     (requirement, frame, grid)
 }
@@ -1240,11 +1249,12 @@ fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
     (burn.min(grid.settled_fuel_quantity as u128)) as u64
 }
 
-/// Quantity-weighted average of the pool's `value` and an added `added_value`.
-fun blend(value: u64, quantity: u64, added_value: u64, added_quantity: u64): u64 {
+/// Quantity-weighted average of the pool's stat and the stat just added.
+fun blend(pooled_stat: u64, pooled_quantity: u64, added_stat: u64, added_quantity: u64): u64 {
     let total =
-        (value as u128) * (quantity as u128) + (added_value as u128) * (added_quantity as u128);
-    (total / ((quantity + added_quantity) as u128)) as u64
+        (pooled_stat as u128) * (pooled_quantity as u128)
+            + (added_stat as u128) * (added_quantity as u128);
+    (total / ((pooled_quantity + added_quantity) as u128)) as u64
 }
 
 fun divide_round_up(numerator: u128, denominator: u128): u128 {

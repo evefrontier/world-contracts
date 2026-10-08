@@ -55,8 +55,8 @@ public fun install(
 /// Abort unless a Fuel bay of this version is installed under `component_id`.
 public fun assert_installed(entity: &Entity, component_id: u64) {
     assert!(entity.has_component_with_type<Fuel>(component_id), EComponentMissing);
-    let c: &Component<Fuel> = entity.component_ref(component_id, fuel_permit());
-    assert!(component::version(c) == VERSION, EWrongVersion);
+    let fuel_component: &Component<Fuel> = entity.component_ref(component_id, fuel_permit());
+    assert!(component::version(fuel_component) == VERSION, EWrongVersion);
 }
 
 // === Package Functions ===

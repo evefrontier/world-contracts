@@ -55,8 +55,11 @@ public fun install(
 /// Abort unless a Generator of this version is installed under `component_id`.
 public fun assert_installed(entity: &Entity, component_id: u64) {
     assert!(entity.has_component_with_type<Generator>(component_id), EComponentMissing);
-    let c: &Component<Generator> = entity.component_ref(component_id, generator_permit());
-    assert!(component::version(c) == VERSION, EWrongVersion);
+    let generator_component: &Component<Generator> = entity.component_ref(
+        component_id,
+        generator_permit(),
+    );
+    assert!(component::version(generator_component) == VERSION, EWrongVersion);
 }
 
 // === Package Functions ===

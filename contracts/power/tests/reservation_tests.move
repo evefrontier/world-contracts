@@ -536,8 +536,8 @@ fun assert_reserved_wrong_kind_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = power_grid::EModulesConnected)]
-fun grid_uninstall_with_connected_module_aborts() {
+#[test, expected_failure(abort_code = power_grid::EModulesRegistered)]
+fun grid_uninstall_with_registered_module_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());

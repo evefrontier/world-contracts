@@ -72,7 +72,7 @@ fun enable(
 }
 
 /// Owner enables `check_grid` with `rule`, then runs it.
-fun run_grid_check(scenario: &mut ts::Scenario, entity_id: ID, rule: Requirement) {
+fun run_grid_check(scenario: &mut ts::Scenario, entity_id: ID, rule: Requirement, clock: &Clock) {
     ts::next_tx(scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
@@ -85,7 +85,7 @@ fun run_grid_check(scenario: &mut ts::Scenario, entity_id: ID, rule: Requirement
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = e.interact(string::utf8(CHECK_GRID), scenario.ctx());
     access_cap::verify(&mut req, &cap);
-    power_grid::assert_power_grid(&mut e, &mut req);
+    power_grid::assert_power_grid(&mut e, &mut req, clock);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
@@ -322,6 +322,7 @@ fun grid_check_passes_for_off_empty_grid() {
             0,
             option::some(0),
         ),
+        &clock,
     );
 
     clock.destroy_for_testing();
@@ -340,6 +341,7 @@ fun grid_check_passes_when_on() {
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(true, option::none(), option::none(), 0, option::none()),
+        &clock,
     );
 
     clock.destroy_for_testing();
@@ -357,6 +359,7 @@ fun grid_check_aborts_when_on_required() {
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(true, option::none(), option::none(), 0, option::none()),
+        &clock,
     );
 
     abort
@@ -379,6 +382,7 @@ fun grid_check_aborts_when_fuel_below() {
             0,
             option::none(),
         ),
+        &clock,
     );
 
     abort
@@ -401,6 +405,7 @@ fun grid_check_aborts_when_impulse_below() {
             0,
             option::none(),
         ),
+        &clock,
     );
 
     abort
@@ -423,6 +428,7 @@ fun grid_check_aborts_when_capacity_below() {
             1,
             option::none(),
         ),
+        &clock,
     );
 
     abort
@@ -448,6 +454,7 @@ fun grid_check_aborts_when_used_above() {
             0,
             option::some(0),
         ),
+        &clock,
     );
 
     abort
