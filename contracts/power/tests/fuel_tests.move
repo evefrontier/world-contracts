@@ -639,3 +639,45 @@ fun deposit_without_sponsor_aborts() {
 
     abort
 }
+
+// === Consumer gating ===
+
+/// A module's action guarded by `reserve_requirement` passes while fuel lasts.
+#[test]
+fun reserved_module_action_passes_while_fuelled() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = loaded(&mut scenario, &clock);
+
+    clock.set_for_testing(10_000);
+    power::grid_scenario::temp_action!(
+        &mut scenario,
+        entity_id,
+        power_grid::reserve_requirement(MOD_A, DRAW, power_grid::firm()),
+        |e, req| power_grid::assert_reserved(e, req, &clock),
+    );
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Once the fuel has run out, the guarded action fails even though the stored
+/// reservation has not been shed yet.
+#[test, expected_failure(abort_code = power_grid::EOutOfFuel)]
+fun reserved_module_action_aborts_after_fuel_runs_out() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = loaded(&mut scenario, &clock);
+
+    clock.set_for_testing(400_000_000);
+    power::grid_scenario::temp_action!(
+        &mut scenario,
+        entity_id,
+        power_grid::reserve_requirement(MOD_A, DRAW, power_grid::firm()),
+        |e, req| power_grid::assert_reserved(e, req, &clock),
+    );
+
+    abort
+}

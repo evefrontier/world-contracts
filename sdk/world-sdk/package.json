@@ -31,6 +31,7 @@
         "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run build",
         "seed:characters": "tsx scripts/seed-characters.ts",
         "seed:storage-units": "tsx scripts/seed-storage-units.ts",
+        "seed:power-grids": "tsx scripts/seed-power-grids.ts",
         "configure:admins": "tsx scripts/configure-admins.ts",
         "finalize:eve": "tsx scripts/finalize-eve-currency.ts",
         "transfer:eve": "tsx scripts/transfer-eve.ts"

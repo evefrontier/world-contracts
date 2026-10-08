@@ -108,6 +108,31 @@ export {
 } from './packages/metadata.js'
 export { signPersonalMessage } from './packages/personal-message.js'
 export {
+  assertReserved,
+  connectModule,
+  type DepositFuelArgs,
+  type DrawKind,
+  depositFuel,
+  depositFuelRequirement,
+  type FuelRule,
+  installFuel,
+  installGenerator,
+  installPowerGrid,
+  manageFuelRequirement,
+  manageGeneratorRequirement,
+  manageModuleRequirement,
+  operateGridRequirement,
+  POWER_SCALE,
+  type RegisterGeneratorArgs,
+  registerFuelSource,
+  registerGenerator,
+  release,
+  reserve,
+  reserveRequirement,
+  setGenerator,
+  setPowerGrid,
+} from './packages/power.js'
+export {
   type DockingArgs,
   dockingProof,
   encodeProof,

@@ -113,7 +113,24 @@ Concrete `T` values installed on Entities. Migrated from the legacy assembly mod
 - **Generic module** — opaque in-game module (thruster, turret, …) with no handler yet.
   Stored as `Component<GenericModule>`
   ([`generic_module.move`](contracts/core/sources/generic_module.move)).
-- *Planned:* Access control, Fuel, Power, Transport, Weapon, Creation tag, KillMail.
+- **Power** — the `power` package ([`contracts/power/`](contracts/power/),
+  [ADR-0005](docs/adr/0005-onchain-power-network.md)). One **PowerGrid** per Creation holds
+  the power and the fuel. **Generator** and **Fuel** are markers; their numbers live on the grid.
+  - **PowerGrid** — capacity, fuel, connected modules, and their reservations. Capacity is 0
+    while the grid is off or out of fuel.
+  - **Reservation** — the draw a module was granted. **Firm** gets all of its ask or nothing.
+    **Elastic** gets what is left, up to its ask. A module is online while it holds one.
+  - **Priority group** — a number the owner sets on each module. When capacity drops, the
+    highest number is shed first.
+  - **Shed** — reservations dropped because capacity fell below use. When capacity comes back,
+    modules reserve again.
+  - **Settle** — burn the fuel used since the last settle. Writes settle first. Views
+    (`projected_fuel`, `projected_status`) show fuel as of now. Stored fuel updates on the
+    next transaction, so indexers and clients read the views.
+  - **Fuel factor** — `impulse / max(1, burden / containment_reduction)`, clamped to 1–100.
+    Each online Generator burns `load_share / factor` fuel units per second.
+  - **SCALE** — MW, fuel quantity, and fuel stats are fixed-point `u64` values times 10_000.
+- *Planned:* Access control, Transport, Weapon, Creation tag, KillMail.
   Each is a component type with its own Requirement types, handlers, and PTB templates.
   Player-facing fittings are game modules; the rest are still just components.
 

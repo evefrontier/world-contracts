@@ -16,6 +16,7 @@ DELAY_SECONDS="${DELAY_SECONDS:-${2:-5}}"
 commands=(
   seed:characters
   seed:storage-units
+  seed:power-grids
 )
 
 echo "Seeding world on $ENV: ${#commands[@]} steps with ${DELAY_SECONDS}s delay..."

@@ -470,7 +470,7 @@ fun assert_reserved_passes_on_matching_reservation() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_A, 20, power_grid::firm()),
-        |e, req| power_grid::assert_reserved(e, req),
+        |e, req| power_grid::assert_reserved(e, req, &clock),
     );
 
     clock.destroy_for_testing();
@@ -489,7 +489,7 @@ fun assert_reserved_without_reservation_aborts() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_A, 1, power_grid::firm()),
-        |e, req| power_grid::assert_reserved(e, req),
+        |e, req| power_grid::assert_reserved(e, req, &clock),
     );
 
     abort
@@ -511,7 +511,7 @@ fun assert_reserved_short_draw_aborts() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_B, 30, power_grid::elastic()),
-        |e, req| power_grid::assert_reserved(e, req),
+        |e, req| power_grid::assert_reserved(e, req, &clock),
     );
 
     abort
@@ -530,7 +530,7 @@ fun assert_reserved_wrong_kind_aborts() {
         &mut scenario,
         entity_id,
         power_grid::reserve_requirement(MOD_A, 10, power_grid::firm()),
-        |e, req| power_grid::assert_reserved(e, req),
+        |e, req| power_grid::assert_reserved(e, req, &clock),
     );
 
     abort

@@ -104,6 +104,8 @@ const EBurdenAboveMax: vector<u8> = b"Fuel containment burden is above the requi
 const EFuelAmountBelowMin: vector<u8> = b"Fuel amount is below the requirement";
 #[error(code = 40)]
 const EFuelAmountAboveMax: vector<u8> = b"Fuel amount is above the requirement";
+#[error(code = 41)]
+const EOutOfFuel: vector<u8> = b"Power grid has run out of fuel";
 
 // === Constants ===
 
@@ -414,6 +416,21 @@ public fun operate_grid_requirement(): Requirement {
     requirement::from_config(option::some(component_id()), OperateGrid())
 }
 
+/// Requirement satisfied by `register_generator` / `unregister_generator`.
+public fun manage_generator_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), ManageGenerator())
+}
+
+/// Requirement satisfied by `connect_module` / `disconnect_module`.
+public fun manage_module_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), ManageModule())
+}
+
+/// Requirement satisfied by `register_fuel_source` / `unregister_fuel_source`.
+public fun manage_fuel_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), ManageFuel())
+}
+
 /// Abort unless the grid meets the next `PowerGridRequirement`.
 public fun assert_power_grid(entity: &mut Entity, req: &mut Request) {
     let (requirement, frame, grid) = take(entity, req, power_grid_requirement_permit());
@@ -642,10 +659,14 @@ public fun release_priority(entity: &mut Entity, req: &mut Request, priority: u6
     frame.destroy_empty_frame();
 }
 
-/// Abort unless the module in the next `ReserveRequirement` holds a matching
-/// reservation.
-public fun assert_reserved(entity: &mut Entity, req: &mut Request) {
+/// Abort unless the module in the next `ReserveRequirement` still holds a
+/// matching reservation. Settles first, so a grid that ran out of fuel since
+/// the last touch fails here instead of passing on stale state.
+public fun assert_reserved(entity: &mut Entity, req: &mut Request, clock: &Clock) {
+    let entity_id = entity.id();
     let (requirement, frame, grid) = take(entity, req, reserve_permit());
+    grid.settle(entity_id, clock);
+    assert!(grid.settled_fuel_quantity > 0, EOutOfFuel);
     enforce_reserved(&requirement, grid);
     frame.destroy_empty_frame();
 }
@@ -1271,21 +1292,6 @@ fun deposit_fuel_permit(): Permit<DepositFuel> {
 }
 
 // === Test Functions ===
-
-#[test_only]
-public fun manage_generator_requirement(): Requirement {
-    requirement::from_config(option::some(component_id()), ManageGenerator())
-}
-
-#[test_only]
-public fun manage_module_requirement(): Requirement {
-    requirement::from_config(option::some(component_id()), ManageModule())
-}
-
-#[test_only]
-public fun manage_fuel_requirement(): Requirement {
-    requirement::from_config(option::some(component_id()), ManageFuel())
-}
 
 /// `(entity_id, fuel_type, amount, resulting_quantity, resulting_impulse, resulting_containment_burden)`.
 #[test_only]
