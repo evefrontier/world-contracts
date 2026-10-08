@@ -13,7 +13,7 @@ use power::{
         connect,
         deposit_fuel,
         deposit_fuel_via,
-        enable,
+        enable_deposit,
         fuel_capacity,
         fuel_id,
         fuel_type,
@@ -99,7 +99,7 @@ fun fuel_stats(scenario: &mut ts::Scenario, entity_id: ID): (u64, u64, u64) {
 /// `OTHER_TYPE`, impulse >= 50, burden <= 15, and 0.1 to 1_000 units per deposit.
 fun gated_deposit(scenario: &mut ts::Scenario, clock: &Clock): ID {
     let entity_id = setup_entity(scenario, vector[], vector[], clock);
-    enable(
+    enable_deposit(
         scenario,
         entity_id,
         GATED_DEPOSIT,
@@ -688,7 +688,33 @@ fun deposit_without_sponsor_aborts() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let acl = take_acl(&scenario);
     let mut req = e.interact(string::utf8(GATED_DEPOSIT), scenario.ctx());
+    power_grid::deposit_fuel(&mut e, &mut req, fuel_type(), 1_000, 900_000, 140_000, &clock);
     access_cap::verify(&mut req, &cap);
+    admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
+
+    abort
+}
+
+/// The owner's cap is required by the deposit itself: a sponsored deposit that
+/// never presents it aborts, even if the action config omits the owner.
+#[test, expected_failure]
+fun deposit_without_owner_cap_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = gated_deposit(&mut scenario, &clock);
+
+    let epoch = scenario.ctx().epoch();
+    let timestamp = scenario.ctx().epoch_timestamp_ms();
+    let rgp = scenario.ctx().reference_gas_price();
+    let builder = ts::ctx_builder_from_sender(owner())
+        .set_epoch(epoch)
+        .set_epoch_timestamp(timestamp)
+        .set_reference_gas_price(rgp);
+    ts::next_with_context(&mut scenario, builder);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let acl = take_acl(&scenario);
+    let mut req = e.interact(string::utf8(GATED_DEPOSIT), scenario.ctx());
     power_grid::deposit_fuel(&mut e, &mut req, fuel_type(), 1_000, 900_000, 140_000, &clock);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
 

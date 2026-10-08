@@ -126,7 +126,7 @@ fun install_starts_off_and_empty() {
     assert!(grid.fuel_impulse() == 0);
     assert!(grid.fuel_containment_burden() == 0);
     assert!(grid.last_settled_ms() == 1_000);
-    assert!(grid.connected().is_empty());
+    assert!(grid.modules().is_empty());
     assert!(grid.generators().is_empty());
     assert!(grid.fuel_sources().is_empty());
     assert!(grid.modules().is_empty());

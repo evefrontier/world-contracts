@@ -118,3 +118,36 @@ fun set_priority_after_disconnect_aborts() {
 
     abort
 }
+
+/// A connected module cannot be uninstalled until it is disconnected.
+#[test, expected_failure(abort_code = power_grid::EModuleStillConnected)]
+fun uninstall_while_connected_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, &clock);
+    connect(&mut scenario, entity_id, MOD_A, 0, 0, &clock);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    power_grid::assert_disconnected(&e, MOD_A);
+    abort
+}
+
+/// Once disconnected, the module passes the uninstall check.
+#[test]
+fun uninstall_after_disconnect_passes() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, &clock);
+    connect(&mut scenario, entity_id, MOD_A, 0, 0, &clock);
+    disconnect_module(&mut scenario, entity_id, MOD_A, &clock);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    power_grid::assert_disconnected(&e, MOD_A);
+    ts::return_shared(e);
+    clock.destroy_for_testing();
+    scenario.end();
+}

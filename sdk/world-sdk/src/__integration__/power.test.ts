@@ -125,7 +125,6 @@ describe('power grid powers an inventory (localnet)', () => {
       operateGridRequirement(enableTx, config),
     ])
     enableAdminAction(enableTx, config, enableEntity, 'deposit_fuel', [
-      ownerRequirement(enableTx, config),
       depositFuelRequirement(enableTx, config, {
         minImpulse: 50n * POWER_SCALE,
       }),
@@ -218,8 +217,7 @@ describe('power grid powers an inventory (localnet)', () => {
       onlineEntity,
       'deposit_fuel',
     )
-    verifyOwner(onlineTx, config, depositFuelRequest, cap)
-    depositFuel(onlineTx, config, onlineEntity, depositFuelRequest, {
+    depositFuel(onlineTx, config, onlineEntity, depositFuelRequest, cap, {
       fuelType: ITEM,
       amount: FUEL_AMOUNT,
       impulse: IMPULSE,

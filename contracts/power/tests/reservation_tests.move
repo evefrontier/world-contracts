@@ -103,7 +103,7 @@ fun unregister_removes_module() {
         let e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
         let grid = power_grid::power_grid(&e);
         assert!(grid.modules().is_empty());
-        assert!(grid.connected().is_empty());
+        assert!(grid.modules().is_empty());
         ts::return_shared(e);
     };
 

@@ -134,7 +134,7 @@ public fun setup_entity_with_containments(
 
     register_fuel_source(scenario, entity_id, FUEL_ID, FUEL_CAPACITY, clock);
     let any = option::none();
-    enable(
+    enable_deposit(
         scenario,
         entity_id,
         DEPOSIT_FUEL,
@@ -177,16 +177,16 @@ public fun enable_admin(
 }
 
 /// OWNER enables an owner-gated action `name` bundling `target`.
-public fun enable(
+fun enable_action_with(
     scenario: &mut ts::Scenario,
     entity_id: ID,
     name: vector<u8>,
-    target: Requirement,
+    requirements: vector<Requirement>,
 ) {
     ts::next_tx(scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
-    let act = action::new(vector[access_cap::owner_requirement(), target]);
+    let act = action::new(requirements);
     let mut req = e.enable_action(string::utf8(name), act, scenario.ctx());
     access_cap::verify(&mut req, &cap);
     e.complete_request(req);
@@ -211,6 +211,27 @@ public macro fun as_owner(
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
+}
+
+/// Expose `name` as an owner action requiring `target`. Owner-gated.
+public fun enable(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    name: vector<u8>,
+    target: Requirement,
+) {
+    enable_action_with(scenario, entity_id, name, vector[access_cap::owner_requirement(), target]);
+}
+
+/// Expose `name` as an owner action requiring only `target`. The owner's cap is
+/// not part of the action: `deposit_fuel` requires it in its own handler.
+public fun enable_deposit(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    name: vector<u8>,
+    target: Requirement,
+) {
+    enable_action_with(scenario, entity_id, name, vector[target]);
 }
 
 /// Enable, run and disable a temporary owner action bundling `$target`.
@@ -527,8 +548,8 @@ public fun deposit_fuel_via(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(name), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
     power_grid::deposit_fuel(&mut e, &mut req, fuel_type, amount, impulse, burden, clock);
+    access_cap::verify(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);

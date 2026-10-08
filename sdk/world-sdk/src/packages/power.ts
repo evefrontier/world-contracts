@@ -5,7 +5,12 @@ import type {
 } from '@mysten/sui/transactions'
 import { mvrName } from '../config/env.js'
 import type { WorldConfig } from '../config/types.js'
-import { completeRequest, verifyAdmin, verifySponsor } from './core.js'
+import {
+  completeRequest,
+  verifyAdmin,
+  verifyOwner,
+  verifySponsor,
+} from './core.js'
 
 // Power, fuel and fuel stats are fixed point at `POWER_SCALE`: 0.1 MW = 1_000n.
 export const POWER_SCALE = 10_000n
@@ -251,12 +256,16 @@ export interface DepositFuelArgs {
   containmentBurden: bigint
 }
 
-/** Bridge fuel into the pool. The gas sponsor must be on `AdminACL`. */
+/**
+ * Bridge fuel into the pool. The owner's `ownerCap` authorizes the deposit, and
+ * the gas sponsor must be on `AdminACL`.
+ */
 export function depositFuel(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
   args: DepositFuelArgs,
 ): void {
   tx.moveCall({
@@ -271,6 +280,7 @@ export function depositFuel(
       tx.object.clock(),
     ],
   })
+  verifyOwner(tx, config, request, ownerCap)
   verifySponsor(tx, config, request)
 }
 
@@ -309,6 +319,21 @@ export function setGenerator(
   })
 }
 
+/** Disconnect a module, releasing its reservation. Satisfies the admin follow-up too. */
+export function disconnectModule(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+  moduleId: bigint,
+): void {
+  tx.moveCall({
+    target: grid(config, 'disconnect_module'),
+    arguments: [entity, request, tx.pure.u64(moduleId), tx.object.clock()],
+  })
+  verifyAdmin(tx, config, request)
+}
+
 /** Reserve `draw` for `moduleId`. Aborts if it does not fit. */
 export function reserve(
   tx: Transaction,
@@ -329,6 +354,41 @@ export function reserve(
       drawKind(tx, config, kind),
       tx.object.clock(),
     ],
+  })
+}
+
+/** Move a connected module into priority group `priority`. Higher groups are shed first. */
+export function setPriority(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+  moduleId: bigint,
+  priority: bigint,
+): void {
+  tx.moveCall({
+    target: grid(config, 'set_priority'),
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(moduleId),
+      tx.pure.u64(priority),
+      tx.object.clock(),
+    ],
+  })
+}
+
+/** Release every reservation in priority group `priority`. */
+export function releasePriority(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+  priority: bigint,
+): void {
+  tx.moveCall({
+    target: grid(config, 'release_priority'),
+    arguments: [entity, request, tx.pure.u64(priority), tx.object.clock()],
   })
 }
 

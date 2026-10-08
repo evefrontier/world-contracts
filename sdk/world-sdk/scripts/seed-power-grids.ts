@@ -80,7 +80,6 @@ for (const [alias, unit] of entries) {
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'deposit_fuel', [
-    ownerRequirement(tx, config),
     depositFuelRequirement(tx, config),
   ])
 

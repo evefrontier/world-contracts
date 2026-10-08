@@ -6,6 +6,7 @@
 module power::power_grid;
 
 use core::{
+    access_cap,
     admin_service,
     component::{Self, Component},
     entity::Entity,
@@ -55,7 +56,7 @@ const ECapacityBelowMin: vector<u8> = b"Rated capacity is below the requirement"
 #[error(code = 16)]
 const EUsedAboveMax: vector<u8> = b"Used power is above the requirement";
 #[error(code = 17)]
-const EGenNotOnline: vector<u8> = b"Generator is not online";
+const EGenNotOnline: vector<u8> = b"Generator's online state does not match the requirement";
 #[error(code = 18)]
 const EOutputBelowMin: vector<u8> = b"Generator output is below the requirement";
 #[error(code = 19)]
@@ -108,6 +109,9 @@ const EFuelAmountAboveMax: vector<u8> = b"Fuel amount is above the requirement";
 const EOutOfFuel: vector<u8> = b"Power grid has run out of fuel";
 #[error(code = 42)]
 const EZeroBaseFuelRate: vector<u8> = b"Generator base fuel rate must be greater than zero";
+#[error(code = 43)]
+const EModuleStillConnected: vector<u8> =
+    b"Module must be disconnected from the power grid before uninstall";
 
 // === Constants ===
 
@@ -141,11 +145,8 @@ public struct PowerGrid has store {
     used_mw: u64,
     /// Timestamp `settled_fuel_quantity` was last computed at.
     last_settled_ms: u64,
-    /// Registered modules by component id: line loss and reservation.
+    /// Connected modules by component id: line loss, priority group and reservation.
     modules: VecMap<u64, ModuleState>,
-    // TODO: this can gain a category later, with the priority group as a sibling of it.
-    /// Connected modules: component id, priority group. A higher group number is shed first. Group 0 is last.
-    connected: VecMap<u64, u64>,
     /// Generators feeding the grid by component id.
     generators: VecMap<u64, GeneratorState>,
     /// Fuel sources feeding the grid: component id, capacity (units at `SCALE`).
@@ -163,10 +164,12 @@ public struct GeneratorState has copy, drop, store {
     online: bool,
 }
 
-/// A registered module's admin-set line loss and its reservation, if any.
+/// A connected module's admin-set line loss, priority group and reservation, if any.
 public struct ModuleState has copy, drop, store {
     /// MW of overhead the module costs the grid while granted.
     line_loss: u64,
+    /// Priority group. A higher group number is shed first. Group 0 is last.
+    priority: u64,
     reservation: Option<Reservation>,
 }
 
@@ -367,7 +370,6 @@ public fun install(entity: &mut Entity, clock: &Clock, ctx: &mut TxContext): Req
         used_mw: 0,
         last_settled_ms: clock.timestamp_ms(),
         modules: vec_map::empty(),
-        connected: vec_map::empty(),
         generators: vec_map::empty(),
         fuel_sources: vec_map::empty(),
     };
@@ -571,8 +573,9 @@ public fun connect_module(
     assert!(!grid.modules.contains(&module_id), EModuleAlreadyRegistered);
     assert!(grid.modules.length() < MAX_CONNECTED, ETooManyConnected);
     grid.settle(entity_id, clock);
-    grid.modules.insert(module_id, ModuleState { line_loss, reservation: option::none() });
-    grid.connected.insert(module_id, 0);
+    grid
+        .modules
+        .insert(module_id, ModuleState { line_loss, priority: 0, reservation: option::none() });
     event::emit(ModuleConnected { entity_id, module_id, line_loss, priority: 0 });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
@@ -594,9 +597,6 @@ public fun disconnect_module(
         event::emit(Released { entity_id, module_id });
     };
     grid.modules.remove(&module_id);
-    if (grid.connected.contains(&module_id)) {
-        grid.connected.remove(&module_id);
-    };
     event::emit(ModuleDisconnected { entity_id, module_id });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
@@ -612,9 +612,9 @@ public fun set_priority(
 ) {
     let entity_id = entity.id();
     let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
-    assert!(grid.connected.contains(&module_id), ENotConnected);
+    assert!(grid.modules.contains(&module_id), ENotConnected);
     grid.settle(entity_id, clock);
-    *&mut grid.connected[&module_id] = priority;
+    grid.modules[&module_id].priority = priority;
     event::emit(PriorityChanged { entity_id, module_id, priority });
     frame.destroy_empty_frame();
 }
@@ -631,7 +631,7 @@ public fun reserve(
     let entity_id = entity.id();
     let (_requirement, frame, grid) = take(entity, req, operate_grid_permit());
     assert!(draw > 0, EZeroDraw);
-    assert!(grid.connected.contains(&module_id), ENotConnected);
+    assert!(grid.modules.contains(&module_id), ENotConnected);
     // TODO: may later replace the existing reservation instead of aborting.
     assert!(!grid.has_reservation(module_id), EAlreadyReserved);
     grid.settle(entity_id, clock);
@@ -731,6 +731,14 @@ public fun unregister_fuel_source(
     req.enqueue(frame);
 }
 
+/// Abort unless `module_id` is disconnected from the grid. A module's own package
+/// calls this before it uninstalls the module's component, since a connected
+/// module keeps its reservation.
+public fun assert_disconnected(entity: &Entity, module_id: u64) {
+    if (!entity.has_component_with_type<PowerGrid>(component_id())) return;
+    assert!(!is_connected(power_grid(entity), module_id), EModuleStillConnected);
+}
+
 /// Uninstall an unregistered Fuel source. Admin-gated.
 public fun uninstall_fuel_source(entity: &mut Entity, fuel_id: u64, ctx: &mut TxContext): Request {
     assert!(!is_fuel_source_registered(entity, fuel_id), EFuelSourceStillRegistered);
@@ -740,7 +748,7 @@ public fun uninstall_fuel_source(entity: &mut Entity, fuel_id: u64, ctx: &mut Tx
 // TODO: an `Item`to fuel path once inventory can connect to the fuel bay.
 /// Bridge `amount` of fuel into the pool and blend its stats by weighted
 /// average, if it meets the owner's `FuelRequirement`. All values at `SCALE`,
-/// supplied by the game server. The gas sponsor must be on `AdminACL`.
+/// supplied by the game server.
 public fun deposit_fuel(
     entity: &mut Entity,
     req: &mut Request,
@@ -769,6 +777,7 @@ public fun deposit_fuel(
         resulting_impulse: grid.fuel_impulse,
         resulting_containment_burden: grid.fuel_containment_burden,
     });
+    frame.require(access_cap::owner_requirement());
     frame.require(admin_service::sponsor_requirement());
     req.enqueue(frame);
 }
@@ -913,18 +922,14 @@ public fun module_state(grid: &PowerGrid, module_id: u64): ModuleState {
     grid.modules[&module_id]
 }
 
-public fun connected(grid: &PowerGrid): &VecMap<u64, u64> {
-    &grid.connected
-}
-
 public fun is_connected(grid: &PowerGrid, module_id: u64): bool {
-    grid.connected.contains(&module_id)
+    grid.modules.contains(&module_id)
 }
 
 /// The priority group of a connected module.
 public fun priority(grid: &PowerGrid, module_id: u64): u64 {
-    assert!(grid.connected.contains(&module_id), ENotConnected);
-    grid.connected[&module_id]
+    assert!(grid.modules.contains(&module_id), ENotConnected);
+    grid.modules[&module_id].priority
 }
 
 public fun has_reservation(grid: &PowerGrid, module_id: u64): bool {
@@ -1108,7 +1113,7 @@ fun reserved_at(grid: &PowerGrid, priority: u64): vector<u64> {
     let mut module_ids = vector[];
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx(i);
-        if (state.reservation.is_some() && grid.connected[module_id] == priority) {
+        if (state.reservation.is_some() && state.priority == priority) {
             module_ids.push_back(*module_id);
         };
     });
@@ -1139,9 +1144,8 @@ fun shed(grid: &mut PowerGrid, entity_id: ID) {
     while (grid.used_mw > grid.effective_capacity_mw()) {
         let mut highest = 0;
         grid.modules.length().do!(|i| {
-            let (module_id, state) = grid.modules.get_entry_by_idx(i);
-            let priority = grid.connected[module_id];
-            if (state.reservation.is_some() && priority > highest) highest = priority;
+            let (_, state) = grid.modules.get_entry_by_idx(i);
+            if (state.reservation.is_some() && state.priority > highest) highest = state.priority;
         });
         grid.reserved_at(highest).do!(|module_id| {
             grid.release_module(module_id);
@@ -1249,8 +1253,10 @@ fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
     (burn.min(grid.settled_fuel_quantity as u128)) as u64
 }
 
-/// Rounds up, so frequent settles never burn less than the true amount.
-/// Zero impulse has no fuel factor, so the Generator burns its base rate instead.
+/// Rounds up to the next fuel unit, so a settle never burns less than its exact
+/// amount. Splitting one span into many settles can burn up to one extra unit per
+/// online Generator per settle. Zero impulse has no fuel factor, so the Generator
+/// burns its base rate instead.
 fun generator_burn(grid: &PowerGrid, state: &GeneratorState, load: u128, elapsed_ms: u128): u128 {
     if (grid.fuel_impulse == 0) {
         return divide_round_up(

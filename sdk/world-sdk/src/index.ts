@@ -114,6 +114,7 @@ export {
   type DrawKind,
   depositFuel,
   depositFuelRequirement,
+  disconnectModule,
   type FuelRule,
   installFuel,
   installGenerator,
@@ -127,10 +128,12 @@ export {
   registerFuelSource,
   registerGenerator,
   release,
+  releasePriority,
   reserve,
   reserveRequirement,
   setGenerator,
   setPowerGrid,
+  setPriority,
 } from './packages/power.js'
 export {
   type DockingArgs,
