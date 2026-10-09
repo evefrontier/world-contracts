@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "contracts for eve frontier",
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@12.10.1",
   "scripts": {
     "prepare": "husky",
     "build": "find contracts -maxdepth 1 -mindepth 1 -type d -not -name archive | xargs -P 4 -I {} sui move build --build-env testnet --path {}",

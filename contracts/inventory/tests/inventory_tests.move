@@ -12,8 +12,9 @@ use core::{
     test_helpers::{claim, setup, take_acl, take_registry}
 };
 use inventory::{inventory, item::{Self, Item}};
+use power::{grid_load, power_grid};
 use std::string::{Self, String};
-use sui::{event, test_scenario as ts};
+use sui::{clock::{Self, Clock}, event, test_scenario as ts};
 
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
@@ -818,4 +819,92 @@ fun deposit_at_an_entity_outside_the_docking_aborts() {
     deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
 
     abort
+}
+
+/// Install a grid and connect this entity's inventory to it.
+fun connect_inventory_to_grid(scenario: &mut ts::Scenario, entity_id: ID, clock: &Clock) {
+    ts::next_tx(scenario, ADMIN);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = power_grid::install(&mut e, clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let mut req = e.enable_admin_action(
+        string::utf8(b"manage_module"),
+        action::new(vector[power_grid::manage_module_requirement()]),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(e);
+
+    ts::next_tx(scenario, ADMIN);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = e.interact(string::utf8(b"manage_module"), scenario.ctx());
+    grid_load::connect_module<inventory::Inventory>(&mut e, &mut req, MODULE_ID, 0, clock);
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(e);
+}
+
+#[test, expected_failure(abort_code = grid_load::EModuleStillConnected)]
+fun uninstall_while_connected_to_grid_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let entity_id = e.id();
+    e.share();
+    ts::return_shared(registry);
+    ts::return_shared(acl);
+
+    let clock = clock::create_for_testing(scenario.ctx());
+    connect_inventory_to_grid(&mut scenario, entity_id, &clock);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let _req = inventory::uninstall(&mut e, MODULE_ID, scenario.ctx());
+
+    abort
+}
+
+#[test]
+fun uninstall_after_grid_disconnect_removes_inventory() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let entity_id = e.id();
+    e.share();
+    ts::return_shared(registry);
+    ts::return_shared(acl);
+
+    let clock = clock::create_for_testing(scenario.ctx());
+    connect_inventory_to_grid(&mut scenario, entity_id, &clock);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let acl = take_acl(&scenario);
+    let mut req = e.interact(string::utf8(b"manage_module"), scenario.ctx());
+    grid_load::disconnect_module(&mut e, &mut req, MODULE_ID, &clock);
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let mut req = inventory::uninstall(&mut e, MODULE_ID, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    assert!(!e.has_component(MODULE_ID));
+
+    ts::return_shared(acl);
+    ts::return_shared(e);
+    clock.destroy_for_testing();
+    scenario.end();
 }

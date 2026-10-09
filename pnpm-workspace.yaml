@@ -1,6 +1,9 @@
 packages:
   - "sdk/*"
 
+allowBuilds:
+  esbuild: true
+
 # Single source of truth for shared dependency versions across the workspace.
 catalog:
   "@mysten/sui": ^2.0.0

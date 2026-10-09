@@ -71,7 +71,7 @@ jobs:
       packages: read
     env:
       # Pin digest (not :latest). Bump after a successful Publish Integration Image run.
-      IMAGE: ghcr.io/${{ github.repository_owner }}/world-integration:scratchpad@sha256:b2cb8aa8000357e07fb3fb9e55c69a7a8d60e2f6d6e4ab6a717e3802d7f1897a
+      IMAGE: ghcr.io/${{ github.repository_owner }}/world-integration:c1411d6ff68cd5a6911dae28717e3304223debe3@sha256:1b0ac67f43942179a658748e6567de3b57132d102787ada1ab72414d04d54afd
     steps:
       - uses: actions/checkout@v5
 

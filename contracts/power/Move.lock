@@ -4,34 +4,28 @@
 [move]
 version = 4
 
-[pinned.dev.MoveStdlib]
+[pinned.test.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "2a0becb2fcc6989e492981104af67f62f2c9511a" }
-use_environment = "dev"
+use_environment = "test"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
-[pinned.dev.Sui]
+[pinned.test.Sui]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "2a0becb2fcc6989e492981104af67f62f2c9511a" }
-use_environment = "dev"
-manifest_digest = "EA4322ACAE0C2B0A69CD8FC8EF734EB455BDC48311D529D9687CECBE1B3F6C68"
+use_environment = "test"
+manifest_digest = "34680C691DC75A3E509B374F44D0B003D7E36FFFD9A9FB119A330B2099254635"
 deps = { MoveStdlib = "MoveStdlib" }
 
-[pinned.dev.core]
+[pinned.test.core]
 source = { local = "../core" }
-use_environment = "dev"
-manifest_digest = "D57897BC535122CD3CB949AFE1637D27C48ECACE7AA4A38C0E6217E4903C5510"
+use_environment = "test"
+manifest_digest = "EBA8B38D147A8B66C71FF7146619B367111B1053501E8FCFF94D8A52A1239568"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
-[pinned.dev.inventory]
+[pinned.test.power]
 source = { root = true }
-use_environment = "dev"
-manifest_digest = "234E39736D80037F534036037D56068EF6DC12BCC636A6CBE5111D98035F8DCA"
-deps = { core = "core", power = "power", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.dev.power]
-source = { local = "../power" }
-use_environment = "dev"
-manifest_digest = "C9F5662B88EC27D4EDC3A17419B2DD98AA33F04F755FC7BC996546A84D83EA2F"
+use_environment = "test"
+manifest_digest = "5AE763C1D1A9B425789620F7B9A5BC3B680D99EEF2BB6084279E40A9B6A8D34E"
 deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.MoveStdlib]
@@ -52,14 +46,8 @@ use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
-[pinned.testnet.inventory]
-source = { root = true }
-use_environment = "testnet"
-manifest_digest = "BDB8EB404D00C30352AB875FC5C20B3552BEB33364D0762BAFDC05128A10C436"
-deps = { core = "core", power = "power", std = "MoveStdlib", sui = "Sui" }
-
 [pinned.testnet.power]
-source = { local = "../power" }
+source = { root = true }
 use_environment = "testnet"
 manifest_digest = "D59946E78C59818FEAB3920FB1CFE46E6601B41BBE737CC3E0BBE15760D89BCB"
 deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
