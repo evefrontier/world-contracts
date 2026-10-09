@@ -1,7 +1,7 @@
 # Docker
 
 Two Dockerfiles. One pinned toolchain: `SUI_VERSION=testnet-v1.78.0` (plus
-`PNPM_VERSION=9`), declared as build `ARG`s in each Dockerfile. To bump, update
+`PNPM_VERSION=12.10.1`), declared as build `ARG`s in each Dockerfile. To bump, update
 together: both Dockerfiles, this README, and `genesis/genesis-config.yaml`'s
 `protocol_version` (which must match the Sui version). The CI workflows build
 these Dockerfiles, so they inherit the pin automatically — there is no tag to
