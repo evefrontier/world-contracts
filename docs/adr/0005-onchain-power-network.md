@@ -1,4 +1,4 @@
-# 4. On-Chain Power Grid
+# 5. On-Chain Power Grid
 
 - **Status:** Proposed
 
@@ -7,287 +7,285 @@
 A Creation (ship, structure, anything a player builds) has to manage power: fit
 generators, burn fuel, and make sure every module that needs power actually
 gets it. Today that bookkeeping only happens inside the game client. Moving it
-on-chain enables builders to:
+on-chain lets builders:
 
-- Automate power management across modules through contracts, instead of only
-through the game client.
-- Make fuel choice a real economic decision: track what is actually spent and
-let better fuel last longer.
-- Budget fittings arithmetically against a known power ceiling, instead of
-guessing.
+- Automate power management through contracts, not only through the game client.
+- Make fuel choice a real economic decision: track what is spent and let better fuel last longer.
+- Budget fittings against a known power ceiling.
 - Shut modules down by priority group when power runs short.
-- Let a tribe assign power-management actions to different members through contract-level
-permissions.
+- Let a tribe assign power actions to members through contract-level permissions.
 
-This ADR covers a deliberately small v1: enough on-chain state and rules to
-support power management, not a full port of the game client's power system (batteries,
-burst weapon draw and multi-ship power sharing. See [Scope](#scope)).
+This ADR covers a deliberately small v1. It does not port the game client's full
+power system (batteries, burst weapon draw, multi-ship sharing). See [Scope](#scope).
 
 ## Summary
 
-A creation can have a power grid to manage the power its modules need.
+Each Creation has one power grid (`PowerGrid`). The grid pools generator output
+and fuel, and grants power to connected modules.
 
-- **Generators** burn fuel and produce power (MW). Fit more generators, the
-power grid's capacity goes up.
-- **Fuel Bays** hold the fuel that generators burn, pooled together.
-- Every other fitting that needs power (inventory, thruster, anything) is a
-load on the grid. Switching it on asks for a number of megawatts: **Firm**
-(all-or-nothing) or **Elastic** (take leftover if the full ask does not fit).
+- **Generators** are admin-registered with a rated output (MW), a containment
+reduction and a base fuel rate. The owner brings them online or offline. Online
+generators add their output to the grid's capacity.
+- **Fuel sources** hold fuel for the grid. Their capacity is registered by an
+admin. Fuel is pooled into one supply, with a blended impulse and containment
+burden.
+- **Modules** (inventory, thruster, any future fitting) are connected by an admin
+with a line loss. The owner then reserves power for a module as **Firm**
+(all-or-nothing) or **Elastic** (takes what is left).
+- Fuel burns over time, lazily. Every mutating transaction settles the burn since
+the last one.
+- When effective capacity falls below what is in use, the grid sheds reservations
+by **priority group**. Shed modules must reserve again. Nothing regrants them.
 
 ```mermaid
 flowchart LR
-    FB1[Fuel Bay] --> Pool[(Shared fuel pool)]
-    FB2[Fuel Bay] --> Pool
+    FS1[Fuel source] --> Pool[(Shared fuel pool)]
+    FS2[Fuel source] --> Pool
     Pool --> Gen1[Generator]
     Pool --> Gen2[Generator]
-    Gen1 --> Ceiling[Power pool]
-    Gen2 --> Ceiling
-    Ceiling --> Inventory[Inventory: 10 MW]
-    Ceiling --> Thruster[Thruster: 25 MW]
-    Ceiling --> Turret[Turret: 15 MW]
+    Gen1 --> Capacity[Grid capacity]
+    Gen2 --> Capacity
+    Capacity --> Inventory[Inventory: 10 MW]
+    Capacity --> Thruster[Thruster: 25 MW]
+    Capacity --> Turret[Turret: 15 MW]
 ```
 
-When a connected module requests power, the grid stores the ask (`requested`)
-and how many watts it is actually getting right now (`active_draw: u64`,). 
-A request is never dropped.
 
-- **Firm:** `active_draw = requested` if leftover capacity covers the full ask,
-  else `0` (waiting).
-- **Elastic:** `active_draw = min(requested, leftover)`. Partial grant is
-  allowed; `0` only if leftover is `0`.
 
-When capacity shrinks (a generator goes offline or Power turns Off) the grid
-first **shrinks Elastic** `active_draw` until usage fits, then **sheds Firm**
-(smallest `requested` first) down to `active_draw = 0`.
 
-Fuel running low is different: it depletes gradually, so nothing switches off
-the moment it hits zero. Affected modules remain stored as-is until the next
-mutating transaction; view functions only expose the projected fuel/capacity.
-However in-game client will have the updated state via our internal cron job.
 
-When capacity returns (new generator, refuel, or Power On) the same
-transaction regrants: Firm rows in priority-group order get a full grant or stay at
-`0`; leftover then fills Elastic rows up to each `requested`. 
+### Reservations
 
-Power On/Off is one master switch for the whole Creation. Off treats capacity
-as zero and switches off every active module; the stored generator totals and
-fuel stays the same.
+A module's reservation holds `requested` MW and `active_draw` MW granted now.
+Line loss is charged on top while the reservation is held.
 
-**Not covered in v1:** no battery/capacitor buffering a shortfall, no burst power for weapon fire. See [Scope](#scope) and [Consequences](#consequences).
+- **Firm:** `reserve` aborts unless `requested + line_loss` fits the leftover
+capacity. A held Firm reservation always has `active_draw == requested`.
+- **Elastic:** grants `min(requested, leftover - line_loss)`. `reserve` aborts only
+if leftover does not cover the line loss.
+
+
+There is no waiting state. A reservation is either held with a nonzero grant, or
+absent. A module that cannot get power gets an abort at `reserve`, and the owner
+retries later.
+
+`used_mw` is the sum of `active_draw + line_loss` over held reservations. A module
+is powered iff it holds a reservation.
+
+### Shedding
+
+Shedding runs after any change that lowers effective capacity: a generator goes
+offline, the grid goes off, or the fuel runs out. Changing a module's priority
+does not shed; the next capacity drop applies the new order.
+
+- If effective capacity is `0` (grid off, or no fuel), every reservation is
+released.
+- Otherwise, while `used_mw > effective capacity`, every reservation in the
+**highest priority group** that holds one is released. Group 0 is shed last.
+
+Shedding drops whole reservations. It never shrinks an Elastic grant. Shed
+modules get a `Shed` event and must reserve again. Nothing regrants them, and
+their reservation is not restored when capacity returns.
+
+### Fuel burn
+
+Fuel burns lazily. Each mutating handler settles the burn since `last_settled_ms`
+before it changes state. Views project the burn to the current time.
+
+Each online Generator burns its share of the load:
+
+- `load = min(used_mw, capacity_mw)`
+- `share = load * max_output_mw / capacity_mw`
+- `fuel_factor = clamp(impulse / max(1, burden / containment_reduction), 1, 100)`,
+all at `SCALE`
+- `burn = share * SCALE * elapsed_ms / (fuel_factor * 1000)`, rounded up.
+
+A Generator with zero impulse has no fuel factor. It burns `base_fuel_rate` per
+second instead, rounded up.
+
+Total burn is capped at the fuel left. When the fuel reaches zero, the grid emits
+`FuelDepleted` and sheds every reservation.
 
 ### End-to-end flow
 
 ```mermaid
 sequenceDiagram
+    participant Admin
     participant Owner
     participant Generator
-    participant FuelBay
+    participant FuelSource
     participant PowerGrid
-    participant Inventory as Inventory
+    participant Inventory
 
-    Owner->>Generator: install (max_output_mw: 50)
-    Generator->>PowerGrid: pool_capacity_mw += 50
-    Owner->>FuelBay: deposit fuel
-    FuelBay->>PowerGrid: settled_fuel_quantity += amount
-    Inventory->>PowerGrid: firm_draw_requirement(draw: 25)
+    Admin->>Generator: install, then register_generator(max_output_mw: 50)
+    Admin->>FuelSource: install, then register_fuel_source(capacity)
+    Admin->>PowerGrid: connect_module(Inventory, line_loss)
+    Owner->>PowerGrid: set_generator(online)
+    Note over PowerGrid: capacity_mw += 50
+    Owner->>PowerGrid: deposit_fuel (owner cap + sponsor)
+    Owner->>PowerGrid: set_power_grid(on)
+    Owner->>PowerGrid: reserve(Inventory, 25 MW, Firm)
     PowerGrid-->>Inventory: Reserved { requested: 25, active_draw: 25 }
 
-    Note over PowerGrid: Generator goes offline<br/>pool_capacity_mw -= 50
-    PowerGrid->>PowerGrid: shed smallest active row(s) until usage fits
+    Note over PowerGrid: Generator goes offline
+    Owner->>PowerGrid: set_generator(offline)
     PowerGrid-->>Inventory: Shed { module_id }
-
-    Note over PowerGrid: Generator back online<br/>pool_capacity_mw += 50
-    Owner->>PowerGrid: Power On (regrant)
-    PowerGrid-->>Inventory: Reserved { requested: 25, active_draw: 25 }
+    Note over Inventory: must reserve again once power returns
 ```
 
-A firm or elastic draw is a `Requirement` any consuming action can bundle in,
-satisfied against the shared `PowerGrid` component, or requested directly via
-`PowerGrid`'s standalone "request power" Action:
 
-```move
-public fun firm_draw_requirement(component_id: u64, draw: u64): Requirement {
-    requirement::from_config(option::some(component_id), FirmDraw { draw })
-}
 
-public fun elastic_draw_requirement(component_id: u64, draw: u64): Requirement {
-    requirement::from_config(option::some(component_id), ElasticDraw { draw })
-}
-```
+
 
 ## Scope
 
-**In scope for v1:**
+**In v1:**
 
-- One `Component<PowerGrid>` per Creation, tracking a pooled power ceiling
-and current usage.
-- One or more `Component<Generator>` fittings, each contributing a rated output
-to the pool.
-- One or more `Component<FuelBay>` fittings, all pooling into one shared fuel
-supply (quantity + blended `impulse`) that every installed Generator burns
-from.
-- **Firm** reservations: fixed ask, all-or-nothing (`active_draw` is `0` or
-`requested`).
-- **Elastic** reservations: (leftover watts), `active_draw` may be any 
-value <= requested.
-- Power On/Off (a Creation-level gate).
-- Lazy (pull-based, no cron) fuel burn settlement.
+- One `PowerGrid` per Creation, with pooled capacity, fuel, and the module and
+generator registries.
+- `Generator` and `Fuel` markers, one or more per Creation. Their stats live in the grid.
+- Firm and Elastic reservations, up to `MAX_CONNECTED` (100) modules.
+- Owner-set priority groups, with whole-group shedding.
+- Power On/Off as a Creation-level master switch.
+- Lazy fuel burn, depletion, and owner-set rules on what fuel may be deposited.
 
-**Out of scope for v1:**
+**Out of v1:**
 
-- **Capacitor/Store on-chain entirely.** No stored battery charge, no Burst
-requests, no reserve supply. If a capacitor exists in the client, it is
-off-chain state only.
-- Cross-Creation power sharing (Links/couplers).
-- Builder-customizable shed priority groups.
+- Batteries, capacitors and burst draw. If a capacitor exists in the client, it is off-chain state only.
+- Cross-Creation power sharing (links and couplers).
+- Regranting shed modules when capacity returns.
+- Partial shedding (shrinking an Elastic grant).
+
+
 
 ## On-chain design
 
+
+
 ### Data model
 
-#### `Component<PowerGrid>`
-
 ```move
-// One per Creation. Pooled fuel and watts, plus who is plugged in and who is drawing.
 public struct PowerGrid has store {
     on: bool,
-
-    // pooled fuel, settled as of last_settled_ms, not live
-    settled_fuel_quantity: u64,     // fuel remaining as of the last settlement
-    fuel_capacity: u64,             // sum of installed Fuel Bays' rated capacity
-    fuel_impulse: u64,              // blended (weighted-average) quality attribute
-
-    // running-total ceilings (summed from online contributions)
-    capacity_mw: u64,          // sum of online Generators' rated max_output
-    used_mw: u64,                   // sum of reservation.active_draw
-    containment_reduction: u64,     // Grid-level constant
-
-    last_settled_ms: u64,           // timestamp settled_fuel_quantity was last computed at
-
-    connected: VecSet<u64>,         // component_ids connected via a conduit
-    reservations: LinkedTable<u64, Reservation>, // key = module_id
+    settled_fuel_quantity: u64,     // fuel as of last_settled_ms, not live
+    fuel_capacity: u64,             // sum of registered fuel sources
+    fuel_impulse: u64,              // blended impulse
+    fuel_containment_burden: u64,   // blended burden
+    capacity_mw: u64,               // sum of online generators' max_output_mw
+    used_mw: u64,                   // sum of held (active_draw + line_loss)
+    last_settled_ms: u64,
+    modules: VecMap<u64, ModuleState>,       // connected modules, by component id
+    generators: VecMap<u64, GeneratorState>, // registered generators
+    fuel_sources: VecMap<u64, u64>,          // registered fuel sources and capacity
 }
 
-public enum DrawKind has store, drop {
-    Firm,
-    Elastic,
-}
-
-public struct Reservation has store, drop {
-    module_id: u64,
-    requested: u64,     // MW asked
-    line_loss: u64,
-    active_draw_at_last_settled : u64,   // MW granted right now; 0 = none. Firm is 0 or requested.
-    kind: DrawKind,
-    // Can add a priority group later
-}
-
-// Requirement configs. power_grid owns these types, so it alone can obtain
-// Permit<FirmDraw> / Permit<ElasticDraw> to pop them off a Request.
-public struct FirmDraw has store, drop {
-    draw: u64,
-}
-
-public struct ElasticDraw has store, drop {
-    draw: u64,
-}
-```
-
-Effective capacity is `pool_capacity_mw - containment_reduction`.
-
-`LinkedTable` is keyed by `module_id` so Reserve/Release are O(1).
-`used_mw` is the sum of `active_draw` (the live grant), not `requested`.
-Shed/regrant use `DrawKind` as above: shrink Elastic first, then zero Firm.
-
-#### `Component<Generator>` (one or more per Creation)
-
-```move
-public struct Generator has store {
+public struct GeneratorState has copy, drop, store {
     max_output_mw: u64,
-    // other generator attributes
+    containment_reduction: u64,
+    base_fuel_rate: u64,
+    online: bool,
+}
+
+public struct ModuleState has copy, drop, store {
+    line_loss: u64,
+    priority: u64,                  // higher is shed first; 0 is last
+    reservation: Option<Reservation>,
+}
+
+public struct Reservation has copy, drop, store {
+    requested: u64,
+    active_draw: u64,
+    kind: DrawKind,                 // Firm | Elastic
 }
 ```
 
-#### `Component<FuelBay>` (one or more per Creation)
+Effective capacity is `capacity_mw` while the grid is on and fuel is above zero,
+and `0` otherwise.
 
-```move
-public struct FuelBay has store {
-    capacity: u64,
-    // other fuel bay attributes
-}
-```
+All MW, fuel and fuel-stat values are fixed point at `SCALE = 10_000` (4 decimals).
 
-Deposit blends into the pooled `settled_fuel_quantity` / `fuel_impulse` on
-`PowerGrid`, using the weighted-average formula
-(`new_value = (old_value * old_qty + type_value * amount_added) / (old_qty + amount_added)`),
-at 4 decimal fixed point (`SCALE = 10_000`).
+### Actions and authorization
 
-#### Consuming modules (Inventory, Thruster, any future fitting)
 
-Each carries its own `line_loss: u64` (set at install) and is added to
-`PowerGrid.connected` at install time. No new component type is needed purely
-to draw power: any existing or future component can include a
-`power_grid::firm_draw_requirement(...)` in one of its own actions.
+| Operation                                                                                   | Gate                                                                     |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Install grid, generator or fuel marker                                                      | Admin                                                                    |
+| `register_generator`, `unregister_generator` (must be offline)                              | Admin                                                                    |
+| `uninstall_generator`, `uninstall_fuel_source` (must be unregistered)                       | Admin                                                                    |
+| `register_fuel_source`, `unregister_fuel_source` (must still fit settled fuel)              | Admin                                                                    |
+| `connect_module`, `disconnect_module` (disconnect releases any reservation)                 | Admin                                                                    |
+| `set_power_grid`, `set_generator`, `set_priority`, `reserve`, `release`, `release_priority` | Owner `AccessCap` + operate-grid requirement                             |
+| `deposit_fuel`                                                                              | Owner `AccessCap` (enforced in the handler) + admin-approved gas sponsor |
 
-### Actions & Requirements
 
-- **Power On / Power Off**: its own Action on the Power Grid, gated
-`owner_requirement()`.
-- **Firm draw / Elastic draw**: Requirements, bundled into the player's own
-action (e.g. Inventory "online"), or `PowerGrid`'s standalone **"request
-power"** Action.
-- **Release**: a Requirement/handler pair on the player's own action (e.g.
-"offline"), or directly via `power_grid`'s own action, by
-`component_id`.
-- **Generator install/online/offline**: on `Component<Generator>`'s own action,
-pushes the `max_output_mw` delta into `PowerGrid.pool_capacity_mw`
-(requires bundling a `power_grid` targeting requirement, since it mutates
-a sibling component).
-- **Fuel Bay install/uninstall/deposit**: pushes capacity deltas and
-blends deposits into the pooled fuel state. Uninstall settles fuel first
-advancing `settled_fuel_quantity` to now then aborts if the settled
-quantity would exceed the reduced `fuel_capacity`.
-- **Rewire**: an owner-gated action to add/remove a component from
-`PowerGrid.connected` after install. Removing a component auto-releases its
-existing reservation, if any, in the same transaction.
+`deposit_fuel` checks the owner's `FuelRequirement` (fuel types, minimum impulse,
+maximum containment burden, minimum and maximum amount). It then blends the
+deposit into the pool by weighted average: `new = (old × old_qty + added × added_qty) / (old_qty + added_qty)`.
+It aborts if the pool would exceed `fuel_capacity`.
+
+Uninstalling a module's component is done by the module's own package, not by
+power. Before it does, that package calls `power_grid::assert_disconnected`. This
+aborts while the module is connected.
+
+### Requirements (for composing actions)
+
+- `power_grid::operate_grid_requirement()`: satisfied by owner operations on the grid.
+- `power_grid::reserve_requirement(module_id, draw, kind)`: asserts the module
+holds a reservation of at least `draw`, of the given kind. The consuming action
+calls `assert_reserved`, which settles first and aborts if the fuel has run out.
+- `power_grid::power_grid_requirement(...)`, `generator_requirement(...)`,
+`deposit_fuel_requirement(...)`: owner-configured checks on grid state, generator
+state and deposits.
+
+
 
 ### Events
 
-- `Reserved { module_id, kind, requested, line_loss, active_draw }`
-- `Released { module_id }`
-- `Shed { module_id }`
-- `PowerToggled { on }`
-- `FuelAdded { fuel_type, amount, resulting_impulse }`
+- `PowerGridInstalled`, `PowerGridUninstalled`, `PowerToggled`, `CapacityChanged`
+- `GeneratorRegistered`, `GeneratorUnregistered`, `GeneratorToggled`
+- `FuelSourceRegistered`, `FuelSourceUnregistered`, `FuelAdded`, `FuelDepleted`
+- `ModuleConnected`, `ModuleDisconnected`, `PriorityChanged`
+- `Reserved`, `Released`, `Shed`
 
-// More events can be added 
 
-### Client & PTB discovery
 
-`PowerGrid` needs plain view functions so a client or indexer can read
-current state without waiting for a transaction to update the State:
+### Client and PTB discovery
 
-- projected fuel quantity and properties at current time
-- projected pool status at current time to return pool capacitoy, 
- used capacity and active reservations
+Views read state without a transaction:
 
-Views are truth for fuel and effective capacity. Stored `active_draw` /
-`used_mw` / `Shed` events lag until the next mutating action. There is no
-`settle()` or poke action. Builders that rely on on-chain events should use
-the view functions to compute the values for the side-effects.
+- `projected_fuel(grid, clock)`: fuel left now, with the burn since the last settle applied.
+- `projected_status(grid, clock)`: `(effective capacity, used_mw, reserved module ids)`
+now. If fuel has run out, everything reads as shed.
+- `effective_capacity_mw(grid)`: as of the last settle.
 
-A module is "on" iff `active_draw > 0`. Compare `active_draw` to `requested`
-to see a full Firm grant vs a partial Elastic grant.
+Stored `active_draw`, `used_mw` and `Shed` events lag until the next mutating
+action. Builders that need current values should use the views. Module
+reservation state is available from `module_state(grid, module_id)`, and
+`reservation(state)` returns the held reservation, if any.
+
+A module is powered iff it holds a reservation. Compare `active_draw` with
+`requested` to tell a full Firm grant from a partial Elastic one.
 
 ## Consequences
 
-**Easier:** builders can automate power management from on-chain state (effective
-capacity, stored reservations, projected fuel) without querying the game
-client.
+**Easier:** builders can automate power management from on-chain state:
+effective capacity, held reservations and projected fuel.
 
-**Harder / deferred:** no capacitor-backed grace period on-chain. Elastic
-covers leftover watts, not stored charge over time. Burst / battery stay
-off-chain. 
+**Harder or deferred:**
 
-## Open questions carried forward
+- No grace period. Elastic covers leftover watts, not stored charge.
+- Shedding is coarse: it drops whole reservations, and a shed module has to
+reserve again itself.
+- Burn rounds up at each settle. A settle can burn up to 1/`SCALE` more per online
+generator than the exact amount, so splitting one span into many settles burns
+slightly more.
+- Power cannot block another package from uninstalling a module's component. The
+module's package must call `assert_disconnected`.
 
-- WIP discussions on Regrant order and Shed order
+
+
+## Open questions
+
+- Whether shedding should shrink Elastic grants before dropping them.
+- Whether the owner should be able to choose a shed order inside a priority group.
+
