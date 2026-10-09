@@ -187,7 +187,8 @@ public fun reserve(
     req.enqueue(frame);
 }
 
-/// Release `module_id`'s reservation.
+/// Release `module_id`'s reservation. Settles first. If that settle runs the
+/// tank dry it already shed the reservation, and releasing again would abort.
 public fun release(entity: &mut Entity, req: &mut Request, module_id: u64, clock: &Clock) {
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = power_grid::take_grid(
@@ -197,8 +198,10 @@ public fun release(entity: &mut Entity, req: &mut Request, module_id: u64, clock
     );
     assert!(power_grid::has_reservation(grid, module_id), ENotReserved);
     power_grid::settle(grid, entity_id, clock);
-    power_grid::release_module(grid, module_id);
-    event::emit(Released { entity_id, module_id });
+    if (power_grid::has_reservation(grid, module_id)) {
+        power_grid::release_module(grid, module_id);
+        event::emit(Released { entity_id, module_id });
+    };
     frame.require(access_cap::owner_requirement());
     req.enqueue(frame);
 }

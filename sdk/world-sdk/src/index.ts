@@ -119,6 +119,7 @@ export {
   installFuel,
   installGenerator,
   installPowerGrid,
+  inventoryModuleType,
   manageFuelRequirement,
   manageGeneratorRequirement,
   manageModuleRequirement,

@@ -57,16 +57,30 @@ public(package) fun generator_burn(
     if (impulse == 0) {
         return divide_round_up((base_fuel_rate as u128) * elapsed_ms, MS_PER_SECOND as u128)
     };
-    let share = load * (max_output_mw as u128) / (capacity_mw as u128);
     let factor = fuel_factor(impulse, containment_burden, containment_reduction);
-    divide_round_up(
-        share * (SCALE as u128) * elapsed_ms,
-        (factor as u128) * (MS_PER_SECOND as u128),
-    )
+    // Share stays in the numerator. Dividing it off first drops a nonzero load
+    // when that load does not split evenly across generators.
+    let numerator =
+        (load as u256) * (max_output_mw as u256) * (SCALE as u256) * (elapsed_ms as u256);
+    let denominator = (capacity_mw as u256) * (factor as u256) * (MS_PER_SECOND as u256);
+    (((numerator + denominator - 1) / denominator) as u128)
 }
 
 // === Private Functions ===
 
 fun divide_round_up(numerator: u128, denominator: u128): u128 {
     (numerator + denominator - 1) / denominator
+}
+
+// === Test Functions ===
+
+/// Load 1 split across two equal generators is a half share. It must still burn.
+#[test]
+fun fractional_generator_share_still_burns() {
+    let one_second = generator_burn(10_000, 10_000, 2, 1, 10_000, 0, 1, 1_000);
+    let two_seconds = generator_burn(10_000, 10_000, 2, 1, 10_000, 0, 1, 2_000);
+    let three_seconds = generator_burn(10_000, 10_000, 2, 1, 10_000, 0, 1, 3_000);
+    assert!(one_second == 1);
+    assert!(two_seconds == 1);
+    assert!(three_seconds == 2);
 }

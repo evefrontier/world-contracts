@@ -23,6 +23,7 @@ use core::{
     requirement::{Self, Requirement}
 };
 use inventory::item::{Self, Item, ItemBag};
+use power::grid_load;
 use std::{internal::Permit, string::String};
 use sui::{bcs, event};
 
@@ -121,11 +122,13 @@ public fun install(
     req
 }
 
-/// Remove the storage component. Aborts if it was never installed. Emits
-/// `InventoryUninstalled`, then burns the Inventory's balances (emitting
-/// `ItemBurned` per type) so the game client is notified.
+/// Remove the storage component. Aborts if it was never installed, or if it is
+/// still connected to a power grid. Emits `InventoryUninstalled`, then burns
+/// the Inventory's balances (emitting `ItemBurned` per type) so the game client
+/// is notified.
 public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext): Request {
     assert!(entity.has_component_with_type<Inventory>(component_id), EComponentMissing);
+    grid_load::assert_disconnected(entity, component_id);
 
     let tenant = entity.key().tenant();
     let (inv_component, req) = entity.uninstall<Inventory>(

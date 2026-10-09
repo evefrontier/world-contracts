@@ -5,6 +5,7 @@ use core::{
     access_cap::{Self, AccessCap},
     admin_service,
     entity::Entity,
+    request,
     test_helpers::{setup, take_acl}
 };
 use power::{
@@ -25,6 +26,7 @@ use power::{
         owner,
         power,
         power_up,
+        release,
         register_fuel_source,
         register_fuel_source_as,
         reserve_firm,
@@ -466,6 +468,28 @@ fun idle_grid_burns_nothing() {
     scenario.end();
 }
 
+/// Releasing the reservation is the settle that runs the tank dry. The shed
+/// already dropped it, so release must succeed and must not emit `Released`.
+#[test]
+fun release_during_depletion_sheds_instead_of_aborting() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = loaded(&mut scenario, &clock);
+
+    clock.set_for_testing(400_000_000);
+    release(&mut scenario, entity_id, MOD_A, &clock);
+    assert!(event::events_by_type<FuelDepleted>().length() == 1);
+    assert!(event::events_by_type<Shed>().length() == 1);
+    assert!(event::events_by_type<grid_load::Released>().length() == 0);
+    assert!(settled_fuel(&mut scenario, entity_id) == 0);
+    assert!(used(&mut scenario, entity_id) == 0);
+    assert!(!has_reservation(&mut scenario, entity_id, MOD_A));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
 /// Fuel runs out between transactions: the view reads as shed at once; the
 /// stored state sheds on the next transaction.
 #[test]
@@ -698,14 +722,21 @@ fun deposit_without_sponsor_aborts() {
     abort
 }
 
-/// The owner's cap is required by the deposit itself: a sponsored deposit that
-/// never presents it aborts, even if the action config omits the owner.
-#[test, expected_failure]
+/// The owner's cap is required by the deposit itself. A sponsored deposit that
+/// never presents it stays incomplete, even when the action config omits the owner.
+#[test, expected_failure(abort_code = request::ERequestNotComplete)]
 fun deposit_without_owner_cap_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = gated_deposit(&mut scenario, &clock);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut acl = take_acl(&scenario);
+    if (!admin_service::is_sponsor(&acl, ADMIN)) {
+        admin_service::add_sponsors(&mut acl, vector[ADMIN], scenario.ctx());
+    };
+    ts::return_shared(acl);
 
     let epoch = scenario.ctx().epoch();
     let timestamp = scenario.ctx().epoch_timestamp_ms();
@@ -713,13 +744,14 @@ fun deposit_without_owner_cap_aborts() {
     let builder = ts::ctx_builder_from_sender(owner())
         .set_epoch(epoch)
         .set_epoch_timestamp(timestamp)
-        .set_reference_gas_price(rgp);
+        .set_reference_gas_price(rgp)
+        .set_sponsor(ADMIN);
     ts::next_with_context(&mut scenario, builder);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-    let acl = take_acl(&scenario);
     let mut req = e.interact(string::utf8(GATED_DEPOSIT), scenario.ctx());
     grid_fuel::deposit_fuel(&mut e, &mut req, fuel_type(), 1_000, 900_000, 140_000, &clock);
-    admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
+    assert!(req.next().is<access_cap::Owner>());
+    e.complete_request(req);
 
     abort
 }

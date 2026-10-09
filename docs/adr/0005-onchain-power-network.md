@@ -95,10 +95,9 @@ before it changes state. Views project the burn to the current time.
 Each online Generator burns its share of the load:
 
 - `load = min(used_mw, capacity_mw)`
-- `share = load * max_output_mw / capacity_mw`
 - `fuel_factor = clamp(impulse / max(1, burden / containment_reduction), 1, 100)`,
 all at `SCALE`
-- `burn = share * SCALE * elapsed_ms / (fuel_factor * 1000)`, rounded up.
+- `burn = ceil(load * max_output_mw * SCALE * elapsed_ms / (capacity_mw * fuel_factor * 1000))`
 
 A Generator with zero impulse has no fuel factor. It burns `base_fuel_rate` per
 second instead, rounded up.
@@ -224,8 +223,9 @@ deposit into the pool by weighted average: `new = (old × old_qty + added × add
 It aborts if the pool would exceed `fuel_capacity`.
 
 Uninstalling a module's component is done by the module's own package, not by
-power. Before it does, that package calls `power_grid::assert_disconnected`. This
-aborts while the module is connected.
+power. Inventory calls `grid_load::assert_disconnected` before `uninstall`. This
+aborts while the module is connected. A module package with no grid on the
+entity is unaffected.
 
 ### Requirements (for composing actions)
 
@@ -279,8 +279,9 @@ reserve again itself.
 - Burn rounds up at each settle. A settle can burn up to 1/`SCALE` more per online
 generator than the exact amount, so splitting one span into many settles burns
 slightly more.
-- Power cannot block another package from uninstalling a module's component. The
-module's package must call `assert_disconnected`.
+- Power cannot block another package from uninstalling a module's component.
+That package must call `grid_load::assert_disconnected`. Inventory does. A
+package that forgets leaves the grid reservation behind.
 
 
 

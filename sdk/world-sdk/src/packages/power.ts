@@ -50,7 +50,9 @@ function drawKind(
 
 /** Full type of the Inventory component, the module `connectModule` attaches. */
 export function inventoryModuleType(config: WorldConfig): string {
-  return `${mvrName(config.env, 'inventory')}::inventory::Inventory`
+  const inventoryPkg =
+    config.packageOverrides?.inventory ?? mvrName(config.env, 'inventory')
+  return `${inventoryPkg}::inventory::Inventory`
 }
 
 // === Install ===
