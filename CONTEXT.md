@@ -112,7 +112,7 @@ Concrete `T` values installed on Entities. Migrated from the legacy assembly mod
   ([`contracts/inventory/`](contracts/inventory/)).
 - **Generic module** — opaque in-game module (thruster, turret, …) with no handler yet.
   Stored as `Component<GenericModule>`
-  ([`generic_module.move`](contracts/core/sources/generic_module.move)).
+  ([`generic_module.move`](contracts/generic_module/sources/generic_module.move)).
 - **Power** — the `power` package ([`contracts/power/`](contracts/power/),
   [ADR-0005](docs/adr/0005-onchain-power-network.md)). One **PowerGrid** per Creation holds
   the power and the fuel. **Generator** and **Fuel** are markers; their numbers live on the grid.
