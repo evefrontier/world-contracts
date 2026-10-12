@@ -447,9 +447,8 @@ public fun projected(
 ): (u64, u64, u64, vector<u64>) {
     ts::next_tx(scenario, OWNER);
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let grid = power_grid::power_grid(&entity);
-    let fuel_left = grid.projected_fuel(clock);
-    let (capacity, used_mw, online) = grid.projected_status(clock);
+    let fuel_left = power_grid::projected_fuel(&entity, clock);
+    let (capacity, used_mw, online) = power_grid::projected_status(&entity, clock);
     ts::return_shared(entity);
     (fuel_left, capacity, used_mw, online)
 }
@@ -458,7 +457,7 @@ public fun projected(
 public fun draw(scenario: &mut ts::Scenario, entity_id: ID, module_id: u64, clock: &Clock): u64 {
     ts::next_tx(scenario, OWNER);
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let draw = power_grid::power_grid(&entity).module_draw(module_id, clock);
+    let draw = power_grid::module_draw(&entity, module_id, clock);
     ts::return_shared(entity);
     draw
 }

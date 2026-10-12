@@ -60,7 +60,7 @@ fun projected_module(
 ): (u64, bool, u64) {
     ts::next_tx(scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let states = power_grid::power_grid(&entity).projected_module_states(clock);
+    let states = power_grid::projected_module_states(&entity, clock);
     let live_draw = states.get(&module_id).active_draw_at_last_settled();
     let desired = states.get(&module_id).desired_online();
     let count = states.length();

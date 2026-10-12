@@ -347,38 +347,38 @@ export function setDesiredState(
 }
 
 /** Fuel left on the creation now, with burn since the last settle applied. */
-export function currentFuel(
+export function projectedFuel(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
 ): TransactionResult {
   return tx.moveCall({
-    target: grid(config, 'current_fuel'),
+    target: grid(config, 'projected_fuel'),
     arguments: [entity, tx.object.clock()],
   })
 }
 
 /** `(effective capacity, used MW, online module ids)` now. Fuel at zero reads as all zeros. */
-export function currentStatus(
+export function projectedStatus(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
 ): TransactionResult {
   return tx.moveCall({
-    target: grid(config, 'current_status'),
+    target: grid(config, 'projected_status'),
     arguments: [entity, tx.object.clock()],
   })
 }
 
-/** `(current draw, desired online)` for one module now. Draw is 0 once the fuel has run out. */
-export function currentModuleStatus(
+/** Live draw for one module now. Zero once the fuel has run out. */
+export function moduleDraw(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   moduleId: bigint,
 ): TransactionResult {
   return tx.moveCall({
-    target: grid(config, 'current_module_status'),
+    target: grid(config, 'module_draw'),
     arguments: [entity, tx.pure.u64(moduleId), tx.object.clock()],
   })
 }

@@ -16,16 +16,16 @@ import {
 import { installGenericModule } from '../packages/generic-module.js'
 import { installInventory } from '../packages/inventory.js'
 import {
-  currentFuel,
-  currentModuleStatus,
-  currentStatus,
   depositFuel,
   depositFuelRequirement,
   installFuel,
   installGenerator,
   installPowerGrid,
+  moduleDraw,
   operateGridRequirement,
   POWER_SCALE,
+  projectedFuel,
+  projectedStatus,
   setDesiredState,
   setGenerator,
   setPowerGrid,
@@ -57,18 +57,13 @@ const FUEL_CAPACITY = 1_000n * POWER_SCALE
 const OUT_OF_FUEL_WAIT_MS = 70_000
 const POLL_MS = 2_000
 
-interface ModuleNow {
-  draw: bigint
-  desired: boolean
-}
-
 interface GridNow {
   fuel: bigint
   capacity: bigint
   used: bigint
   online: bigint[]
-  inventory: ModuleNow
-  generic: ModuleNow
+  inventoryDraw: bigint
+  genericDraw: bigint
 }
 
 describe('power grid fuel burn (localnet)', () => {
@@ -231,8 +226,8 @@ function expectOnline(now: GridNow): void {
   expect(now.capacity).toBe(OUTPUT)
   expect(now.used).toBe(USED)
   expect(now.online).toEqual([INVENTORY_ID, GENERIC_ID])
-  expect(now.inventory).toEqual({ draw: INVENTORY_DRAW, desired: true })
-  expect(now.generic).toEqual({ draw: GENERIC_DRAW, desired: true })
+  expect(now.inventoryDraw).toBe(INVENTORY_DRAW)
+  expect(now.genericDraw).toBe(GENERIC_DRAW)
 }
 
 function expectOutOfFuel(now: GridNow): void {
@@ -240,8 +235,8 @@ function expectOutOfFuel(now: GridNow): void {
   expect(now.capacity).toBe(0n)
   expect(now.used).toBe(0n)
   expect(now.online).toEqual([])
-  expect(now.inventory).toEqual({ draw: 0n, desired: true })
-  expect(now.generic).toEqual({ draw: 0n, desired: true })
+  expect(now.inventoryDraw).toBe(0n)
+  expect(now.genericDraw).toBe(0n)
 }
 
 async function readGrid(
@@ -252,10 +247,10 @@ async function readGrid(
   const tx = new Transaction()
   tx.setSender(signer)
   const entity = tx.object(entityId)
-  currentFuel(tx, config, entity)
-  currentStatus(tx, config, entity)
-  currentModuleStatus(tx, config, entity, INVENTORY_ID)
-  currentModuleStatus(tx, config, entity, GENERIC_ID)
+  projectedFuel(tx, config, entity)
+  projectedStatus(tx, config, entity)
+  moduleDraw(tx, config, entity, INVENTORY_ID)
+  moduleDraw(tx, config, entity, GENERIC_ID)
 
   const res = await client.simulateTransaction({
     transaction: tx,
@@ -264,12 +259,12 @@ async function readGrid(
   if (res.FailedTransaction) {
     throw new Error(
       res.FailedTransaction.status.error?.message ??
-        'current power read failed',
+        'projected power read failed',
     )
   }
   const commands = res.commandResults
   if (!commands || commands.length !== 4) {
-    throw new Error('current power read returned no values')
+    throw new Error('projected power read returned no values')
   }
 
   const [fuel, status, inventory, generic] = commands
@@ -280,14 +275,8 @@ async function readGrid(
     online: [...bcs.vector(bcs.u64()).parse(status.returnValues[2].bcs)].map(
       (moduleId) => BigInt(moduleId),
     ),
-    inventory: {
-      draw: u64(inventory.returnValues[0].bcs),
-      desired: bcs.bool().parse(inventory.returnValues[1].bcs),
-    },
-    generic: {
-      draw: u64(generic.returnValues[0].bcs),
-      desired: bcs.bool().parse(generic.returnValues[1].bcs),
-    },
+    inventoryDraw: u64(inventory.returnValues[0].bcs),
+    genericDraw: u64(generic.returnValues[0].bcs),
   }
 }
 

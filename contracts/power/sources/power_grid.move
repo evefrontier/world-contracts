@@ -390,27 +390,30 @@ public fun effective_capacity_mw(grid: &PowerGrid): u64 {
 }
 
 /// Fuel left now, with the burn since the last settle applied.
-public fun projected_fuel(grid: &PowerGrid, clock: &Clock): u64 {
-    grid.fuel_quantity_at_last_settled - grid.fuel_burn(clock.timestamp_ms())
+public fun projected_fuel(entity: &Entity, clock: &Clock): u64 {
+    power_grid(entity).fuel_left(clock)
 }
 
 /// `(effective capacity, used MW, online module ids)` now. If the fuel has run
 /// out since the last settle, capacity, usage and every module read as `0`.
-public fun projected_status(grid: &PowerGrid, clock: &Clock): (u64, u64, vector<u64>) {
-    if (grid.projected_fuel(clock) == 0) return (0, 0, vector[]);
+public fun projected_status(entity: &Entity, clock: &Clock): (u64, u64, vector<u64>) {
+    let grid = power_grid(entity);
+    if (grid.fuel_left(clock) == 0) return (0, 0, vector[]);
     (grid.effective_capacity_mw(), grid.used_mw(), grid.online_modules())
 }
 
 /// A connected module's live draw now. Zero once the fuel has run out.
-public fun module_draw(grid: &PowerGrid, module_id: u64, clock: &Clock): u64 {
+public fun module_draw(entity: &Entity, module_id: u64, clock: &Clock): u64 {
+    let grid = power_grid(entity);
     assert!(grid.modules.contains(&module_id), EModuleNotConnected);
-    if (grid.projected_fuel(clock) == 0) return 0;
+    if (grid.fuel_left(clock) == 0) return 0;
     grid.modules[&module_id].active_draw_at_last_settled
 }
 
 /// Every connected module now. Spec and desired state stay. Draw is `0` once the fuel has run out.
-public fun projected_module_states(grid: &PowerGrid, clock: &Clock): VecMap<u64, ModuleState> {
-    let fuel_out = grid.projected_fuel(clock) == 0;
+public fun projected_module_states(entity: &Entity, clock: &Clock): VecMap<u64, ModuleState> {
+    let grid = power_grid(entity);
+    let fuel_out = grid.fuel_left(clock) == 0;
     let mut states = vec_map::empty();
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx(i);
@@ -419,26 +422,6 @@ public fun projected_module_states(grid: &PowerGrid, clock: &Clock): VecMap<u64,
         states.insert(*module_id, current);
     });
     states
-}
-
-/// Fuel left on this Creation now. Same number as `projected_fuel`.
-public fun current_fuel(entity: &Entity, clock: &Clock): u64 {
-    power_grid(entity).projected_fuel(clock)
-}
-
-/// `(effective capacity, used MW, online module ids)` on this Creation now.
-/// Same triple as `projected_status`.
-public fun current_status(entity: &Entity, clock: &Clock): (u64, u64, vector<u64>) {
-    power_grid(entity).projected_status(clock)
-}
-
-/// `(current draw, desired online)` for one module now. Draw is `0` once the fuel
-/// has run out. Desired state stays.
-public fun current_module_status(entity: &Entity, module_id: u64, clock: &Clock): (u64, bool) {
-    let grid = power_grid(entity);
-    let draw = grid.module_draw(module_id, clock);
-    let desired = grid.module_state(module_id).desired_online();
-    (draw, desired)
 }
 
 /// MW in use at the last settle: each drawing module's grant plus its line loss.
@@ -894,6 +877,11 @@ fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
     fuel_impulse.do!(|min_impulse| assert!(grid.fuel_impulse >= min_impulse, EImpulseBelowMin));
     assert!(grid.capacity_mw >= capacity_mw, ECapacityBelowMin);
     used_mw.do!(|max_used| assert!(grid.used_mw() <= max_used, EUsedAboveMax));
+}
+
+/// Fuel left now. Same number `projected_fuel` returns.
+fun fuel_left(grid: &PowerGrid, clock: &Clock): u64 {
+    grid.fuel_quantity_at_last_settled - grid.fuel_burn(clock.timestamp_ms())
 }
 
 /// Fuel burned between `last_settled_ms` and `now_ms`, capped at what is left.

@@ -109,9 +109,6 @@ export {
 export { signPersonalMessage } from './packages/personal-message.js'
 export {
   assertOnline,
-  currentFuel,
-  currentModuleStatus,
-  currentStatus,
   DESIRED_OFFLINE_MODULE,
   type DepositFuelArgs,
   type DrawKind,
@@ -124,10 +121,13 @@ export {
   installGenerator,
   installPowerGrid,
   type ModulePowerSpec,
+  moduleDraw,
   modulePowerArguments,
   onlineRequirement,
   operateGridRequirement,
   POWER_SCALE,
+  projectedFuel,
+  projectedStatus,
   setDesiredState,
   setGenerator,
   setPowerGrid,
