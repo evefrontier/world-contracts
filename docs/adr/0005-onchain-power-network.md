@@ -171,7 +171,7 @@ public enum PowerKind has copy, drop, store { Power }
 ```
 
 Effective capacity is `capacity_mw` while the grid is on and fuel is above zero, else `0`.
-`used_mw` is the sum of `active_draw + line_loss` for modules with a nonzero draw.
+`used_mw` is the sum of `active_draw` for modules with a nonzero draw. `line_loss` is stored and ignored by grants and fuel burn in v1.
 Values are fixed point at `SCALE = 10_000`. Each mutating call settles fuel burn since
 `last_settled_ms`. Views project that burn without writing it.
 

@@ -111,7 +111,7 @@ public struct ModulePowerSpec has copy, drop, store {
     power_kind: PowerKind,
     /// Priority group. Stored only; grants ignore it in v1.
     priority: u64,
-    /// MW of overhead the module costs the grid while drawing, at `SCALE`.
+    /// Stored only; grants and fuel burn ignore it in v1.
     line_loss: u64,
 }
 
@@ -425,13 +425,13 @@ public fun projected_module_states(entity: &Entity, clock: &Clock): VecMap<u64, 
     states
 }
 
-/// MW in use at the last settle: each drawing module's grant plus its line loss.
+/// MW in use at the last settle: the sum of grants for modules with a nonzero draw.
 public fun used_mw(grid: &PowerGrid): u64 {
     let mut total = 0;
     grid.modules.length().do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
         if (state.active_draw_at_last_settled > 0) {
-            total = total + state.active_draw_at_last_settled + state.module_spec.line_loss;
+            total = total + state.active_draw_at_last_settled;
         };
     });
     total
@@ -695,7 +695,7 @@ public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
     module_count.do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
         if (state.desired_online && state.module_spec.draw_kind == DrawKind::Firm) {
-            firm_cost = firm_cost + state.module_spec.power_req + state.module_spec.line_loss;
+            firm_cost = firm_cost + state.module_spec.power_req;
         };
     });
     let firm_fits = firm_cost <= capacity;
@@ -709,12 +709,10 @@ public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
             draw = module_spec.power_req;
         } else if (state.desired_online
                 && module_spec.draw_kind == DrawKind::Elastic
-                && leftover > module_spec.line_loss) {
-            let grant = module_spec.power_req.min(leftover - module_spec.line_loss);
-            if (grant > 0) {
-                leftover = leftover - grant - module_spec.line_loss;
-                draw = grant;
-            };
+                && leftover > 0) {
+            let grant = module_spec.power_req.min(leftover);
+            leftover = leftover - grant;
+            draw = grant;
         };
         if (state.active_draw_at_last_settled != draw) {
             state.active_draw_at_last_settled = draw;
