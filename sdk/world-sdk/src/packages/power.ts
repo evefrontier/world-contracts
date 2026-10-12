@@ -48,7 +48,6 @@ function drawKindCall(
   return tx.moveCall({ target: grid(config, drawKind) })
 }
 
-/** Power spec a module connects to the grid with. `powerReq` must be greater than zero. */
 export interface ModulePowerSpec {
   powerReq: bigint
   drawKind?: DrawKind

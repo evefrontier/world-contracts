@@ -169,15 +169,27 @@ fun desired_state_on_unknown_module_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = grid_load::EZeroPowerReq)]
-fun connect_zero_power_req_aborts() {
+/// A module that needs no power still connects. Desired online, it draws nothing
+/// and leaves the rest of the capacity for other modules.
+#[test]
+fun connect_zero_power_req_draws_nothing() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = powered(&mut scenario, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(0), &clock);
+    install_module(&mut scenario, entity_id, MOD_B, firm_power(DRAW), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    set_desired(&mut scenario, entity_id, MOD_B, true, &clock);
 
-    abort
+    let (online, desired, granted) = module_flags(&mut scenario, entity_id, MOD_A);
+    assert!(!online);
+    assert!(desired);
+    assert!(granted == 0);
+    assert!(draw(&mut scenario, entity_id, MOD_B, &clock) == DRAW);
+
+    clock.destroy_for_testing();
+    scenario.end();
 }
 
 // === Desired state and grants ===

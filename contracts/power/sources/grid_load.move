@@ -19,16 +19,14 @@ const EModuleAlreadyConnected: vector<u8> = b"Module is already connected to thi
 #[error(code = 2)]
 const ETooManyConnected: vector<u8> = b"Power grid has reached its maximum connected modules";
 #[error(code = 3)]
-const EZeroPowerReq: vector<u8> = b"Module power requirement must be greater than zero";
-#[error(code = 4)]
 const EOutOfFuel: vector<u8> = b"Power grid has run out of fuel";
-#[error(code = 5)]
+#[error(code = 4)]
 const EDrawBelowMin: vector<u8> = b"Module's granted draw is below the requirement";
-#[error(code = 6)]
+#[error(code = 5)]
 const EDrawKindMismatch: vector<u8> = b"Module's draw kind does not match the requirement";
-#[error(code = 7)]
+#[error(code = 6)]
 const ENoGrant: vector<u8> = b"Module has no power granted";
-#[error(code = 8)]
+#[error(code = 7)]
 const EModuleStillInstalled: vector<u8> =
     b"Module component must be uninstalled before disconnecting";
 
@@ -73,7 +71,6 @@ public fun connect<Module: store>(
     clock: &Clock,
 ) {
     assert!(entity.has_component_with_type<Module>(module_id), EModuleMissing);
-    assert!(module_spec.spec_power_req() > 0, EZeroPowerReq);
     let entity_id = entity.id();
     let grid = power_grid::grid_mut(entity);
     assert!(!grid.is_module_connected(module_id), EModuleAlreadyConnected);
