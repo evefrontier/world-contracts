@@ -8,6 +8,7 @@ use power::{
         Self,
         catch_up,
         deposit_fuel,
+        disconnect_consumer,
         draw,
         firm_power,
         elastic_power,
@@ -135,6 +136,26 @@ fun uninstall_disconnects_and_others_regrant() {
 
     clock.destroy_for_testing();
     scenario.end();
+}
+
+/// A locked entity (mid-interaction) must not let a module's permit disconnect a
+/// module that is still installed. That would strand its component.
+#[test, expected_failure(abort_code = grid_load::EModuleStillInstalled)]
+fun disconnect_while_installed_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+
+    temp_action!(
+        &mut scenario,
+        entity_id,
+        power_grid::online_requirement(MOD_A, DRAW, power_grid::firm()),
+        |entity, _req| disconnect_consumer(entity, MOD_A, &clock),
+    );
+
+    abort
 }
 
 #[test, expected_failure(abort_code = power_grid::EModuleNotConnected)]

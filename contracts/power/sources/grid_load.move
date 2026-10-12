@@ -28,6 +28,9 @@ const EDrawBelowMin: vector<u8> = b"Module's granted draw is below the requireme
 const EDrawKindMismatch: vector<u8> = b"Module's draw kind does not match the requirement";
 #[error(code = 7)]
 const ENoGrant: vector<u8> = b"Module has no power granted";
+#[error(code = 8)]
+const EModuleStillInstalled: vector<u8> =
+    b"Module component must be uninstalled before disconnecting";
 
 // === Events ===
 
@@ -75,10 +78,11 @@ public fun connect<Module: store>(
     let grid = power_grid::grid_mut(entity);
     assert!(!grid.is_module_connected(module_id), EModuleAlreadyConnected);
     assert!(grid.modules().length() < power_grid::max_connected(), ETooManyConnected);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let line_loss = module_spec.spec_line_loss();
     let priority = module_spec.spec_priority();
     grid.connect_module(module_id, module_spec);
+    grid.regrant(entity_id);
     event::emit(ModuleConnected { entity_id, module_id, line_loss, priority });
 }
 
@@ -90,10 +94,11 @@ public fun disconnect<Module: store>(
     _: Permit<Module>,
     clock: &Clock,
 ) {
+    assert!(!entity.has_component(module_id), EModuleStillInstalled);
     let entity_id = entity.id();
     let grid = power_grid::grid_mut(entity);
     grid.assert_module_connected(module_id);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.disconnect_module(module_id);
     grid.regrant(entity_id);
     event::emit(ModuleDisconnected { entity_id, module_id });
@@ -114,8 +119,9 @@ public fun set_priority(
         power_grid::operate_grid_permit(),
     );
     grid.assert_module_connected(module_id);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.set_module_priority(module_id, priority);
+    grid.regrant(entity_id);
     event::emit(PriorityChanged { entity_id, module_id, priority });
     frame.require(access_cap::owner_requirement());
     req.enqueue(frame);
@@ -137,7 +143,7 @@ public fun set_desired_state(
         power_grid::operate_grid_permit(),
     );
     grid.assert_module_connected(module_id);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.set_module_desired_online(module_id, online);
     grid.regrant(entity_id);
     event::emit(DesiredStateChanged { entity_id, module_id, online });
@@ -155,7 +161,8 @@ public fun assert_online(entity: &mut Entity, req: &mut Request, clock: &Clock) 
         req,
         power_grid::online_permit(),
     );
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
+    grid.regrant(entity_id);
     assert!(grid.fuel_quantity_at_last_settled() > 0, EOutOfFuel);
     enforce_online(&requirement, grid);
     frame.destroy_empty_frame();

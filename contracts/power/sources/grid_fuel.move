@@ -63,8 +63,9 @@ public fun install(
     let entity_id = entity.id();
     let req = fuel::install(entity, component_id, name, ctx);
     let grid = power_grid::grid_mut(entity);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.connect_fuel_source(component_id, capacity);
+    grid.regrant(entity_id);
     event::emit(FuelSourceConnected { entity_id, fuel_id: component_id, capacity });
     req
 }
@@ -81,10 +82,11 @@ public fun uninstall(
     let entity_id = entity.id();
     let req = fuel::uninstall(entity, fuel_id, ctx);
     let grid = power_grid::grid_mut(entity);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let remaining = grid.fuel_capacity() - grid.fuel_source_capacity(fuel_id);
     assert!(grid.fuel_quantity_at_last_settled() <= remaining, EFuelOverCapacity);
     grid.disconnect_fuel_source(fuel_id);
+    grid.regrant(entity_id);
     event::emit(FuelSourceDisconnected { entity_id, fuel_id });
     req
 }
@@ -110,7 +112,7 @@ public fun deposit_fuel(
     );
     assert!(amount > 0, EZeroFuel);
     enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let old_quantity = grid.fuel_quantity_at_last_settled();
     assert!(old_quantity + amount <= grid.fuel_capacity(), EFuelOverCapacity);
     grid.blend_in_fuel(amount, impulse, containment_burden);

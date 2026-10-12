@@ -1,7 +1,12 @@
+import { bcs } from '@mysten/sui/bcs'
 import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
+import type { WorldClient } from '../client.js'
+import type { WorldConfig } from '../config/types.js'
+import { componentIdFromName } from '../packages/component-id.js'
 import {
   completeRequest,
+  componentIds,
   deleteEntity,
   deriveObjectId,
   entityNew,
@@ -18,6 +23,7 @@ import {
 } from './helpers.js'
 
 const MODULE_ID = 0x54n
+const GRID_ID = componentIdFromName('power_grid')
 
 describe('deleteEntity (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
@@ -61,6 +67,10 @@ describe('deleteEntity (localnet)', () => {
       capacity: 1000n,
     })
     await expectSuccess(client, createTx)
+    const installed = await readComponentIds(client, config, entityId)
+    expect(installed).toHaveLength(2)
+    expect(installed).toContain(MODULE_ID)
+    expect(installed).toContain(GRID_ID)
 
     // The inventory is still installed, so the delete aborts.
     const deleteTx = new Transaction()
@@ -81,3 +91,29 @@ describe('deleteEntity (localnet)', () => {
     expect(deletedIds).toContain(entityId)
   })
 })
+
+/** Read `entity::component_ids` with a simulated transaction. */
+async function readComponentIds(
+  client: WorldClient,
+  config: WorldConfig,
+  entityId: string,
+): Promise<bigint[]> {
+  const tx = new Transaction()
+  tx.setSender(signer)
+  componentIds(tx, config, tx.object(entityId))
+  const res = await client.simulateTransaction({
+    transaction: tx,
+    include: { commandResults: true },
+  })
+  if (res.FailedTransaction) {
+    throw new Error(
+      `component_ids simulation failed: ${res.FailedTransaction.status.error?.message ?? ''}`,
+    )
+  }
+  const rv = res.commandResults[0]?.returnValues[0]
+  if (!rv) throw new Error('component_ids returned no value')
+  return bcs
+    .vector(bcs.u64())
+    .parse(rv.bcs)
+    .map((id) => BigInt(id))
+}

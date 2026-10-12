@@ -152,6 +152,13 @@ public fun install_module(
     ts::return_shared(entity);
 }
 
+/// Disconnect `Consumer`'s module from the grid without uninstalling it. Only
+/// `Consumer`'s own package holds its permit, so tests call this in place of a
+/// foreign module.
+public fun disconnect_consumer(entity: &mut Entity, module_id: u64, clock: &Clock) {
+    grid_load::disconnect<Consumer>(entity, module_id, std::internal::permit<Consumer>(), clock);
+}
+
 /// Uninstall the `Consumer` at `module_id`, leaving the grid.
 public fun uninstall_module(
     scenario: &mut ts::Scenario,

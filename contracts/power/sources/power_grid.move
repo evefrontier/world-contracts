@@ -255,7 +255,7 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, operate_grid_permit());
     if (on) assert!(!grid.on, EAlreadyOn) else assert!(grid.on, EAlreadyOff);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.on = on;
     event::emit(PowerToggled { entity_id, on });
     grid.regrant(entity_id);
@@ -273,7 +273,8 @@ public fun operate_grid_requirement(): Requirement {
 public fun assert_power_grid(entity: &mut Entity, req: &mut Request, clock: &Clock) {
     let entity_id = entity.id();
     let (requirement, frame, grid) = take_grid(entity, req, power_grid_requirement_permit());
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
+    grid.regrant(entity_id);
     enforce_power_grid(&requirement, grid);
     frame.destroy_empty_frame();
 }
@@ -672,28 +673,27 @@ public(package) fun grid_mut(entity: &mut Entity): &mut PowerGrid {
     grid_component.inner_mut()
 }
 
-/// Burn the fuel used since the last settle, then regrant at the new fuel level.
-/// Every mutator calls this before it changes state.
-public(package) fun settle(grid: &mut PowerGrid, entity_id: ID, clock: &Clock) {
+/// Burn the fuel used since the last settle. Does not regrant: the caller regrants
+/// once after its change, since burn can move capacity.
+public(package) fun settle(grid: &mut PowerGrid, clock: &Clock) {
     let now_ms = clock.timestamp_ms();
     let burn = grid.fuel_burn(now_ms);
     grid.last_settled_ms = now_ms.max(grid.last_settled_ms);
     grid.fuel_quantity_at_last_settled = grid.fuel_quantity_at_last_settled - burn;
-    grid.regrant(entity_id);
 }
 
 /// Recompute every module's grant from desired state and effective capacity.
 /// Firm desired modules gate the grid: if their costs fit, each draws its
-/// `power_req`, and desired Elastic modules take the leftover in module-id
-/// order. If the Firm costs do not fit, nothing draws. Emits `DrawChanged` for
-/// each module whose grant moved.
+/// `power_req`, and desired Elastic modules take the leftover in connect order.
+/// If the Firm costs do not fit, nothing draws. Emits `DrawChanged` for each
+/// module whose grant moved. Walks the map by index, so it costs O(n).
 public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
     let capacity = grid.effective_capacity_mw();
-    let module_ids = grid.modules.keys();
+    let module_count = grid.modules.length();
 
     let mut firm_cost = 0;
-    module_ids.do_ref!(|module_id| {
-        let state = &grid.modules[module_id];
+    module_count.do!(|i| {
+        let (_, state) = grid.modules.get_entry_by_idx(i);
         if (state.desired_online && state.module_spec.draw_kind == DrawKind::Firm) {
             firm_cost = firm_cost + state.module_spec.power_req + state.module_spec.line_loss;
         };
@@ -701,31 +701,24 @@ public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
     let firm_fits = firm_cost <= capacity;
     let mut leftover = if (firm_fits) capacity - firm_cost else 0;
 
-    let mut draws: vector<u64> = vector[];
-    module_ids.do_ref!(|module_id| {
-        let state = &grid.modules[module_id];
-        let module_spec = &state.module_spec;
-        let draw = if (!state.desired_online) {
-            0
-        } else if (module_spec.draw_kind == DrawKind::Firm) {
-            if (firm_fits) module_spec.power_req else 0
-        } else if (leftover > module_spec.line_loss) {
+    module_count.do!(|i| {
+        let (module_id, state) = grid.modules.get_entry_by_idx_mut(i);
+        let module_spec = state.module_spec;
+        let mut draw = 0;
+        if (state.desired_online && module_spec.draw_kind == DrawKind::Firm && firm_fits) {
+            draw = module_spec.power_req;
+        } else if (state.desired_online
+                && module_spec.draw_kind == DrawKind::Elastic
+                && leftover > module_spec.line_loss) {
             let grant = module_spec.power_req.min(leftover - module_spec.line_loss);
-            if (grant > 0) leftover = leftover - grant - module_spec.line_loss;
-            grant
-        } else {
-            0
+            if (grant > 0) {
+                leftover = leftover - grant - module_spec.line_loss;
+                draw = grant;
+            };
         };
-        draws.push_back(draw);
-    });
-
-    module_ids.length().do!(|i| {
-        let module_id = module_ids[i];
-        let draw = draws[i];
-        let state = &mut grid.modules[&module_id];
         if (state.active_draw_at_last_settled != draw) {
             state.active_draw_at_last_settled = draw;
-            event::emit(DrawChanged { entity_id, module_id, active_draw: draw });
+            event::emit(DrawChanged { entity_id, module_id: *module_id, active_draw: draw });
         };
     });
 }

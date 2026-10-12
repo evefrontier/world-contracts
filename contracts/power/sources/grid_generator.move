@@ -70,8 +70,9 @@ public fun install(
     let entity_id = entity.id();
     let req = generator::install(entity, component_id, name, ctx);
     let grid = power_grid::grid_mut(entity);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.connect_generator(component_id, max_output_mw, containment_reduction, base_fuel_rate);
+    grid.regrant(entity_id);
     event::emit(GeneratorConnected {
         entity_id,
         generator_id: component_id,
@@ -94,8 +95,9 @@ public fun uninstall(
     let entity_id = entity.id();
     let req = generator::uninstall(entity, generator_id, ctx);
     let grid = power_grid::grid_mut(entity);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.disconnect_generator(generator_id);
+    grid.regrant(entity_id);
     event::emit(GeneratorDisconnected { entity_id, generator_id });
     req
 }
@@ -116,7 +118,7 @@ public fun set_generator(
         power_grid::operate_grid_permit(),
     );
     assert!(power_grid::generators(grid).contains(&generator_id), EGeneratorNotConnected);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let already_online = power_grid::generators(grid).get(&generator_id).online();
     if (online) assert!(!already_online, EGeneratorAlreadyOnline)
     else assert!(already_online, EGeneratorAlreadyOffline);
