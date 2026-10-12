@@ -109,6 +109,9 @@ export {
 export { signPersonalMessage } from './packages/personal-message.js'
 export {
   assertOnline,
+  currentFuel,
+  currentModuleStatus,
+  currentStatus,
   DESIRED_OFFLINE_MODULE,
   type DepositFuelArgs,
   type DrawKind,

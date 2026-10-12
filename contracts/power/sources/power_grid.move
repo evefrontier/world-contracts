@@ -421,6 +421,26 @@ public fun projected_module_states(grid: &PowerGrid, clock: &Clock): VecMap<u64,
     states
 }
 
+/// Fuel left on this Creation now. Same number as `projected_fuel`.
+public fun current_fuel(entity: &Entity, clock: &Clock): u64 {
+    power_grid(entity).projected_fuel(clock)
+}
+
+/// `(effective capacity, used MW, online module ids)` on this Creation now.
+/// Same triple as `projected_status`.
+public fun current_status(entity: &Entity, clock: &Clock): (u64, u64, vector<u64>) {
+    power_grid(entity).projected_status(clock)
+}
+
+/// `(current draw, desired online)` for one module now. Draw is `0` once the fuel
+/// has run out. Desired state stays.
+public fun current_module_status(entity: &Entity, module_id: u64, clock: &Clock): (u64, bool) {
+    let grid = power_grid(entity);
+    let draw = grid.module_draw(module_id, clock);
+    let desired = grid.module_state(module_id).desired_online();
+    (draw, desired)
+}
+
 /// MW in use at the last settle: each drawing module's grant plus its line loss.
 public fun used_mw(grid: &PowerGrid): u64 {
     let mut total = 0;
