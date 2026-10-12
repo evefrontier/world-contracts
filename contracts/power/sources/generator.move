@@ -38,7 +38,7 @@ public struct GeneratorUninstalled has copy, drop {
 // === Public Functions ===
 
 /// Install the Generator under `component_id`. Admin-gated.
-public fun install(
+public(package) fun install(
     entity: &mut Entity,
     component_id: u64,
     name: Option<String>,

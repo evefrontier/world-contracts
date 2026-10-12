@@ -16,23 +16,15 @@ import {
   gameItemToChain,
 } from '../packages/inventory.js'
 import {
-  assertReserved,
-  connectModule,
+  assertOnline,
   depositFuel,
   depositFuelRequirement,
   installFuel,
   installGenerator,
-  installPowerGrid,
-  inventoryModuleType,
-  manageFuelRequirement,
-  manageGeneratorRequirement,
-  manageModuleRequirement,
+  onlineRequirement,
   operateGridRequirement,
   POWER_SCALE,
-  registerFuelSource,
-  registerGenerator,
-  reserve,
-  reserveRequirement,
+  setDesiredState,
   setGenerator,
   setPowerGrid,
 } from '../packages/power.js'
@@ -45,9 +37,9 @@ import {
   signer,
 } from './helpers.js'
 
-// A module is online while it holds a reservation. `bridge_in_items`
-// includes `reserve_requirement`, so the bridge succeeds only while the
-// inventory stays reserved and the grid still has fuel.
+// A module draws while its desired state is online and the grid can carry it.
+// `bridge_in_items` includes `online_requirement`, so the bridge succeeds only
+// while the inventory holds its grant and the grid still has fuel.
 const INVENTORY_ID = 0x61n
 const GENERATOR_ID = 0x62n
 const FUEL_ID = 0x63n
@@ -72,11 +64,11 @@ function eventNames(result: ExecutedTransaction): string[] {
 describe('power grid powers an inventory (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
 
-  it('onlines an inventory, gates its action, and sheds when the generator goes offline', async () => {
+  it('onlines an inventory, gates its action, and drops the grant when the generator goes offline', async () => {
     const key = { id: 4300n, tenant: 'power-t1' }
     const entityId = deriveObjectId(config, key)
 
-    // tx1: storage unit with an inventory, plus grid, generator and fuel bay.
+    // tx1: storage unit. The grid is installed first, then the inventory connects to it.
     const createTx = new Transaction()
     createStorageUnit(createTx, config, {
       inGameId: key.id,
@@ -85,14 +77,22 @@ describe('power grid powers an inventory (localnet)', () => {
       typeId: 1n,
       name: 'Storage Unit And Power Grid',
       capacity: 1000n,
+      power: { powerReq: DRAW, drawKind: 'firm' },
     })
     await expectSuccess(client, createTx)
 
     const installTx = new Transaction()
     const installEntity = installTx.object(entityId)
-    installPowerGrid(installTx, config, installEntity)
-    installGenerator(installTx, config, installEntity, GENERATOR_ID)
-    installFuel(installTx, config, installEntity, FUEL_ID)
+    installGenerator(installTx, config, installEntity, {
+      componentId: GENERATOR_ID,
+      maxOutputMw: OUTPUT,
+      containmentReduction: CONT_REDUCTION,
+      baseFuelRate: BASE_FUEL_RATE,
+    })
+    installFuel(installTx, config, installEntity, {
+      componentId: FUEL_ID,
+      capacity: 1000n * POWER_SCALE,
+    })
     await expectSuccess(client, installTx)
 
     const capId = await mintAccessCap(client, config, {
@@ -104,22 +104,13 @@ describe('power grid powers an inventory (localnet)', () => {
     // tx2: admin exposes each grid step and the powered bridge.
     const enableTx = new Transaction()
     const enableEntity = enableTx.object(entityId)
-    enableAdminAction(enableTx, config, enableEntity, 'register_generator', [
-      manageGeneratorRequirement(enableTx, config),
-    ])
-    enableAdminAction(enableTx, config, enableEntity, 'connect_module', [
-      manageModuleRequirement(enableTx, config),
-    ])
-    enableAdminAction(enableTx, config, enableEntity, 'register_fuel_source', [
-      manageFuelRequirement(enableTx, config),
-    ])
     enableAdminAction(enableTx, config, enableEntity, 'set_power_grid', [
       operateGridRequirement(enableTx, config),
     ])
     enableAdminAction(enableTx, config, enableEntity, 'set_generator', [
       operateGridRequirement(enableTx, config),
     ])
-    enableAdminAction(enableTx, config, enableEntity, 'reserve', [
+    enableAdminAction(enableTx, config, enableEntity, 'set_desired_state', [
       operateGridRequirement(enableTx, config),
     ])
     enableAdminAction(enableTx, config, enableEntity, 'deposit_fuel', [
@@ -130,82 +121,12 @@ describe('power grid powers an inventory (localnet)', () => {
     enableAdminAction(enableTx, config, enableEntity, 'bridge_in_items', [
       ownerRequirement(enableTx, config),
       bridgeInRequirement(enableTx, config, INVENTORY_ID, {}),
-      reserveRequirement(enableTx, config, INVENTORY_ID, DRAW, 'firm'),
+      onlineRequirement(enableTx, config, INVENTORY_ID, DRAW, 'firm'),
     ])
     await expectSuccess(client, enableTx)
 
-    // tx3: admin registers the generator and fuel bay, and attaches the inventory.
-    const attachModuleTx = new Transaction()
-    const attachModuleEntity = attachModuleTx.object(entityId)
-    const registerGeneratorRequest = interact(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      'register_generator',
-    )
-    registerGenerator(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      registerGeneratorRequest,
-      {
-        generatorId: GENERATOR_ID,
-        maxOutputMw: OUTPUT,
-        containmentReduction: CONT_REDUCTION,
-        baseFuelRate: BASE_FUEL_RATE,
-      },
-    )
-    completeRequest(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      registerGeneratorRequest,
-    )
-    const registerFuelSourceRequest = interact(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      'register_fuel_source',
-    )
-    registerFuelSource(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      registerFuelSourceRequest,
-      FUEL_ID,
-      1000n * POWER_SCALE,
-    )
-    completeRequest(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      registerFuelSourceRequest,
-    )
-    const connectModuleRequest = interact(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      'connect_module',
-    )
-    connectModule(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      connectModuleRequest,
-      INVENTORY_ID,
-      0n,
-      inventoryModuleType(config),
-    )
-    completeRequest(
-      attachModuleTx,
-      config,
-      attachModuleEntity,
-      connectModuleRequest,
-    )
-    await expectSuccess(client, attachModuleTx)
-
-    // tx4: owner deposits fuel (signer is also the sponsor), powers on,
-    // brings the generator online and reserves power for the inventory.
+    // tx3: owner deposits fuel (signer is also the sponsor), powers on,
+    // brings the generator online, and asks the inventory to draw.
     const onlineTx = new Transaction()
     addSponsors(onlineTx, config, [signer])
     const onlineEntity = onlineTx.object(entityId)
@@ -247,23 +168,27 @@ describe('power grid powers an inventory (localnet)', () => {
       true,
     )
     completeRequest(onlineTx, config, onlineEntity, setGeneratorOnlineRequest)
-    const reserveRequest = interact(onlineTx, config, onlineEntity, 'reserve')
-    reserve(
+    const desiredRequest = interact(
       onlineTx,
       config,
       onlineEntity,
-      reserveRequest,
+      'set_desired_state',
+    )
+    setDesiredState(
+      onlineTx,
+      config,
+      onlineEntity,
+      desiredRequest,
       cap,
       INVENTORY_ID,
-      DRAW,
-      'firm',
+      true,
     )
-    completeRequest(onlineTx, config, onlineEntity, reserveRequest)
+    completeRequest(onlineTx, config, onlineEntity, desiredRequest)
     const online = await expectSuccess(client, onlineTx)
     expect(eventNames(online)).toContain('FuelAdded')
-    expect(eventNames(online)).toContain('Reserved')
+    expect(eventNames(online)).toContain('DrawChanged')
 
-    // tx5: the powered bridge works while the inventory is online.
+    // tx4: the powered bridge works while the inventory holds its grant.
     const bridge = () => {
       const tx = new Transaction()
       const bridgeEntity = tx.object(entityId)
@@ -279,7 +204,7 @@ describe('power grid powers an inventory (localnet)', () => {
         quantity: 10n,
         volume: VOL,
       })
-      assertReserved(tx, config, bridgeEntity, bridgeInItemsRequest)
+      assertOnline(tx, config, bridgeEntity, bridgeInItemsRequest)
       completeRequest(tx, config, bridgeEntity, bridgeInItemsRequest)
       return tx
     }
@@ -291,7 +216,7 @@ describe('power grid powers an inventory (localnet)', () => {
     })
     expect(balance).toBe(10n)
 
-    // tx6: generator offline -> capacity 0 -> the inventory's reservation is shed.
+    // tx5: generator offline -> capacity 0 -> the inventory's grant drops to zero.
     const offlineTx = new Transaction()
     const offlineEntity = offlineTx.object(entityId)
     const setGeneratorOfflineRequest = interact(
@@ -316,9 +241,9 @@ describe('power grid powers an inventory (localnet)', () => {
       setGeneratorOfflineRequest,
     )
     const offline = await expectSuccess(client, offlineTx)
-    expect(eventNames(offline)).toContain('Shed')
+    expect(eventNames(offline)).toContain('DrawChanged')
 
-    // tx7: the inventory is offline, so the powered bridge now aborts.
-    await expectAbort(client, bridge(), signer, /reservation/i)
+    // tx6: the inventory has no grant, so the powered bridge now aborts.
+    await expectAbort(client, bridge(), signer, /no power granted/i)
   })
 })

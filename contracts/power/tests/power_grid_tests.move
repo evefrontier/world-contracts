@@ -1,202 +1,145 @@
 #[test_only]
 module power::power_grid_tests;
 
-use core::{
-    access_cap::{Self, AccessCap},
-    action,
-    admin_service::{Self, AdminACL},
-    component,
-    entity::{Self, Entity},
-    object_registry::ObjectRegistry,
-    requirement::Requirement,
-    test_helpers::{claim, setup, take_acl, take_registry}
+use core::{admin_service, entity::Entity, test_helpers::{claim, setup, take_acl, take_registry}};
+use power::{
+    grid_scenario::{
+        Self,
+        admin,
+        firm_power,
+        install_module,
+        power,
+        setup_entity,
+        starting_fuel,
+        temp_action,
+        owner
+    },
+    power_grid
 };
-use power::{grid_scenario, power_grid::{Self, PowerGridInstalled, PowerToggled}};
-use std::string;
-use sui::{clock::{Self, Clock}, event, test_scenario as ts};
+use sui::{clock::{Self, Clock}, test_scenario as ts};
 
-const ADMIN: address = @0xA;
-const OWNER: address = @0xB;
-const OPERATE: vector<u8> = b"operate_grid";
-const CHECK_GRID: vector<u8> = b"check_grid";
+const MOD_A: u64 = 401;
+const OUTPUT: u64 = 150_000;
+const CONTAINMENT: u64 = 100_000;
+const DRAW: u64 = 100_000;
+const IMPULSE: u64 = 900_000;
 
-/// Install a grid on a fresh entity. No access caps yet.
-fun build_entity(
-    scenario: &mut ts::Scenario,
-    registry: &mut ObjectRegistry,
-    acl: &AdminACL,
-    clock: &Clock,
-): Entity {
-    let mut e = claim(registry, acl, 1, scenario.ctx());
-    let mut req = power_grid::install(&mut e, clock, scenario.ctx());
-    admin_service::verify_admin(&mut req, acl, scenario.ctx());
-    e.complete_request(req);
-    e
+/// A grid with no power sources, off.
+fun setup_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {
+    setup_entity(scenario, vector[], vector[], clock)
 }
 
-/// Share an entity with a grid, mint its AccessCap to OWNER and enable the
-/// owner-gated `operate_grid` action. Returns the entity id.
-fun setup_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {
-    ts::next_tx(scenario, ADMIN);
+/// An entity with no power grid installed.
+fun bare_entity(scenario: &mut ts::Scenario): ID {
+    ts::next_tx(scenario, admin());
     let mut registry = take_registry(scenario);
     let acl = take_acl(scenario);
-    let mut e = build_entity(scenario, &mut registry, &acl, clock);
-    let entity_id = e.id();
-    let mut req = e.mint_access(OWNER, false, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
-    e.share();
+    let entity = claim(&mut registry, &acl, 3, scenario.ctx());
+    let entity_id = entity.id();
+    entity.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
-
-    ts::next_tx(scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let cap = ts::take_from_sender<AccessCap>(scenario);
-    let act = action::new(vector[power_grid::operate_grid_requirement()]);
-    let mut req = e.enable_action(string::utf8(OPERATE), act, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
-    e.complete_request(req);
-    ts::return_to_sender(scenario, cap);
-    ts::return_shared(e);
     entity_id
 }
 
-fun enable(
-    scenario: &mut ts::Scenario,
-    e: &mut Entity,
-    cap: &AccessCap,
-    name: vector<u8>,
-    grid_requirement: Requirement,
-) {
-    let act = action::new(vector[access_cap::owner_requirement(), grid_requirement]);
-    let mut req = e.enable_action(string::utf8(name), act, scenario.ctx());
-    access_cap::verify(&mut req, cap);
-    e.complete_request(req);
+/// An entity with an installed grid and no power sources.
+fun grid_only_entity(scenario: &mut ts::Scenario): ID {
+    ts::next_tx(scenario, admin());
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let mut entity = claim(&mut registry, &acl, 4, scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    let mut req = power_grid::install(&mut entity, &clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    clock.destroy_for_testing();
+    let entity_id = entity.id();
+    entity.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    entity_id
 }
 
-/// Owner enables `check_grid` with `rule`, then runs it.
-fun run_grid_check(scenario: &mut ts::Scenario, entity_id: ID, rule: Requirement, clock: &Clock) {
-    ts::next_tx(scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let cap = ts::take_from_sender<AccessCap>(scenario);
-    enable(scenario, &mut e, &cap, CHECK_GRID, rule);
-    ts::return_to_sender(scenario, cap);
-    ts::return_shared(e);
-
-    ts::next_tx(scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let cap = ts::take_from_sender<AccessCap>(scenario);
-    let mut req = e.interact(string::utf8(CHECK_GRID), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
-    power_grid::assert_power_grid(&mut e, &mut req, clock);
-    e.complete_request(req);
-    ts::return_to_sender(scenario, cap);
-    ts::return_shared(e);
+/// Admin uninstalls the grid of `entity_id`.
+fun uninstall_grid(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, admin());
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = power_grid::uninstall(&mut entity, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(entity);
 }
 
-/// Owner runs `set_power_grid`, passing `on`.
-fun toggle(scenario: &mut ts::Scenario, entity_id: ID, on: bool, clock: &Clock) {
-    ts::next_tx(scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let cap = ts::take_from_sender<AccessCap>(scenario);
-    let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
-    power_grid::set_power_grid(&mut e, &mut req, on, clock);
-    access_cap::verify(&mut req, &cap);
-    e.complete_request(req);
-    ts::return_to_sender(scenario, cap);
-    ts::return_shared(e);
+/// `(on, fuel_quantity_at_last_settled, capacity_mw)` of the installed grid.
+fun grid_flags(scenario: &mut ts::Scenario, entity_id: ID): (bool, u64, u64) {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let grid = power_grid::power_grid(&entity);
+    let on = grid.on();
+    let fuel = grid.fuel_quantity_at_last_settled();
+    let capacity = grid.capacity_mw();
+    ts::return_shared(entity);
+    (on, fuel, capacity)
 }
+
+// === Install and uninstall ===
 
 #[test]
 fun install_starts_off_and_empty() {
-    let mut scenario = ts::begin(ADMIN);
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
-    let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(1_000);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_grid(&mut scenario, &clock);
 
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let e = build_entity(&mut scenario, &mut registry, &acl, &clock);
+    let (on, fuel, capacity) = grid_flags(&mut scenario, entity_id);
+    assert!(!on);
+    assert!(fuel == starting_fuel());
+    assert!(capacity == 0);
 
-    assert!(power_grid::component_id() == component::id_from_name(b"power_grid"));
-    let grid = power_grid::power_grid(&e);
-    assert!(!grid.on());
-    assert!(grid.capacity_mw() == 0);
-    assert!(grid.used_mw() == 0);
-    assert!(grid.fuel_capacity() == 0);
-    assert!(grid.settled_fuel_quantity() == 0);
-    assert!(grid.fuel_impulse() == 0);
-    assert!(grid.fuel_containment_burden() == 0);
-    assert!(grid.last_settled_ms() == 1_000);
-    assert!(grid.modules().is_empty());
-    assert!(grid.generators().is_empty());
-    assert!(grid.fuel_sources().is_empty());
-    assert!(grid.modules().is_empty());
-    assert!(grid.effective_capacity_mw() == 0);
-
-    let installed = event::events_by_type<PowerGridInstalled>();
-    assert!(installed.length() == 1);
-    let (entity_id, component_id) = installed[0].installed_fields();
-    assert!(entity_id == e.id());
-    assert!(component_id == power_grid::component_id());
-
-    e.share();
     clock.destroy_for_testing();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = entity::EComponentExists)]
-fun install_twice_aborts() {
-    let mut scenario = ts::begin(ADMIN);
+/// Claiming an entity leaves it with no grid. `power_grid::install` adds one, off and empty.
+#[test]
+fun install_grid_after_claim() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
 
-    ts::next_tx(&mut scenario, ADMIN);
+    ts::next_tx(&mut scenario, admin());
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let mut e = build_entity(&mut scenario, &mut registry, &acl, &clock);
-    let _req = power_grid::install(&mut e, &clock, scenario.ctx());
+    let mut entity = claim(&mut registry, &acl, 5, scenario.ctx());
+    assert!(!entity.has_component(power_grid::component_id()));
+    let mut req = power_grid::install(&mut entity, &clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    assert!(entity.has_component(power_grid::component_id()));
+    assert!(!power_grid::power_grid(&entity).on());
+    entity.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
 
-    abort
+    clock.destroy_for_testing();
+    scenario.end();
 }
 
 #[test]
 fun power_on_then_off() {
-    let mut scenario = ts::begin(ADMIN);
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
-    let mut clock = clock::create_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
 
-    clock.set_for_testing(2_000);
-    toggle(&mut scenario, entity_id, true, &clock);
-    ts::next_tx(&mut scenario, OWNER);
-    {
-        let e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-        let grid = power_grid::power_grid(&e);
-        assert!(grid.on());
-        assert!(grid.last_settled_ms() == 2_000);
-        ts::return_shared(e);
-    };
-
-    clock.set_for_testing(3_000);
-    toggle(&mut scenario, entity_id, false, &clock);
-    let toggled = event::events_by_type<PowerToggled>();
-    assert!(toggled.length() == 1);
-    let (event_entity, on) = toggled[0].toggled_fields();
-    assert!(event_entity == entity_id);
+    power(&mut scenario, entity_id, true, &clock);
+    let (on, _, _) = grid_flags(&mut scenario, entity_id);
+    assert!(on);
+    power(&mut scenario, entity_id, false, &clock);
+    let (on, _, _) = grid_flags(&mut scenario, entity_id);
     assert!(!on);
-
-    ts::next_tx(&mut scenario, OWNER);
-    {
-        let e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-        let grid = power_grid::power_grid(&e);
-        assert!(!grid.on());
-        assert!(grid.last_settled_ms() == 3_000);
-        ts::return_shared(e);
-    };
 
     clock.destroy_for_testing();
     scenario.end();
@@ -204,148 +147,99 @@ fun power_on_then_off() {
 
 #[test, expected_failure(abort_code = power_grid::EAlreadyOn)]
 fun power_on_twice_aborts() {
-    let mut scenario = ts::begin(ADMIN);
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
-
-    toggle(&mut scenario, entity_id, true, &clock);
-    toggle(&mut scenario, entity_id, true, &clock);
+    power(&mut scenario, entity_id, true, &clock);
+    power(&mut scenario, entity_id, true, &clock);
 
     abort
 }
 
 #[test, expected_failure(abort_code = power_grid::EAlreadyOff)]
 fun power_off_while_off_aborts() {
-    let mut scenario = ts::begin(ADMIN);
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
-
-    toggle(&mut scenario, entity_id, false, &clock);
-
-    abort
-}
-
-#[test, expected_failure(abort_code = access_cap::ENotOwner)]
-fun power_on_with_other_entity_cap_aborts() {
-    let mut scenario = ts::begin(ADMIN);
-    setup(&mut scenario);
-    let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_grid(&mut scenario, &clock);
-
-    // OWNER also holds the cap of a second entity; it must not open the first.
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let mut other = claim(&mut registry, &acl, 2, scenario.ctx());
-    let mut req = other.mint_access(OWNER, false, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    other.complete_request(req);
-    let other_cap_owner_id = other.id();
-    other.share();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
-
-    ts::next_tx(&mut scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-    let other_cap = ts::take_from_sender<AccessCap>(&scenario);
-    assert!(other_cap.entity() == other_cap_owner_id);
-    let mut req = e.interact(string::utf8(OPERATE), scenario.ctx());
-    power_grid::set_power_grid(&mut e, &mut req, true, &clock);
-    access_cap::verify(&mut req, &other_cap);
+    power(&mut scenario, entity_id, false, &clock);
 
     abort
 }
 
 #[test]
-fun uninstall_removes_grid() {
-    let mut scenario = ts::begin(ADMIN);
+fun uninstall_removes_empty_grid() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = grid_only_entity(&mut scenario);
+    uninstall_grid(&mut scenario, entity_id);
 
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let mut e = build_entity(&mut scenario, &mut registry, &acl, &clock);
+    ts::next_tx(&mut scenario, admin());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    assert!(!entity.has_component(power_grid::component_id()));
+    ts::return_shared(entity);
 
-    let mut req = power_grid::uninstall(&mut e, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
-    assert!(!e.has_component(power_grid::component_id()));
-
-    e.share();
     clock.destroy_for_testing();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EComponentMissing)]
-fun uninstall_without_grid_aborts() {
-    let mut scenario = ts::begin(ADMIN);
+#[test, expected_failure(abort_code = power_grid::EModulesConnected)]
+fun uninstall_with_connected_module_aborts() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_grid(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    uninstall_grid(&mut scenario, entity_id);
 
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
-    let _req = power_grid::uninstall(&mut e, scenario.ctx());
+    abort
+}
+
+#[test, expected_failure(abort_code = power_grid::EPowerSourcesPresent)]
+fun uninstall_with_generator_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    uninstall_grid(&mut scenario, entity_id);
 
     abort
 }
 
 #[test, expected_failure(abort_code = power_grid::EComponentMissing)]
 fun view_without_grid_aborts() {
-    let mut scenario = ts::begin(ADMIN);
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let e = claim(&mut registry, &acl, 1, scenario.ctx());
-    power_grid::power_grid(&e);
+    let _entity_id = bare_entity(&mut scenario);
+    ts::next_tx(&mut scenario, owner());
+    let entity = ts::take_shared<Entity>(&scenario);
+    let _grid = power_grid::power_grid(&entity);
 
     abort
 }
 
+// === Grid checks ===
+
 #[test]
-fun grid_check_passes_for_off_empty_grid() {
-    let mut scenario = ts::begin(ADMIN);
+fun check_passes_for_off_empty_grid() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
 
-    run_grid_check(
+    temp_action!(
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(
             false,
-            option::some(0),
-            option::some(0),
+            option::none(),
+            option::none(),
             0,
-            option::some(0),
+            option::none(),
         ),
-        &clock,
-    );
-
-    clock.destroy_for_testing();
-    scenario.end();
-}
-
-#[test]
-fun grid_check_passes_when_on() {
-    let mut scenario = ts::begin(ADMIN);
-    setup(&mut scenario);
-    let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_grid(&mut scenario, &clock);
-    toggle(&mut scenario, entity_id, true, &clock);
-
-    run_grid_check(
-        &mut scenario,
-        entity_id,
-        power_grid::power_grid_requirement(true, option::none(), option::none(), 0, option::none()),
-        &clock,
+        |entity, req| power_grid::assert_power_grid(entity, req, &clock),
     );
 
     clock.destroy_for_testing();
@@ -353,76 +247,76 @@ fun grid_check_passes_when_on() {
 }
 
 #[test, expected_failure(abort_code = power_grid::EGridState)]
-fun grid_check_aborts_when_on_required() {
-    let mut scenario = ts::begin(ADMIN);
+fun check_aborts_when_on_required() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
 
-    run_grid_check(
+    temp_action!(
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(true, option::none(), option::none(), 0, option::none()),
-        &clock,
+        |entity, req| power_grid::assert_power_grid(entity, req, &clock),
     );
 
     abort
 }
 
 #[test, expected_failure(abort_code = power_grid::EFuelBelowMin)]
-fun grid_check_aborts_when_fuel_below() {
-    let mut scenario = ts::begin(ADMIN);
+fun check_aborts_when_fuel_below() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
 
-    run_grid_check(
+    temp_action!(
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(
             false,
-            option::some(1),
+            option::some(starting_fuel() + 1),
             option::none(),
             0,
             option::none(),
         ),
-        &clock,
+        |entity, req| power_grid::assert_power_grid(entity, req, &clock),
     );
 
     abort
 }
 
 #[test, expected_failure(abort_code = power_grid::EImpulseBelowMin)]
-fun grid_check_aborts_when_impulse_below() {
-    let mut scenario = ts::begin(ADMIN);
+fun check_aborts_when_impulse_below() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
 
-    run_grid_check(
+    temp_action!(
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(
             false,
             option::none(),
-            option::some(1),
+            option::some(IMPULSE + 1),
             0,
             option::none(),
         ),
-        &clock,
+        |entity, req| power_grid::assert_power_grid(entity, req, &clock),
     );
 
     abort
 }
 
 #[test, expected_failure(abort_code = power_grid::ECapacityBelowMin)]
-fun grid_check_aborts_when_capacity_below() {
-    let mut scenario = ts::begin(ADMIN);
+fun check_aborts_when_capacity_below() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
 
-    run_grid_check(
+    temp_action!(
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(
@@ -432,23 +326,23 @@ fun grid_check_aborts_when_capacity_below() {
             1,
             option::none(),
         ),
-        &clock,
+        |entity, req| power_grid::assert_power_grid(entity, req, &clock),
     );
 
     abort
 }
 
 #[test, expected_failure(abort_code = power_grid::EUsedAboveMax)]
-fun grid_check_aborts_when_used_above() {
-    let mut scenario = ts::begin(ADMIN);
+fun check_aborts_when_used_above() {
+    let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = grid_scenario::setup_entity(&mut scenario, vector[50], vector[201], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
     grid_scenario::power_up(&mut scenario, entity_id, 1, &clock);
-    grid_scenario::connect(&mut scenario, entity_id, 201, 0, 0, &clock);
-    grid_scenario::reserve_firm(&mut scenario, entity_id, 201, 1, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    grid_scenario::set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
 
-    run_grid_check(
+    temp_action!(
         &mut scenario,
         entity_id,
         power_grid::power_grid_requirement(
@@ -458,7 +352,7 @@ fun grid_check_aborts_when_used_above() {
             0,
             option::some(0),
         ),
-        &clock,
+        |entity, req| power_grid::assert_power_grid(entity, req, &clock),
     );
 
     abort

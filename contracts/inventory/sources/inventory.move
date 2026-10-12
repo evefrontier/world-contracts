@@ -23,9 +23,9 @@ use core::{
     requirement::{Self, Requirement}
 };
 use inventory::item::{Self, Item, ItemBag};
-use power::grid_load;
+use power::{grid_load, power_grid::{Self, DrawKind, PowerKind}};
 use std::{internal::Permit, string::String};
-use sui::{bcs, event};
+use sui::{bcs, clock::Clock, event};
 
 // === Errors ===
 
@@ -93,13 +93,20 @@ public struct InventoryUninstalled has copy, drop {
 
 /// Build and install the storage component under `component_id` with the
 /// Inventory's volume capacity. `name` is an optional display label and is not
-/// unique.
+/// unique. The power fields are the spec the Inventory connects to the Creation's
+/// power grid with. Aborts if the grid is not installed.
 public fun install(
     entity: &mut Entity,
     component_id: u64,
     type_id: u64,
     name: Option<String>,
     capacity: u64,
+    power_req: u64,
+    draw_kind: DrawKind,
+    power_kind: PowerKind,
+    priority: u64,
+    line_loss: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
     let entity_id = entity.id();
@@ -112,6 +119,14 @@ public fun install(
         inventory_permit(),
         ctx,
     );
+    let power = power_grid::module_power_spec(
+        power_req,
+        draw_kind,
+        power_kind,
+        priority,
+        line_loss,
+    );
+    grid_load::connect<Inventory>(entity, component_id, power, inventory_permit(), clock);
     event::emit(InventoryInstalled {
         entity_id,
         component_id,
@@ -122,13 +137,16 @@ public fun install(
     req
 }
 
-/// Remove the storage component. Aborts if it was never installed, or if it is
-/// still connected to a power grid. Emits `InventoryUninstalled`, then burns
-/// the Inventory's balances (emitting `ItemBurned` per type) so the game client
-/// is notified.
-public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext): Request {
+/// Remove the storage component and disconnect it from the power grid. Aborts if it was never
+/// installed. Emits `InventoryUninstalled`, then burns the Inventory's balances
+/// (emitting `ItemBurned` per type) so the game client is notified.
+public fun uninstall(
+    entity: &mut Entity,
+    component_id: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Request {
     assert!(entity.has_component_with_type<Inventory>(component_id), EComponentMissing);
-    grid_load::assert_disconnected(entity, component_id);
 
     let tenant = entity.key().tenant();
     let (inv_component, req) = entity.uninstall<Inventory>(
@@ -136,6 +154,7 @@ public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext
         inventory_permit(),
         ctx,
     );
+    grid_load::disconnect<Inventory>(entity, component_id, inventory_permit(), clock);
     let entity_id = entity.id();
     let inventory = inv_component.unwrap(inventory_permit());
     event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });

@@ -6,8 +6,8 @@
 # Usage: ./scripts/deploy-world.sh [localnet|dev|test|uat|live] [deploy|publish|upgrade]
 source "$(dirname "$0")/lib.sh"
 
-# Packages in dependency order. inventory depends on core and power.
-PACKAGES=(core character metadata power inventory)
+# Packages in dependency order. inventory and generic_module depend on core and power.
+PACKAGES=(core character metadata power inventory generic_module)
 
 setup
 ENV=$(get_env "${1:-}")

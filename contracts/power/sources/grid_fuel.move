@@ -1,41 +1,39 @@
-/// Fuel sources and deposits. Borrows the grid and asks `power_grid` to write
-/// the pool. Does not touch grid fields.
+/// Fuel source install, uninstall and deposits. A Fuel source adds its capacity
+/// to the grid inside its install
+/// Borrows the grid and asks `power_grid` to write the pool.
 module power::grid_fuel;
 
 use core::{access_cap, admin_service, entity::Entity, request::Request, requirement::Requirement};
 use power::{fuel, power_grid};
+use std::string::String;
 use sui::{bcs, clock::Clock, event};
 
 // === Errors ===
 
 #[error(code = 0)]
-const EFuelSourceAlreadyRegistered: vector<u8> =
-    b"Fuel source is already registered with this power grid";
-#[error(code = 1)]
-const EFuelSourceStillRegistered: vector<u8> =
-    b"Fuel source must be unregistered from the power grid before uninstall";
-#[error(code = 2)]
 const EFuelOverCapacity: vector<u8> = b"Fuel quantity would exceed the grid's fuel capacity";
-#[error(code = 3)]
+#[error(code = 1)]
 const EZeroFuel: vector<u8> = b"Fuel amount must be greater than zero";
-#[error(code = 4)]
+#[error(code = 2)]
 const EFuelTypeNotAllowed: vector<u8> = b"Fuel type is not allowed by the requirement";
-#[error(code = 5)]
+#[error(code = 3)]
 const EBurdenAboveMax: vector<u8> = b"Fuel containment burden is above the requirement";
-#[error(code = 6)]
+#[error(code = 4)]
 const EFuelAmountBelowMin: vector<u8> = b"Fuel amount is below the requirement";
-#[error(code = 7)]
+#[error(code = 5)]
 const EFuelAmountAboveMax: vector<u8> = b"Fuel amount is above the requirement";
+#[error(code = 6)]
+const EFuelSourceNotConnected: vector<u8> = b"Fuel source is not connected to this power grid";
 
 // === Events ===
 
-public struct FuelSourceRegistered has copy, drop {
+public struct FuelSourceConnected has copy, drop {
     entity_id: ID,
     fuel_id: u64,
     capacity: u64,
 }
 
-public struct FuelSourceUnregistered has copy, drop {
+public struct FuelSourceDisconnected has copy, drop {
     entity_id: ID,
     fuel_id: u64,
 }
@@ -52,58 +50,43 @@ public struct FuelAdded has copy, drop {
 
 // === Public Functions ===
 
-/// Register an installed Fuel source with its `capacity` (units at `SCALE`). Admin-only.
-public fun register_fuel_source(
+/// Install a Fuel source and add its `capacity` (units at `SCALE`) to the grid.
+/// Admin-gated.
+public fun install(
     entity: &mut Entity,
-    req: &mut Request,
-    fuel_id: u64,
+    component_id: u64,
+    name: Option<String>,
     capacity: u64,
     clock: &Clock,
-) {
-    fuel::assert_installed(entity, fuel_id);
+    ctx: &mut TxContext,
+): Request {
     let entity_id = entity.id();
-    let (_requirement, mut frame, grid) = power_grid::take_grid(
-        entity,
-        req,
-        power_grid::manage_fuel_permit(),
-    );
-    assert!(!power_grid::fuel_sources(grid).contains(&fuel_id), EFuelSourceAlreadyRegistered);
-    power_grid::settle(grid, entity_id, clock);
-    power_grid::insert_fuel_source(grid, fuel_id, capacity);
-    event::emit(FuelSourceRegistered { entity_id, fuel_id, capacity });
-    frame.require(admin_service::admin_requirement());
-    req.enqueue(frame);
+    let req = fuel::install(entity, component_id, name, ctx);
+    let grid = power_grid::grid_mut(entity);
+    grid.settle(entity_id, clock);
+    grid.connect_fuel_source(component_id, capacity);
+    event::emit(FuelSourceConnected { entity_id, fuel_id: component_id, capacity });
+    req
 }
 
-/// Remove a Fuel source from the grid. Aborts if the settled fuel would not
-/// fit the reduced capacity. Admin-only.
-public fun unregister_fuel_source(
+/// Uninstall a Fuel source and remove its capacity. Aborts if the settled fuel
+/// would not fit the reduced capacity. Admin-gated.
+public fun uninstall(
     entity: &mut Entity,
-    req: &mut Request,
     fuel_id: u64,
     clock: &Clock,
-) {
+    ctx: &mut TxContext,
+): Request {
+    assert!(power_grid::is_fuel_source_connected(entity, fuel_id), EFuelSourceNotConnected);
     let entity_id = entity.id();
-    let (_requirement, mut frame, grid) = power_grid::take_grid(
-        entity,
-        req,
-        power_grid::manage_fuel_permit(),
-    );
-    power_grid::assert_fuel_source_registered(grid, fuel_id);
-    power_grid::settle(grid, entity_id, clock);
-    let remaining =
-        power_grid::fuel_capacity(grid) - power_grid::fuel_source_capacity(grid, fuel_id);
-    assert!(power_grid::settled_fuel_quantity(grid) <= remaining, EFuelOverCapacity);
-    power_grid::remove_fuel_source(grid, fuel_id);
-    event::emit(FuelSourceUnregistered { entity_id, fuel_id });
-    frame.require(admin_service::admin_requirement());
-    req.enqueue(frame);
-}
-
-/// Uninstall an unregistered Fuel source. Admin-gated.
-public fun uninstall_fuel_source(entity: &mut Entity, fuel_id: u64, ctx: &mut TxContext): Request {
-    assert!(!power_grid::is_fuel_source_registered(entity, fuel_id), EFuelSourceStillRegistered);
-    fuel::uninstall(entity, fuel_id, ctx)
+    let req = fuel::uninstall(entity, fuel_id, ctx);
+    let grid = power_grid::grid_mut(entity);
+    grid.settle(entity_id, clock);
+    let remaining = grid.fuel_capacity() - grid.fuel_source_capacity(fuel_id);
+    assert!(grid.fuel_quantity_at_last_settled() <= remaining, EFuelOverCapacity);
+    grid.disconnect_fuel_source(fuel_id);
+    event::emit(FuelSourceDisconnected { entity_id, fuel_id });
+    req
 }
 
 // TODO: an `Item` to fuel path once inventory can connect to the fuel bay.
@@ -127,18 +110,19 @@ public fun deposit_fuel(
     );
     assert!(amount > 0, EZeroFuel);
     enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
-    power_grid::settle(grid, entity_id, clock);
-    let old_quantity = power_grid::settled_fuel_quantity(grid);
-    assert!(old_quantity + amount <= power_grid::fuel_capacity(grid), EFuelOverCapacity);
-    power_grid::blend_in_fuel(grid, amount, impulse, containment_burden);
+    grid.settle(entity_id, clock);
+    let old_quantity = grid.fuel_quantity_at_last_settled();
+    assert!(old_quantity + amount <= grid.fuel_capacity(), EFuelOverCapacity);
+    grid.blend_in_fuel(amount, impulse, containment_burden);
     event::emit(FuelAdded {
         entity_id,
         fuel_type,
         amount,
-        resulting_quantity: power_grid::settled_fuel_quantity(grid),
-        resulting_impulse: power_grid::fuel_impulse(grid),
-        resulting_containment_burden: power_grid::fuel_containment_burden(grid),
+        resulting_quantity: grid.fuel_quantity_at_last_settled(),
+        resulting_impulse: grid.fuel_impulse(),
+        resulting_containment_burden: grid.fuel_containment_burden(),
     });
+    grid.regrant(entity_id);
     frame.require(access_cap::owner_requirement());
     frame.require(admin_service::sponsor_requirement());
     req.enqueue(frame);
@@ -180,4 +164,20 @@ public fun fuel_added_fields(added: &FuelAdded): (ID, u64, u64, u64, u64, u64) {
         added.resulting_impulse,
         added.resulting_containment_burden,
     )
+}
+
+/// `(entity_id, fuel_id, capacity)`.
+#[test_only]
+public fun fuel_source_connected_fields(
+    fuel_source_connected: &FuelSourceConnected,
+): (ID, u64, u64) {
+    (fuel_source_connected.entity_id, fuel_source_connected.fuel_id, fuel_source_connected.capacity)
+}
+
+/// `(entity_id, fuel_id)`.
+#[test_only]
+public fun fuel_source_disconnected_fields(
+    fuel_source_disconnected: &FuelSourceDisconnected,
+): (ID, u64) {
+    (fuel_source_disconnected.entity_id, fuel_source_disconnected.fuel_id)
 }

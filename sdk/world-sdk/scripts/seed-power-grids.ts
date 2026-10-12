@@ -1,32 +1,19 @@
 import { Transaction } from '@mysten/sui/transactions'
 import { signAndExecute } from '../src/client.js'
 import { componentIdFromName } from '../src/packages/component-id.js'
+import { deriveObjectId, enableAdminAction } from '../src/packages/core.js'
 import {
-  completeRequest,
-  deriveObjectId,
-  enableAdminAction,
-  interact,
-} from '../src/packages/core.js'
-import {
-  connectModule,
   depositFuelRequirement,
   installFuel,
   installGenerator,
-  installPowerGrid,
-  inventoryModuleType,
-  manageFuelRequirement,
-  manageGeneratorRequirement,
-  manageModuleRequirement,
   operateGridRequirement,
   POWER_SCALE,
-  registerFuelSource,
-  registerGenerator,
 } from '../src/packages/power.js'
 import { loadScriptContext } from './context.js'
 import { loadSeedFiles } from './seed-files.js'
 
-// Give every seeded storage unit a power grid: one 15 MW generator, one fuel
-// bay, its inventory connected. The owner deposits fuel and powers it on.
+// Give every seeded storage unit a generator and a fuel bay. The inventory
+// already connected to the grid when the storage unit was created.
 const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
 const OUTPUT = 15n * POWER_SCALE
@@ -55,18 +42,16 @@ for (const [alias, unit] of entries) {
 
   const tx = new Transaction()
   const entity = tx.object(entityId)
-  installPowerGrid(tx, config, entity)
-  installGenerator(tx, config, entity, GENERATOR_ID)
-  installFuel(tx, config, entity, FUEL_ID)
-  enableAdminAction(tx, config, entity, 'register_generator', [
-    manageGeneratorRequirement(tx, config),
-  ])
-  enableAdminAction(tx, config, entity, 'connect_module', [
-    manageModuleRequirement(tx, config),
-  ])
-  enableAdminAction(tx, config, entity, 'register_fuel_source', [
-    manageFuelRequirement(tx, config),
-  ])
+  installGenerator(tx, config, entity, {
+    componentId: GENERATOR_ID,
+    maxOutputMw: OUTPUT,
+    containmentReduction: CONTAINMENT_REDUCTION,
+    baseFuelRate: BASE_FUEL_RATE,
+  })
+  installFuel(tx, config, entity, {
+    componentId: FUEL_ID,
+    capacity: FUEL_CAPACITY,
+  })
   enableAdminAction(tx, config, entity, 'set_power_grid', [
     operateGridRequirement(tx, config),
   ])
@@ -76,58 +61,12 @@ for (const [alias, unit] of entries) {
   enableAdminAction(tx, config, entity, 'set_priority', [
     operateGridRequirement(tx, config),
   ])
-  enableAdminAction(tx, config, entity, 'reserve', [
-    operateGridRequirement(tx, config),
-  ])
-  enableAdminAction(tx, config, entity, 'release', [
-    operateGridRequirement(tx, config),
-  ])
-  enableAdminAction(tx, config, entity, 'release_priority', [
+  enableAdminAction(tx, config, entity, 'set_desired_state', [
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'deposit_fuel', [
     depositFuelRequirement(tx, config),
   ])
-
-  const registerGeneratorRequest = interact(
-    tx,
-    config,
-    entity,
-    'register_generator',
-  )
-  registerGenerator(tx, config, entity, registerGeneratorRequest, {
-    generatorId: GENERATOR_ID,
-    maxOutputMw: OUTPUT,
-    containmentReduction: CONTAINMENT_REDUCTION,
-    baseFuelRate: BASE_FUEL_RATE,
-  })
-  completeRequest(tx, config, entity, registerGeneratorRequest)
-  const registerFuelSourceRequest = interact(
-    tx,
-    config,
-    entity,
-    'register_fuel_source',
-  )
-  registerFuelSource(
-    tx,
-    config,
-    entity,
-    registerFuelSourceRequest,
-    FUEL_ID,
-    FUEL_CAPACITY,
-  )
-  completeRequest(tx, config, entity, registerFuelSourceRequest)
-  const connectModuleRequest = interact(tx, config, entity, 'connect_module')
-  connectModule(
-    tx,
-    config,
-    entity,
-    connectModuleRequest,
-    inventoryId,
-    0n,
-    inventoryModuleType(config),
-  )
-  completeRequest(tx, config, entity, connectModuleRequest)
 
   const result = await signAndExecute(client, {
     signer: keypair,

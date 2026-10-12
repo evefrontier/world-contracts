@@ -38,7 +38,7 @@ public struct FuelUninstalled has copy, drop {
 // === Public Functions ===
 
 /// Install the Fuel bay under `component_id`. Admin-gated.
-public fun install(
+public(package) fun install(
     entity: &mut Entity,
     component_id: u64,
     name: Option<String>,

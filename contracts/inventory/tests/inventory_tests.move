@@ -12,9 +12,9 @@ use core::{
     test_helpers::{claim, setup, take_acl, take_registry}
 };
 use inventory::{inventory, item::{Self, Item}};
-use power::{grid_load, power_grid};
+use power::power_grid;
 use std::string::{Self, String};
-use sui::{clock::{Self, Clock}, event, test_scenario as ts};
+use sui::{clock, event, test_scenario as ts};
 
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
@@ -61,23 +61,77 @@ fun build_entity_with_inventory(
     capacity: u64,
 ): Entity {
     let mut e = claim(registry, acl, id, scenario.ctx());
-
-    let mut req = inventory::install(
+    install_inventory(
+        scenario,
         &mut e,
+        acl,
         MODULE_ID,
         TYPE_ID,
         option::some(unit_name()),
         capacity,
-        scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, acl, scenario.ctx());
-    e.complete_request(req);
 
     let mut req = e.mint_access(owner, true, scenario.ctx());
     admin_service::verify_admin(&mut req, acl, scenario.ctx());
     e.complete_request(req);
 
     e
+}
+
+/// Install the power grid on `e` if it is not there yet. Admin-only.
+fun install_grid(scenario: &mut ts::Scenario, e: &mut Entity, acl: &AdminACL) {
+    if (e.has_component(power_grid::component_id())) return;
+    let clock = clock::create_for_testing(scenario.ctx());
+    let mut req = power_grid::install(e, &clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, acl, scenario.ctx());
+    e.complete_request(req);
+    clock.destroy_for_testing();
+}
+
+/// Install the grid if needed, then the Inventory under `component_id`, connected
+/// to the grid. Admin-only.
+fun install_inventory(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    acl: &AdminACL,
+    component_id: u64,
+    type_id: u64,
+    name: Option<String>,
+    capacity: u64,
+) {
+    install_grid(scenario, e, acl);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let mut req = inventory::install(
+        e,
+        component_id,
+        type_id,
+        name,
+        capacity,
+        1,
+        power_grid::firm(),
+        power_grid::power(),
+        0,
+        0,
+        &clock,
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, acl, scenario.ctx());
+    e.complete_request(req);
+    clock.destroy_for_testing();
+}
+
+/// Uninstall the Inventory under `component_id`, leaving the grid. Admin-only.
+fun uninstall_inventory(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    acl: &AdminACL,
+    component_id: u64,
+) {
+    let clock = clock::create_for_testing(scenario.ctx());
+    let mut req = inventory::uninstall(e, component_id, &clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, acl, scenario.ctx());
+    e.complete_request(req);
+    clock.destroy_for_testing();
 }
 
 /// Claim a bare entity (no inventory) and mint a soulbound cap to `owner`.
@@ -307,27 +361,25 @@ fun install_two_inventories_on_one_entity() {
     let acl = take_acl(&scenario);
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
 
-    let mut req = inventory::install(
+    install_inventory(
+        &mut scenario,
         &mut e,
+        &acl,
         MODULE_ID,
         TYPE_ID,
         option::some(unit_name()),
         1000,
-        scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
 
-    let mut req = inventory::install(
+    install_inventory(
+        &mut scenario,
         &mut e,
+        &acl,
         MODULE_ID_2,
         TYPE_ID,
         option::some(string::utf8(b"SU-02")),
         500,
-        scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
 
     assert!(e.has_component(MODULE_ID));
     assert!(e.has_component(MODULE_ID_2));
@@ -612,9 +664,7 @@ fun uninstall_burns_inventory() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let acl = take_acl(&scenario);
-    let mut req = inventory::uninstall(&mut e, MODULE_ID, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
+    uninstall_inventory(&mut scenario, &mut e, &acl, MODULE_ID);
     assert!(!e.has_component(MODULE_ID));
 
     // The marker carries the whole `used` total and arrives ahead of the burns.
@@ -657,20 +707,17 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let acl = take_acl(&scenario);
-    let mut req = inventory::uninstall(&mut e, MODULE_ID, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
+    uninstall_inventory(&mut scenario, &mut e, &acl, MODULE_ID);
 
-    let mut req = inventory::install(
+    install_inventory(
+        &mut scenario,
         &mut e,
+        &acl,
         MODULE_ID,
         TYPE_ID,
         option::some(string::utf8(b"SU-01b")),
         500,
-        scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
 
     let torn_down = event::events_by_type<inventory::InventoryUninstalled>();
     assert!(torn_down.length() == 1);
@@ -821,90 +868,61 @@ fun deposit_at_an_entity_outside_the_docking_aborts() {
     abort
 }
 
-/// Install a grid and connect this entity's inventory to it.
-fun connect_inventory_to_grid(scenario: &mut ts::Scenario, entity_id: ID, clock: &Clock) {
-    ts::next_tx(scenario, ADMIN);
-    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let acl = take_acl(scenario);
-    let mut req = power_grid::install(&mut e, clock, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
-    let mut req = e.enable_admin_action(
-        string::utf8(b"manage_module"),
-        action::new(vector[power_grid::manage_module_requirement()]),
+/// Installing the Inventory connects it to the grid. Uninstalling disconnects
+/// it and leaves the grid installed.
+#[test]
+fun install_connects_and_uninstall_disconnects() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let entity_id = e.id();
+    e.share();
+    ts::return_shared(registry);
+    ts::return_shared(acl);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    assert!(power_grid::power_grid(&e).is_module_connected(MODULE_ID));
+    let acl = take_acl(&scenario);
+    uninstall_inventory(&mut scenario, &mut e, &acl, MODULE_ID);
+    assert!(!e.has_component(MODULE_ID));
+    assert!(e.has_component(power_grid::component_id()));
+    assert!(!power_grid::power_grid(&e).is_module_connected(MODULE_ID));
+    ts::return_shared(acl);
+    ts::return_shared(e);
+
+    scenario.end();
+}
+
+/// The grid must be installed before an Inventory can connect to it.
+#[test, expected_failure(abort_code = power_grid::EComponentMissing)]
+fun install_without_grid_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    let _req = inventory::install(
+        &mut e,
+        MODULE_ID,
+        TYPE_ID,
+        option::some(unit_name()),
+        1000,
+        1,
+        power_grid::firm(),
+        power_grid::power(),
+        0,
+        0,
+        &clock,
         scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
-    ts::return_shared(acl);
-    ts::return_shared(e);
-
-    ts::next_tx(scenario, ADMIN);
-    let mut e = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let acl = take_acl(scenario);
-    let mut req = e.interact(string::utf8(b"manage_module"), scenario.ctx());
-    grid_load::connect_module<inventory::Inventory>(&mut e, &mut req, MODULE_ID, 0, clock);
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
-    ts::return_shared(acl);
-    ts::return_shared(e);
-}
-
-#[test, expected_failure(abort_code = grid_load::EModuleStillConnected)]
-fun uninstall_while_connected_to_grid_aborts() {
-    let mut scenario = ts::begin(ADMIN);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
-    let entity_id = e.id();
-    e.share();
-    ts::return_shared(registry);
-    ts::return_shared(acl);
-
-    let clock = clock::create_for_testing(scenario.ctx());
-    connect_inventory_to_grid(&mut scenario, entity_id, &clock);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-    let _req = inventory::uninstall(&mut e, MODULE_ID, scenario.ctx());
 
     abort
-}
-
-#[test]
-fun uninstall_after_grid_disconnect_removes_inventory() {
-    let mut scenario = ts::begin(ADMIN);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
-    let entity_id = e.id();
-    e.share();
-    ts::return_shared(registry);
-    ts::return_shared(acl);
-
-    let clock = clock::create_for_testing(scenario.ctx());
-    connect_inventory_to_grid(&mut scenario, entity_id, &clock);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, entity_id);
-    let acl = take_acl(&scenario);
-    let mut req = e.interact(string::utf8(b"manage_module"), scenario.ctx());
-    grid_load::disconnect_module(&mut e, &mut req, MODULE_ID, &clock);
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
-    let mut req = inventory::uninstall(&mut e, MODULE_ID, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    e.complete_request(req);
-    assert!(!e.has_component(MODULE_ID));
-
-    ts::return_shared(acl);
-    ts::return_shared(e);
-    clock.destroy_for_testing();
-    scenario.end();
 }

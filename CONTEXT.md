@@ -116,17 +116,19 @@ Concrete `T` values installed on Entities. Migrated from the legacy assembly mod
 - **Power** — the `power` package ([`contracts/power/`](contracts/power/),
   [ADR-0005](docs/adr/0005-onchain-power-network.md)). One **PowerGrid** per Creation holds
   the power and the fuel. **Generator** and **Fuel** are markers; their numbers live on the grid.
-  - **PowerGrid** — capacity, fuel, connected modules, and their reservations. Capacity is 0
-    while the grid is off or out of fuel.
-  - **Reservation** — the draw a module was granted. **Firm** gets all of its ask or nothing.
-    **Elastic** gets what is left, up to its ask. A module is online while it holds one.
-  - **Priority group** — a number the owner sets on each module. When capacity drops, the
-    highest number is shed first.
-  - **Shed** — reservations dropped because capacity fell below use. When capacity comes back,
-    modules reserve again.
-  - **Settle** — burn the fuel used since the last settle. Writes settle first. Views
-    (`projected_fuel`, `projected_status`) show fuel as of now. Stored fuel updates on the
-    next transaction, so indexers and clients read the views.
+  - **PowerGrid** — capacity, fuel, connected modules, and each module's desired state and
+    stored draw. Capacity is 0 while the grid is off or out of fuel.
+  - **Desired state** — the owner's online/offline intent for a module. Always stored; it does
+    not depend on power being available.
+  - **Draw kind** — **Firm** needs its full `power_req` or nothing. **Elastic** takes what is
+    left, up to its `power_req`. Firm modules gate the grid; Elastic modules fill the leftover.
+  - **Grant** — the draw the grid gives a module, derived from desired state and live capacity.
+    A module is online while it is desired online and its grant is nonzero.
+  - **Priority group** — a number the owner sets on each module. Stored, but not used for grants
+    yet; later it will bring modules online and offline by group.
+  - **Settle** — burn the fuel used since the last settle and recompute grants. Writes settle
+    first. Views (`projected_fuel`, `projected_status`, `module_draw`) show live values as of now.
+    Stored values update on the next transaction, so indexers and clients read the views.
   - **Fuel factor** — `impulse / max(1, burden / containment_reduction)`, clamped to 1–100.
     Each online Generator burns `load_share / factor` fuel units per second.
   - **SCALE** — MW, fuel quantity, and fuel stats are fixed-point `u64` values times 10_000.
