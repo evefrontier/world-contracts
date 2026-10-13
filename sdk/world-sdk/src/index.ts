@@ -108,6 +108,33 @@ export {
 } from './packages/metadata.js'
 export { signPersonalMessage } from './packages/personal-message.js'
 export {
+  assertOnline,
+  DESIRED_OFFLINE_MODULE,
+  type DepositFuelArgs,
+  type DrawKind,
+  depositFuel,
+  depositFuelRequirement,
+  type FuelRule,
+  type InstallFuelArgs,
+  type InstallGeneratorArgs,
+  installFuel,
+  installGenerator,
+  installPowerGrid,
+  type ModulePowerSpec,
+  moduleDraw,
+  modulePowerArguments,
+  onlineRequirement,
+  operateGridRequirement,
+  POWER_SCALE,
+  projectedFuel,
+  projectedStatus,
+  setDesiredState,
+  setGenerator,
+  setPowerGrid,
+  setPriority,
+  uninstallPowerGrid,
+} from './packages/power.js'
+export {
   type DockingArgs,
   dockingProof,
   encodeProof,

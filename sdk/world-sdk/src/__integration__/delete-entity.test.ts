@@ -3,6 +3,7 @@ import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import type { WorldClient } from '../client.js'
 import type { WorldConfig } from '../config/types.js'
+import { componentIdFromName } from '../packages/component-id.js'
 import {
   completeRequest,
   componentIds,
@@ -13,6 +14,7 @@ import {
   verifyAdmin,
 } from '../packages/core.js'
 import { createStorageUnit, uninstallInventory } from '../packages/inventory.js'
+import { uninstallPowerGrid } from '../packages/power.js'
 import {
   expectAbort,
   expectSuccess,
@@ -21,6 +23,7 @@ import {
 } from './helpers.js'
 
 const MODULE_ID = 0x54n
+const GRID_ID = componentIdFromName('power_grid')
 
 describe('deleteEntity (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
@@ -53,7 +56,7 @@ describe('deleteEntity (localnet)', () => {
     const key = { id: 2421n, tenant: 'delete-entity' }
     const entityId = deriveObjectId(config, key)
 
-    // A storage unit is an entity with one inventory component.
+    // A storage unit carries its inventory and the power grid the inventory connects to.
     const createTx = new Transaction()
     createStorageUnit(createTx, config, {
       inGameId: key.id,
@@ -64,9 +67,10 @@ describe('deleteEntity (localnet)', () => {
       capacity: 1000n,
     })
     await expectSuccess(client, createTx)
-    expect(await readComponentIds(client, config, entityId)).toEqual([
-      MODULE_ID,
-    ])
+    const installed = await readComponentIds(client, config, entityId)
+    expect(installed).toHaveLength(2)
+    expect(installed).toContain(MODULE_ID)
+    expect(installed).toContain(GRID_ID)
 
     // The inventory is still installed, so the delete aborts.
     const deleteTx = new Transaction()
@@ -77,6 +81,7 @@ describe('deleteEntity (localnet)', () => {
     const teardownTx = new Transaction()
     const e = teardownTx.object(entityId)
     uninstallInventory(teardownTx, config, e, MODULE_ID)
+    uninstallPowerGrid(teardownTx, config, e)
     deleteEntity(teardownTx, config, e)
     const deleted = await expectSuccess(client, teardownTx)
 

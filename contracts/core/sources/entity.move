@@ -303,6 +303,19 @@ public fun component_mut<T: store>(
     df::borrow_mut(&mut entity.id, ComponentKey(component_id))
 }
 
+/// Mutable access to a component outside a `Request`, for install and uninstall
+/// hooks that update a sibling component. Only callable while the entity is
+/// locked, which the install or uninstall that calls it has just done.
+public fun component_mut_locked<T: store>(
+    entity: &mut Entity,
+    component_id: u64,
+    _: Permit<T>,
+): &mut Component<T> {
+    assert!(entity.version == VERSION, EWrongVersion);
+    assert!(entity.is_locked(), ENotLocked);
+    df::borrow_mut(&mut entity.id, ComponentKey(component_id))
+}
+
 /// Read-only access to a component by `component_id`. `Permit<T>` enforces that
 /// only the package that authored `T` can read it; no lock is required since
 /// nothing is mutated.
