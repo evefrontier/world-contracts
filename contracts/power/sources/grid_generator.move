@@ -14,16 +14,14 @@ const EZeroBaseFuelRate: vector<u8> = b"Generator base fuel rate must be greater
 #[error(code = 1)]
 const EGeneratorNotConnected: vector<u8> = b"Generator is not connected to this power grid";
 #[error(code = 2)]
-const EGeneratorOnline: vector<u8> = b"Generator must be offline to be uninstalled";
-#[error(code = 3)]
 const EGeneratorAlreadyOnline: vector<u8> = b"Generator is already online";
-#[error(code = 4)]
+#[error(code = 3)]
 const EGeneratorAlreadyOffline: vector<u8> = b"Generator is already offline";
-#[error(code = 5)]
+#[error(code = 4)]
 const EGeneratorNotOnline: vector<u8> = b"Generator's online state does not match the requirement";
-#[error(code = 6)]
+#[error(code = 5)]
 const EOutputBelowMin: vector<u8> = b"Generator output is below the requirement";
-#[error(code = 7)]
+#[error(code = 6)]
 const EContainmentBelowMin: vector<u8> = b"Containment reduction is below the requirement";
 
 // === Events ===
@@ -83,7 +81,9 @@ public fun install(
     req
 }
 
-/// Uninstall an offline Generator and remove it from the grid. Admin-gated.
+/// Uninstall a Generator and remove it from the grid. Settles first, so burn
+/// still includes it, then drops its output from capacity if it was online.
+/// Admin-gated.
 public fun uninstall(
     entity: &mut Entity,
     generator_id: u64,
@@ -91,12 +91,15 @@ public fun uninstall(
     ctx: &mut TxContext,
 ): Request {
     assert!(power_grid::is_generator_connected(entity, generator_id), EGeneratorNotConnected);
-    assert!(!power_grid::generator_state(entity, generator_id).online(), EGeneratorOnline);
+    let was_online = power_grid::generator_state(entity, generator_id).online();
     let entity_id = entity.id();
     let req = generator::uninstall(entity, generator_id, ctx);
     let grid = power_grid::grid_mut(entity);
     grid.settle(clock);
     grid.disconnect_generator(generator_id);
+    if (was_online) {
+        event::emit(CapacityChanged { entity_id, capacity_mw: power_grid::capacity_mw(grid) });
+    };
     grid.regrant(entity_id);
     event::emit(GeneratorDisconnected { entity_id, generator_id });
     req

@@ -765,8 +765,21 @@ public(package) fun connect_generator(
         );
 }
 
+/// Remove a Generator. An online Generator's output leaves `capacity_mw`.
+/// Caller settles first, so burn still includes this Generator.
 public(package) fun disconnect_generator(grid: &mut PowerGrid, generator_id: u64) {
-    grid.generators.remove(&generator_id);
+    let (
+        _,
+        GeneratorState {
+            max_output_mw,
+            containment_reduction: _,
+            base_fuel_rate: _,
+            online,
+        },
+    ) = grid.generators.remove(&generator_id);
+    if (online) {
+        grid.capacity_mw = grid.capacity_mw - max_output_mw;
+    };
 }
 
 /// Set online state and add or remove this Generator's output from `capacity_mw`.

@@ -103,16 +103,29 @@ fun uninstall_after_offline_disconnects() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = grid_generator::EGeneratorOnline)]
-fun uninstall_while_online_aborts() {
+#[test]
+fun uninstall_while_online_drops_capacity() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = two_generators(&mut scenario, &clock);
+    power(&mut scenario, entity_id, true, &clock);
     set_generator(&mut scenario, entity_id, 0, true, &clock);
+    set_generator(&mut scenario, entity_id, 1, true, &clock);
+
     uninstall_generator(&mut scenario, entity_id, 0, &clock);
 
-    abort
+    ts::next_tx(&mut scenario, admin());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    assert!(!power_grid::is_generator_connected(&entity, generator_id(0)));
+    assert!(power_grid::generator_state(&entity, generator_id(1)).online());
+    ts::return_shared(entity);
+
+    let (_, capacity, _, _) = grid_scenario::projected(&mut scenario, entity_id, &clock);
+    assert!(capacity == OUTPUT_B);
+
+    clock.destroy_for_testing();
+    scenario.end();
 }
 
 #[test, expected_failure(abort_code = grid_generator::EGeneratorNotConnected)]
