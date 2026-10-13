@@ -16,12 +16,10 @@ import {
   gameItemToChain,
 } from '../packages/inventory.js'
 import {
-  assertOnline,
   depositFuel,
   depositFuelRequirement,
   installFuel,
   installGenerator,
-  onlineRequirement,
   operateGridRequirement,
   POWER_SCALE,
   setDesiredState,
@@ -38,8 +36,8 @@ import {
 } from './helpers.js'
 
 // A module draws while its desired state is online and the grid can carry it.
-// `bridge_in_items` includes `online_requirement`, so the bridge succeeds only
-// while the inventory holds its grant and the grid still has fuel.
+// Bridge-in pushes an online check, so it succeeds only while the inventory
+// holds its grant and the grid still has fuel.
 const INVENTORY_ID = 0x61n
 const GENERATOR_ID = 0x62n
 const FUEL_ID = 0x63n
@@ -121,7 +119,6 @@ describe('power grid powers an inventory (localnet)', () => {
     enableAdminAction(enableTx, config, enableEntity, 'bridge_in_items', [
       ownerRequirement(enableTx, config),
       bridgeInRequirement(enableTx, config, INVENTORY_ID, {}),
-      onlineRequirement(enableTx, config, INVENTORY_ID, DRAW, 'firm'),
     ])
     await expectSuccess(client, enableTx)
 
@@ -204,7 +201,6 @@ describe('power grid powers an inventory (localnet)', () => {
         quantity: 10n,
         volume: VOL,
       })
-      assertOnline(tx, config, bridgeEntity, bridgeInItemsRequest)
       completeRequest(tx, config, bridgeEntity, bridgeInItemsRequest)
       return tx
     }

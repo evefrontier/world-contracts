@@ -19,6 +19,7 @@ import {
   withdraw,
   withdrawRequirement,
 } from '../packages/inventory.js'
+import { bringInventoryOnline } from './bring-online.js'
 import {
   DOCKED_SHIP,
   dockedProof,
@@ -81,6 +82,7 @@ describe('inventory owner round-trip (localnet)', () => {
       depositRequirement(enableTx, config, MODULE_ID, {}),
     ])
     await expectSuccess(client, enableTx)
+    await bringInventoryOnline(client, config, entityId, capId, MODULE_ID)
 
     // tx4: bridge_in 100 -> withdraw 20 -> deposit the Item back, one signer.
     const runTx = new Transaction()

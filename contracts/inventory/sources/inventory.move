@@ -173,9 +173,11 @@ public fun game_item_to_chain_inventory(
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, bridge_in_permit());
+    let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.mint_item(key, quantity, volume);
     frame.require(admin_service::sponsor_requirement());
+    frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
 }
 
@@ -189,26 +191,33 @@ public fun chain_item_to_game_inventory(
 ) {
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, bridge_out_permit());
+    let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.burn_item(key, type_id, quantity);
     frame.require(admin_service::sponsor_requirement());
+    frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
 }
 
 /// Deposit a standalone `Item` into the entity's Inventory.
+/// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
+/// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
 public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
-    // Rule for deposit is that the entity must be docked
     docking::assert_docked(entity.id(), option::some(item.source()), ctx);
     let type_id = item.type_id();
     let quantity = item.quantity();
     let tenant = entity.key().tenant();
-    let (requirement, frame, inv) = take(entity, req, deposit_permit());
+    let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
+    let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.deposit_item(item, tenant);
+    frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
 }
 
 /// Withdraw `quantity` of `type_id` from the entity's Inventory as a fresh `Item`.
+/// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
+/// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
 public fun withdraw(
     entity: &mut Entity,
     req: &mut Request,
@@ -219,9 +228,11 @@ public fun withdraw(
     let source = entity.id();
     docking::assert_docked(source, option::none(), ctx);
     let key = entity_key::new(type_id, entity.key().tenant());
-    let (requirement, frame, inv) = take(entity, req, withdrawal_permit());
+    let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
+    let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     let item = inv.withdraw_item(key, type_id, quantity, source, ctx);
+    frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
     item
 }
@@ -322,6 +333,20 @@ fun take<T: drop>(
     let inv = c.inner_mut();
     let (requirement, frame) = req.take_next(permit);
     (requirement, frame, inv)
+}
+
+fun module_id(requirement: &Requirement): u64 {
+    requirement.component_id().destroy_some()
+}
+
+/// `OnlineRequirement` for the grant stored when this inventory connected.
+fun online_requirement(entity: &Entity, module_id: u64): Requirement {
+    let state = power_grid::module_state(power_grid::power_grid(entity), module_id);
+    power_grid::online_requirement(
+        module_id,
+        power_grid::power_req(&state),
+        power_grid::draw_kind(&state),
+    )
 }
 
 fun rule(

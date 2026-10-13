@@ -22,6 +22,7 @@ import {
   withdraw,
   withdrawRequirement,
 } from '../packages/inventory.js'
+import { installInventoryPower, powerInventoryOn } from './bring-online.js'
 import {
   DOCKED_SHIP,
   dockedProof,
@@ -92,25 +93,45 @@ describe('inventory owner-access via Character', () => {
         await getObjectRef(client, suCapId),
       )
       const su = enableTx.object(suId)
-      for (const [name, req] of [
-        ['bridge_in', bridgeInRequirement(enableTx, config, MODULE_ID, {})],
-        ['withdraw', withdrawRequirement(enableTx, config, MODULE_ID, {})],
-        ['deposit', depositRequirement(enableTx, config, MODULE_ID, {})],
-      ] as const) {
-        enableAction(
-          enableTx,
-          config,
-          su,
-          name,
-          [ownerRequirement(enableTx, config), req],
-          suCap,
-        )
-      }
+      enableAction(
+        enableTx,
+        config,
+        su,
+        'bridge_in',
+        [
+          ownerRequirement(enableTx, config),
+          bridgeInRequirement(enableTx, config, MODULE_ID, {}),
+        ],
+        suCap,
+      )
+      enableAction(
+        enableTx,
+        config,
+        su,
+        'withdraw',
+        [
+          ownerRequirement(enableTx, config),
+          withdrawRequirement(enableTx, config, MODULE_ID, {}),
+        ],
+        suCap,
+      )
+      enableAction(
+        enableTx,
+        config,
+        su,
+        'deposit',
+        [
+          ownerRequirement(enableTx, config),
+          depositRequirement(enableTx, config, MODULE_ID, {}),
+        ],
+        suCap,
+      )
       returnAccess(enableTx, config, character, suCap, receipt)
     }
     await expectSuccess(client, enableTx)
+    await installInventoryPower(client, config, suId)
 
-    // Assertion PTB: borrow -> bridge_in 100 -> withdraw 30 -> deposit it back -> return.
+    // Assertion PTB: borrow -> power on -> bridge_in 100 -> withdraw 30 -> deposit it back -> return.
     const runTx = new Transaction()
     addSponsors(runTx, config, [signer])
     {
@@ -123,6 +144,7 @@ describe('inventory owner-access via Character', () => {
         await getObjectRef(client, suCapId),
       )
       const su = runTx.object(suId)
+      powerInventoryOn(runTx, config, su, suCap, MODULE_ID)
 
       const bridgeRequest = interact(runTx, config, su, 'bridge_in')
       verifyOwner(runTx, config, bridgeRequest, suCap)

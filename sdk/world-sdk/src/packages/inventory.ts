@@ -13,6 +13,7 @@ import {
   verifySponsor,
 } from './core.js'
 import {
+  assertOnline,
   DESIRED_OFFLINE_MODULE,
   installPowerGrid,
   type ModulePowerSpec,
@@ -198,7 +199,7 @@ export interface BridgeInArgs {
   volume: bigint
 }
 
-/** Game-to-chain bridge: mint a balance into the entity's inventory. */
+/** Game-to-chain bridge: mint a balance. Then checks the sponsor and the inventory's grant. */
 export function gameItemToChain(
   tx: Transaction,
   config: WorldConfig,
@@ -217,6 +218,7 @@ export function gameItemToChain(
     ],
   })
   verifySponsor(tx, config, request)
+  assertOnline(tx, config, entity, request)
 }
 
 export interface ItemAmount {
@@ -224,7 +226,7 @@ export interface ItemAmount {
   quantity: bigint
 }
 
-/** Chain-to-game bridge: burn a balance from the entity's inventory. */
+/** Chain-to-game bridge: burn a balance. Then checks the sponsor and the inventory's grant. */
 export function chainItemToGame(
   tx: Transaction,
   config: WorldConfig,
@@ -242,9 +244,10 @@ export function chainItemToGame(
     ],
   })
   verifySponsor(tx, config, request)
+  assertOnline(tx, config, entity, request)
 }
 
-/** Deposit a standalone `Item` into the entity's inventory. */
+/** Deposit a standalone `Item`. Aborts unless docked. Then checks the inventory's grant. */
 export function deposit(
   tx: Transaction,
   config: WorldConfig,
@@ -256,9 +259,10 @@ export function deposit(
     target: `${pkg(config)}::inventory::deposit`,
     arguments: [entity, request, item],
   })
+  assertOnline(tx, config, entity, request)
 }
 
-/** Withdraw a balance from the entity's inventory as a fresh `Item`. */
+/** Withdraw a balance as a fresh `Item`. Aborts unless docked. Then checks the inventory's grant. */
 export function withdraw(
   tx: Transaction,
   config: WorldConfig,
@@ -266,7 +270,7 @@ export function withdraw(
   request: TransactionArgument,
   args: ItemAmount,
 ): TransactionResult {
-  return tx.moveCall({
+  const item = tx.moveCall({
     target: `${pkg(config)}::inventory::withdraw`,
     arguments: [
       entity,
@@ -275,4 +279,6 @@ export function withdraw(
       tx.pure.u64(args.quantity),
     ],
   })
+  assertOnline(tx, config, entity, request)
+  return item
 }

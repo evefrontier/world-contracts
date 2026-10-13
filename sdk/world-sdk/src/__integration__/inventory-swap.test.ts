@@ -20,6 +20,7 @@ import {
   withdraw,
   withdrawRequirement,
 } from '../packages/inventory.js'
+import { bringInventoryOnline } from './bring-online.js'
 import {
   dockedProof,
   expectAbort,
@@ -135,22 +136,65 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     ] as const) {
       const entity = pilotTx.object(entityId)
       const cap = pilotTx.object(capId)
-      for (const [action, rule] of [
-        ['bridge_in', bridgeInRequirement(pilotTx, config, MODULE_ID, {})],
-        ['withdraw', withdrawRequirement(pilotTx, config, MODULE_ID, {})],
-        ['deposit', depositRequirement(pilotTx, config, MODULE_ID, {})],
-      ] as const) {
-        enableAction(
-          pilotTx,
-          config,
-          entity,
-          action,
-          [ownerRequirement(pilotTx, config), rule],
-          cap,
-        )
-      }
+      enableAction(
+        pilotTx,
+        config,
+        entity,
+        'bridge_in',
+        [
+          ownerRequirement(pilotTx, config),
+          bridgeInRequirement(pilotTx, config, MODULE_ID, {}),
+        ],
+        cap,
+      )
+      enableAction(
+        pilotTx,
+        config,
+        entity,
+        'withdraw',
+        [
+          ownerRequirement(pilotTx, config),
+          withdrawRequirement(pilotTx, config, MODULE_ID, {}),
+        ],
+        cap,
+      )
+      enableAction(
+        pilotTx,
+        config,
+        entity,
+        'deposit',
+        [
+          ownerRequirement(pilotTx, config),
+          depositRequirement(pilotTx, config, MODULE_ID, {}),
+        ],
+        cap,
+      )
     }
     await expectSuccess(client, pilotTx, pilot)
+
+    await bringInventoryOnline(
+      client,
+      config,
+      tradingPostId,
+      merchantCapId,
+      MODULE_ID,
+    )
+    await bringInventoryOnline(
+      client,
+      config,
+      shipId,
+      shipCapId,
+      MODULE_ID,
+      pilot,
+    )
+    await bringInventoryOnline(
+      client,
+      config,
+      otherShipId,
+      otherShipCapId,
+      MODULE_ID,
+      pilot,
+    )
 
     // Merchant stocks one lens.
     const stockTx = new Transaction()
