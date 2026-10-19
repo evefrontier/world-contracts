@@ -37,6 +37,8 @@ mvr_name() {
         fi
         return
     fi
+    # MVR names cannot contain `_`.
+    pkg="${pkg//_/-}"
     if [[ "$env" == "live" ]]; then
         echo "$MVR_NAMESPACE/world-$pkg"
     else

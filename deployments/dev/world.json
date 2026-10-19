@@ -74,6 +74,12 @@
       "appCap": "0xd4fc55cab1352f99de08ab5b417be2fb52c78c03133b5f49d4c9800185cbd069",
       "name": "@evefrontier/world-metadata-dev",
       "packageInfo": "0xa27bbcec7e8dcc5ebcad33f72077ca1b8ba248e73b5939f9272caa1fa7ac4f9a"
+    },
+    "power": {
+      "appCap": "0x7aa5754a3a38b53f677ae99b05ab9647e66e9623de379c359e545f8aa7bc3309"
+    },
+    "generic_module": {
+      "appCap": "0x502533d12a53a8aa78851fecb9ec669bec1cb9e68a59469ae62e24b9c4a390ca"
     }
   }
 }
