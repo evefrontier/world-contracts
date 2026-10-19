@@ -1,16 +1,16 @@
 {
-  "chainId": "4c78adac",
+  "chainId": "Base58: 69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD\nHex: 4c78adac",
   "packages": {
     "core": {
-      "originalId": "0x29bcfba3c9489ce7d8f28caf0a04949544336d8b198ed32bd0398f5cf5f9d2fe",
-      "publishedAt": "0x29bcfba3c9489ce7d8f28caf0a04949544336d8b198ed32bd0398f5cf5f9d2fe",
-      "upgradeCap": "0x69fe416b3502b44f412cf0b8fc45eed681bd5e6db9550da9094522fcd8d2993e",
+      "originalId": "0xb57ad5d26f00561450c7582bb48f3f8f0abf0811691382c288b69f3caab6cca1",
+      "publishedAt": "0xb57ad5d26f00561450c7582bb48f3f8f0abf0811691382c288b69f3caab6cca1",
+      "upgradeCap": "0x3bcf6502cc3145353da050c9c47c6f9dfaa448f6df6aea855f282942a0db9b5c",
       "version": 1
     },
     "character": {
-      "originalId": "0xf58ae83f3747a88192ef82341c64b8a7ae2d30399ce4bc5203585c67df4f3de5",
-      "publishedAt": "0xf58ae83f3747a88192ef82341c64b8a7ae2d30399ce4bc5203585c67df4f3de5",
-      "upgradeCap": "0x5a35a7150cd48ac83492e0d864a0574d05c494df89c20d929b67a7e71c84cf16",
+      "originalId": "0x12ac05f9037d89f243c941135ae15c40a1f9caec1768bce53bc8fcc58e0fd649",
+      "publishedAt": "0x12ac05f9037d89f243c941135ae15c40a1f9caec1768bce53bc8fcc58e0fd649",
+      "upgradeCap": "0xdfb786689bf94c07b426d17a2c5d42fe443b63f5219fb2e29993adaa786a4af0",
       "version": 1
     },
     "currency": {
@@ -20,28 +20,40 @@
       "version": 1
     },
     "inventory": {
-      "originalId": "0x5ff10d70a3b08c91995a7f608cda42db8fcde2689fd3b9aa77795c515312b5df",
-      "publishedAt": "0x5ff10d70a3b08c91995a7f608cda42db8fcde2689fd3b9aa77795c515312b5df",
-      "upgradeCap": "0x178c69b46e2559f04fd2c9ff53f25c9da1a5845699503bab13cf38b2ba70277e",
+      "originalId": "0xdd32ecc85424462f577631a316a2aa37495609b5327e6580c8691e78974fb98f",
+      "publishedAt": "0xdd32ecc85424462f577631a316a2aa37495609b5327e6580c8691e78974fb98f",
+      "upgradeCap": "0xe8e7adb7051b81b9f9991fc548ab5acdd2b4653081af63b32de25b752be15ec4",
       "version": 1
     },
     "metadata": {
-      "originalId": "0x3652efdb4fc2e58eb2789fe17b37641764aaa032651bf977dd5f8c85b5b9d4b9",
-      "publishedAt": "0x3652efdb4fc2e58eb2789fe17b37641764aaa032651bf977dd5f8c85b5b9d4b9",
-      "upgradeCap": "0x83d5c2a0c84630a0cd226a7d7ec9b3904c5c03cbb1c34916b1d8b5bbd8875e2e",
+      "originalId": "0xf12ac77fe674536be00e7bc29283a7d5c3a1d7dac8ff6fd93925b1fc6c3722e0",
+      "publishedAt": "0xf12ac77fe674536be00e7bc29283a7d5c3a1d7dac8ff6fd93925b1fc6c3722e0",
+      "upgradeCap": "0xb860ddedd1f888f64d3635fc9ba00857b83e8e25a2a84b71573199d2e1331558",
+      "version": 1
+    },
+    "power": {
+      "originalId": "0x5c44afbf6e098dfa5cdcd1d1a674c1bfe5f8fc5229931bc61e7d84793baf2248",
+      "publishedAt": "0x5c44afbf6e098dfa5cdcd1d1a674c1bfe5f8fc5229931bc61e7d84793baf2248",
+      "upgradeCap": "0x79fba31cda403738f9e722d8be348028c36cf4b4be88ea23dea361dbae7c2b3b",
+      "version": 1
+    },
+    "generic_module": {
+      "originalId": "0x36caf3b5aa10629f3e6d529da7a392270465ac4cd5980506f28cca1f4017f288",
+      "publishedAt": "0x36caf3b5aa10629f3e6d529da7a392270465ac4cd5980506f28cca1f4017f288",
+      "upgradeCap": "0xc7b706063b97946dddc2a4cacf6dac644dae949c8459e1bf63814d4939929b70",
       "version": 1
     }
   },
   "sharedObjects": {
     "objectRegistry": {
-      "id": "0x1bedb9ea6a483e35cf37f42c8faece52e2f1abaf33dd4608c3bf70c14390a819",
-      "initialSharedVersion": "982430718",
-      "type": "0x29bcfba3c9489ce7d8f28caf0a04949544336d8b198ed32bd0398f5cf5f9d2fe::object_registry::ObjectRegistry"
+      "id": "0xcd9d3843f3af06e75a2d52987b73703f63615b1c38e1f01b76955cb729365534",
+      "initialSharedVersion": "1",
+      "type": "0xb57ad5d26f00561450c7582bb48f3f8f0abf0811691382c288b69f3caab6cca1::object_registry::ObjectRegistry"
     },
     "adminAcl": {
-      "id": "0xe042a7a10a06f34c5e9979812609eed34f3f7f613c6be5a1872de07d14bf2d61",
-      "initialSharedVersion": "982430718",
-      "type": "0x29bcfba3c9489ce7d8f28caf0a04949544336d8b198ed32bd0398f5cf5f9d2fe::admin_service::AdminACL"
+      "id": "0x6ab23e03592b3687696bf536f6c6e3c9f5dd8a38246a921833d23979d0f0c1f3",
+      "initialSharedVersion": "1",
+      "type": "0xb57ad5d26f00561450c7582bb48f3f8f0abf0811691382c288b69f3caab6cca1::admin_service::AdminACL"
     },
     "eveCurrency": {
       "id": "0x2a7e185223842c8a302c4443604cd0698cf4017269ab1043ccdba97dc1eeb848",
@@ -52,12 +64,12 @@
   "mvr": {
     "core": {
       "name": "@evefrontier/world-core-dev",
-      "packageInfo": "0x0615adf5259d8b92656592923cc5cf3fc2926115ee59141b306d0cb81132be8b",
+      "packageInfo": "0x61d24d40447775169cfb69d999c98017ab1301bcd42a6a1997ace8f57c5dbd35",
       "appCap": "0x8d7b780dbc14ef896ed3777a17517ccfcb546e680351f440948b1166d9742c91"
     },
     "character": {
       "name": "@evefrontier/world-character-dev",
-      "packageInfo": "0x29ee0abe7712a07cfff463d821e7a6326d048275cd66fdf310c17edc5b69d243",
+      "packageInfo": "0x0a060951ab7639256d66121d372ac920b7a31424c3a120c608aeddcb63938157",
       "appCap": "0xc97feaba0f682fa7f7265db18a6911c379afdc3c1cd1f316c296cd924e2c2c65"
     },
     "currency": {
@@ -68,18 +80,22 @@
     "inventory": {
       "appCap": "0x725f566c944c4a521deb1b7c8408c2424e9468a475b7580d7d564da84ffcc08c",
       "name": "@evefrontier/world-inventory-dev",
-      "packageInfo": "0xdeacba34da6d5aeaf68d7be622e813af3b743f9492e797ffe877c5dad79d956c"
+      "packageInfo": "0x1808bba776b526692d4934809c79d8c5ceccf577489f75cbbba985fe0c0b7c2e"
     },
     "metadata": {
       "appCap": "0xd4fc55cab1352f99de08ab5b417be2fb52c78c03133b5f49d4c9800185cbd069",
       "name": "@evefrontier/world-metadata-dev",
-      "packageInfo": "0xa27bbcec7e8dcc5ebcad33f72077ca1b8ba248e73b5939f9272caa1fa7ac4f9a"
+      "packageInfo": "0xdbeca00998e2746c5e0dfaf67226d25348bf818a8eac3e01ab51f01256129658"
     },
     "power": {
-      "appCap": "0x7aa5754a3a38b53f677ae99b05ab9647e66e9623de379c359e545f8aa7bc3309"
+      "appCap": "0x7aa5754a3a38b53f677ae99b05ab9647e66e9623de379c359e545f8aa7bc3309",
+      "name": "@evefrontier/world-power-dev",
+      "packageInfo": "0x54be9772fbb4cf5568797af577bce74bc5b92588d733e52d13433c25834012c4"
     },
     "generic_module": {
-      "appCap": "0x502533d12a53a8aa78851fecb9ec669bec1cb9e68a59469ae62e24b9c4a390ca"
+      "appCap": "0x502533d12a53a8aa78851fecb9ec669bec1cb9e68a59469ae62e24b9c4a390ca",
+      "name": "@evefrontier/world-generic-module-dev",
+      "packageInfo": "0xec0861cda218176f0977e1a46195be3cb9823c9b1f6af5bb0516b73030973557"
     }
   }
 }
