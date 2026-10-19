@@ -1,11 +1,12 @@
 [package]
 name = "inventory"
-edition = "2024"         # edition = "legacy" to use legacy (pre-2024) Move
+edition = "2024"   # edition = "legacy" to use legacy (pre-2024) Move
 # license = ""           # e.g., "MIT", "GPL", "Apache 2.0"
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
 
 [dependencies]
 core = { local = "../core" }
+power = { local = "../power" }
 
 # Per-env deploy targets. dev/test/uat are independent deployments on the same
 # testnet chain (distinguished by name);

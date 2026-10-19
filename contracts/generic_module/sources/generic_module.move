@@ -1,10 +1,12 @@
 /// Opaque in-game module state for fittings that have no on-chain logic yet.
-/// Installed as `Component<GenericModule>`. Core owns the type so it can mint
-/// `Permit<GenericModule>` internally.
-module core::generic_module;
+/// Installed as `Component<GenericModule>`. Installing connects it to the Creation's
+/// power grid; uninstalling disconnects it.
+module generic_module::generic_module;
 
 use core::{component::{Self, Component}, entity::Entity, request::Request};
+use power::{grid_load, power_grid::{Self, DrawKind, PowerKind}};
 use std::{internal::Permit, string::String};
+use sui::clock::Clock;
 
 // === Errors ===
 
@@ -26,38 +28,70 @@ public struct GenericModule has store {
 
 // === Public Functions ===
 
+/// Install a generic module and connect it to the power grid. Aborts if the
+/// Creation has no grid.
 public fun install(
     entity: &mut Entity,
     component_id: u64,
     type_id: u64,
     name: Option<String>,
     data: vector<u8>,
+    power_req: u64,
+    draw_kind: DrawKind,
+    power_kind: PowerKind,
+    priority: u64,
+    line_loss: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
-    entity.install(
+    let req = entity.install(
         component_id,
         name,
         GenericModule { type_id, data },
         VERSION,
         generic_module_permit(),
         ctx,
-    )
-}
-
-public fun uninstall(entity: &mut Entity, component_id: u64, ctx: &mut TxContext): Request {
-    let (_data, req) = extract_for_migration(entity, component_id, ctx);
+    );
+    let power = power_grid::module_power_spec(
+        power_req,
+        draw_kind,
+        power_kind,
+        priority,
+        line_loss,
+    );
+    grid_load::connect<GenericModule>(
+        entity,
+        component_id,
+        power,
+        generic_module_permit(),
+        clock,
+    );
     req
 }
 
+/// Uninstall a generic module and disconnect it from the power grid.
+public fun uninstall(
+    entity: &mut Entity,
+    component_id: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Request {
+    let (_data, req) = extract_for_migration(entity, component_id, clock, ctx);
+    req
+}
+
+/// Uninstall a generic module and return its bytes, disconnecting it from the power grid.
 public fun extract_for_migration(
     entity: &mut Entity,
     component_id: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): (vector<u8>, Request) {
     assert!(entity.has_component_with_type<GenericModule>(component_id), EModuleMissing);
 
     let (c, req) = entity.uninstall<GenericModule>(component_id, generic_module_permit(), ctx);
     let GenericModule { type_id: _, data } = c.unwrap(generic_module_permit());
+    grid_load::disconnect<GenericModule>(entity, component_id, generic_module_permit(), clock);
     (data, req)
 }
 

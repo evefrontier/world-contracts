@@ -6,11 +6,16 @@ import type {
 import { mvrName } from '../config/env.js'
 import type { WorldConfig } from '../config/types.js'
 import { completeRequest, verifyAdmin } from './core.js'
+import {
+  DESIRED_OFFLINE_MODULE,
+  type ModulePowerSpec,
+  modulePowerArguments,
+} from './power.js'
 
-const CORE_PACKAGE = 'core'
+const GENERIC_PACKAGE = 'generic_module'
 
 function pkg(config: WorldConfig): string {
-  return mvrName(config.env, CORE_PACKAGE)
+  return mvrName(config.env, GENERIC_PACKAGE)
 }
 
 export interface InstallGenericModuleArgs {
@@ -18,6 +23,7 @@ export interface InstallGenericModuleArgs {
   typeId: bigint
   name?: string | null
   data: Iterable<number>
+  power?: ModulePowerSpec
 }
 
 export function installGenericModule(
@@ -34,6 +40,8 @@ export function installGenericModule(
       tx.pure.u64(args.typeId),
       tx.pure.option('string', args.name ?? null),
       tx.pure.vector('u8', [...args.data]),
+      ...modulePowerArguments(tx, config, args.power ?? DESIRED_OFFLINE_MODULE),
+      tx.object.clock(),
     ],
   })
   verifyAdmin(tx, config, request)
@@ -48,7 +56,7 @@ export function uninstallGenericModule(
 ): void {
   const request = tx.moveCall({
     target: `${pkg(config)}::generic_module::uninstall`,
-    arguments: [entity, tx.pure.u64(componentId)],
+    arguments: [entity, tx.pure.u64(componentId), tx.object.clock()],
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)

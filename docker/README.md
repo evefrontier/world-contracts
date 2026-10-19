@@ -1,7 +1,7 @@
 # Docker
 
 Two Dockerfiles. One pinned toolchain: `SUI_VERSION=testnet-v1.78.0` (plus
-`PNPM_VERSION=9`), declared as build `ARG`s in each Dockerfile. To bump, update
+`PNPM_VERSION=12.10.1`), declared as build `ARG`s in each Dockerfile. To bump, update
 together: both Dockerfiles, this README, and `genesis/genesis-config.yaml`'s
 `protocol_version` (which must match the Sui version). The CI workflows build
 these Dockerfiles, so they inherit the pin automatically — there is no tag to
@@ -32,7 +32,7 @@ docker build -f docker/Dockerfile.integration -t world-integration .
 docker run --rm -v "$(pwd):/app" -w /app -e CI=true world-integration test
 ```
 
-Brings up the localnet, deploys world packages (`core`, `character`, `inventory`, `metadata`),
+Brings up the localnet, deploys world packages (`core`, `character`, `metadata`, `power`, `inventory`),
 then `currency` (EVE) via a separate deploy script, runs the SDK integration
 suite. Pass no argument instead of `test` to just leave the node running.
 

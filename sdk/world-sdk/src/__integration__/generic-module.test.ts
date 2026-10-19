@@ -16,6 +16,7 @@ import {
   installGenericModule,
   uninstallGenericModule,
 } from '../packages/generic-module.js'
+import { installPowerGrid, uninstallPowerGrid } from '../packages/power.js'
 import { expectSuccess, loadLocalnetWorld, signer } from './helpers.js'
 
 const COMPONENT_ID = 0x70n
@@ -39,6 +40,7 @@ describe('generic module (localnet)', () => {
     })
     verifyAdmin(setupTx, config, claimReq)
     completeRequest(setupTx, config, entity, claimReq)
+    installPowerGrid(setupTx, config, entity)
     installGenericModule(setupTx, config, entity, {
       componentId: COMPONENT_ID,
       typeId: TYPE_ID,
@@ -68,6 +70,7 @@ describe('generic module (localnet)', () => {
     const e = teardownTx.object(entityId)
     uninstallGenericModule(teardownTx, config, e, COMPONENT_ID)
     uninstallGenericModule(teardownTx, config, e, COMPONENT_ID_2)
+    uninstallPowerGrid(teardownTx, config, e)
     deleteEntity(teardownTx, config, e)
     const deleted = await expectSuccess(client, teardownTx)
 

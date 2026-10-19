@@ -12,6 +12,13 @@ import {
   verifyAdmin,
   verifySponsor,
 } from './core.js'
+import {
+  assertOnline,
+  DESIRED_OFFLINE_MODULE,
+  installPowerGrid,
+  type ModulePowerSpec,
+  modulePowerArguments,
+} from './power.js'
 
 const INVENTORY_PACKAGE = 'inventory'
 
@@ -84,6 +91,7 @@ export interface InstallInventoryArgs {
   typeId: bigint
   name?: string | null
   capacity: bigint
+  power?: ModulePowerSpec
 }
 
 /** Install an inventory component on `entity` and close its admin-gated request. */
@@ -101,6 +109,8 @@ export function installInventory(
       tx.pure.u64(args.typeId),
       tx.pure.option('string', args.name ?? null),
       tx.pure.u64(args.capacity),
+      ...modulePowerArguments(tx, config, args.power ?? DESIRED_OFFLINE_MODULE),
+      tx.object.clock(),
     ],
   })
   verifyAdmin(tx, config, request)
@@ -116,7 +126,7 @@ export function uninstallInventory(
 ): void {
   const request = tx.moveCall({
     target: `${pkg(config)}::inventory::uninstall`,
-    arguments: [entity, tx.pure.u64(componentId)],
+    arguments: [entity, tx.pure.u64(componentId), tx.object.clock()],
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
@@ -129,6 +139,7 @@ export interface CreateStorageUnitArgs {
   typeId: bigint
   name?: string | null
   capacity: bigint
+  power?: ModulePowerSpec
 }
 
 /**
@@ -146,11 +157,13 @@ export function createStorageUnit(
   })
   verifyAdmin(tx, config, claimReq)
   completeRequest(tx, config, entity, claimReq)
+  installPowerGrid(tx, config, entity)
   installInventory(tx, config, entity, {
     componentId: args.componentId,
     typeId: args.typeId,
     name: args.name,
     capacity: args.capacity,
+    power: args.power,
   })
   shareEntity(tx, config, entity)
 }
@@ -186,7 +199,7 @@ export interface BridgeInArgs {
   volume: bigint
 }
 
-/** Game-to-chain bridge: mint a balance into the entity's inventory. */
+/** Game-to-chain bridge: mint a balance. Then checks the sponsor and the inventory's grant. */
 export function gameItemToChain(
   tx: Transaction,
   config: WorldConfig,
@@ -205,6 +218,7 @@ export function gameItemToChain(
     ],
   })
   verifySponsor(tx, config, request)
+  assertOnline(tx, config, entity, request)
 }
 
 export interface ItemAmount {
@@ -212,7 +226,7 @@ export interface ItemAmount {
   quantity: bigint
 }
 
-/** Chain-to-game bridge: burn a balance from the entity's inventory. */
+/** Chain-to-game bridge: burn a balance. Then checks the sponsor and the inventory's grant. */
 export function chainItemToGame(
   tx: Transaction,
   config: WorldConfig,
@@ -230,9 +244,10 @@ export function chainItemToGame(
     ],
   })
   verifySponsor(tx, config, request)
+  assertOnline(tx, config, entity, request)
 }
 
-/** Deposit a standalone `Item` into the entity's inventory. */
+/** Deposit a standalone `Item`. Aborts unless docked. Then checks the inventory's grant. */
 export function deposit(
   tx: Transaction,
   config: WorldConfig,
@@ -244,9 +259,10 @@ export function deposit(
     target: `${pkg(config)}::inventory::deposit`,
     arguments: [entity, request, item],
   })
+  assertOnline(tx, config, entity, request)
 }
 
-/** Withdraw a balance from the entity's inventory as a fresh `Item`. */
+/** Withdraw a balance as a fresh `Item`. Aborts unless docked. Then checks the inventory's grant. */
 export function withdraw(
   tx: Transaction,
   config: WorldConfig,
@@ -254,7 +270,7 @@ export function withdraw(
   request: TransactionArgument,
   args: ItemAmount,
 ): TransactionResult {
-  return tx.moveCall({
+  const item = tx.moveCall({
     target: `${pkg(config)}::inventory::withdraw`,
     arguments: [
       entity,
@@ -263,4 +279,6 @@ export function withdraw(
       tx.pure.u64(args.quantity),
     ],
   })
+  assertOnline(tx, config, entity, request)
+  return item
 }

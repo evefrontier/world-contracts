@@ -1,7 +1,7 @@
 ARG SUI_VERSION=testnet-v1.78.0
 FROM mysten/sui-tools:${SUI_VERSION} AS dependency-stage
 
-ARG PNPM_VERSION=9
+ARG PNPM_VERSION=12.10.1
 ARG NODE_VERSION=24.20.0
 
 # sui-tools is Debian 11. debian-security 404s rotated debs and nodesource

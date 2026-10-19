@@ -25,6 +25,12 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.dev.inventory]
 source = { root = true }
 use_environment = "dev"
+manifest_digest = "234E39736D80037F534036037D56068EF6DC12BCC636A6CBE5111D98035F8DCA"
+deps = { core = "core", power = "power", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.dev.power]
+source = { local = "../power" }
+use_environment = "dev"
 manifest_digest = "C9F5662B88EC27D4EDC3A17419B2DD98AA33F04F755FC7BC996546A84D83EA2F"
 deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
 
@@ -48,6 +54,12 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.inventory]
 source = { root = true }
+use_environment = "testnet"
+manifest_digest = "BDB8EB404D00C30352AB875FC5C20B3552BEB33364D0762BAFDC05128A10C436"
+deps = { core = "core", power = "power", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.power]
+source = { local = "../power" }
 use_environment = "testnet"
 manifest_digest = "D59946E78C59818FEAB3920FB1CFE46E6601B41BBE737CC3E0BBE15760D89BCB"
 deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
