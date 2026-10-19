@@ -1,6 +1,7 @@
 # Move build artifacts
 **/**/build
 **/**/target
+**/traces/*
 **/**/.trace
 **/**/.coverage*
 
