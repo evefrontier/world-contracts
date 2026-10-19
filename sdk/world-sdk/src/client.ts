@@ -17,6 +17,10 @@ const DEFAULT_GRPC_URLS: Record<Network, string> = {
   mainnet: 'https://fullnode.mainnet.sui.io:443',
 }
 
+export function grpcUrlForNetwork(network: Network): string {
+  return DEFAULT_GRPC_URLS[network]
+}
+
 export type WorldClient = SuiGrpcClient
 
 export type ExecutedTransaction = SuiClientTypes.Transaction<{
