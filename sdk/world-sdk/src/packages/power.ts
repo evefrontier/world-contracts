@@ -256,7 +256,7 @@ export function depositFuel(
       tx.object.clock(),
     ],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
   verifySponsor(tx, config, request)
 }
 
@@ -273,7 +273,7 @@ export function setPowerGrid(
     target: grid(config, 'set_power_grid'),
     arguments: [entity, request, tx.pure.bool(on), tx.object.clock()],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
 }
 
 /** Bring a Generator online or offline. Owner-gated. */
@@ -296,7 +296,7 @@ export function setGenerator(
       tx.object.clock(),
     ],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
 }
 
 /** Move a connected module into priority group `priority`. Grants ignore it in v1. Owner-gated. */
@@ -319,7 +319,7 @@ export function setPriority(
       tx.object.clock(),
     ],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
 }
 
 /** Set a connected module's desired state. The grid regrants. Owner-gated. */
@@ -342,7 +342,7 @@ export function setDesiredState(
       tx.object.clock(),
     ],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
 }
 
 /** Fuel left on the creation now, with burn since the last settle applied. */

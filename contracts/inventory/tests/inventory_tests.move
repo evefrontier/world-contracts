@@ -51,7 +51,7 @@ fun enable(
 ) {
     let act = action::new(vector[access_cap::owner_requirement(), item_req]);
     let mut req = e.enable_action(string::utf8(name), act, ctx);
-    access_cap::verify(&mut req, owner_cap);
+    e.verify_owner(&mut req, owner_cap);
     e.complete_request(req);
 }
 
@@ -169,7 +169,7 @@ fun owner_enable(
     let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = e.enable_action(string::utf8(name), act, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
@@ -258,7 +258,7 @@ fun bridge_in(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, type_id, qty, vol);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
@@ -284,7 +284,7 @@ fun bridge_out(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::chain_item_to_game_inventory(&mut e, &mut req, type_id, qty);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
@@ -304,7 +304,7 @@ fun deposit(
     item: Item,
 ) {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    access_cap::verify(&mut req, cap);
+    e.verify_owner(&mut req, cap);
     inventory::deposit(e, &mut req, item, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     grid_load::assert_online(e, &mut req, &clock);
@@ -321,7 +321,7 @@ fun withdraw(
     qty: u64,
 ): Item {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    access_cap::verify(&mut req, cap);
+    e.verify_owner(&mut req, cap);
     let item = inventory::withdraw(e, &mut req, type_id, qty, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     grid_load::assert_online(e, &mut req, &clock);
@@ -391,7 +391,7 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
     grid_fuel::deposit_fuel(&mut entity, &mut req, 7, 100, 90, 14, &clock);
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
     clock.destroy_for_testing();
@@ -420,7 +420,7 @@ fun enable_owner_in_handler(
 ) {
     let act = action::new(vector[requirement]);
     let mut req = entity.enable_action(string::utf8(name), act, ctx);
-    access_cap::verify(&mut req, owner_cap);
+    entity.verify_owner(&mut req, owner_cap);
     entity.complete_request(req);
 }
 
@@ -431,7 +431,7 @@ fun set_desired(scenario: &mut ts::Scenario, entity_id: ID, owner: address, onli
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"operate_grid"), scenario.ctx());
     grid_load::set_desired_state(&mut entity, &mut req, MODULE_ID, online, &clock);
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     clock.destroy_for_testing();
     ts::return_to_sender(scenario, cap);
@@ -451,7 +451,7 @@ macro fun run_operate_grid(
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"operate_grid"), scenario.ctx());
     $handler(&mut entity, &mut req, &clock);
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     clock.destroy_for_testing();
     ts::return_to_sender(scenario, cap);
@@ -602,7 +602,7 @@ fun bridge_in_by_non_owner_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let player_cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
-    access_cap::verify(&mut req, &player_cap);
+    e.verify_owner(&mut req, &player_cap);
 
     abort
 }
@@ -627,7 +627,7 @@ fun bridge_in_by_owner_without_sponsor_aborts() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let acl = take_acl(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
 
@@ -751,7 +751,7 @@ fun bridge_in_over_capacity_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 60, VOL); // 120 > 100
 
     abort
@@ -790,7 +790,7 @@ fun bridge_in_wrong_type_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_fuel"), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL + 1, 10, VOL);
 
     abort

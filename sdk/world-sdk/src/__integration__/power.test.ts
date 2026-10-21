@@ -195,7 +195,13 @@ describe('power grid powers an inventory (localnet)', () => {
         bridgeEntity,
         'bridge_in_items',
       )
-      verifyOwner(tx, config, bridgeInItemsRequest, tx.object(capId))
+      verifyOwner(
+        tx,
+        config,
+        bridgeEntity,
+        bridgeInItemsRequest,
+        tx.object(capId),
+      )
       gameItemToChain(tx, config, bridgeEntity, bridgeInItemsRequest, {
         typeId: ITEM,
         quantity: 10n,

@@ -58,6 +58,7 @@ export {
   mintAccess,
   ownerRequirement,
   returnAccess,
+  revokeAccess,
   shareEntity,
   verifyAdmin,
   verifyCaller,

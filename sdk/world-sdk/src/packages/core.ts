@@ -193,6 +193,21 @@ export function mintAccess(
   completeRequest(tx, config, entity, request)
 }
 
+/** Clear an entity's owner so every cap minted for it stops verifying. Signer must be an admin. */
+export function revokeAccess(
+  tx: Transaction,
+  config: WorldConfig,
+  entityId: string,
+): void {
+  const entity = tx.object(entityId)
+  const request = tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::revoke_access`,
+    arguments: [entity],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
 /** Build a caller requirement: satisfied by any valid `AccessCap`, recording its holder. */
 export function callerRequirement(
   tx: Transaction,
@@ -213,16 +228,17 @@ export function ownerRequirement(
   })
 }
 
-/** Satisfy an owner requirement on `request` by presenting the entity's `AccessCap`. */
+/** Satisfy an owner requirement on `request` by presenting the entity's current `AccessCap`. */
 export function verifyOwner(
   tx: Transaction,
   config: WorldConfig,
+  entity: TransactionArgument,
   request: TransactionArgument,
   cap: string | TransactionArgument,
 ): void {
   tx.moveCall({
-    target: `${mvrName(config.env, CORE_PACKAGE)}::access_cap::verify`,
-    arguments: [request, capArg(tx, cap)],
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::verify_owner`,
+    arguments: [entity, request, capArg(tx, cap)],
   })
 }
 
@@ -313,7 +329,7 @@ export function enableAction(
     target: `${core}::entity::enable_action`,
     arguments: [entity, tx.pure.string(name), action],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
   completeRequest(tx, config, entity, request)
 }
 
@@ -364,7 +380,7 @@ export function disableAction(
     target: `${mvrName(config.env, CORE_PACKAGE)}::entity::disable_action`,
     arguments: [entity, tx.pure.string(name)],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
   completeRequest(tx, config, entity, request)
 }
 

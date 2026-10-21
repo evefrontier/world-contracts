@@ -76,14 +76,6 @@ public fun caller_requirement(): Requirement {
     requirement::from_config(option::none(), Caller())
 }
 
-public fun verify(request: &mut Request, cap: &AccessCap) {
-    assert!(cap.version == VERSION, EWrongVersion);
-    let (_requirement, frame) = request.take_next(permit());
-    assert!(request.entity_id() == option::some(cap.entity), ENotOwner);
-    request.set_authorized_id(cap.entity);
-    frame.destroy_empty_frame();
-}
-
 /// Satisfy the next (caller) requirement with any valid cap, recording
 /// `cap.entity()` as the request's authorized entity for downstream routing.
 public fun verify_caller(request: &mut Request, cap: &AccessCap) {
@@ -149,6 +141,16 @@ public fun is_transferable(cap: &AccessCap): bool {
 }
 
 // === Package Functions ===
+
+/// Pop the owner requirement for `cap`'s entity. Only `entity::verify_owner`
+/// calls it, after which it checks `cap` is the entity's current cap.
+public(package) fun verify(request: &mut Request, cap: &AccessCap) {
+    assert!(cap.version == VERSION, EWrongVersion);
+    let (_requirement, frame) = request.take_next(permit());
+    assert!(request.entity_id() == option::some(cap.entity), ENotOwner);
+    request.set_authorized_id(cap.entity);
+    frame.destroy_empty_frame();
+}
 
 /// Mint a cap for `entity` and transfer it to `owner`. Returns the new cap's id.
 public(package) fun mint(entity: ID, owner: address, transferable: bool, ctx: &mut TxContext): ID {

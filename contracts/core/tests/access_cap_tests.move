@@ -27,6 +27,30 @@ fun mint_cap_for(scenario: &mut ts::Scenario, owner: address, transferable: bool
     ts::return_shared(acl);
 }
 
+/// Revoke the shared entity's owner.
+fun revoke(scenario: &mut ts::Scenario) {
+    ts::next_tx(scenario, ADMIN);
+    let mut e = ts::take_shared<entity::Entity>(scenario);
+    let acl = take_acl(scenario);
+    let mut req = e.revoke_access(scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    ts::return_shared(e);
+    ts::return_shared(acl);
+}
+
+/// `sender` interacts with the owner action, presenting its cap.
+fun interact_as_owner(scenario: &mut ts::Scenario, sender: address) {
+    ts::next_tx(scenario, sender);
+    let mut e = ts::take_shared<entity::Entity>(scenario);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let mut req = e.interact(string::utf8(OWNER_ACTION), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    e.complete_request(req);
+    ts::return_shared(e);
+    ts::return_to_sender(scenario, cap);
+}
+
 const OWNER_ACTION: vector<u8> = b"deposit_by_owner";
 const CALLER_ACTION: vector<u8> = b"deposit_by_caller";
 
@@ -38,7 +62,7 @@ fun enable_owner_action(scenario: &mut ts::Scenario) {
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let act = action::new(vector[access_cap::owner_requirement()]);
     let mut req = e.enable_action(string::utf8(OWNER_ACTION), act, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
     ts::return_shared(e);
     ts::return_to_sender(scenario, cap);
@@ -52,7 +76,7 @@ fun enable_caller_action(scenario: &mut ts::Scenario) {
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let act = action::new(vector[access_cap::caller_requirement()]);
     let mut req = e.enable_action(string::utf8(CALLER_ACTION), act, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
     ts::return_shared(e);
     ts::return_to_sender(scenario, cap);
@@ -118,7 +142,7 @@ fun verify_passes_with_matching_cap() {
         let mut e = ts::take_shared<entity::Entity>(&scenario);
         let cap = ts::take_from_sender<AccessCap>(&scenario);
         let mut req = e.interact(string::utf8(OWNER_ACTION), scenario.ctx());
-        access_cap::verify(&mut req, &cap);
+        e.verify_owner(&mut req, &cap);
         assert!(req.authorized_id() == option::some(cap.entity()));
         e.complete_request(req);
         ts::return_shared(e);
@@ -184,7 +208,7 @@ fun verify_caller_records_non_owner_authorized_id() {
         let cap1 = ts::take_from_sender<AccessCap>(&scenario);
         let act = action::new(vector[access_cap::caller_requirement()]);
         let mut req = e1.enable_action(string::utf8(CALLER_ACTION), act, scenario.ctx());
-        access_cap::verify(&mut req, &cap1);
+        e1.verify_owner(&mut req, &cap1);
         e1.complete_request(req);
         ts::return_shared(e1);
         ts::return_to_sender(&scenario, cap1);
@@ -241,7 +265,7 @@ fun verify_aborts_with_wrong_entity_cap() {
         let cap1 = ts::take_from_sender<AccessCap>(&scenario);
         let act = action::new(vector[access_cap::owner_requirement()]);
         let mut req = e1.enable_action(string::utf8(OWNER_ACTION), act, scenario.ctx());
-        access_cap::verify(&mut req, &cap1);
+        e1.verify_owner(&mut req, &cap1);
         e1.complete_request(req);
         ts::return_shared(e1);
         ts::return_to_sender(&scenario, cap1);
@@ -252,7 +276,7 @@ fun verify_aborts_with_wrong_entity_cap() {
     let mut e1 = ts::take_shared_by_id<entity::Entity>(&scenario, one);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e1.interact(string::utf8(OWNER_ACTION), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e1.verify_owner(&mut req, &cap);
 
     abort
 }
@@ -291,4 +315,81 @@ fun transfer_access_aborts_on_soulbound_cap() {
     access_cap::transfer_access(cap, PLAYER);
 
     abort
+}
+
+#[test]
+fun revoke_access_clears_cap_id() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    create_entity(&mut scenario, 1);
+    mint_cap_for(&mut scenario, OWNER, false);
+    revoke(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let e = ts::take_shared<entity::Entity>(&scenario);
+        assert!(e.access_cap_id().is_none());
+        ts::return_shared(e);
+    };
+
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
+fun revoke_access_by_non_admin_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    create_entity(&mut scenario, 1);
+    mint_cap_for(&mut scenario, OWNER, false);
+
+    ts::next_tx(&mut scenario, PLAYER);
+    let mut e = ts::take_shared<entity::Entity>(&scenario);
+    let acl = take_acl(&scenario);
+    let mut req = e.revoke_access(scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = entity::EStaleAccessCap)]
+fun verify_aborts_after_revoke() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    create_entity(&mut scenario, 1);
+    mint_cap_for(&mut scenario, OWNER, false);
+    enable_owner_action(&mut scenario);
+    revoke(&mut scenario);
+
+    interact_as_owner(&mut scenario, OWNER);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = entity::EStaleAccessCap)]
+fun verify_aborts_with_replaced_cap() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    create_entity(&mut scenario, 1);
+    mint_cap_for(&mut scenario, OWNER, false);
+    enable_owner_action(&mut scenario);
+    mint_cap_for(&mut scenario, PLAYER, false);
+
+    interact_as_owner(&mut scenario, OWNER);
+
+    abort
+}
+
+#[test]
+fun verify_passes_with_cap_minted_after_revoke() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    create_entity(&mut scenario, 1);
+    mint_cap_for(&mut scenario, OWNER, false);
+    enable_owner_action(&mut scenario);
+    revoke(&mut scenario);
+    mint_cap_for(&mut scenario, PLAYER, false);
+
+    interact_as_owner(&mut scenario, PLAYER);
+
+    scenario.end();
 }

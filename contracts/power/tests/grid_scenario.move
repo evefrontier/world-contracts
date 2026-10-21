@@ -211,7 +211,7 @@ fun enable_action_with(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let act = action::new(requirements);
     let mut req = entity.enable_action(string::utf8(name), act, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(entity);
@@ -230,7 +230,7 @@ public macro fun as_owner(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = entity.interact(string::utf8($name), scenario.ctx());
     $handler(&mut entity, &mut req);
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(entity);
@@ -264,14 +264,14 @@ public macro fun temp_action(
     let name = string::utf8(temp_action_name());
     let act = action::new(vector[access_cap::owner_requirement(), $target]);
     let mut req = entity.enable_action(name, act, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     let mut req = entity.interact(name, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     $handler(&mut entity, &mut req);
     entity.complete_request(req);
     let mut req = entity.disable_action(name, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(entity);
@@ -415,7 +415,7 @@ public fun deposit_fuel_via(
     let acl = take_acl(scenario);
     let mut req = entity.interact(string::utf8(name), scenario.ctx());
     grid_fuel::deposit_fuel(&mut entity, &mut req, fuel_type, amount, impulse, burden, clock);
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
     ts::return_to_sender(scenario, cap);
