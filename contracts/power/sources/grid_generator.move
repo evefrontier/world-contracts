@@ -105,6 +105,41 @@ public fun uninstall(
     req
 }
 
+/// Move Generator `generator_id` from `from` to `to`, keeping its stats and
+/// online state, so its output leaves `from`'s capacity and joins `to`'s.
+/// Admin-gated: returns `from`'s request, then `to`'s.
+public fun migrate(
+    from: &mut Entity,
+    to: &mut Entity,
+    generator_id: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Request, Request) {
+    assert!(power_grid::is_generator_connected(from, generator_id), EGeneratorNotConnected);
+    let state = power_grid::generator_state(from, generator_id);
+    let name = generator::name(from, generator_id);
+    let from_req = uninstall(from, generator_id, clock, ctx);
+    let to_req = install(
+        to,
+        generator_id,
+        name,
+        state.max_output_mw(),
+        state.containment_reduction(),
+        state.base_fuel_rate(),
+        clock,
+        ctx,
+    );
+    if (state.online()) {
+        let entity_id = to.id();
+        let grid = power_grid::grid_mut(to);
+        grid.set_generator_online(generator_id, true);
+        grid.regrant(entity_id);
+        event::emit(GeneratorToggled { entity_id, generator_id, online: true });
+        event::emit(CapacityChanged { entity_id, capacity_mw: power_grid::capacity_mw(grid) });
+    };
+    (from_req, to_req)
+}
+
 /// Bring a Generator online or offline. Settles before capacity changes,
 /// because burn depends on which Generators run.
 public fun set_generator(

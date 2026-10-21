@@ -61,7 +61,7 @@ public fun assert_installed(entity: &Entity, component_id: u64) {
 
 // === Package Functions ===
 
-/// Remove the Fuel bay. Called by `grid_fuel::uninstall_fuel_source`.
+/// Remove the Fuel bay. Called by `grid_fuel::uninstall`.
 public(package) fun uninstall(
     entity: &mut Entity,
     component_id: u64,
@@ -72,6 +72,13 @@ public(package) fun uninstall(
     let Fuel {} = fuel_component.unwrap(fuel_permit());
     event::emit(FuelUninstalled { entity_id: entity.id(), component_id });
     req
+}
+
+/// Display name of the Fuel at `component_id`.
+public(package) fun name(entity: &Entity, component_id: u64): Option<String> {
+    assert_installed(entity, component_id);
+    let c: &Component<Fuel> = entity.component_ref(component_id, fuel_permit());
+    c.name()
 }
 
 // === Private Functions ===

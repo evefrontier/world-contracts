@@ -217,7 +217,7 @@ module and regrants. A module is online when `desired_online` and its draw is no
 
 - `PowerGridInstalled`, `PowerGridUninstalled`, `PowerToggled`, `CapacityChanged`
 - `GeneratorInstalled`, `GeneratorUninstalled`, `GeneratorConnected`, `GeneratorDisconnected`, `GeneratorToggled`
-- `FuelInstalled`, `FuelUninstalled`, `FuelSourceConnected`, `FuelSourceDisconnected`, `FuelAdded`
+- `FuelInstalled`, `FuelUninstalled`, `FuelSourceAttached`, `FuelSourceDetached`, `FuelAdded`
 - `ModuleConnected`, `ModuleDisconnected`, `PriorityChanged`, `DesiredStateChanged`
 - `DrawChanged { module_id, active_draw }`
 

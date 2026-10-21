@@ -11,7 +11,12 @@ use core::{
     requirement::Requirement,
     test_helpers::{claim, take_acl, take_registry}
 };
-use power::{grid_fuel, grid_generator, grid_load, power_grid::{Self, ModulePowerSpec}};
+use power::{
+    grid_fuel::{Self, FuelLoad},
+    grid_generator,
+    grid_load,
+    power_grid::{Self, ModulePowerSpec}
+};
 use std::string;
 use sui::{clock::Clock, test_scenario as ts};
 
@@ -44,7 +49,7 @@ public fun owner(): address { OWNER }
 /// Component id of the `index`-th Generator from `setup_entity`.
 public fun generator_id(index: u64): u64 { GENERATOR_BASE + index }
 
-public fun fuel_id(): u64 { FUEL_ID }
+public fun fuel_source_id(): u64 { FUEL_ID }
 
 public fun fuel_capacity(): u64 { FUEL_CAPACITY }
 
@@ -347,11 +352,11 @@ public fun set_priority(
     );
 }
 
-/// Install Fuel source `fuel_id` with `capacity` (not the default one).
+/// Install Fuel source `fuel_source_id` with `capacity` (not the default one).
 public fun install_fuel(
     scenario: &mut ts::Scenario,
     entity_id: ID,
-    fuel_id: u64,
+    fuel_source_id: u64,
     capacity: u64,
     clock: &Clock,
 ) {
@@ -360,7 +365,7 @@ public fun install_fuel(
     let acl = take_acl(scenario);
     let mut req = grid_fuel::install(
         &mut entity,
-        fuel_id,
+        fuel_source_id,
         option::none(),
         capacity,
         clock,
@@ -372,12 +377,45 @@ public fun install_fuel(
     ts::return_shared(entity);
 }
 
-/// Uninstall Fuel source `fuel_id`.
-public fun uninstall_fuel(scenario: &mut ts::Scenario, entity_id: ID, fuel_id: u64, clock: &Clock) {
+/// Uninstall Fuel source `fuel_source_id`, returning the fuel it carried out.
+public fun uninstall_fuel(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_source_id: u64,
+    clock: &Clock,
+): FuelLoad {
     ts::next_tx(scenario, ADMIN);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
-    let mut req = grid_fuel::uninstall(&mut entity, fuel_id, clock, scenario.ctx());
+    let (mut req, load) = grid_fuel::uninstall(&mut entity, fuel_source_id, clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+    load
+}
+
+/// Install Fuel source `fuel_source_id` with `capacity`, holding `load`.
+public fun install_fuel_with(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_source_id: u64,
+    capacity: u64,
+    load: FuelLoad,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = grid_fuel::install_with_fuel(
+        &mut entity,
+        fuel_source_id,
+        option::none(),
+        capacity,
+        load,
+        clock,
+        scenario.ctx(),
+    );
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
     ts::return_shared(acl);
@@ -492,4 +530,121 @@ public fun settled_fuel(scenario: &mut ts::Scenario, entity_id: ID): u64 {
 /// Owner runs a no-op mutation that settles the grid at `clock`.
 public fun catch_up(scenario: &mut ts::Scenario, entity_id: ID, module_id: u64, clock: &Clock) {
     set_priority(scenario, entity_id, module_id, 0, clock);
+}
+
+/// Share an entity under `game_id` with an empty, off grid and no owner.
+public fun setup_empty_grid(scenario: &mut ts::Scenario, game_id: u64, clock: &Clock): ID {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let mut entity = claim(&mut registry, &acl, game_id, scenario.ctx());
+    let mut req = power_grid::install(&mut entity, clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    let entity_id = entity.id();
+    entity.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    entity_id
+}
+
+/// `sender` moves the `Consumer` at `module_id` from `from_id` to `to_id`, the
+/// way a module package's migrate does. With `uninstall_first` false the
+/// component stays on `from_id`, to exercise the guard.
+public fun migrate_module(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    from_id: ID,
+    to_id: ID,
+    module_id: u64,
+    uninstall_first: bool,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, to_id);
+    let acl = take_acl(scenario);
+    let from_req = if (uninstall_first) {
+        let (consumer, req) = from.uninstall<Consumer>(
+            module_id,
+            std::internal::permit<Consumer>(),
+            scenario.ctx(),
+        );
+        let Consumer {} = consumer.unwrap(std::internal::permit<Consumer>());
+        option::some(req)
+    } else option::none();
+    let mut to_req = to.install(
+        module_id,
+        option::none(),
+        Consumer {},
+        1,
+        std::internal::permit<Consumer>(),
+        scenario.ctx(),
+    );
+    grid_load::migrate<Consumer>(
+        &mut from,
+        &mut to,
+        module_id,
+        std::internal::permit<Consumer>(),
+        clock,
+    );
+    from_req.do!(|mut req| {
+        admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+        from.complete_request(req);
+    });
+    admin_service::verify_admin(&mut to_req, &acl, scenario.ctx());
+    to.complete_request(to_req);
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
+}
+
+/// `sender` moves Generator `generator_id` from `from_id` to `to_id`.
+public fun migrate_generator(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    from_id: ID,
+    to_id: ID,
+    generator_id: u64,
+    clock: &Clock,
+) {
+    migrate_with!(scenario, sender, from_id, to_id, |from, to, ctx| {
+        grid_generator::migrate(from, to, generator_id, clock, ctx)
+    });
+}
+
+/// `sender` moves Fuel source `fuel_source_id` from `from_id` to `to_id`.
+public fun migrate_fuel(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    from_id: ID,
+    to_id: ID,
+    fuel_source_id: u64,
+    clock: &Clock,
+) {
+    migrate_with!(scenario, sender, from_id, to_id, |from, to, ctx| {
+        grid_fuel::migrate(from, to, fuel_source_id, clock, ctx)
+    });
+}
+
+macro fun migrate_with(
+    $scenario: &mut ts::Scenario,
+    $sender: address,
+    $from_id: ID,
+    $to_id: ID,
+    $migrate: |&mut Entity, &mut Entity, &mut TxContext| -> (Request, Request),
+) {
+    let scenario = $scenario;
+    ts::next_tx(scenario, $sender);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, $from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, $to_id);
+    let acl = take_acl(scenario);
+    let (mut from_req, mut to_req) = $migrate(&mut from, &mut to, scenario.ctx());
+    admin_service::verify_admin(&mut from_req, &acl, scenario.ctx());
+    from.complete_request(from_req);
+    admin_service::verify_admin(&mut to_req, &acl, scenario.ctx());
+    to.complete_request(to_req);
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
 }
