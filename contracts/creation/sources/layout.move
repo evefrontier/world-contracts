@@ -42,6 +42,10 @@ const EModuleNotInSection: vector<u8> = b"Module does not belong to this section
 const EShellPresent: vector<u8> = b"Creation already has a Shell";
 #[error(code = 10)]
 const EShellMissing: vector<u8> = b"Creation has no Shell";
+#[error(code = 11)]
+const EModulesInstalled: vector<u8> = b"Section still has modules installed on this Creation";
+#[error(code = 12)]
+const ELastSection: vector<u8> = b"Cannot remove a Creation's last section";
 
 // === Constants ===
 
@@ -70,6 +74,15 @@ public struct SectionAdded has copy, drop {
     entity_id: ID,
     section_id: u64,
     module_ids: vector<u64>,
+}
+
+public struct SectionRemoved has copy, drop {
+    entity_id: ID,
+    section_id: u64,
+}
+
+public struct LayoutUninstalled has copy, drop {
+    entity_id: ID,
 }
 
 public struct ModuleAdded has copy, drop {
@@ -124,6 +137,29 @@ public fun add_sections(
     assert_installed(entity, &module_ids);
     let entity_id = entity.id();
     edit_mut(entity, req).add_all(entity_id, section_ids, module_ids);
+}
+
+/// Remove section `section_id` once none of its modules is installed on the
+/// Creation any more. Aborts on the last section. Edit handler, admin-gated.
+public fun remove_section(entity: &mut Entity, req: &mut Request, section_id: u64) {
+    let entity_id = entity.id();
+    let module_ids = section(entity, section_id).module_ids.into_keys();
+    module_ids.do_ref!(|id| assert!(!entity.has_component(*id), EModulesInstalled));
+    let layout = edit_mut(entity, req);
+    assert!(layout.sections.length() > 1, ELastSection);
+    layout.sections.remove(&section_id);
+    event::emit(SectionRemoved { entity_id, section_id });
+}
+
+/// Remove the Layout component, e.g. from a Creation a merge absorbed, before
+/// it is deleted. Admin-gated.
+public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
+    assert!(entity.has_component_with_type<Layout>(component_id()), EComponentMissing);
+    let (c, req) = entity.uninstall<Layout>(component_id(), layout_permit(), ctx);
+    assert!(component::version(&c) == VERSION, EWrongVersion);
+    let Layout { sections: _, shell_id: _ } = c.unwrap(layout_permit());
+    event::emit(LayoutUninstalled { entity_id: entity.id() });
+    req
 }
 
 /// Add an installed module to `section_id`. The module must not already belong
