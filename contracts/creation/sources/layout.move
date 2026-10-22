@@ -97,6 +97,13 @@ public struct ModuleRemoved has copy, drop {
     module_id: u64,
 }
 
+public struct ModuleSectionMigrated has copy, drop {
+    entity_id: ID,
+    from_section_id: u64,
+    to_section_id: u64,
+    module_id: u64,
+}
+
 public struct ShellChanged has copy, drop {
     entity_id: ID,
     shell_id: Option<ID>,
@@ -185,6 +192,26 @@ public fun remove_module(entity: &mut Entity, req: &mut Request, section_id: u64
     event::emit(ModuleRemoved { entity_id, section_id, module_id });
 }
 
+/// Move `module_id` from `from_section_id` to `to_section_id`. The module stays
+/// installed. Edit handler, admin-gated.
+public fun migrate_module_section(
+    entity: &mut Entity,
+    req: &mut Request,
+    from_section_id: u64,
+    to_section_id: u64,
+    module_id: u64,
+) {
+    let entity_id = entity.id();
+    let layout = edit_mut(entity, req);
+    assert!(layout.sections.contains(&from_section_id), ESectionMissing);
+    assert!(layout.sections.contains(&to_section_id), ESectionMissing);
+    let from = &mut layout.sections[&from_section_id];
+    assert!(from.module_ids.contains(&module_id), EModuleNotInSection);
+    from.module_ids.remove(&module_id);
+    layout.sections[&to_section_id].module_ids.insert(module_id);
+    event::emit(ModuleSectionMigrated { entity_id, from_section_id, to_section_id, module_id });
+}
+
 /// Mark the Creation working with `shell_id`. Edit handler, admin-gated.
 public fun set_shell(entity: &mut Entity, req: &mut Request, shell_id: ID) {
     let entity_id = entity.id();
@@ -214,12 +241,14 @@ public fun section_ids(entity: &Entity): vector<u64> {
     borrow(entity).sections.keys()
 }
 
+/// Installed modules of `section_id`; ids still listed after a module left are skipped.
 public fun section_modules(entity: &Entity, section_id: u64): vector<u64> {
-    section(entity, section_id).module_ids.into_keys()
+    section(entity, section_id).module_ids.into_keys().filter!(|id| entity.has_component(*id))
 }
 
-/// The section `module_id` belongs to, if any.
+/// The section `module_id` belongs to, if any. None once the module has left.
 public fun section_of(entity: &Entity, module_id: u64): Option<u64> {
+    if (!entity.has_component(module_id)) return option::none();
     borrow(entity).find_module(module_id)
 }
 
@@ -286,14 +315,40 @@ fun assert_installed(entity: &Entity, module_ids: &vector<vector<u64>>) {
 }
 
 /// Borrow the Layout state for an edit: pop the edit requirement and push
-/// the admin requirement in its place.
+/// the admin requirement in its place. Prunes modules no longer installed first.
 fun edit_mut(entity: &mut Entity, req: &mut Request): &mut Layout {
+    let entity_id = entity.id();
+    let stale = stale_modules(entity);
     let c: &mut Component<Layout> = entity.component_mut(req, layout_permit());
     assert!(component::version(c) == VERSION, EWrongVersion);
     let (_requirement, mut frame) = req.take_next(edit_permit());
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
-    c.inner_mut()
+    let layout = c.inner_mut();
+    layout.prune(entity_id, &stale);
+    layout
+}
+
+/// Listed module ids no longer installed on the Creation, e.g. migrated away.
+fun stale_modules(entity: &Entity): vector<u64> {
+    let mut stale = vector[];
+    let layout = borrow(entity);
+    layout.sections.length().do!(|i| {
+        let (_, section) = layout.sections.get_entry_by_idx(i);
+        section
+            .module_ids
+            .keys()
+            .do_ref!(|id| if (!entity.has_component(*id)) stale.push_back(*id));
+    });
+    stale
+}
+
+fun prune(layout: &mut Layout, entity_id: ID, stale: &vector<u64>) {
+    stale.do_ref!(|module_id| {
+        let section_id = layout.find_module(*module_id).destroy_some();
+        layout.sections[&section_id].module_ids.remove(module_id);
+        event::emit(ModuleRemoved { entity_id, section_id, module_id: *module_id });
+    });
 }
 
 fun borrow(entity: &Entity): &Layout {

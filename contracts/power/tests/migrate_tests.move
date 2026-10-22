@@ -4,6 +4,7 @@ module power::migrate_tests;
 use core::entity::Entity;
 use power::{
     grid_fuel,
+    grid_generator,
     grid_load,
     grid_scenario::{
         admin,
@@ -23,6 +24,7 @@ use power::{
         set_desired,
         settled_fuel,
         setup_empty_grid,
+        setup_empty_grid_in_tenant,
         setup_entity,
         starting_fuel,
         stored_draw
@@ -110,6 +112,20 @@ fun migrate_module_still_on_source_aborts() {
     abort
 }
 
+#[test, expected_failure(abort_code = grid_load::EWrongTenant)]
+fun migrate_module_across_tenants_aborts() {
+    let mut scenario = ts::begin(admin());
+    let clock = clock::create_for_testing(scenario.ctx());
+    core::test_helpers::setup(&mut scenario);
+    let from = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_module(&mut scenario, from, MOD_A, firm_power(DRAW), &clock);
+    let to = setup_empty_grid_in_tenant(&mut scenario, 2, b"OTHER", &clock);
+
+    migrate_module(&mut scenario, admin(), from, to, MOD_A, true, &clock);
+
+    abort
+}
+
 // === generators ===
 
 #[test]
@@ -161,6 +177,19 @@ fun migrate_generator_by_non_admin_aborts() {
     let to = setup_empty_grid(&mut scenario, 2, &clock);
 
     migrate_generator(&mut scenario, owner(), from, to, generator_id(0), &clock);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_generator::EWrongTenant)]
+fun migrate_generator_across_tenants_aborts() {
+    let mut scenario = ts::begin(admin());
+    let clock = clock::create_for_testing(scenario.ctx());
+    core::test_helpers::setup(&mut scenario);
+    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let to = setup_empty_grid_in_tenant(&mut scenario, 2, b"OTHER", &clock);
+
+    migrate_generator(&mut scenario, admin(), from, to, generator_id(0), &clock);
 
     abort
 }
@@ -241,6 +270,19 @@ fun migrate_unknown_fuel_source_aborts() {
     let to = setup_empty_grid(&mut scenario, 2, &clock);
 
     migrate_fuel(&mut scenario, admin(), from, to, SECOND_FUEL_ID, &clock);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EWrongTenant)]
+fun migrate_fuel_across_tenants_aborts() {
+    let mut scenario = ts::begin(admin());
+    let clock = clock::create_for_testing(scenario.ctx());
+    core::test_helpers::setup(&mut scenario);
+    let from = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let to = setup_empty_grid_in_tenant(&mut scenario, 2, b"OTHER", &clock);
+
+    migrate_fuel(&mut scenario, admin(), from, to, fuel_source_id(), &clock);
 
     abort
 }

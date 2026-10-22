@@ -208,7 +208,7 @@ export function revokeAccess(
   completeRequest(tx, config, entity, request)
 }
 
-/** Build a caller requirement: satisfied by any valid `AccessCap`, recording its holder. */
+/** Build a caller requirement. Satisfied by the entity's current cap. */
 export function callerRequirement(
   tx: Transaction,
   config: WorldConfig,
@@ -242,19 +242,17 @@ export function verifyOwner(
   })
 }
 
-/**
- * Satisfy a caller requirement on `request` with any valid `AccessCap`,
- * recording its entity as the request actor.
- */
+/** Check the caller's current cap. `entity` may differ from the request target. */
 export function verifyCaller(
   tx: Transaction,
   config: WorldConfig,
+  entity: TransactionArgument,
   request: TransactionArgument,
   cap: string | TransactionArgument,
 ): void {
   tx.moveCall({
-    target: `${mvrName(config.env, CORE_PACKAGE)}::access_cap::verify_caller`,
-    arguments: [request, capArg(tx, cap)],
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::verify_caller`,
+    arguments: [entity, request, capArg(tx, cap)],
   })
 }
 

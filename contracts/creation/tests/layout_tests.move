@@ -8,7 +8,7 @@ use core::{
     entity::Entity,
     test_helpers::{claim, setup, take_acl, take_registry}
 };
-use creation::layout::{Self, SectionAdded, SectionRemoved};
+use creation::layout::{Self, ModuleRemoved, SectionAdded, SectionRemoved};
 use std::string;
 use sui::{event, test_scenario as ts};
 
@@ -358,6 +358,102 @@ fun remove_module_from_other_section_aborts() {
     admin_edit!(&mut scenario, ADMIN, |e, req| layout::remove_module(e, req, 20, 1));
 
     abort
+}
+
+#[test]
+fun migrate_module_section_between_sections() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::migrate_module_section(e, req, 10, 20, 1));
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let e = ts::take_shared<Entity>(&scenario);
+        assert!(layout::section_modules(&e, 10) == vector[2]);
+        assert!(layout::section_modules(&e, 20) == vector[3, 1]);
+        assert!(layout::section_of(&e, 1) == option::some(20));
+        ts::return_shared(e);
+    };
+
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = layout::EModuleNotInSection)]
+fun migrate_module_section_from_other_section_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::migrate_module_section(e, req, 20, 10, 1));
+
+    abort
+}
+
+#[test, expected_failure(abort_code = layout::ESectionMissing)]
+fun migrate_module_section_to_unknown_section_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::migrate_module_section(e, req, 10, 99, 1));
+
+    abort
+}
+
+// === stale modules ===
+
+#[test]
+fun uninstalled_module_is_hidden_then_pruned_on_edit() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+    uninstall_dummies(&mut scenario, vector[1]);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let e = ts::take_shared<Entity>(&scenario);
+        assert!(layout::section_modules(&e, 10) == vector[2]);
+        assert!(layout::section_of(&e, 1).is_none());
+        ts::return_shared(e);
+    };
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::add_module(e, req, 20, 4));
+    assert!(event::events_by_type<ModuleRemoved>().length() == 1);
+
+    scenario.end();
+}
+
+/// A module that comes back before any edit pruned it is listed in its old
+/// section again; `migrate_module_section` relocates it.
+#[test]
+fun reinstalled_module_returns_to_its_old_section() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+    uninstall_dummies(&mut scenario, vector[1]);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut e = ts::take_shared<Entity>(&scenario);
+        let acl = take_acl(&scenario);
+        install_dummy(&mut e, &acl, 1, scenario.ctx());
+        assert!(layout::section_of(&e, 1) == option::some(10));
+        ts::return_shared(e);
+        ts::return_shared(acl);
+    };
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::migrate_module_section(e, req, 10, 20, 1));
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let e = ts::take_shared<Entity>(&scenario);
+        assert!(layout::section_modules(&e, 10) == vector[2]);
+        assert!(layout::section_of(&e, 1) == option::some(20));
+        ts::return_shared(e);
+    };
+
+    scenario.end();
 }
 
 // === shell ===

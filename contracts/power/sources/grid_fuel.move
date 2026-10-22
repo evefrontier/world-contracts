@@ -24,13 +24,13 @@ const EFuelAmountBelowMin: vector<u8> = b"Fuel amount is below the requirement";
 const EFuelAmountAboveMax: vector<u8> = b"Fuel amount is above the requirement";
 #[error(code = 6)]
 const EFuelSourceNotConnected: vector<u8> = b"Fuel source is not connected to this power grid";
+#[error(code = 7)]
+const EWrongTenant: vector<u8> = b"Fuel sources can only move between entities of the same tenant";
 
 // === Structs ===
 
-/// Fuel source carried from one grid to another. `uninstall` returns it from
-/// the old grid. `install_with_fuel` blends it into the new one. `amount`,
-/// `impulse`, and `containment_burden` are at `SCALE`.
-public struct FuelLoad has copy, drop, store {
+/// Fuel carried out of a grid by `uninstall`.
+public struct FuelLoad {
     amount: u64,
     impulse: u64,
     containment_burden: u64,
@@ -44,18 +44,28 @@ public struct FuelSourceAttached has copy, drop {
     capacity: u64,
 }
 
-/// `load` is the fuel carried out of the grid.
+/// Fuel carried out of the grid.
 public struct FuelSourceDetached has copy, drop {
     entity_id: ID,
     fuel_source_id: u64,
-    load: FuelLoad,
+    amount: u64,
+    impulse: u64,
+    containment_burden: u64,
 }
 
-/// A Fuel source was installed already holding `load`.
+/// A Fuel source was installed already holding this much fuel.
 public struct FuelLoaded has copy, drop {
     entity_id: ID,
     fuel_source_id: u64,
-    load: FuelLoad,
+    amount: u64,
+    impulse: u64,
+    containment_burden: u64,
+}
+
+public struct FuelLoadBurned has copy, drop {
+    amount: u64,
+    impulse: u64,
+    containment_burden: u64,
 }
 
 /// Fuel was deposited; the `resulting_*` values are the pool after blending.
@@ -92,7 +102,6 @@ public fun install(
 
 /// Install a Fuel source holding `load`, blended into the pool. Admin-gated.
 /// Aborts if the pool would exceed the grid's fuel capacity.
-// TODO: the fuel pool logic will be removed with the fuel refactor
 public fun install_with_fuel(
     entity: &mut Entity,
     fuel_source_id: u64,
@@ -102,15 +111,23 @@ public fun install_with_fuel(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
+    // TODO: the fuel pool logic will be removed with the fuel refactor
+    let FuelLoad { amount, impulse, containment_burden } = load;
     let req = install(entity, fuel_source_id, name, capacity, clock, ctx);
-    if (load.amount > 0) {
+    if (amount > 0) {
         let entity_id = entity.id();
         let grid = power_grid::grid_mut(entity);
-        let quantity = grid.fuel_quantity_at_last_settled() + load.amount;
+        let quantity = grid.fuel_quantity_at_last_settled() + amount;
         assert!(quantity <= grid.fuel_capacity(), EFuelOverCapacity);
-        grid.blend_in_fuel(load.amount, load.impulse, load.containment_burden);
+        grid.blend_in_fuel(amount, impulse, containment_burden);
         grid.regrant(entity_id);
-        event::emit(FuelLoaded { entity_id, fuel_source_id: fuel_source_id, load });
+        event::emit(FuelLoaded {
+            entity_id,
+            fuel_source_id,
+            amount,
+            impulse,
+            containment_burden,
+        });
     };
     req
 }
@@ -119,13 +136,13 @@ public fun install_with_fuel(
 /// pool, the fuel times its share of the capacity, at the pool's stats; the
 /// last source takes all that is left. Returns that fuel, which
 /// `install_with_fuel` accepts. Admin-gated.
-// TODO: the fuel pool logic will be removed with the fuel refactor
 public fun uninstall(
     entity: &mut Entity,
     fuel_source_id: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Request, FuelLoad) {
+    // TODO: the fuel pool logic will be removed with the fuel refactor
     assert!(power_grid::is_fuel_source_connected(entity, fuel_source_id), EFuelSourceNotConnected);
     let entity_id = entity.id();
     let req = fuel::uninstall(entity, fuel_source_id, ctx);
@@ -140,7 +157,13 @@ public fun uninstall(
     grid.remove_fuel(load.amount);
     grid.disconnect_fuel_source(fuel_source_id);
     grid.regrant(entity_id);
-    event::emit(FuelSourceDetached { entity_id, fuel_source_id, load });
+    event::emit(FuelSourceDetached {
+        entity_id,
+        fuel_source_id,
+        amount: load.amount,
+        impulse: load.impulse,
+        containment_burden: load.containment_burden,
+    });
     (req, load)
 }
 
@@ -153,6 +176,7 @@ public fun migrate(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Request, Request) {
+    assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
     let capacity = power_grid::power_grid(from).fuel_source_capacity(fuel_source_id);
     let name = fuel::name(from, fuel_source_id);
     let (from_req, load) = uninstall(from, fuel_source_id, clock, ctx);
@@ -160,10 +184,10 @@ public fun migrate(
     (from_req, to_req)
 }
 
-/// Build a `FuelLoad`, e.g. from a `FuelSourceDetached` event read in an
-/// earlier transaction.
-public fun fuel_load(amount: u64, impulse: u64, containment_burden: u64): FuelLoad {
-    FuelLoad { amount, impulse, containment_burden }
+/// Destroy a fuel load that is not reinstalled.
+public fun burn_fuel_load(load: FuelLoad) {
+    let FuelLoad { amount, impulse, containment_burden } = load;
+    event::emit(FuelLoadBurned { amount, impulse, containment_burden });
 }
 
 // TODO: an `Item` to fuel path once inventory can connect to the fuel source.
@@ -234,10 +258,8 @@ fun enforce_fuel(
     max_amount.do!(|max| assert!(amount <= max, EFuelAmountAboveMax));
 }
 
-// === Test Functions ===
+// === View Functions ===
 
-/// `(entity_id, fuel_type, amount, resulting_quantity, resulting_impulse, resulting_containment_burden)`.
-#[test_only]
 public fun load_amount(load: &FuelLoad): u64 {
     load.amount
 }
@@ -250,6 +272,10 @@ public fun load_containment_burden(load: &FuelLoad): u64 {
     load.containment_burden
 }
 
+// === Test Functions ===
+
+/// `(entity_id, fuel_type, amount, resulting_quantity, resulting_impulse, resulting_containment_burden)`.
+#[test_only]
 public fun fuel_added_fields(added: &FuelAdded): (ID, u64, u64, u64, u64, u64) {
     (
         added.entity_id,
@@ -271,10 +297,16 @@ public fun fuel_source_attached_fields(fuel_source_attached: &FuelSourceAttached
     )
 }
 
-/// `(entity_id, fuel_source_id, load)`.
+/// `(entity_id, fuel_source_id, amount, impulse, containment_burden)`.
 #[test_only]
 public fun fuel_source_detached_fields(
     fuel_source_detached: &FuelSourceDetached,
-): (ID, u64, FuelLoad) {
-    (fuel_source_detached.entity_id, fuel_source_detached.fuel_source_id, fuel_source_detached.load)
+): (ID, u64, u64, u64, u64) {
+    (
+        fuel_source_detached.entity_id,
+        fuel_source_detached.fuel_source_id,
+        fuel_source_detached.amount,
+        fuel_source_detached.impulse,
+        fuel_source_detached.containment_burden,
+    )
 }

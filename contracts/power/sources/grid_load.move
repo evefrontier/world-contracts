@@ -29,6 +29,8 @@ const ENoGrant: vector<u8> = b"Module has no power granted";
 #[error(code = 7)]
 const EModuleStillInstalled: vector<u8> =
     b"Module component must be uninstalled before disconnecting";
+#[error(code = 8)]
+const EWrongTenant: vector<u8> = b"Modules can only move between entities of the same tenant";
 
 // === Events ===
 
@@ -111,6 +113,7 @@ public fun migrate<Module: store>(
     _: Permit<Module>,
     clock: &Clock,
 ) {
+    assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
     assert!(!from.has_component(module_id), EModuleStillInstalled);
     assert!(to.has_component_with_type<Module>(module_id), EModuleMissing);
     let from_id = from.id();

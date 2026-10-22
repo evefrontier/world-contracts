@@ -165,7 +165,7 @@ fun verify_caller_records_owner_authorized_id() {
         let mut e = ts::take_shared<entity::Entity>(&scenario);
         let cap = ts::take_from_sender<AccessCap>(&scenario);
         let mut req = e.interact(string::utf8(CALLER_ACTION), scenario.ctx());
-        access_cap::verify_caller(&mut req, &cap);
+        e.verify_caller(&mut req, &cap);
         assert!(req.authorized_id() == option::some(entity_id));
         e.complete_request(req);
         ts::return_shared(e);
@@ -219,12 +219,14 @@ fun verify_caller_records_non_owner_authorized_id() {
     ts::next_tx(&mut scenario, OWNER);
     {
         let mut e1 = ts::take_shared_by_id<entity::Entity>(&scenario, one);
+        let e2 = ts::take_shared_by_id<entity::Entity>(&scenario, two);
         let cap = ts::take_from_sender<AccessCap>(&scenario);
         let mut req = e1.interact(string::utf8(CALLER_ACTION), scenario.ctx());
-        access_cap::verify_caller(&mut req, &cap);
+        e2.verify_caller(&mut req, &cap);
         assert!(req.authorized_id() == option::some(two));
         assert!(two != one);
         e1.complete_request(req);
+        ts::return_shared(e2);
         ts::return_shared(e1);
         ts::return_to_sender(&scenario, cap);
     };
@@ -375,6 +377,42 @@ fun verify_aborts_with_replaced_cap() {
     mint_cap_for(&mut scenario, PLAYER, false);
 
     interact_as_owner(&mut scenario, OWNER);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = entity::EStaleAccessCap)]
+fun verify_caller_aborts_after_revoke() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    create_entity(&mut scenario, 1);
+    mint_cap_for(&mut scenario, OWNER, false);
+    enable_caller_action(&mut scenario);
+    revoke(&mut scenario);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared<entity::Entity>(&scenario);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.interact(string::utf8(CALLER_ACTION), scenario.ctx());
+    e.verify_caller(&mut req, &cap);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = entity::EStaleAccessCap)]
+fun verify_caller_aborts_with_replaced_cap() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    create_entity(&mut scenario, 1);
+    mint_cap_for(&mut scenario, OWNER, false);
+    enable_caller_action(&mut scenario);
+    mint_cap_for(&mut scenario, PLAYER, false);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared<entity::Entity>(&scenario);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.interact(string::utf8(CALLER_ACTION), scenario.ctx());
+    e.verify_caller(&mut req, &cap);
 
     abort
 }

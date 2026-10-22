@@ -150,6 +150,22 @@ export function removeModule(
   ])
 }
 
+/** Move an installed module from one section to another. */
+export function migrateModuleSection(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  fromSectionId: bigint,
+  toSectionId: bigint,
+  moduleId: bigint,
+): void {
+  edit(tx, config, entity, 'migrate_module_section', [
+    tx.pure.u64(fromSectionId),
+    tx.pure.u64(toSectionId),
+    tx.pure.u64(moduleId),
+  ])
+}
+
 /** Mark the creation working with `shellId`. */
 export function setShell(
   tx: Transaction,

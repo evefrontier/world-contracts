@@ -3,9 +3,12 @@ import { Transaction } from '@mysten/sui/transactions'
 import { describe, expect, it } from 'vitest'
 import type { WorldConfig } from '../config/types.js'
 import {
+  addSponsors,
   completeRequest,
   deriveObjectId,
+  enableAdminAction,
   entityNew,
+  interact,
   shareEntity,
   verifyAdmin,
 } from '../packages/core.js'
@@ -21,9 +24,9 @@ import {
   sectionModules,
 } from '../packages/layout.js'
 import {
-  fuelLoad,
+  depositFuel,
+  depositFuelRequirement,
   installFuel,
-  installFuelWithLoad,
   installGenerator,
   installPowerGrid,
   projectedFuel,
@@ -38,6 +41,7 @@ import {
   expectAbort,
   expectSuccess,
   loadLocalnetWorld,
+  mintAccessCap,
   signer,
 } from './helpers.js'
 
@@ -80,12 +84,10 @@ describe('sections (localnet)', () => {
 
     // The source holds 400_000 fuel across 4_000_000 of bay capacity.
     const setupTx = new Transaction()
-    const source = deploy(setupTx, config, sourceKey, [kept, leaving], {
-      bayId: 0x81n,
-      amount: 400_000n,
-    })
+    const source = deploy(setupTx, config, sourceKey, [kept, leaving])
     shareEntity(setupTx, config, source)
     await expectSuccess(client, setupTx)
+    await seedFuel(client, config, sourceId, 400_000n)
 
     const detachTx = new Transaction()
     detachSection(
@@ -159,12 +161,10 @@ describe('sections (localnet)', () => {
     shareEntity(
       setupTx,
       config,
-      deploy(setupTx, config, absorbedKey, [absorbedSection], {
-        bayId: 0x94n,
-        amount: 250_000n,
-      }),
+      deploy(setupTx, config, absorbedKey, [absorbedSection]),
     )
     await expectSuccess(client, setupTx)
+    await seedFuel(client, config, absorbedId, 250_000n)
 
     const mergeTx = new Transaction()
     mergeCreation(
@@ -208,16 +208,12 @@ function generator(componentId: bigint): SectionModule {
   }
 }
 
-/**
- * Claim a creation with a grid, the modules of `sections` and a Layout. The
- * fuel bay `fuel.bayId` starts holding `fuel.amount`. Returns it, unshared.
- */
+/** Build an unshared creation with a grid, its modules, and a Layout. */
 function deploy(
   tx: Transaction,
   config: WorldConfig,
   key: { inGameId: bigint; tenant: string },
   sections: SectionSpec[],
-  fuel?: { bayId: bigint; amount: bigint },
 ) {
   const [entity, request] = entityNew(tx, config, key)
   verifyAdmin(tx, config, request)
@@ -235,16 +231,7 @@ function deploy(
         installGenerator(tx, config, entity, module)
         break
       case 'fuel':
-        if (fuel?.bayId === module.componentId) {
-          const load = fuelLoad(tx, config, {
-            amount: fuel.amount,
-            impulse: IMPULSE,
-            containmentBurden: BURDEN,
-          })
-          installFuelWithLoad(tx, config, entity, module, load)
-        } else {
-          installFuel(tx, config, entity, module)
-        }
+        installFuel(tx, config, entity, module)
         break
     }
   }
@@ -254,6 +241,35 @@ function deploy(
   }))
   installLayout(tx, config, entity, layout)
   return entity
+}
+
+/** Deposit `amount` into a shared creation's fuel pool. */
+async function seedFuel(
+  client: World['client'],
+  config: WorldConfig,
+  entityId: string,
+  amount: bigint,
+) {
+  const capId = await mintAccessCap(client, config, {
+    entity: entityId,
+    owner: signer,
+    transferable: false,
+  })
+  const tx = new Transaction()
+  addSponsors(tx, config, [signer])
+  const entity = tx.object(entityId)
+  enableAdminAction(tx, config, entity, 'deposit_fuel', [
+    depositFuelRequirement(tx, config),
+  ])
+  const request = interact(tx, config, entity, 'deposit_fuel')
+  depositFuel(tx, config, entity, request, tx.object(capId), {
+    fuelType: 1n,
+    amount,
+    impulse: IMPULSE,
+    containmentBurden: BURDEN,
+  })
+  completeRequest(tx, config, entity, request)
+  await expectSuccess(client, tx)
 }
 
 /** Simulate one view call on `entityId` and return its first return value's bytes. */

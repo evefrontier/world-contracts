@@ -70,19 +70,9 @@ public fun owner_requirement(): Requirement {
     requirement::from_config(option::none(), Owner())
 }
 
-/// Requirement satisfied by any valid `AccessCap`, recording its holder as the
-/// request actor. Use to gate actions open to any identified caller.
+/// Caller requirement: the entity's current cap.
 public fun caller_requirement(): Requirement {
     requirement::from_config(option::none(), Caller())
-}
-
-/// Satisfy the next (caller) requirement with any valid cap, recording
-/// `cap.entity()` as the request's authorized entity for downstream routing.
-public fun verify_caller(request: &mut Request, cap: &AccessCap) {
-    assert!(cap.version == VERSION, EWrongVersion);
-    let (_requirement, frame) = request.take_next(caller_permit());
-    request.set_authorized_id(cap.entity);
-    frame.destroy_empty_frame();
 }
 
 public fun transfer_access(cap: AccessCap, new_owner: address) {
@@ -141,6 +131,14 @@ public fun is_transferable(cap: &AccessCap): bool {
 }
 
 // === Package Functions ===
+
+/// Pop the caller requirement. `entity::verify_caller` checks the cap is current.
+public(package) fun verify_caller(request: &mut Request, cap: &AccessCap) {
+    assert!(cap.version == VERSION, EWrongVersion);
+    let (_requirement, frame) = request.take_next(caller_permit());
+    request.set_authorized_id(cap.entity);
+    frame.destroy_empty_frame();
+}
 
 /// Pop the owner requirement for `cap`'s entity. Only `entity::verify_owner`
 /// calls it, after which it checks `cap` is the entity's current cap.

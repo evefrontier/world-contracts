@@ -180,11 +180,7 @@ export function uninstallGenerator(
   completeRequest(tx, config, entity, request)
 }
 
-/**
- * Remove a Fuel source. It takes its share of the pool with it; the returned
- * `FuelLoad` can go straight into `installFuelWithLoad` later in the PTB.
- * Admin-gated.
- */
+/** Remove a fuel source. Pass the load to `installFuelWithLoad` or `burnFuelLoad`. */
 export function uninstallFuel(
   tx: Transaction,
   config: WorldConfig,
@@ -200,25 +196,15 @@ export function uninstallFuel(
   return load
 }
 
-export interface FuelLoadArgs {
-  amount: bigint
-  impulse: bigint
-  containmentBurden: bigint
-}
-
-/** Build a `FuelLoad`, e.g. from a `FuelSourceDisconnected` event read earlier. */
-export function fuelLoad(
+/** Destroy a fuel load that is not reinstalled. */
+export function burnFuelLoad(
   tx: Transaction,
   config: WorldConfig,
-  args: FuelLoadArgs,
-): TransactionResult {
-  return tx.moveCall({
-    target: moveCallTarget(config, 'grid_fuel', 'fuel_load'),
-    arguments: [
-      tx.pure.u64(args.amount),
-      tx.pure.u64(args.impulse),
-      tx.pure.u64(args.containmentBurden),
-    ],
+  load: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'burn_fuel_load'),
+    arguments: [load],
   })
 }
 

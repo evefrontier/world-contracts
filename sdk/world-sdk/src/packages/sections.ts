@@ -57,6 +57,8 @@ export type SectionModule =
 
 export interface SectionSpec {
   sectionId: bigint
+  /** Section id on the target creation; defaults to `sectionId`. Set it when the ids collide. */
+  targetSectionId?: bigint
   modules: SectionModule[]
 }
 
@@ -130,7 +132,7 @@ function reinstallModule(
 
 function layoutSection(section: SectionSpec) {
   return {
-    sectionId: section.sectionId,
+    sectionId: section.targetSectionId ?? section.sectionId,
     moduleIds: section.modules.map((m) => m.componentId),
   }
 }

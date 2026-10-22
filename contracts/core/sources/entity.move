@@ -55,6 +55,8 @@ const ELocked: vector<u8> = b"Entity is locked";
 const EComponentsInstalled: vector<u8> = b"Entity still has components installed";
 #[error(code = 12)]
 const EStaleAccessCap: vector<u8> = b"AccessCap is not this entity's current cap";
+#[error(code = 13)]
+const ECapEntityMismatch: vector<u8> = b"AccessCap belongs to a different entity";
 
 // === Constants ===
 
@@ -170,6 +172,14 @@ public fun revoke_access(entity: &mut Entity, _ctx: &mut TxContext): Request {
 public fun verify_owner(entity: &Entity, request: &mut Request, cap: &AccessCap) {
     assert!(entity.version == VERSION, EWrongVersion);
     access_cap::verify(request, cap);
+    assert!(entity.access_cap_id == option::some(object::id(cap)), EStaleAccessCap);
+}
+
+/// Check the caller's current cap. `entity` may differ from the request target.
+public fun verify_caller(entity: &Entity, request: &mut Request, cap: &AccessCap) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    assert!(object::id(entity) == cap.entity(), ECapEntityMismatch);
+    access_cap::verify_caller(request, cap);
     assert!(entity.access_cap_id == option::some(object::id(cap)), EStaleAccessCap);
 }
 

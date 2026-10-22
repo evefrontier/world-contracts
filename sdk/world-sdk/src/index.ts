@@ -110,6 +110,7 @@ export {
   LAYOUT_ACTION,
   type LayoutSection,
   layoutEditRequirement,
+  migrateModuleSection,
   removeModule,
   removeSection,
   sectionIds,
@@ -128,14 +129,13 @@ export {
 export { signPersonalMessage } from './packages/personal-message.js'
 export {
   assertOnline,
+  burnFuelLoad,
   DESIRED_OFFLINE_MODULE,
   type DepositFuelArgs,
   type DrawKind,
   depositFuel,
   depositFuelRequirement,
-  type FuelLoadArgs,
   type FuelRule,
-  fuelLoad,
   type InstallFuelArgs,
   type InstallGeneratorArgs,
   installFuel,

@@ -23,6 +23,8 @@ const EGeneratorNotOnline: vector<u8> = b"Generator's online state does not matc
 const EOutputBelowMin: vector<u8> = b"Generator output is below the requirement";
 #[error(code = 6)]
 const EContainmentBelowMin: vector<u8> = b"Containment reduction is below the requirement";
+#[error(code = 7)]
+const EWrongTenant: vector<u8> = b"Generators can only move between entities of the same tenant";
 
 // === Events ===
 
@@ -115,6 +117,7 @@ public fun migrate(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Request, Request) {
+    assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
     assert!(power_grid::is_generator_connected(from, generator_id), EGeneratorNotConnected);
     let state = power_grid::generator_state(from, generator_id);
     let name = generator::name(from, generator_id);
