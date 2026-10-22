@@ -10,17 +10,29 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Retry apt fetches; --fix-missing for archive 404s on rotated packages (e.g. python3.12).
 # Sanity check ensures required tools are present so CI fails fast if anything was skipped.
 RUN apt-get -o Acquire::Retries=3 update \
-    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing \
-    ca-certificates \
-    curl \
-    git \
-    jq \
-    dos2unix \
-    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends nodejs \
-    && corepack enable \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && command -v curl >/dev/null && command -v git >/dev/null && command -v jq >/dev/null && command -v dos2unix >/dev/null && command -v node >/dev/null && command -v corepack >/dev/null && command -v pnpm >/dev/null
+  && apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing \
+  ca-certificates \
+  curl \
+  git \
+  jq \
+  dos2unix \
+  && apt-get clean && rm -rf /var/lib/apt/lists/* \
+  && command -v curl >/dev/null && command -v git >/dev/null && command -v jq >/dev/null && command -v dos2unix >/dev/null
+
+# Install the Node version pinned in .nvmrc, then enable pnpm via corepack.
+COPY .nvmrc /tmp/.nvmrc
+RUN NODE_VERSION="$(tr -d '[:space:]' < /tmp/.nvmrc)" \
+  && case "$(uname -m)" in \
+  x86_64) node_arch=x64 ;; \
+  aarch64 | arm64) node_arch=arm64 ;; \
+  *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+  esac \
+  && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.gz" \
+  | tar -xz -C /usr/local --strip-components=1 \
+  && corepack enable \
+  && rm /tmp/.nvmrc \
+  && node -v | grep -qx "v${NODE_VERSION}" \
+  && command -v corepack >/dev/null && command -v pnpm >/dev/null
 
 # pnpm version is pinned by the "packageManager" field in package.json (mounted at /app).
 # Let corepack download the pinned pnpm without an interactive prompt.
@@ -37,16 +49,16 @@ ENV PATH="/root/.local/bin:/root/.suiup/bin:${PATH}"
 # the image reproducible; the arch suffix keeps it correct for amd64 and arm64.
 ARG SUIUP_VERSION=v0.0.13
 RUN case "$(uname -m)" in \
-    x86_64) suiup_arch=x86_64 ;; \
-    aarch64 | arm64) suiup_arch=arm64 ;; \
-    *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
-    esac \
-    && curl -fsSL "https://github.com/MystenLabs/suiup/releases/download/${SUIUP_VERSION}/suiup-Linux-musl-${suiup_arch}.tar.gz" -o /tmp/suiup.tar.gz \
-    && tar -xzf /tmp/suiup.tar.gz -C /usr/local/bin suiup \
-    && rm /tmp/suiup.tar.gz \
-    && echo y | suiup install "sui@${SUI_VERSION}" \
-    && sui --version \
-    && rm -rf /root/.cache/suiup
+  x86_64) suiup_arch=x86_64 ;; \
+  aarch64 | arm64) suiup_arch=arm64 ;; \
+  *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+  esac \
+  && curl -fsSL "https://github.com/MystenLabs/suiup/releases/download/${SUIUP_VERSION}/suiup-Linux-musl-${suiup_arch}.tar.gz" -o /tmp/suiup.tar.gz \
+  && tar -xzf /tmp/suiup.tar.gz -C /usr/local/bin suiup \
+  && rm /tmp/suiup.tar.gz \
+  && echo y | suiup install "sui@${SUI_VERSION}" \
+  && sui --version \
+  && rm -rf /root/.cache/suiup
 
 WORKDIR /app
 ENV SUI_CONFIG_DIR=/root/.sui
