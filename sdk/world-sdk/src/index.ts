@@ -78,6 +78,7 @@ export {
   genericModuleTypeId,
   type InstallGenericModuleArgs,
   installGenericModule,
+  migrateGenericModule,
   uninstallGenericModule,
 } from './packages/generic-module.js'
 export {
@@ -96,10 +97,27 @@ export {
   type ItemAmount,
   type ItemRule,
   installInventory,
+  migrateInventory,
   uninstallInventory,
   withdraw,
   withdrawRequirement,
 } from './packages/inventory.js'
+export {
+  addModule,
+  addSections,
+  clearShell,
+  installLayout,
+  LAYOUT_ACTION,
+  type LayoutSection,
+  layoutEditRequirement,
+  removeModule,
+  removeSection,
+  sectionIds,
+  sectionModules,
+  setShell,
+  shellId,
+  uninstallLayout,
+} from './packages/layout.js'
 export {
   editMetadata,
   editRequirement,
@@ -115,13 +133,19 @@ export {
   type DrawKind,
   depositFuel,
   depositFuelRequirement,
+  type FuelLoadArgs,
   type FuelRule,
+  fuelLoad,
   type InstallFuelArgs,
   type InstallGeneratorArgs,
   installFuel,
+  installFuelWithLoad,
   installGenerator,
   installPowerGrid,
   type ModulePowerSpec,
+  migrateFuel,
+  migrateGenerator,
+  migrateWith,
   moduleDraw,
   modulePowerArguments,
   onlineRequirement,
@@ -133,6 +157,8 @@ export {
   setGenerator,
   setPowerGrid,
   setPriority,
+  uninstallFuel,
+  uninstallGenerator,
   uninstallPowerGrid,
 } from './packages/power.js'
 export {
@@ -142,3 +168,12 @@ export {
   type ProofMessageArgs,
   proofKind,
 } from './packages/proof.js'
+export {
+  detachSection,
+  type MovePath,
+  mergeCreation,
+  migrateSection,
+  moveSectionModules,
+  type SectionModule,
+  type SectionSpec,
+} from './packages/sections.js'

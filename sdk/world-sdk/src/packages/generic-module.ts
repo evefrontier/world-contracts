@@ -9,6 +9,7 @@ import { completeRequest, verifyAdmin } from './core.js'
 import {
   DESIRED_OFFLINE_MODULE,
   type ModulePowerSpec,
+  migrateWith,
   modulePowerArguments,
 } from './power.js'
 
@@ -60,6 +61,24 @@ export function uninstallGenericModule(
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
+}
+
+/** Move a generic module to `to` with its data and grid connection. Admin-gated. */
+export function migrateGenericModule(
+  tx: Transaction,
+  config: WorldConfig,
+  from: TransactionArgument,
+  to: TransactionArgument,
+  componentId: bigint,
+): void {
+  migrateWith(
+    tx,
+    config,
+    `${pkg(config)}::generic_module::migrate`,
+    from,
+    to,
+    componentId,
+  )
 }
 
 export function genericModuleData(
