@@ -182,6 +182,7 @@ public fun migrate(
 ): (Request, Request) {
     assert!(from.has_component_with_type<Inventory>(component_id), EComponentMissing);
     assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
+    borrow_component(from, component_id);
     let (inv_component, from_req) = from.uninstall<Inventory>(
         component_id,
         inventory_permit(),

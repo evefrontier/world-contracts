@@ -79,7 +79,7 @@ public fun migrate(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Request, Request) {
-    assert!(from.has_component_with_type<GenericModule>(component_id), EModuleMissing);
+    borrow_module(from, component_id);
     let (c, from_req) = from.uninstall<GenericModule>(
         component_id,
         generic_module_permit(),

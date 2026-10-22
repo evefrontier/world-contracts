@@ -7,6 +7,7 @@ import { mvrName } from '../config/env.js'
 import type { WorldConfig } from '../config/types.js'
 import {
   completeRequest,
+  disableAdminAction,
   enableAdminAction,
   interact,
   verifyAdmin,
@@ -74,12 +75,16 @@ export function installLayout(
   ])
 }
 
-/** Remove the Layout, e.g. from a creation a merge absorbed. Admin-gated. */
+/**
+ * Disable the admin `layout` action and remove the Layout, e.g. from a creation
+ * a merge absorbed. Pairs with `installLayout`. Admin-gated.
+ */
 export function uninstallLayout(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
 ): void {
+  disableAdminAction(tx, config, entity, LAYOUT_ACTION)
   const request = tx.moveCall({
     target: layoutCall(config, 'uninstall'),
     arguments: [entity],

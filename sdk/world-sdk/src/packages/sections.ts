@@ -158,7 +158,8 @@ export function migrateSection(
 /**
  * Detach `section` from `source` into a new creation under `target`'s key,
  * unowned and dark, with its own power grid. The new creation is shared once
- * its Layout holds the section. Returns it. One PTB, admin-signed.
+ * its Layout holds the section, which consumes it: read its id from the
+ * transaction effects. One PTB, admin-signed.
  */
 export function detachSection(
   tx: Transaction,
@@ -167,7 +168,7 @@ export function detachSection(
   target: EntityNewArgs,
   section: SectionSpec,
   path: MovePath,
-): TransactionArgument {
+): void {
   const [created, request] = entityNew(tx, config, target)
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, created, request)
@@ -176,7 +177,6 @@ export function detachSection(
   removeSection(tx, config, source, section.sectionId)
   installLayout(tx, config, created, [layoutSection(section)])
   shareEntity(tx, config, created)
-  return created
 }
 
 /**
