@@ -40,10 +40,11 @@ import {
 } from './power.js'
 
 /**
- * How modules move between creations. `reinstall` uninstalls each module and
- * installs it fresh on the target from the given install args: modules arrive
- * offline, a fuel bay carries its share of fuel, an inventory's items are
- * burned. `migrate` moves each module with its state intact.
+ * How modules move between creations. External services use path 1.
+ * - Path 1, `reinstall` (default): uninstall each module and install it fresh
+ *   on the target from the given install args. Modules arrive offline, a fuel
+ *   bay carries its share of fuel, an inventory's items are burned.
+ * - Path 2, `migrate` (optional): move each module with its state intact.
  */
 export type MovePath = 'reinstall' | 'migrate'
 
