@@ -1114,3 +1114,110 @@ fun install_without_grid_aborts() {
 
     abort
 }
+
+// === Migrate ===
+
+/// Share a bare entity under `id` with only a power grid, in `tenant`.
+fun share_grid_entity(scenario: &mut ts::Scenario, id: u64, tenant: vector<u8>): ID {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let (mut e, mut req) = entity::new(&mut registry, id, string::utf8(tenant));
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    install_grid(scenario, &mut e, &acl);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    e_id
+}
+
+fun migrate_inventory(scenario: &mut ts::Scenario, from_id: ID, to_id: ID, component_id: u64) {
+    ts::next_tx(scenario, ADMIN);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, to_id);
+    let acl = take_acl(scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let (mut from_req, mut to_req) = inventory::migrate(
+        &mut from,
+        &mut to,
+        component_id,
+        &clock,
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut from_req, &acl, scenario.ctx());
+    from.complete_request(from_req);
+    admin_service::verify_admin(&mut to_req, &acl, scenario.ctx());
+    to.complete_request(to_req);
+    clock.destroy_for_testing();
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
+}
+
+#[test]
+fun migrate_moves_inventory_with_its_items() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let from_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, from_id, OWNER);
+    power_inventory(&mut scenario, from_id, OWNER);
+    bridge_in(&mut scenario, from_id, OWNER, b"bridge_in", FUEL, 100, VOL);
+    let to_id = share_grid_entity(&mut scenario, 2, b"test");
+
+    migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
+
+    assert!(event::events_by_type<item::ItemBurned>().is_empty());
+    ts::next_tx(&mut scenario, ADMIN);
+    let from = ts::take_shared_by_id<Entity>(&scenario, from_id);
+    let to = ts::take_shared_by_id<Entity>(&scenario, to_id);
+    assert!(!from.has_component(MODULE_ID));
+    assert!(inv(&to).used() == 100 * VOL);
+    assert!(inv(&to).items().balance(FUEL) == 100);
+    assert!(inv(&to).capacity() == 1000);
+    assert!(inventory::type_id(inv(&to)) == TYPE_ID);
+    assert!(power_grid::power_grid(&to).module_state(MODULE_ID).desired_online());
+    assert!(!power_grid::power_grid(&from).is_module_connected(MODULE_ID));
+    ts::return_shared(from);
+    ts::return_shared(to);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = inventory::EComponentMissing)]
+fun migrate_missing_inventory_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let from_id = share_grid_entity(&mut scenario, 1, b"test");
+    let to_id = share_grid_entity(&mut scenario, 2, b"test");
+
+    migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = inventory::EWrongTenant)]
+fun migrate_across_tenants_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let from_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    let to_id = share_grid_entity(&mut scenario, 2, b"OTHER");
+
+    migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
+
+    abort
+}

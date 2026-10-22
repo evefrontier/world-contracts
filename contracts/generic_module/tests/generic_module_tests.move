@@ -89,6 +89,46 @@ fun extract_generic(
     (data, req)
 }
 
+fun share_with_grid(scenario: &mut ts::Scenario, id: u64): ID {
+    ts::next_tx(scenario, @0xA);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let mut entity = claim(&mut registry, &acl, id, scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    let mut req = power_grid::install(&mut entity, &clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    clock.destroy_for_testing();
+    let entity_id = entity.id();
+    entity.share();
+    ts::return_shared(registry);
+    ts::return_shared(acl);
+    entity_id
+}
+
+fun migrate_generic(scenario: &mut ts::Scenario, from_id: ID, to_id: ID, module_id: u64) {
+    ts::next_tx(scenario, @0xA);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, to_id);
+    let acl = take_acl(scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let (mut from_req, mut to_req) = generic_module::migrate(
+        &mut from,
+        &mut to,
+        module_id,
+        &clock,
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut from_req, &acl, scenario.ctx());
+    from.complete_request(from_req);
+    admin_service::verify_admin(&mut to_req, &acl, scenario.ctx());
+    to.complete_request(to_req);
+    clock.destroy_for_testing();
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
+}
+
 #[test]
 fun install_stores_type_id_and_bytes() {
     let mut scenario = ts::begin(@0xA);
@@ -335,6 +375,59 @@ fun extract_for_migration_missing_aborts() {
     let mut entity = claim(&mut registry, &acl, 1, scenario.ctx());
 
     let (_data, _req) = extract_generic(&mut entity, MODULE_ID, scenario.ctx());
+
+    abort
+}
+
+// === Migrate ===
+
+#[test]
+fun migrate_moves_module_with_its_data_and_power() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let from_id = share_with_grid(&mut scenario, 1);
+    let to_id = share_with_grid(&mut scenario, 2);
+    ts::next_tx(&mut scenario, @0xA);
+    {
+        let mut from = ts::take_shared_by_id<Entity>(&scenario, from_id);
+        let acl = take_acl(&scenario);
+        install_generic(
+            &mut from,
+            &acl,
+            MODULE_ID,
+            TYPE_ID,
+            b"thruster",
+            module_data(),
+            scenario.ctx(),
+        );
+        ts::return_shared(acl);
+        ts::return_shared(from);
+    };
+
+    migrate_generic(&mut scenario, from_id, to_id, MODULE_ID);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let from = ts::take_shared_by_id<Entity>(&scenario, from_id);
+    let to = ts::take_shared_by_id<Entity>(&scenario, to_id);
+    assert!(!from.has_component(MODULE_ID));
+    assert!(generic_module::type_id(&to, MODULE_ID) == TYPE_ID);
+    assert!(generic_module::data(&to, MODULE_ID) == module_data());
+    assert!(generic_module::name(&to, MODULE_ID) == option::some(module_name()));
+    assert!(power_grid::power_grid(&to).module_state(MODULE_ID).power_req() == 1);
+    assert!(!power_grid::power_grid(&from).is_module_connected(MODULE_ID));
+    ts::return_shared(from);
+    ts::return_shared(to);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = generic_module::EModuleMissing)]
+fun migrate_missing_module_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let from_id = share_with_grid(&mut scenario, 1);
+    let to_id = share_with_grid(&mut scenario, 2);
+
+    migrate_generic(&mut scenario, from_id, to_id, MODULE_ID);
 
     abort
 }
