@@ -16,12 +16,21 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js, then enable pnpm via corepack
+# Install the Node version pinned in .nvmrc, then enable pnpm via corepack.
 # (pnpm version is pinned by the "packageManager" field in package.json)
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs \
+ARG TARGETARCH
+COPY .nvmrc /tmp/.nvmrc
+RUN NODE_VERSION="$(tr -d '[:space:]' < /tmp/.nvmrc)" \
+    && case "${TARGETARCH}" in \
+    amd64) node_arch=x64 ;; \
+    arm64) node_arch=arm64 ;; \
+    *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.gz" \
+    | tar -xz -C /usr/local --strip-components=1 \
     && corepack enable \
-    && rm -rf /var/lib/apt/lists/*
+    && rm /tmp/.nvmrc \
+    && node -v | grep -qx "v${NODE_VERSION}"
 
 # Let corepack download the pinned pnpm without an interactive prompt
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
