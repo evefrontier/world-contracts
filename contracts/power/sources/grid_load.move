@@ -166,6 +166,8 @@ public fun set_priority(
 
 /// Set a connected module's desired state. Always accepted, even without power.
 /// The grid regrants, and the module draws only if the grid can carry it.
+/// TODO: keep every module offline while the Creation is dark (no Shell, see
+/// `creation::layout::has_shell`), without `power` depending on `creation`.
 public fun set_desired_state(
     entity: &mut Entity,
     req: &mut Request,

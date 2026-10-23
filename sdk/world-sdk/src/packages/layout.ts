@@ -171,17 +171,24 @@ export function migrateModuleSection(
   ])
 }
 
-/** Mark the creation working with `shellId`. */
+/**
+ * Seat Shell `shellId` in `commandModuleId`, an installed module listed in a
+ * section.
+ */
 export function setShell(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   shellId: string,
+  commandModuleId: bigint,
 ): void {
-  edit(tx, config, entity, 'set_shell', [tx.pure.id(shellId)])
+  edit(tx, config, entity, 'set_shell', [
+    tx.pure.id(shellId),
+    tx.pure.u64(commandModuleId),
+  ])
 }
 
-/** Mark the creation dark. */
+/** Clear the Shell, marking the creation dark. */
 export function clearShell(
   tx: Transaction,
   config: WorldConfig,
@@ -220,6 +227,28 @@ export function shellId(
 ): TransactionResult {
   return tx.moveCall({
     target: layoutCall(config, 'shell_id'),
+    arguments: [entity],
+  })
+}
+
+export function commandModuleId(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): TransactionResult {
+  return tx.moveCall({
+    target: layoutCall(config, 'command_module_id'),
+    arguments: [entity],
+  })
+}
+
+export function hasShell(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): TransactionResult {
+  return tx.moveCall({
+    target: layoutCall(config, 'has_shell'),
     arguments: [entity],
   })
 }

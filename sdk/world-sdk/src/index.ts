@@ -106,6 +106,8 @@ export {
   addModule,
   addSections,
   clearShell,
+  commandModuleId,
+  hasShell,
   installLayout,
   LAYOUT_ACTION,
   type LayoutSection,

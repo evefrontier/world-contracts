@@ -182,7 +182,7 @@ export function detachSection(
 /**
  * Merge creation `absorbed` into `survivor`: move every section and module of
  * `absorbed`, then remove its Layout and grid and delete it. `absorbed` must
- * hold nothing else. One PTB, admin-signed.
+ * hold nothing else and have no Shell (clear it first). One PTB, admin-signed.
  */
 export function mergeCreation(
   tx: Transaction,

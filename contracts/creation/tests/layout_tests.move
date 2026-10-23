@@ -8,7 +8,7 @@ use core::{
     entity::Entity,
     test_helpers::{claim, setup, take_acl, take_registry}
 };
-use creation::layout::{Self, ModuleRemoved, SectionAdded, SectionRemoved};
+use creation::layout::{Self, ModuleRemoved, SectionAdded, SectionRemoved, ShellChanged};
 use std::string;
 use sui::{event, test_scenario as ts};
 
@@ -93,7 +93,7 @@ fun install_records_sections_dark_and_unowned() {
         assert!(layout::section_of(&e, 3) == option::some(20));
         assert!(layout::section_of(&e, 4).is_none());
         assert!(layout::shell_id(&e).is_none());
-        assert!(!layout::is_working(&e));
+        assert!(!layout::has_shell(&e));
         assert!(e.access_cap_id().is_none());
         ts::return_shared(e);
     };
@@ -405,7 +405,7 @@ fun migrate_module_section_to_unknown_section_aborts() {
 // === stale modules ===
 
 #[test]
-fun uninstalled_module_is_hidden_then_pruned_on_edit() {
+fun uninstalled_module_is_hidden_until_unlisted() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
     deploy(&mut scenario);
@@ -419,13 +419,16 @@ fun uninstalled_module_is_hidden_then_pruned_on_edit() {
         ts::return_shared(e);
     };
 
+    // An unrelated edit leaves the stale id listed.
     admin_edit!(&mut scenario, ADMIN, |e, req| layout::add_module(e, req, 20, 4));
+    assert!(event::events_by_type<ModuleRemoved>().is_empty());
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::remove_module(e, req, 10, 1));
     assert!(event::events_by_type<ModuleRemoved>().length() == 1);
 
     scenario.end();
 }
 
-/// A module that comes back before any edit pruned it is listed in its old
+/// A module that comes back before it is unlisted is listed in its old
 /// section again; `migrate_module_section` relocates it.
 #[test]
 fun reinstalled_module_returns_to_its_old_section() {
@@ -474,7 +477,7 @@ fun claim_then_release() {
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
         e.complete_request(req);
         let mut req = e.interact(layout::action_name(), scenario.ctx());
-        layout::set_shell(&mut e, &mut req, shell);
+        layout::set_shell(&mut e, &mut req, shell, 1);
         admin_service::verify_admin(&mut req, &acl, scenario.ctx());
         e.complete_request(req);
         ts::return_shared(e);
@@ -485,7 +488,8 @@ fun claim_then_release() {
     {
         let e = ts::take_shared<Entity>(&scenario);
         assert!(layout::shell_id(&e) == option::some(shell));
-        assert!(layout::is_working(&e));
+        assert!(layout::has_shell(&e));
+        assert!(layout::command_module_id(&e) == option::some(1));
         assert!(e.access_cap_id().is_some());
         ts::return_shared(e);
     };
@@ -495,7 +499,7 @@ fun claim_then_release() {
     ts::next_tx(&mut scenario, ADMIN);
     {
         let e = ts::take_shared<Entity>(&scenario);
-        assert!(!layout::is_working(&e));
+        assert!(!layout::has_shell(&e));
         assert!(e.access_cap_id().is_some());
         ts::return_shared(e);
     };
@@ -504,19 +508,140 @@ fun claim_then_release() {
 }
 
 #[test, expected_failure(abort_code = layout::EShellPresent)]
-fun set_shell_on_working_creation_aborts() {
+fun set_shell_twice_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
     deploy(&mut scenario);
 
     admin_edit!(&mut scenario, ADMIN, |e, req| {
-        layout::set_shell(e, req, object::id_from_address(@0x1));
+        layout::set_shell(e, req, object::id_from_address(@0x1), 1);
     });
     admin_edit!(&mut scenario, ADMIN, |e, req| {
-        layout::set_shell(e, req, object::id_from_address(@0x2));
+        layout::set_shell(e, req, object::id_from_address(@0x2), 2);
     });
 
     abort
+}
+
+/// Seat a Shell in module 1 (section 10).
+fun seat_shell(scenario: &mut ts::Scenario) {
+    admin_edit!(scenario, ADMIN, |e, req| {
+        layout::set_shell(e, req, object::id_from_address(@0x5E11), 1);
+    });
+}
+
+fun assert_dark(scenario: &mut ts::Scenario) {
+    ts::next_tx(scenario, ADMIN);
+    let e = ts::take_shared<Entity>(scenario);
+    assert!(!layout::has_shell(&e) && layout::shell_id(&e).is_none());
+    ts::return_shared(e);
+}
+
+#[test, expected_failure(abort_code = layout::EModuleUnassigned)]
+fun set_shell_in_unlisted_module_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| {
+        layout::set_shell(e, req, object::id_from_address(@0x1), 4);
+    });
+
+    abort
+}
+
+#[test, expected_failure(abort_code = layout::EModuleMissing)]
+fun set_shell_in_uninstalled_module_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| {
+        layout::set_shell(e, req, object::id_from_address(@0x1), 99);
+    });
+
+    abort
+}
+
+/// The Shell is hidden once its Command Module leaves, and the next edit clears it.
+#[test]
+fun command_module_leaving_clears_the_shell() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+    seat_shell(&mut scenario);
+    uninstall_dummies(&mut scenario, vector[1]);
+    assert_dark(&mut scenario);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::add_module(e, req, 20, 4));
+    assert!(event::events_by_type<ShellChanged>().length() == 1);
+    assert!(event::events_by_type<ModuleRemoved>().length() == 1);
+    admin_edit!(&mut scenario, ADMIN, |e, req| {
+        layout::set_shell(e, req, object::id_from_address(@0x2), 2);
+    });
+
+    scenario.end();
+}
+
+#[test]
+fun clear_shell_after_command_module_left() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+    seat_shell(&mut scenario);
+    uninstall_dummies(&mut scenario, vector[1]);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::clear_shell(e, req));
+    assert!(event::events_by_type<ShellChanged>().length() == 1);
+    assert_dark(&mut scenario);
+
+    scenario.end();
+}
+
+#[test]
+fun remove_section_clears_the_shell() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+    seat_shell(&mut scenario);
+    uninstall_dummies(&mut scenario, vector[1, 2]);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::remove_section(e, req, 10));
+    assert!(event::events_by_type<ShellChanged>().length() == 1);
+    assert_dark(&mut scenario);
+
+    scenario.end();
+}
+
+#[test]
+fun remove_command_module_clears_the_shell() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+    seat_shell(&mut scenario);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::remove_module(e, req, 10, 1));
+    assert!(event::events_by_type<ShellChanged>().length() == 1);
+    assert_dark(&mut scenario);
+
+    scenario.end();
+}
+
+#[test]
+fun migrating_command_module_keeps_the_shell() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+    seat_shell(&mut scenario);
+
+    admin_edit!(&mut scenario, ADMIN, |e, req| layout::migrate_module_section(e, req, 10, 20, 1));
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let e = ts::take_shared<Entity>(&scenario);
+    assert!(layout::has_shell(&e) && layout::command_module_id(&e) == option::some(1));
+    assert!(layout::section_of(&e, 1) == option::some(20));
+    ts::return_shared(e);
+    scenario.end();
 }
 
 #[test, expected_failure(abort_code = layout::EShellMissing)]
@@ -663,7 +788,7 @@ fun detach_section_into_new_creation() {
     assert!(layout::section_ids(&source) == vector[20]);
     assert!(layout::section_ids(&target) == vector[10]);
     assert!(layout::section_modules(&target, 10) == vector[1, 2]);
-    assert!(!layout::is_working(&target) && target.access_cap_id().is_none());
+    assert!(!layout::has_shell(&target) && target.access_cap_id().is_none());
     ts::return_shared(source);
     ts::return_shared(target);
     scenario.end();
@@ -711,6 +836,21 @@ fun merge_absorbs_sections_and_deletes_the_other_creation() {
     ts::return_shared(registry);
     ts::return_shared(acl);
     scenario.end();
+}
+
+/// A Creation with a Shell cannot be absorbed by a merge until the Shell is cleared.
+#[test, expected_failure(abort_code = layout::EShellPresent)]
+fun uninstall_with_shell_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    deploy(&mut scenario);
+    seat_shell(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut e = ts::take_shared<Entity>(&scenario);
+    let _req = layout::uninstall(&mut e, scenario.ctx());
+
+    abort
 }
 
 #[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
