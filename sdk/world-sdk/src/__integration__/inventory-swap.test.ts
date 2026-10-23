@@ -201,7 +201,13 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     addSponsors(stockTx, config, [signer])
     const tradingPost = stockTx.object(tradingPostId)
     const stockRequest = interact(stockTx, config, tradingPost, 'bridge_in')
-    verifyOwner(stockTx, config, stockRequest, stockTx.object(merchantCapId))
+    verifyOwner(
+      stockTx,
+      config,
+      tradingPost,
+      stockRequest,
+      stockTx.object(merchantCapId),
+    )
     gameItemToChain(stockTx, config, tradingPost, stockRequest, {
       typeId: LENS,
       quantity: 1n,
@@ -218,7 +224,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     ] as const) {
       const ship = fuelTx.object(entityId)
       const bridgeRequest = interact(fuelTx, config, ship, 'bridge_in')
-      verifyOwner(fuelTx, config, bridgeRequest, fuelTx.object(capId))
+      verifyOwner(fuelTx, config, ship, bridgeRequest, fuelTx.object(capId))
       gameItemToChain(fuelTx, config, ship, bridgeRequest, {
         typeId: FUEL,
         quantity: 1n,
@@ -237,7 +243,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
   ): TransactionArgument {
     const ship = tx.object(shipId)
     const withdrawRequest = interact(tx, config, ship, 'withdraw')
-    verifyOwner(tx, config, withdrawRequest, tx.object(capId))
+    verifyOwner(tx, config, ship, withdrawRequest, tx.object(capId))
     const fuel = withdraw(tx, config, ship, withdrawRequest, {
       typeId: FUEL,
       quantity: 1n,
@@ -266,7 +272,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
   function depositLens(tx: Transaction, lens: TransactionArgument): void {
     const ship = tx.object(shipId)
     const depositRequest = interact(tx, config, ship, 'deposit')
-    verifyOwner(tx, config, depositRequest, tx.object(shipCapId))
+    verifyOwner(tx, config, ship, depositRequest, tx.object(shipCapId))
     deposit(tx, config, ship, depositRequest, lens)
     completeRequest(tx, config, ship, depositRequest)
   }

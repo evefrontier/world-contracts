@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 setup() {
     cd "$REPO_ROOT"
-    if [ -f .env ]; then
+    if [ -z "${WORLD_IGNORE_DOTENV:-}" ] && [ -f .env ]; then
         set -a
         source .env
         set +a

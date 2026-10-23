@@ -175,3 +175,26 @@ fun return_with_mismatched_receipt_aborts() {
 
     abort
 }
+
+#[test, expected_failure(abort_code = entity::EStaleAccessCap)]
+fun borrow_with_replaced_cap_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let character = create_entity(&mut scenario, 1);
+    let su = create_entity(&mut scenario, 2);
+
+    mint_cap(&mut scenario, su, character.to_address(), true);
+    mint_cap(&mut scenario, character, OWNER, false);
+    // A new owner replaces OWNER's character cap.
+    mint_cap(&mut scenario, character, ADMIN, false);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let su_cap_id = parked_cap_id(character);
+    let mut c = ts::take_shared_by_id<Entity>(&scenario, character);
+    let stale_cap = ts::take_from_sender<AccessCap>(&scenario);
+    let ticket = ts::receiving_ticket_by_id<AccessCap>(su_cap_id);
+
+    let (_su_cap, _receipt) = c.borrow_access(&stale_cap, ticket);
+
+    abort
+}

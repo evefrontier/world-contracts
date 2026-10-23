@@ -69,6 +69,29 @@ public fun install(
     req
 }
 
+/// Move the generic module at `component_id` from `from` to `to` with its data,
+/// and its grid connection with it. Admin-gated: returns `from`'s request,
+/// then `to`'s.
+public fun migrate(
+    from: &mut Entity,
+    to: &mut Entity,
+    component_id: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Request, Request) {
+    borrow_module(from, component_id);
+    let (c, from_req) = from.uninstall<GenericModule>(
+        component_id,
+        generic_module_permit(),
+        ctx,
+    );
+    let name = c.name();
+    let generic = c.unwrap(generic_module_permit());
+    let to_req = to.install(component_id, name, generic, VERSION, generic_module_permit(), ctx);
+    grid_load::migrate<GenericModule>(from, to, component_id, generic_module_permit(), clock);
+    (from_req, to_req)
+}
+
 /// Uninstall a generic module and disconnect it from the power grid.
 public fun uninstall(
     entity: &mut Entity,

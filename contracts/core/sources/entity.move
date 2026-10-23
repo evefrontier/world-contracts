@@ -53,6 +53,10 @@ const EEntityAlreadyExists: vector<u8> = b"Entity already exists for this key";
 const ELocked: vector<u8> = b"Entity is locked";
 #[error(code = 11)]
 const EComponentsInstalled: vector<u8> = b"Entity still has components installed";
+#[error(code = 12)]
+const EStaleAccessCap: vector<u8> = b"AccessCap is not this entity's current cap";
+#[error(code = 13)]
+const ECapEntityMismatch: vector<u8> = b"AccessCap belongs to a different entity";
 
 // === Constants ===
 
@@ -151,8 +155,36 @@ public fun mint_access(
     )
 }
 
+/// Clear this entity's owner. Admin-gated. Every `AccessCap` minted for it so
+/// far stops verifying; a later `mint_access` sets a new owner.
+public fun revoke_access(entity: &mut Entity, _ctx: &mut TxContext): Request {
+    assert!(entity.version == VERSION, EWrongVersion);
+    entity.access_cap_id = option::none();
+    entity.lock();
+    request::new(
+        option::some(entity.id.to_inner()),
+        vector[admin_service::admin_requirement()],
+    )
+}
+
+/// Satisfy the next (owner) requirement on a request against this entity.
+/// `cap` must be the entity's current cap, so a revoked or replaced cap aborts.
+public fun verify_owner(entity: &Entity, request: &mut Request, cap: &AccessCap) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    access_cap::verify(request, cap);
+    assert!(entity.access_cap_id == option::some(object::id(cap)), EStaleAccessCap);
+}
+
+/// Check the caller's current cap. `entity` may differ from the request target.
+public fun verify_caller(entity: &Entity, request: &mut Request, cap: &AccessCap) {
+    assert!(entity.version == VERSION, EWrongVersion);
+    assert!(object::id(entity) == cap.entity(), ECapEntityMismatch);
+    access_cap::verify_caller(request, cap);
+    assert!(entity.access_cap_id == option::some(object::id(cap)), EStaleAccessCap);
+}
+
 /// Borrow an `AccessCap` parked on this entity (object-owned). `entity_cap` must
-/// be this entity's own cap, proving the caller owns it. Returns the parked cap
+/// be this entity's current cap, proving the caller owns it. Returns the parked cap
 /// and a non-droppable receipt that must be consumed by `return_access` or
 /// `access_cap::transfer_with_receipt`.
 public fun borrow_access(
@@ -161,7 +193,9 @@ public fun borrow_access(
     ticket: Receiving<AccessCap>,
 ): (AccessCap, ReturnReceipt) {
     assert!(entity.version == VERSION, EWrongVersion);
-    access_cap::borrow(&mut entity.id, entity_cap, ticket)
+    let (cap, receipt) = access_cap::borrow(&mut entity.id, entity_cap, ticket);
+    assert!(entity.access_cap_id == option::some(object::id(entity_cap)), EStaleAccessCap);
+    (cap, receipt)
 }
 
 /// Put a borrowed cap back on this entity, consuming the receipt.

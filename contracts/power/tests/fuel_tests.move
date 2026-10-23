@@ -4,7 +4,7 @@ module power::fuel_tests;
 use core::{entity::Entity, test_helpers::setup};
 use power::{
     fuel_math,
-    grid_fuel::{Self, FuelAdded},
+    grid_fuel::{Self, FuelAdded, FuelSourceDetached},
     grid_scenario::{
         Self,
         admin,
@@ -16,10 +16,11 @@ use power::{
         enable_owner_in_handler,
         firm_power,
         fuel_capacity,
-        fuel_id,
+        fuel_source_id,
         fuel_type,
         impulse,
         install_fuel,
+        install_fuel_with,
         install_module,
         owner,
         power_up,
@@ -133,7 +134,8 @@ fun uninstall_fuel_source_removes_capacity() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
     install_fuel(&mut scenario, entity_id, FUEL_B, 1_000, &clock);
-    uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
+    let load = uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
+    grid_fuel::burn_fuel_load(load);
 
     let (capacity, _, _) = fuel_stats(&mut scenario, entity_id);
     assert!(capacity == fuel_capacity());
@@ -142,14 +144,79 @@ fun uninstall_fuel_source_removes_capacity() {
     scenario.end();
 }
 
-/// Removing the only source would leave the stored fuel with no capacity.
-#[test, expected_failure(abort_code = grid_fuel::EFuelOverCapacity)]
-fun uninstall_aborts_when_fuel_exceeds_remaining_capacity() {
+#[test]
+fun uninstall_fuel_source_takes_its_share_of_fuel() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    uninstall_fuel(&mut scenario, entity_id, fuel_id(), &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 3 * fuel_capacity(), &clock);
+
+    let load = uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
+
+    // FUEL_B is three quarters of the capacity, so it takes three quarters of the fuel.
+    let taken = starting_fuel() / 4 * 3;
+    assert!(load.load_amount() == taken);
+    assert!(load.load_impulse() == impulse() && load.load_containment_burden() == burden());
+    let detached = event::events_by_type<FuelSourceDetached>();
+    let (_, fuel, amount, event_impulse, event_burden) = detached[0].fuel_source_detached_fields();
+    assert!(fuel == FUEL_B && amount == taken);
+    assert!(event_impulse == impulse() && event_burden == burden());
+    assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel() - taken);
+    grid_fuel::burn_fuel_load(load);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
+fun uninstall_last_fuel_source_takes_all_fuel() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+
+    let load = uninstall_fuel(&mut scenario, entity_id, fuel_source_id(), &clock);
+
+    assert!(load.load_amount() == starting_fuel());
+    grid_fuel::burn_fuel_load(load);
+    assert!(settled_fuel(&mut scenario, entity_id) == 0);
+    let (capacity, _, _) = fuel_stats(&mut scenario, entity_id);
+    assert!(capacity == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
+fun install_with_fuel_holds_the_load() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let load = uninstall_fuel(&mut scenario, entity_id, fuel_source_id(), &clock);
+
+    install_fuel_with(&mut scenario, entity_id, FUEL_B, fuel_capacity(), load, &clock);
+
+    assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel());
+    let (capacity, grid_impulse, grid_burden) = fuel_stats(&mut scenario, entity_id);
+    assert!(capacity == fuel_capacity());
+    assert!(grid_impulse == impulse() && grid_burden == burden());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EFuelOverCapacity)]
+fun install_with_fuel_over_capacity_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    // The only source takes the whole pool, which is more than a quarter bay holds.
+    let load = uninstall_fuel(&mut scenario, entity_id, fuel_source_id(), &clock);
+
+    install_fuel_with(&mut scenario, entity_id, FUEL_B, fuel_capacity() / 4, load, &clock);
 
     abort
 }
@@ -160,7 +227,8 @@ fun uninstall_unknown_fuel_source_aborts() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
+    let load = uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
+    grid_fuel::burn_fuel_load(load);
 
     abort
 }

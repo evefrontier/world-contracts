@@ -380,9 +380,9 @@ public fun is_generator_connected(entity: &Entity, generator_id: u64): bool {
 }
 
 /// True if the Fuel source is installed with an installed grid.
-public fun is_fuel_source_connected(entity: &Entity, fuel_id: u64): bool {
+public fun is_fuel_source_connected(entity: &Entity, fuel_source_id: u64): bool {
     entity.has_component_with_type<PowerGrid>(component_id())
-        && power_grid(entity).fuel_sources.contains(&fuel_id)
+        && power_grid(entity).fuel_sources.contains(&fuel_source_id)
 }
 
 /// Capacity available to grants, as of the last settle: 0 while off or out of fuel.
@@ -500,9 +500,9 @@ public fun fuel_sources(grid: &PowerGrid): &VecMap<u64, u64> {
 }
 
 /// An installed Fuel source's capacity.
-public fun fuel_source_capacity(grid: &PowerGrid, fuel_id: u64): u64 {
-    assert!(grid.fuel_sources.contains(&fuel_id), EFuelSourceNotConnected);
-    grid.fuel_sources[&fuel_id]
+public fun fuel_source_capacity(grid: &PowerGrid, fuel_source_id: u64): u64 {
+    assert!(grid.fuel_sources.contains(&fuel_source_id), EFuelSourceNotConnected);
+    grid.fuel_sources[&fuel_source_id]
 }
 
 public fun max_output_mw(state: &GeneratorState): u64 {
@@ -721,14 +721,14 @@ public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
     });
 }
 
-public(package) fun connect_fuel_source(grid: &mut PowerGrid, fuel_id: u64, capacity: u64) {
-    grid.fuel_sources.insert(fuel_id, capacity);
+public(package) fun connect_fuel_source(grid: &mut PowerGrid, fuel_source_id: u64, capacity: u64) {
+    grid.fuel_sources.insert(fuel_source_id, capacity);
     grid.fuel_capacity = grid.fuel_capacity + capacity;
 }
 
-public(package) fun disconnect_fuel_source(grid: &mut PowerGrid, fuel_id: u64) {
-    let remaining = grid.fuel_capacity - grid.fuel_sources[&fuel_id];
-    grid.fuel_sources.remove(&fuel_id);
+public(package) fun disconnect_fuel_source(grid: &mut PowerGrid, fuel_source_id: u64) {
+    let remaining = grid.fuel_capacity - grid.fuel_sources[&fuel_source_id];
+    grid.fuel_sources.remove(&fuel_source_id);
     grid.fuel_capacity = remaining;
 }
 
@@ -748,6 +748,11 @@ public(package) fun blend_in_fuel(
             amount,
         );
     grid.fuel_quantity_at_last_settled = old_quantity + amount;
+}
+
+/// Take `amount` out of the pool, leaving its stats unchanged.
+public(package) fun remove_fuel(grid: &mut PowerGrid, amount: u64) {
+    grid.fuel_quantity_at_last_settled = grid.fuel_quantity_at_last_settled - amount;
 }
 
 public(package) fun connect_generator(
@@ -803,6 +808,18 @@ public(package) fun connect_module(
         );
 }
 
+/// Connect a module moved from another grid, keeping its spec and desired
+/// state. It draws nothing until the caller regrants.
+public(package) fun reconnect_module(grid: &mut PowerGrid, module_id: u64, state: ModuleState) {
+    let ModuleState { module_spec, desired_online, active_draw_at_last_settled: _ } = state;
+    grid
+        .modules
+        .insert(
+            module_id,
+            ModuleState { module_spec, desired_online, active_draw_at_last_settled: 0 },
+        );
+}
+
 public(package) fun disconnect_module(grid: &mut PowerGrid, module_id: u64) {
     grid.modules.remove(&module_id);
 }
@@ -839,8 +856,8 @@ public(package) fun assert_module_connected(grid: &PowerGrid, module_id: u64) {
     assert!(grid.modules.contains(&module_id), EModuleNotConnected);
 }
 
-public(package) fun assert_fuel_source_connected(grid: &PowerGrid, fuel_id: u64) {
-    assert!(grid.fuel_sources.contains(&fuel_id), EFuelSourceNotConnected);
+public(package) fun assert_fuel_source_connected(grid: &PowerGrid, fuel_source_id: u64) {
+    assert!(grid.fuel_sources.contains(&fuel_source_id), EFuelSourceNotConnected);
 }
 
 /// Decode a `DrawKind` from its BCS enum tag.

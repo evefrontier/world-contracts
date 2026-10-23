@@ -51,7 +51,7 @@ fun enable(
 ) {
     let act = action::new(vector[access_cap::owner_requirement(), item_req]);
     let mut req = e.enable_action(string::utf8(name), act, ctx);
-    access_cap::verify(&mut req, owner_cap);
+    e.verify_owner(&mut req, owner_cap);
     e.complete_request(req);
 }
 
@@ -169,7 +169,7 @@ fun owner_enable(
     let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let mut req = e.enable_action(string::utf8(name), act, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(e);
@@ -258,7 +258,7 @@ fun bridge_in(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, type_id, qty, vol);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
@@ -284,7 +284,7 @@ fun bridge_out(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::chain_item_to_game_inventory(&mut e, &mut req, type_id, qty);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
@@ -304,7 +304,7 @@ fun deposit(
     item: Item,
 ) {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    access_cap::verify(&mut req, cap);
+    e.verify_owner(&mut req, cap);
     inventory::deposit(e, &mut req, item, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     grid_load::assert_online(e, &mut req, &clock);
@@ -321,7 +321,7 @@ fun withdraw(
     qty: u64,
 ): Item {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
-    access_cap::verify(&mut req, cap);
+    e.verify_owner(&mut req, cap);
     let item = inventory::withdraw(e, &mut req, type_id, qty, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     grid_load::assert_online(e, &mut req, &clock);
@@ -391,7 +391,7 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
     grid_fuel::deposit_fuel(&mut entity, &mut req, 7, 100, 90, 14, &clock);
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
     clock.destroy_for_testing();
@@ -420,7 +420,7 @@ fun enable_owner_in_handler(
 ) {
     let act = action::new(vector[requirement]);
     let mut req = entity.enable_action(string::utf8(name), act, ctx);
-    access_cap::verify(&mut req, owner_cap);
+    entity.verify_owner(&mut req, owner_cap);
     entity.complete_request(req);
 }
 
@@ -431,7 +431,7 @@ fun set_desired(scenario: &mut ts::Scenario, entity_id: ID, owner: address, onli
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"operate_grid"), scenario.ctx());
     grid_load::set_desired_state(&mut entity, &mut req, MODULE_ID, online, &clock);
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     clock.destroy_for_testing();
     ts::return_to_sender(scenario, cap);
@@ -451,7 +451,7 @@ macro fun run_operate_grid(
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"operate_grid"), scenario.ctx());
     $handler(&mut entity, &mut req, &clock);
-    access_cap::verify(&mut req, &cap);
+    entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     clock.destroy_for_testing();
     ts::return_to_sender(scenario, cap);
@@ -602,7 +602,7 @@ fun bridge_in_by_non_owner_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let player_cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
-    access_cap::verify(&mut req, &player_cap);
+    e.verify_owner(&mut req, &player_cap);
 
     abort
 }
@@ -627,7 +627,7 @@ fun bridge_in_by_owner_without_sponsor_aborts() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let acl = take_acl(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
 
@@ -751,7 +751,7 @@ fun bridge_in_over_capacity_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 60, VOL); // 120 > 100
 
     abort
@@ -790,7 +790,7 @@ fun bridge_in_wrong_type_aborts() {
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.interact(string::utf8(b"bridge_fuel"), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL + 1, 10, VOL);
 
     abort
@@ -1111,6 +1111,113 @@ fun install_without_grid_aborts() {
         &clock,
         scenario.ctx(),
     );
+
+    abort
+}
+
+// === Migrate ===
+
+/// Share a bare entity under `id` with only a power grid, in `tenant`.
+fun share_grid_entity(scenario: &mut ts::Scenario, id: u64, tenant: vector<u8>): ID {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let (mut e, mut req) = entity::new(&mut registry, id, string::utf8(tenant));
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    install_grid(scenario, &mut e, &acl);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    e_id
+}
+
+fun migrate_inventory(scenario: &mut ts::Scenario, from_id: ID, to_id: ID, component_id: u64) {
+    ts::next_tx(scenario, ADMIN);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, to_id);
+    let acl = take_acl(scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let (mut from_req, mut to_req) = inventory::migrate(
+        &mut from,
+        &mut to,
+        component_id,
+        &clock,
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut from_req, &acl, scenario.ctx());
+    from.complete_request(from_req);
+    admin_service::verify_admin(&mut to_req, &acl, scenario.ctx());
+    to.complete_request(to_req);
+    clock.destroy_for_testing();
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
+}
+
+#[test]
+fun migrate_moves_inventory_with_its_items() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let from_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, from_id, OWNER);
+    power_inventory(&mut scenario, from_id, OWNER);
+    bridge_in(&mut scenario, from_id, OWNER, b"bridge_in", FUEL, 100, VOL);
+    let to_id = share_grid_entity(&mut scenario, 2, b"test");
+
+    migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
+
+    assert!(event::events_by_type<item::ItemBurned>().is_empty());
+    ts::next_tx(&mut scenario, ADMIN);
+    let from = ts::take_shared_by_id<Entity>(&scenario, from_id);
+    let to = ts::take_shared_by_id<Entity>(&scenario, to_id);
+    assert!(!from.has_component(MODULE_ID));
+    assert!(inv(&to).used() == 100 * VOL);
+    assert!(inv(&to).items().balance(FUEL) == 100);
+    assert!(inv(&to).capacity() == 1000);
+    assert!(inventory::type_id(inv(&to)) == TYPE_ID);
+    assert!(power_grid::power_grid(&to).module_state(MODULE_ID).desired_online());
+    assert!(!power_grid::power_grid(&from).is_module_connected(MODULE_ID));
+    ts::return_shared(from);
+    ts::return_shared(to);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = inventory::EComponentMissing)]
+fun migrate_missing_inventory_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let from_id = share_grid_entity(&mut scenario, 1, b"test");
+    let to_id = share_grid_entity(&mut scenario, 2, b"test");
+
+    migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = inventory::EWrongTenant)]
+fun migrate_across_tenants_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let from_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    let to_id = share_grid_entity(&mut scenario, 2, b"OTHER");
+
+    migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
 
     abort
 }

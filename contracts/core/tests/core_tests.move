@@ -73,7 +73,7 @@ fun end_to_end_flow() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let action = action::new(vector[increment_requirement(counter_id())]);
     let mut req = e.enable_action(string::utf8(b"increment"), action, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
 
     // Interact: borrow the module by requirement, satisfy it, and mutate.
@@ -123,7 +123,7 @@ fun cannot_complete_with_pending_requirement() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let action = action::new(vector[increment_requirement(counter_id())]);
     let mut req = e.enable_action(string::utf8(b"increment"), action, scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
 
     // Try to complete without satisfying the requirement.
