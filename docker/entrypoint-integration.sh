@@ -242,6 +242,9 @@ sui client switch --address "${ADDR[ADMIN]}" >/dev/null
 # ── 4. Install deps, deploy world, seed ──────────────────────────────────────
 cd /app
 export CI="${CI:-true}"
+# The repo is bind-mounted from the host: ignore its .env files so a developer's
+# network settings and keys never reach this localnet run.
+export WORLD_IGNORE_DOTENV=1 DOTENV_CONFIG_PATH=/dev/null
 
 log "pnpm install..."
 pnpm_install_args=(--frozen-lockfile)

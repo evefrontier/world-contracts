@@ -86,7 +86,7 @@ fun enable_edit(scenario: &mut ts::Scenario, entity_id: ID, character_id: ID) {
 
     let act = action::new(vector[access_cap::owner_requirement(), metadata::edit_requirement()]);
     let mut req = e.enable_action(string::utf8(b"edit_metadata"), act, scenario.ctx());
-    access_cap::verify(&mut req, &owner_cap);
+    e.verify_owner(&mut req, &owner_cap);
     e.complete_request(req);
 
     character.return_access(owner_cap, receipt);
@@ -112,7 +112,7 @@ fun edit_via_character(
     let (owner_cap, receipt) = character.borrow_access(&char_cap, ticket);
 
     let mut req = e.interact(string::utf8(b"edit_metadata"), scenario.ctx());
-    access_cap::verify(&mut req, &owner_cap);
+    e.verify_owner(&mut req, &owner_cap);
     metadata::edit(
         &mut e,
         &mut req,

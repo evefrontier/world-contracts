@@ -29,6 +29,8 @@ const ENoGrant: vector<u8> = b"Module has no power granted";
 #[error(code = 7)]
 const EModuleStillInstalled: vector<u8> =
     b"Module component must be uninstalled before disconnecting";
+#[error(code = 8)]
+const EWrongTenant: vector<u8> = b"Modules can only move between entities of the same tenant";
 
 // === Events ===
 
@@ -101,6 +103,44 @@ public fun disconnect<Module: store>(
     event::emit(ModuleDisconnected { entity_id, module_id });
 }
 
+/// Move a module's grid connection from `from` to `to`, keeping its spec and
+/// desired state. Called from the module's own migrate, after it uninstalled
+/// the module from `from` and installed it on `to`. Both grids regrant.
+public fun migrate<Module: store>(
+    from: &mut Entity,
+    to: &mut Entity,
+    module_id: u64,
+    _: Permit<Module>,
+    clock: &Clock,
+) {
+    assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
+    assert!(!from.has_component(module_id), EModuleStillInstalled);
+    assert!(to.has_component_with_type<Module>(module_id), EModuleMissing);
+    let from_id = from.id();
+    let to_id = to.id();
+
+    let from_grid = power_grid::grid_mut(from);
+    from_grid.assert_module_connected(module_id);
+    from_grid.settle(clock);
+    let state = from_grid.module_state(module_id);
+    from_grid.disconnect_module(module_id);
+    from_grid.regrant(from_id);
+    event::emit(ModuleDisconnected { entity_id: from_id, module_id });
+
+    let to_grid = power_grid::grid_mut(to);
+    assert!(!to_grid.is_module_connected(module_id), EModuleAlreadyConnected);
+    assert!(to_grid.modules().length() < power_grid::max_connected(), ETooManyConnected);
+    to_grid.settle(clock);
+    to_grid.reconnect_module(module_id, state);
+    to_grid.regrant(to_id);
+    event::emit(ModuleConnected {
+        entity_id: to_id,
+        module_id,
+        line_loss: state.line_loss(),
+        priority: state.priority(),
+    });
+}
+
 /// Move a connected module into priority group `priority`. Grants ignore it in v1.
 public fun set_priority(
     entity: &mut Entity,
@@ -126,6 +166,8 @@ public fun set_priority(
 
 /// Set a connected module's desired state. Always accepted, even without power.
 /// The grid regrants, and the module draws only if the grid can carry it.
+/// TODO: keep every module offline while the Creation is dark (no Shell, see
+/// `creation::layout::has_shell`), without `power` depending on `creation`.
 public fun set_desired_state(
     entity: &mut Entity,
     req: &mut Request,

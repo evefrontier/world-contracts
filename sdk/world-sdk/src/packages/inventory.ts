@@ -17,6 +17,7 @@ import {
   DESIRED_OFFLINE_MODULE,
   installPowerGrid,
   type ModulePowerSpec,
+  migrateWith,
   modulePowerArguments,
 } from './power.js'
 
@@ -130,6 +131,27 @@ export function uninstallInventory(
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
+}
+
+/**
+ * Move the inventory `componentId` to `to` with its items, without a burn.
+ * Both entities must share a tenant. Admin-gated.
+ */
+export function migrateInventory(
+  tx: Transaction,
+  config: WorldConfig,
+  from: TransactionArgument,
+  to: TransactionArgument,
+  componentId: bigint,
+): void {
+  migrateWith(
+    tx,
+    config,
+    `${pkg(config)}::inventory::migrate`,
+    from,
+    to,
+    componentId,
+  )
 }
 
 export interface CreateStorageUnitArgs {

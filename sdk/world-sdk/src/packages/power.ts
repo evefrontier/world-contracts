@@ -165,6 +165,130 @@ export function installFuel(
   completeRequest(tx, config, entity, request)
 }
 
+/** Remove a Generator and its output from the grid. Admin-gated. */
+export function uninstallGenerator(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  componentId: bigint,
+): void {
+  const request = tx.moveCall({
+    target: moveCallTarget(config, 'grid_generator', 'uninstall'),
+    arguments: [entity, tx.pure.u64(componentId), tx.object.clock()],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
+/** Remove a fuel source. Pass the load to `installFuelWithLoad` or `burnFuelLoad`. */
+export function uninstallFuel(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  componentId: bigint,
+): TransactionArgument {
+  const [request, load] = tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'uninstall'),
+    arguments: [entity, tx.pure.u64(componentId), tx.object.clock()],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+  return load
+}
+
+/** Destroy a fuel load that is not reinstalled. */
+export function burnFuelLoad(
+  tx: Transaction,
+  config: WorldConfig,
+  load: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'burn_fuel_load'),
+    arguments: [load],
+  })
+}
+
+/** Install a Fuel source already holding `load`. Admin-gated. */
+export function installFuelWithLoad(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  args: InstallFuelArgs,
+  load: TransactionArgument,
+): void {
+  const request = tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'install_with_fuel'),
+    arguments: [
+      entity,
+      tx.pure.u64(args.componentId),
+      tx.pure.option('string', args.name ?? null),
+      tx.pure.u64(args.capacity),
+      load,
+      tx.object.clock(),
+    ],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
+/** Move a Generator to `to` with its stats and online state. Admin-gated. */
+export function migrateGenerator(
+  tx: Transaction,
+  config: WorldConfig,
+  from: TransactionArgument,
+  to: TransactionArgument,
+  componentId: bigint,
+): void {
+  migrateWith(
+    tx,
+    config,
+    moveCallTarget(config, 'grid_generator', 'migrate'),
+    from,
+    to,
+    componentId,
+  )
+}
+
+/** Move a Fuel source to `to` with its share of the fuel. Admin-gated. */
+export function migrateFuel(
+  tx: Transaction,
+  config: WorldConfig,
+  from: TransactionArgument,
+  to: TransactionArgument,
+  componentId: bigint,
+): void {
+  migrateWith(
+    tx,
+    config,
+    moveCallTarget(config, 'grid_fuel', 'migrate'),
+    from,
+    to,
+    componentId,
+  )
+}
+
+/**
+ * Call a `migrate(from, to, component_id, clock, ctx): (Request, Request)` and
+ * close both admin-gated requests.
+ */
+export function migrateWith(
+  tx: Transaction,
+  config: WorldConfig,
+  target: `${string}::${string}::${string}`,
+  from: TransactionArgument,
+  to: TransactionArgument,
+  componentId: bigint,
+): void {
+  const [fromRequest, toRequest] = tx.moveCall({
+    target,
+    arguments: [from, to, tx.pure.u64(componentId), tx.object.clock()],
+  })
+  verifyAdmin(tx, config, fromRequest)
+  completeRequest(tx, config, from, fromRequest)
+  verifyAdmin(tx, config, toRequest)
+  completeRequest(tx, config, to, toRequest)
+}
+
 // === Requirements ===
 
 /**
@@ -256,7 +380,7 @@ export function depositFuel(
       tx.object.clock(),
     ],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
   verifySponsor(tx, config, request)
 }
 
@@ -273,7 +397,7 @@ export function setPowerGrid(
     target: grid(config, 'set_power_grid'),
     arguments: [entity, request, tx.pure.bool(on), tx.object.clock()],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
 }
 
 /** Bring a Generator online or offline. Owner-gated. */
@@ -296,7 +420,7 @@ export function setGenerator(
       tx.object.clock(),
     ],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
 }
 
 /** Move a connected module into priority group `priority`. Grants ignore it in v1. Owner-gated. */
@@ -319,7 +443,7 @@ export function setPriority(
       tx.object.clock(),
     ],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
 }
 
 /** Set a connected module's desired state. The grid regrants. Owner-gated. */
@@ -342,7 +466,7 @@ export function setDesiredState(
       tx.object.clock(),
     ],
   })
-  verifyOwner(tx, config, request, ownerCap)
+  verifyOwner(tx, config, entity, request, ownerCap)
 }
 
 /** Fuel left on the creation now, with burn since the last settle applied. */
