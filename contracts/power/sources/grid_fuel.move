@@ -29,8 +29,11 @@ const EWrongTenant: vector<u8> = b"Fuel sources can only move between entities o
 
 // === Structs ===
 
-/// Fuel carried out of a grid by `uninstall`.
+/// Fuel carried out of a grid by `uninstall`. Holds the source it left so a
+/// later burn can name that source.
 public struct FuelLoad {
+    entity_id: ID,
+    fuel_source_id: u64,
     amount: u64,
     impulse: u64,
     containment_burden: u64,
@@ -63,6 +66,8 @@ public struct FuelLoaded has copy, drop {
 }
 
 public struct FuelLoadBurned has copy, drop {
+    entity_id: ID,
+    fuel_source_id: u64,
     amount: u64,
     impulse: u64,
     containment_burden: u64,
@@ -112,7 +117,13 @@ public fun install_with_fuel(
     ctx: &mut TxContext,
 ): Request {
     // TODO: the fuel pool logic will be removed with the fuel refactor
-    let FuelLoad { amount, impulse, containment_burden } = load;
+    let FuelLoad {
+        entity_id: _,
+        fuel_source_id: _,
+        amount,
+        impulse,
+        containment_burden,
+    } = load;
     let req = install(entity, fuel_source_id, name, capacity, clock, ctx);
     if (amount > 0) {
         let entity_id = entity.id();
@@ -150,6 +161,8 @@ public fun uninstall(
     grid.settle(clock);
     let capacity = grid.fuel_source_capacity(fuel_source_id);
     let load = FuelLoad {
+        entity_id,
+        fuel_source_id,
         amount: share_of(grid.fuel_quantity_at_last_settled(), capacity, grid.fuel_capacity()),
         impulse: grid.fuel_impulse(),
         containment_burden: grid.fuel_containment_burden(),
@@ -186,8 +199,14 @@ public fun migrate(
 
 /// Destroy a fuel load that is not reinstalled.
 public fun burn_fuel_load(load: FuelLoad) {
-    let FuelLoad { amount, impulse, containment_burden } = load;
-    event::emit(FuelLoadBurned { amount, impulse, containment_burden });
+    let FuelLoad { entity_id, fuel_source_id, amount, impulse, containment_burden } = load;
+    event::emit(FuelLoadBurned {
+        entity_id,
+        fuel_source_id,
+        amount,
+        impulse,
+        containment_burden,
+    });
 }
 
 // TODO: an `Item` to fuel path once inventory can connect to the fuel source.
@@ -260,6 +279,14 @@ fun enforce_fuel(
 
 // === View Functions ===
 
+public fun load_entity_id(load: &FuelLoad): ID {
+    load.entity_id
+}
+
+public fun load_fuel_source_id(load: &FuelLoad): u64 {
+    load.fuel_source_id
+}
+
 public fun load_amount(load: &FuelLoad): u64 {
     load.amount
 }
@@ -294,6 +321,18 @@ public fun fuel_source_attached_fields(fuel_source_attached: &FuelSourceAttached
         fuel_source_attached.entity_id,
         fuel_source_attached.fuel_source_id,
         fuel_source_attached.capacity,
+    )
+}
+
+/// `(entity_id, fuel_source_id, amount, impulse, containment_burden)`.
+#[test_only]
+public fun fuel_load_burned_fields(burned: &FuelLoadBurned): (ID, u64, u64, u64, u64) {
+    (
+        burned.entity_id,
+        burned.fuel_source_id,
+        burned.amount,
+        burned.impulse,
+        burned.containment_burden,
     )
 }
 

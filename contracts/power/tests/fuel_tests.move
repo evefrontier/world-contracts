@@ -4,7 +4,7 @@ module power::fuel_tests;
 use core::{entity::Entity, test_helpers::setup};
 use power::{
     fuel_math,
-    grid_fuel::{Self, FuelAdded, FuelSourceDetached},
+    grid_fuel::{Self, FuelAdded, FuelLoadBurned, FuelSourceDetached},
     grid_scenario::{
         Self,
         admin,
@@ -157,6 +157,8 @@ fun uninstall_fuel_source_takes_its_share_of_fuel() {
     // FUEL_B is three quarters of the capacity, so it takes three quarters of the fuel.
     let taken = starting_fuel() / 4 * 3;
     assert!(load.load_amount() == taken);
+    assert!(load.load_entity_id() == entity_id);
+    assert!(load.load_fuel_source_id() == FUEL_B);
     assert!(load.load_impulse() == impulse() && load.load_containment_burden() == burden());
     let detached = event::events_by_type<FuelSourceDetached>();
     let (_, fuel, amount, event_impulse, event_burden) = detached[0].fuel_source_detached_fields();
@@ -164,6 +166,13 @@ fun uninstall_fuel_source_takes_its_share_of_fuel() {
     assert!(event_impulse == impulse() && event_burden == burden());
     assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel() - taken);
     grid_fuel::burn_fuel_load(load);
+    let burned = event::events_by_type<FuelLoadBurned>();
+    assert!(burned.length() == 1);
+    let (burned_entity, burned_source, burned_amount, burned_impulse, burned_burden) = burned[
+        0,
+    ].fuel_load_burned_fields();
+    assert!(burned_entity == entity_id && burned_source == FUEL_B && burned_amount == taken);
+    assert!(burned_impulse == impulse() && burned_burden == burden());
 
     clock.destroy_for_testing();
     scenario.end();

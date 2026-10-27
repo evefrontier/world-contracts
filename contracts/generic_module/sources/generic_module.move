@@ -14,6 +14,9 @@ use sui::clock::Clock;
 const EWrongVersion: vector<u8> = b"Generic module version does not match the package version";
 #[error(code = 1)]
 const EModuleMissing: vector<u8> = b"Generic module is not installed on this entity";
+#[error(code = 2)]
+const EWrongTenant: vector<u8> =
+    b"Generic modules can only move between entities of the same tenant";
 
 // === Constants ===
 
@@ -80,6 +83,7 @@ public fun migrate(
     ctx: &mut TxContext,
 ): (Request, Request) {
     borrow_module(from, component_id);
+    assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
     let (c, from_req) = from.uninstall<GenericModule>(
         component_id,
         generic_module_permit(),
