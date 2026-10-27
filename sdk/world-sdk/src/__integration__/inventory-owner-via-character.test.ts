@@ -147,7 +147,7 @@ describe('inventory owner-access via Character', () => {
       powerInventoryOn(runTx, config, su, suCap, MODULE_ID)
 
       const bridgeRequest = interact(runTx, config, su, 'bridge_in')
-      verifyOwner(runTx, config, bridgeRequest, suCap)
+      verifyOwner(runTx, config, su, bridgeRequest, suCap)
       gameItemToChain(runTx, config, su, bridgeRequest, {
         typeId: FUEL,
         quantity: 100n,
@@ -157,7 +157,7 @@ describe('inventory owner-access via Character', () => {
 
       verifyDocking(runTx, config, await dockedProof(config, DOCKED_SHIP, suId))
       const withdrawRequest = interact(runTx, config, su, 'withdraw')
-      verifyOwner(runTx, config, withdrawRequest, suCap)
+      verifyOwner(runTx, config, su, withdrawRequest, suCap)
       const item = withdraw(runTx, config, su, withdrawRequest, {
         typeId: FUEL,
         quantity: 30n,
@@ -165,7 +165,7 @@ describe('inventory owner-access via Character', () => {
       completeRequest(runTx, config, su, withdrawRequest)
 
       const depositRequest = interact(runTx, config, su, 'deposit')
-      verifyOwner(runTx, config, depositRequest, suCap)
+      verifyOwner(runTx, config, su, depositRequest, suCap)
       deposit(runTx, config, su, depositRequest, item)
       completeRequest(runTx, config, su, depositRequest)
 

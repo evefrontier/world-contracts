@@ -41,6 +41,8 @@ const EItemTypeNotAllowed: vector<u8> = b"Item type not permitted by the require
 const EQuantityBelowMin: vector<u8> = b"Quantity below the required minimum";
 #[error(code = 5)]
 const EQuantityAboveMax: vector<u8> = b"Quantity above the allowed maximum";
+#[error(code = 6)]
+const EWrongTenant: vector<u8> = b"Inventory can only move between entities of the same tenant";
 
 // === Constants ===
 
@@ -87,6 +89,12 @@ public struct InventoryUninstalled has copy, drop {
     entity_id: ID,
     component_id: u64,
     used_before: u64,
+}
+
+public struct InventoryMigrated has copy, drop {
+    from_entity_id: ID,
+    to_entity_id: ID,
+    component_id: u64,
 }
 
 // === Public Functions ===
@@ -160,6 +168,36 @@ public fun uninstall(
     event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });
     burn_inventory(inventory, tenant);
     req
+}
+
+/// Move the Inventory at `component_id` from `from` to `to` with its items, and
+/// its grid connection with it. Nothing is burned. Admin-gated: returns
+/// `from`'s request, then `to`'s.
+public fun migrate(
+    from: &mut Entity,
+    to: &mut Entity,
+    component_id: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Request, Request) {
+    assert!(from.has_component_with_type<Inventory>(component_id), EComponentMissing);
+    assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
+    borrow_component(from, component_id);
+    let (inv_component, from_req) = from.uninstall<Inventory>(
+        component_id,
+        inventory_permit(),
+        ctx,
+    );
+    let name = inv_component.name();
+    let inventory = inv_component.unwrap(inventory_permit());
+    let to_req = to.install(component_id, name, inventory, VERSION, inventory_permit(), ctx);
+    grid_load::migrate<Inventory>(from, to, component_id, inventory_permit(), clock);
+    event::emit(InventoryMigrated {
+        from_entity_id: from.id(),
+        to_entity_id: to.id(),
+        component_id,
+    });
+    (from_req, to_req)
 }
 
 /// Game to chain bridge: mint `quantity` of `type_id` into the entity's Inventory.

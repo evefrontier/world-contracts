@@ -105,7 +105,7 @@ describe('metadata owner-access via Character', () => {
       )
       const e = editTx.object(entityId)
       const req = interact(editTx, config, e, 'edit_metadata')
-      verifyOwner(editTx, config, req, entityCap)
+      verifyOwner(editTx, config, e, req, entityCap)
       editMetadata(editTx, config, e, req, {
         name: 'Beta',
         description: 'updated',

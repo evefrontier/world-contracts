@@ -81,6 +81,13 @@ public(package) fun uninstall(
     req
 }
 
+/// Display name of the Generator at `component_id`.
+public(package) fun name(entity: &Entity, component_id: u64): Option<String> {
+    assert_installed(entity, component_id);
+    let c: &Component<Generator> = entity.component_ref(component_id, generator_permit());
+    c.name()
+}
+
 // === Private Functions ===
 
 fun generator_permit(): Permit<Generator> {

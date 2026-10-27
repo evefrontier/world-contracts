@@ -1,7 +1,12 @@
 import { fileURLToPath } from 'node:url'
 import 'dotenv/config'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
-import { createWorldClient, type WorldClient } from '../src/client.js'
+import {
+  createWorldClient,
+  grpcUrlForNetwork,
+  type WorldClient,
+} from '../src/client.js'
+import { envProfile } from '../src/config/env.js'
 import { loadWorldConfig } from '../src/config/load.js'
 import type { Env, WorldConfig } from '../src/config/types.js'
 
@@ -41,7 +46,9 @@ export function loadScriptContext(): ScriptContext {
   const config = loadWorldConfig(manifestPath)
   const grpcUrl =
     process.env.SUI_GRPC_URL ??
-    (env === 'local' ? process.env.SUI_RPC_URL : undefined)
+    (env === 'local'
+      ? process.env.SUI_RPC_URL
+      : grpcUrlForNetwork(envProfile(env).network))
   const client = createWorldClient({ config, grpcUrl })
 
   return { deployEnv, env, repoRoot, manifestPath, config, client, keypair }

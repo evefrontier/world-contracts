@@ -58,6 +58,7 @@ export {
   mintAccess,
   ownerRequirement,
   returnAccess,
+  revokeAccess,
   shareEntity,
   verifyAdmin,
   verifyCaller,
@@ -77,6 +78,7 @@ export {
   genericModuleTypeId,
   type InstallGenericModuleArgs,
   installGenericModule,
+  migrateGenericModule,
   uninstallGenericModule,
 } from './packages/generic-module.js'
 export {
@@ -95,10 +97,30 @@ export {
   type ItemAmount,
   type ItemRule,
   installInventory,
+  migrateInventory,
   uninstallInventory,
   withdraw,
   withdrawRequirement,
 } from './packages/inventory.js'
+export {
+  addModule,
+  addSections,
+  clearShell,
+  commandModuleId,
+  hasShell,
+  installLayout,
+  LAYOUT_ACTION,
+  type LayoutSection,
+  layoutEditRequirement,
+  migrateModuleSection,
+  removeModule,
+  removeSection,
+  sectionIds,
+  sectionModules,
+  setShell,
+  shellId,
+  uninstallLayout,
+} from './packages/layout.js'
 export {
   editMetadata,
   editRequirement,
@@ -109,6 +131,7 @@ export {
 export { signPersonalMessage } from './packages/personal-message.js'
 export {
   assertOnline,
+  burnFuelLoad,
   DESIRED_OFFLINE_MODULE,
   type DepositFuelArgs,
   type DrawKind,
@@ -118,9 +141,13 @@ export {
   type InstallFuelArgs,
   type InstallGeneratorArgs,
   installFuel,
+  installFuelWithLoad,
   installGenerator,
   installPowerGrid,
   type ModulePowerSpec,
+  migrateFuel,
+  migrateGenerator,
+  migrateWith,
   moduleDraw,
   modulePowerArguments,
   onlineRequirement,
@@ -132,6 +159,8 @@ export {
   setGenerator,
   setPowerGrid,
   setPriority,
+  uninstallFuel,
+  uninstallGenerator,
   uninstallPowerGrid,
 } from './packages/power.js'
 export {
@@ -141,3 +170,12 @@ export {
   type ProofMessageArgs,
   proofKind,
 } from './packages/proof.js'
+export {
+  detachSection,
+  type MovePath,
+  mergeCreation,
+  migrateSection,
+  moveSectionModules,
+  type SectionModule,
+  type SectionSpec,
+} from './packages/sections.js'

@@ -25,13 +25,11 @@ export function envProfile(env: Env): EnvProfile {
 
 // e.g. mvrName("dev", "core") -> "@evefrontier/world-core-dev"
 // currency is special-cased: mvrName("dev", "currency") -> "@evefrontier/currency-dev"
-// An MVR name cannot contain `_`, so generic_module is hyphenated.
+// An MVR name cannot contain `_`, so underscores in the package name become hyphens.
 export function mvrName(env: Env, pkg: string): string {
   if (pkg === 'currency') {
     return `${MVR_ORG}/currency${envProfile(env).suffix}`
   }
-  if (pkg === 'generic_module') {
-    return `${MVR_ORG}/world-generic-module${envProfile(env).suffix}`
-  }
-  return `${MVR_ORG}/world-${pkg}${envProfile(env).suffix}`
+  const slug = pkg.replace(/_/g, '-')
+  return `${MVR_ORG}/world-${slug}${envProfile(env).suffix}`
 }

@@ -330,11 +330,11 @@ fun enable_then_disable_action() {
     let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
 
     let mut req = e.disable_action(string::utf8(b"act"), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
 
     ts::return_to_sender(&scenario, cap);
@@ -426,7 +426,7 @@ fun admin_cannot_disable_owner_action_aborts() {
         action::new(vector[]),
         scenario.ctx(),
     );
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
     ts::return_to_sender(&scenario, cap);
     ts::return_shared(e);
@@ -474,7 +474,7 @@ fun interact_prefers_admin_action() {
         action::new(vector[]),
         scenario.ctx(),
     );
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
     ts::return_to_sender(&scenario, cap);
     ts::return_shared(e);
@@ -512,7 +512,7 @@ fun interact_falls_back_to_owner_action() {
     let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
 
     // No admin action has this name, so the owner's action is used.
@@ -604,7 +604,7 @@ fun enable_action_by_non_owner_aborts() {
     let mut e1 = ts::take_shared_by_id<entity::Entity>(&scenario, e1_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e1.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e1.verify_owner(&mut req, &cap);
 
     abort
 }
@@ -630,7 +630,7 @@ fun enable_duplicate_action_aborts() {
     let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let mut req = e.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
-    access_cap::verify(&mut req, &cap);
+    e.verify_owner(&mut req, &cap);
     e.complete_request(req);
     let req = e.enable_action(string::utf8(b"act"), action::new(vector[]), scenario.ctx());
     e.complete_request(req);

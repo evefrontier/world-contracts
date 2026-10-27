@@ -91,7 +91,7 @@ describe('inventory owner round-trip (localnet)', () => {
     const c = runTx.object(capId)
 
     const bridgeRequest = interact(runTx, config, e, 'bridge_in')
-    verifyOwner(runTx, config, bridgeRequest, c)
+    verifyOwner(runTx, config, e, bridgeRequest, c)
     gameItemToChain(runTx, config, e, bridgeRequest, {
       typeId: FUEL,
       quantity: 100n,
@@ -105,7 +105,7 @@ describe('inventory owner round-trip (localnet)', () => {
       await dockedProof(config, DOCKED_SHIP, entityId),
     )
     const withdrawRequest = interact(runTx, config, e, 'withdraw')
-    verifyOwner(runTx, config, withdrawRequest, c)
+    verifyOwner(runTx, config, e, withdrawRequest, c)
     const item = withdraw(runTx, config, e, withdrawRequest, {
       typeId: FUEL,
       quantity: 20n,
@@ -113,7 +113,7 @@ describe('inventory owner round-trip (localnet)', () => {
     completeRequest(runTx, config, e, withdrawRequest)
 
     const depositRequest = interact(runTx, config, e, 'deposit')
-    verifyOwner(runTx, config, depositRequest, c)
+    verifyOwner(runTx, config, e, depositRequest, c)
     deposit(runTx, config, e, depositRequest, item)
     completeRequest(runTx, config, e, depositRequest)
 
