@@ -10,7 +10,7 @@ setup
 ENV=$(get_env "${1:-}")
 shift || true
 PKGS=("$@")
-[ ${#PKGS[@]} -eq 0 ] && PKGS=(core character metadata power inventory generic_module)
+[ ${#PKGS[@]} -eq 0 ] && PKGS=(core character metadata power inventory generic_module killmail)
 
 if [[ "$ENV" == "localnet" ]]; then
     echo "reset-published: localnet has no committed Published.toml" >&2

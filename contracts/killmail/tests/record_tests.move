@@ -5,13 +5,13 @@ use character::identity;
 use core::{
     admin_service::{Self, AdminACL},
     entity::{Self, Entity},
-    entity_key,
-    object_registry::{Self, ObjectRegistry},
-    test_helpers::{create_entity, setup, tenant, take_acl}
+    entity_key::{Self, EntityKey},
+    object_registry::ObjectRegistry,
+    test_helpers::{setup, tenant}
 };
-use killmail::{record::{Self, Killmail}, registry::{Self, KillmailRegistry}};
+use killmail::record::{Self, KillmailCreated};
 use std::string::{Self, String};
-use sui::{event, test_scenario as ts};
+use sui::{bcs, event, hash, test_scenario as ts};
 
 // Test constants
 const ADMIN: address = @0xA;
@@ -20,10 +20,12 @@ const PLAYER: address = @0xC;
 
 const KILLMAIL_ID_1: u64 = 1001;
 const KILLMAIL_ID_2: u64 = 1002;
+const KILLMAIL: vector<u8> = b"killmail";
 
 const KILLER_GAME_ID: u64 = 2001;
 const VICTIM_GAME_ID: u64 = 2002;
 const REPORTER_GAME_ID: u64 = 2003;
+const NON_CHARACTER_GAME_ID: u64 = 2004;
 
 const TRIBE_ID: u32 = 7;
 
@@ -37,14 +39,11 @@ const LOSS_TYPE_STRUCTURE: u8 = 2;
 /// === Test Cases: Success ===
 #[test]
 fun create_killmail_success() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    create_killmail(
+    let mut scenario = setup_reporter();
+    let killmail_id = create_killmail(
         &mut scenario,
         ADMIN,
+        reporter_key(),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
@@ -52,24 +51,25 @@ fun create_killmail_success() {
         LOSS_TYPE_SHIP,
         SOLAR_SYSTEM_ID_1,
     );
+    assert!(event::events_by_type<KillmailCreated>().length() == 1);
 
-    let effects = ts::next_tx(&mut scenario, ADMIN);
-    assert!(effects.num_user_events() == 1);
+    ts::next_tx(&mut scenario, ADMIN);
     {
-        let km = ts::take_shared<Killmail>(&scenario);
-        let key = entity_key::new(KILLMAIL_ID_1, tenant());
-        assert!(km.key() == key);
-        assert!(km.killer_id() == entity_key::new(KILLER_GAME_ID, tenant()));
-        assert!(km.victim_id() == entity_key::new(VICTIM_GAME_ID, tenant()));
-        assert!(km.reported_by_character_id() == entity_key::new(REPORTER_GAME_ID, tenant()));
-        assert!(km.solar_system_id() == entity_key::new(SOLAR_SYSTEM_ID_1, tenant()));
-        assert!(km.kill_timestamp() == TIMESTAMP_1);
-        assert!(km.is_ship_loss());
-        assert!(!km.is_structure_loss());
-
-        let registry = ts::take_shared<KillmailRegistry>(&scenario);
+        let registry = ts::take_shared<ObjectRegistry>(&scenario);
+        let key = killmail_key(KILLMAIL_ID_1);
         assert!(registry.exists(key));
-        assert!(object::id_to_address(&km.id()) == registry.derive_id(key));
+        assert!(object::id_to_address(&killmail_id) == registry.derive_id(key));
+
+        let km = ts::take_shared_by_id<Entity>(&scenario, killmail_id);
+        assert!(km.key() == key);
+        assert!(record::killer_id(&km) == entity_key::new(KILLER_GAME_ID, tenant()));
+        assert!(record::victim_id(&km) == entity_key::new(VICTIM_GAME_ID, tenant()));
+        assert!(record::reported_by_character_id(&km) == reporter_key());
+        assert!(record::solar_system_id(&km) == entity_key::new(SOLAR_SYSTEM_ID_1, tenant()));
+        assert!(record::kill_timestamp(&km) == TIMESTAMP_1);
+        assert!(record::is_ship_loss(&km));
+        assert!(!record::is_structure_loss(&km));
+
         ts::return_shared(km);
         ts::return_shared(registry);
     };
@@ -79,14 +79,11 @@ fun create_killmail_success() {
 
 #[test]
 fun create_killmail_structure_loss() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    create_killmail(
+    let mut scenario = setup_reporter();
+    let killmail_id = create_killmail(
         &mut scenario,
         ADMIN,
+        reporter_key(),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
@@ -97,10 +94,9 @@ fun create_killmail_structure_loss() {
 
     ts::next_tx(&mut scenario, ADMIN);
     {
-        let km = ts::take_shared<Killmail>(&scenario);
-        assert!(km.loss_type() == record::structure());
-        assert!(km.is_structure_loss());
-        assert!(!km.is_ship_loss());
+        let km = ts::take_shared_by_id<Entity>(&scenario, killmail_id);
+        assert!(record::is_structure_loss(&km));
+        assert!(!record::is_ship_loss(&km));
         ts::return_shared(km);
     };
 
@@ -109,14 +105,11 @@ fun create_killmail_structure_loss() {
 
 #[test]
 fun create_multiple_killmails() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    create_killmail(
+    let mut scenario = setup_reporter();
+    let id_1 = create_killmail(
         &mut scenario,
         ADMIN,
+        reporter_key(),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
@@ -125,9 +118,10 @@ fun create_multiple_killmails() {
         SOLAR_SYSTEM_ID_1,
     );
     // Second killmail swaps killer and victim and loses a structure.
-    create_killmail(
+    let id_2 = create_killmail(
         &mut scenario,
         ADMIN,
+        reporter_key(),
         KILLMAIL_ID_2,
         VICTIM_GAME_ID,
         KILLER_GAME_ID,
@@ -135,49 +129,67 @@ fun create_multiple_killmails() {
         LOSS_TYPE_STRUCTURE,
         SOLAR_SYSTEM_ID_1,
     );
+    assert!(id_1 != id_2);
 
     ts::next_tx(&mut scenario, ADMIN);
     {
-        let registry = ts::take_shared<KillmailRegistry>(&scenario);
-        let key_1 = entity_key::new(KILLMAIL_ID_1, tenant());
-        let key_2 = entity_key::new(KILLMAIL_ID_2, tenant());
-        assert!(registry.exists(key_1));
-        assert!(registry.exists(key_2));
-        let id_1 = object::id_from_address(registry.derive_id(key_1));
-        let id_2 = object::id_from_address(registry.derive_id(key_2));
-        assert!(id_1 != id_2);
+        let km_1 = ts::take_shared_by_id<Entity>(&scenario, id_1);
+        assert!(km_1.key() == killmail_key(KILLMAIL_ID_1));
+        assert!(record::killer_id(&km_1) == entity_key::new(KILLER_GAME_ID, tenant()));
+        assert!(record::victim_id(&km_1) == entity_key::new(VICTIM_GAME_ID, tenant()));
+        assert!(record::is_ship_loss(&km_1));
 
-        let km_1 = ts::take_shared_by_id<Killmail>(&scenario, id_1);
-        assert!(km_1.key() == key_1);
-        assert!(km_1.killer_id() == entity_key::new(KILLER_GAME_ID, tenant()));
-        assert!(km_1.victim_id() == entity_key::new(VICTIM_GAME_ID, tenant()));
-        assert!(km_1.is_ship_loss());
-
-        let km_2 = ts::take_shared_by_id<Killmail>(&scenario, id_2);
-        assert!(km_2.key() == key_2);
-        assert!(km_2.killer_id() == entity_key::new(VICTIM_GAME_ID, tenant()));
-        assert!(km_2.victim_id() == entity_key::new(KILLER_GAME_ID, tenant()));
-        assert!(km_2.is_structure_loss());
+        let km_2 = ts::take_shared_by_id<Entity>(&scenario, id_2);
+        assert!(km_2.key() == killmail_key(KILLMAIL_ID_2));
+        assert!(record::killer_id(&km_2) == entity_key::new(VICTIM_GAME_ID, tenant()));
+        assert!(record::victim_id(&km_2) == entity_key::new(KILLER_GAME_ID, tenant()));
+        assert!(record::is_structure_loss(&km_2));
 
         ts::return_shared(km_1);
         ts::return_shared(km_2);
-        ts::return_shared(registry);
+    };
+
+    ts::end(scenario);
+}
+
+#[test]
+fun uninstall_removes_killmail() {
+    let mut scenario = setup_reporter();
+    let killmail_id = create_killmail(
+        &mut scenario,
+        ADMIN,
+        reporter_key(),
+        KILLMAIL_ID_1,
+        KILLER_GAME_ID,
+        VICTIM_GAME_ID,
+        TIMESTAMP_1,
+        LOSS_TYPE_SHIP,
+        SOLAR_SYSTEM_ID_1,
+    );
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut km = ts::take_shared_by_id<Entity>(&scenario, killmail_id);
+        let acl = ts::take_shared<AdminACL>(&scenario);
+        let mut req = record::uninstall(&mut km, scenario.ctx());
+        admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+        km.complete_request(req);
+        assert!(!km.has_component(record::component_id()));
+        ts::return_shared(acl);
+        ts::return_shared(km);
     };
 
     ts::end(scenario);
 }
 
 /// === Test Cases: Failure ===
-#[test, expected_failure(abort_code = record::EKillmailAlreadyExists)]
+#[test, expected_failure(abort_code = entity::EEntityAlreadyExists)]
 fun duplicate_killmail_aborts() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
+    let mut scenario = setup_reporter();
     create_killmail(
         &mut scenario,
         ADMIN,
+        reporter_key(),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
@@ -188,27 +200,8 @@ fun duplicate_killmail_aborts() {
     create_killmail(
         &mut scenario,
         ADMIN,
+        reporter_key(),
         KILLMAIL_ID_1,
-        KILLER_GAME_ID,
-        VICTIM_GAME_ID,
-        TIMESTAMP_1,
-        LOSS_TYPE_SHIP,
-        SOLAR_SYSTEM_ID_1,
-    );
-    abort
-}
-
-#[test, expected_failure(abort_code = record::EKillmailIdEmpty)]
-fun create_killmail_invalid_id() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    create_killmail(
-        &mut scenario,
-        ADMIN,
-        0,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
         TIMESTAMP_1,
@@ -220,14 +213,11 @@ fun create_killmail_invalid_id() {
 
 #[test, expected_failure(abort_code = record::EInvalidLossType)]
 fun create_killmail_invalid_loss_type() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
+    let mut scenario = setup_reporter();
     create_killmail(
         &mut scenario,
         ADMIN,
+        reporter_key(),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
@@ -240,14 +230,11 @@ fun create_killmail_invalid_loss_type() {
 
 #[test, expected_failure(abort_code = record::EInvalidLossType)]
 fun create_killmail_unknown_loss_type() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
+    let mut scenario = setup_reporter();
     create_killmail(
         &mut scenario,
         ADMIN,
+        reporter_key(),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
@@ -258,101 +245,18 @@ fun create_killmail_unknown_loss_type() {
     abort
 }
 
-#[test, expected_failure(abort_code = record::EKillerIdEmpty)]
-fun create_killmail_invalid_killer_id() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    create_killmail(
-        &mut scenario,
-        ADMIN,
-        KILLMAIL_ID_1,
-        0,
-        VICTIM_GAME_ID,
-        TIMESTAMP_1,
-        LOSS_TYPE_SHIP,
-        SOLAR_SYSTEM_ID_1,
-    );
-    abort
-}
-
-#[test, expected_failure(abort_code = record::EVictimIdEmpty)]
-fun create_killmail_invalid_victim_id() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    create_killmail(
-        &mut scenario,
-        ADMIN,
-        KILLMAIL_ID_1,
-        KILLER_GAME_ID,
-        0,
-        TIMESTAMP_1,
-        LOSS_TYPE_SHIP,
-        SOLAR_SYSTEM_ID_1,
-    );
-    abort
-}
-
-#[test, expected_failure(abort_code = record::ENotSponsor)]
-fun create_killmail_not_sponsor() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    // PLAYER is not on the sponsor list
+#[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
+fun create_killmail_not_admin() {
+    let mut scenario = setup_reporter();
+    // PLAYER is not on the admin list
     create_killmail(
         &mut scenario,
         PLAYER,
+        reporter_key(),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
         TIMESTAMP_1,
-        LOSS_TYPE_SHIP,
-        SOLAR_SYSTEM_ID_1,
-    );
-    abort
-}
-
-#[test, expected_failure(abort_code = record::ESolarSystemIdEmpty)]
-fun create_killmail_invalid_solar_system_id() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    create_killmail(
-        &mut scenario,
-        ADMIN,
-        KILLMAIL_ID_1,
-        KILLER_GAME_ID,
-        VICTIM_GAME_ID,
-        TIMESTAMP_1,
-        LOSS_TYPE_SHIP,
-        0,
-    );
-    abort
-}
-
-#[test, expected_failure(abort_code = record::EInvalidTimestamp)]
-fun create_killmail_invalid_timestamp() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
-    create_killmail(
-        &mut scenario,
-        ADMIN,
-        KILLMAIL_ID_1,
-        KILLER_GAME_ID,
-        VICTIM_GAME_ID,
-        0,
         LOSS_TYPE_SHIP,
         SOLAR_SYSTEM_ID_1,
     );
@@ -360,15 +264,24 @@ fun create_killmail_invalid_timestamp() {
 }
 
 #[test, expected_failure(abort_code = record::EReporterNotCharacter)]
-fun create_killmail_reporter_not_character() {
-    let mut scenario = ts::begin(ADMIN);
-    record_test_setup(&mut scenario);
+fun create_killmail_reporter_without_identity() {
+    let mut scenario = setup_reporter();
 
-    // A plain entity with no Identity component installed
-    create_entity(&mut scenario, REPORTER_GAME_ID);
+    // A bare entity with no identity component installed.
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = ts::take_shared<ObjectRegistry>(&scenario);
+    let acl = ts::take_shared<AdminACL>(&scenario);
+    let (mut bare, mut req) = entity::new(&mut registry, NON_CHARACTER_GAME_ID, tenant());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    bare.complete_request(req);
+    bare.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
     create_killmail(
         &mut scenario,
         ADMIN,
+        entity_key::new(NON_CHARACTER_GAME_ID, tenant()),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
@@ -379,26 +292,46 @@ fun create_killmail_reporter_not_character() {
     abort
 }
 
+#[test, expected_failure(abort_code = record::EComponentMissing)]
+fun uninstall_without_killmail_aborts() {
+    let mut scenario = setup_reporter();
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let registry = ts::take_shared<ObjectRegistry>(&scenario);
+    let reporter_id = object::id_from_address(registry.derive_id(reporter_key()));
+    let mut reporter = ts::take_shared_by_id<Entity>(&scenario, reporter_id);
+    let _req = record::uninstall(&mut reporter, scenario.ctx());
+    abort
+}
+
 /// === Test Helpers ===
-/// Setup the test environment for killmail record tests
-fun record_test_setup(scenario: &mut ts::Scenario) {
-    setup(scenario);
-    registry::init_for_testing(scenario.ctx());
+/// Setup the registries and create the reporter character.
+fun setup_reporter(): ts::Scenario {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
 
-    ensure_admin_sponsors(scenario);
+    ts::next_tx(&mut scenario, ADMIN);
+    create_character(&mut scenario, REPORTER_GAME_ID, tenant(), TRIBE_ID, OWNER);
+    scenario
 }
 
-/// Put `ADMIN` on the sponsor list.
-fun ensure_admin_sponsors(scenario: &mut ts::Scenario) {
-    ts::next_tx(scenario, ADMIN);
-    let mut acl = take_acl(scenario);
-    if (!admin_service::is_sponsor(&acl, ADMIN)) {
-        admin_service::add_sponsors(&mut acl, vector[ADMIN], scenario.ctx());
-    };
-    ts::return_shared(acl);
+fun reporter_key(): EntityKey {
+    entity_key::new(REPORTER_GAME_ID, tenant())
 }
 
-/// Helper to create one character (used as reported_by_character; killer_id/victim_id are just u64s in the API)
+/// Killmail entity id: first 8 bytes (LE) of `blake2b256(bcs(game_id) ++ "killmail")`.
+fun killmail_id(game_id: u64): u64 {
+    let mut bytes = bcs::to_bytes(&game_id);
+    bytes.append(KILLMAIL);
+    let mut b = bcs::new(hash::blake2b256(&bytes));
+    b.peel_u64()
+}
+
+fun killmail_key(game_id: u64): EntityKey {
+    entity_key::new(killmail_id(game_id), tenant())
+}
+
+/// Helper to create one character (used as the reporter)
 fun create_character(
     scenario: &mut ts::Scenario,
     in_game_id: u64,
@@ -422,27 +355,36 @@ fun create_character(
     ts::return_shared(registry);
 }
 
-/// One tx: `sender` reports a killmail with the shared reporter character.
+/// One tx, as the game server's PTB: `sender` claims a killmail entity, installs the
+/// killmail component on it, and shares it. Returns the killmail entity's id.
 fun create_killmail(
     scenario: &mut ts::Scenario,
     sender: address,
-    item_id: u64,
+    reporter: EntityKey,
+    killmail_game_id: u64,
     killer_id: u64,
     victim_id: u64,
     timestamp: u64,
     loss_type: u8,
     solar_system_id: u64,
-) {
+): ID {
     scenario.next_tx(sender);
-    let reporter = ts::take_shared<Entity>(scenario);
-    let mut registry = ts::take_shared<KillmailRegistry>(scenario);
+    let mut registry = ts::take_shared<ObjectRegistry>(scenario);
     let acl = ts::take_shared<AdminACL>(scenario);
+    let reporter_id = object::id_from_address(registry.derive_id(reporter));
+    let reporter = ts::take_shared_by_id<Entity>(scenario, reporter_id);
 
-    record::create_killmail(
+    let (mut killmail, mut req) = entity::new(
         &mut registry,
+        killmail_id(killmail_game_id),
+        tenant(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    killmail.complete_request(req);
+
+    let mut req = record::install(
+        &mut killmail,
         &reporter,
-        &acl,
-        item_id,
         killer_id,
         victim_id,
         timestamp,
@@ -450,8 +392,13 @@ fun create_killmail(
         solar_system_id,
         scenario.ctx(),
     );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    killmail.complete_request(req);
 
+    let killmail_id = killmail.id();
+    killmail.share();
     ts::return_shared(reporter);
     ts::return_shared(acl);
     ts::return_shared(registry);
+    killmail_id
 }
