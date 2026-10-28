@@ -6,7 +6,11 @@ import { createWorldClient } from '../client.js'
 import { loadWorldConfig } from '../config/load.js'
 import { createCharacter } from '../packages/character.js'
 import { deriveObjectId } from '../packages/core.js'
-import { createKillmail, LOSS_TYPE_SHIP } from '../packages/killmail.js'
+import {
+  createKillmail,
+  killmailId,
+  LOSS_TYPE_SHIP,
+} from '../packages/killmail.js'
 import { expectSuccess } from './helpers.js'
 
 // Integration: exercises the createCharacter binding against a running localnet.
@@ -48,7 +52,7 @@ describe('createKillmail (localnet)', () => {
       lossType: LOSS_TYPE_SHIP,
       solarSystemId: BigInt(4),
       reporterId,
-      killTime: BigInt(Math.floor(Date.now() / 1000)), // Current time in seconds
+      killTime: new Date(),
     })
 
     // Admin-gated create; character is owned by PLAYER.
@@ -66,6 +70,8 @@ describe('createKillmail (localnet)', () => {
     const created = res.Transaction.effects.changedObjects
       .filter((o) => o.idOperation === 'Created')
       .map((o) => o.objectId)
-    expect(created).toContain(deriveObjectId(config, key))
+    expect(created).toContain(
+      deriveObjectId(config, { id: killmailId(key.id), tenant: key.tenant }),
+    )
   })
 })

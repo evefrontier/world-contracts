@@ -1,4 +1,6 @@
+import { bcs } from '@mysten/sui/bcs'
 import type { Transaction } from '@mysten/sui/transactions'
+import { blake2b } from '@noble/hashes/blake2'
 import { mvrName } from '../config/env.js'
 import type { WorldConfig } from '../config/types.js'
 import {
@@ -25,9 +27,33 @@ export interface KillmailArgs {
   victimId: bigint
   lossType: LossType
   solarSystemId: bigint
-  killTime: bigint
+  killTime: Date
 }
 
+const KILLMAIL_ID_SUFFIX = new TextEncoder().encode('killmail')
+
+/**
+ * Entity id for a killmail: first 8 bytes (LE) of `blake2b256(bcs(u64 inGameId) ++ "killmail")`.
+ * Namespaces killmail ids so they can't collide with other entities' game ids.
+ */
+export function killmailId(inGameId: bigint): bigint {
+  const idBytes = bcs.u64().serialize(inGameId).toBytes()
+  const input = new Uint8Array(idBytes.length + KILLMAIL_ID_SUFFIX.length)
+  input.set(idBytes)
+  input.set(KILLMAIL_ID_SUFFIX, idBytes.length)
+  const digest = blake2b(input, { dkLen: 32 })
+  const view = new DataView(digest.buffer, digest.byteOffset, digest.byteLength)
+  return view.getBigUint64(0, true)
+}
+
+/**
+ * Converts a Date to milliseconds
+ * @param killTime
+ * @returns Date as milliseconds (u64)
+ */
+function convertDateToMilliseconds(killTime: Date): bigint {
+  return BigInt(Math.floor(killTime.getTime() / 1000))
+}
 /**
  * Append the full killmail-creation flow to `tx`: claim the entity, install the
  * killmail module, and share it. Each lifecycle step is admin-gated, so the
@@ -39,7 +65,7 @@ export function createKillmail(
   args: KillmailArgs,
 ): void {
   const [killmail, claimReq] = entityNew(tx, config, {
-    inGameId: args.inGameId,
+    inGameId: killmailId(args.inGameId),
     tenant: args.tenant,
   })
 
@@ -57,7 +83,7 @@ export function createKillmail(
       reporter,
       tx.pure.u64(args.killerId),
       tx.pure.u64(args.victimId),
-      tx.pure.u64(args.killTime),
+      tx.pure.u64(convertDateToMilliseconds(args.killTime)),
       tx.pure.u8(args.lossType),
       tx.pure.u64(args.solarSystemId),
     ],

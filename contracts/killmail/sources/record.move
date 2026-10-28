@@ -29,6 +29,10 @@ const EWrongVersion: vector<u8> = b"Killmail component version does not match th
 const EComponentMissing: vector<u8> = b"Killmail component is not installed on this entity";
 #[error(code = 3)]
 const EReporterNotCharacter: vector<u8> = b"Reporter does not have the identity component";
+#[error(code = 4)]
+const EInvalidKillTime: vector<u8> = b"Kill time must be a valid date";
+#[error(code = 5)]
+const EWrongTenant: vector<u8> = b"Reporter and Entity tenants must match";
 
 // === Constants ===
 
@@ -81,6 +85,7 @@ public fun install(
     solar_system_id: u64,
     ctx: &mut TxContext,
 ): Request {
+    assert!(kill_timestamp > 0, EInvalidKillTime);
     assert!(
         reporter.has_component_with_type<Identity>(identity::component_id()),
         EReporterNotCharacter,
@@ -89,6 +94,7 @@ public fun install(
     let key = entity.key();
     let tenant = key.tenant();
 
+    assert!(tenant == reporter.key().tenant(), EWrongTenant);
     let killmail = Killmail {
         killer_id: entity_key::new(killer_id, tenant),
         victim_id: entity_key::new(victim_id, tenant),

@@ -211,6 +211,23 @@ fun duplicate_killmail_aborts() {
     abort
 }
 
+#[test, expected_failure(abort_code = record::EInvalidKillTime)]
+fun create_killmail_zero_kill_time() {
+    let mut scenario = setup_reporter();
+    create_killmail(
+        &mut scenario,
+        ADMIN,
+        reporter_key(),
+        KILLMAIL_ID_1,
+        KILLER_GAME_ID,
+        VICTIM_GAME_ID,
+        0,
+        LOSS_TYPE_SHIP,
+        SOLAR_SYSTEM_ID_1,
+    );
+    abort
+}
+
 #[test, expected_failure(abort_code = record::EInvalidLossType)]
 fun create_killmail_invalid_loss_type() {
     let mut scenario = setup_reporter();
@@ -282,6 +299,29 @@ fun create_killmail_reporter_without_identity() {
         &mut scenario,
         ADMIN,
         entity_key::new(NON_CHARACTER_GAME_ID, tenant()),
+        KILLMAIL_ID_1,
+        KILLER_GAME_ID,
+        VICTIM_GAME_ID,
+        TIMESTAMP_1,
+        LOSS_TYPE_SHIP,
+        SOLAR_SYSTEM_ID_1,
+    );
+    abort
+}
+
+#[test, expected_failure(abort_code = record::EWrongTenant)]
+fun create_killmail_reporter_wrong_tenant() {
+    let mut scenario = setup_reporter();
+
+    // A valid character, but in a different tenant from the killmail.
+    ts::next_tx(&mut scenario, ADMIN);
+    let other_tenant = string::utf8(b"other-tenant");
+    create_character(&mut scenario, REPORTER_GAME_ID, other_tenant, TRIBE_ID, OWNER);
+
+    create_killmail(
+        &mut scenario,
+        ADMIN,
+        entity_key::new(REPORTER_GAME_ID, other_tenant),
         KILLMAIL_ID_1,
         KILLER_GAME_ID,
         VICTIM_GAME_ID,
