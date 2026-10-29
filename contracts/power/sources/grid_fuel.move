@@ -39,6 +39,8 @@ const EStashMissing: vector<u8> = b"No stashed fuel for this fuel bay on this po
 const EStashExists: vector<u8> = b"Fuel bay is already connected or stashed on this power grid";
 #[error(code = 12)]
 const EWrongFuelBay: vector<u8> = b"Fuel load belongs to another fuel bay";
+#[error(code = 13)]
+const EFuelShort: vector<u8> = b"Online fuel bays hold less fuel than the withdrawal";
 
 // === Structs ===
 
@@ -109,6 +111,14 @@ public struct FuelBayToggled has copy, drop {
     entity_id: ID,
     fuel_bay_id: u64,
     online: bool,
+}
+
+/// The service took `quantity` (at `SCALE`) from the online bays, for a warp.
+/// `remaining` is what the online bays hold after.
+public struct FuelWithdrawn has copy, drop {
+    entity_id: ID,
+    quantity: u64,
+    remaining: u64,
 }
 
 /// Fuel was loaded into a bay; the `resulting_*` values are that bay after blending.
@@ -241,6 +251,29 @@ public fun stash_load(entity: &mut Entity, req: &mut Request, load: FuelLoad) {
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
     emit_stashed(entity_id, fuel_bay_id, fuel);
+}
+
+/// Take `quantity` of fuel (at `SCALE`) from the online bays, all or nothing,
+/// each bay giving in proportion to what it holds. The game server calls it
+/// before a warp with the warp's cost; an abort means no warp. Settles first, so
+/// burn counts before the check. The request needs a `withdraw_fuel_requirement`,
+/// and the frame then requires the admin.
+public fun withdraw_fuel(entity: &mut Entity, req: &mut Request, quantity: u64, clock: &Clock) {
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = power_grid::take_grid(
+        entity,
+        req,
+        power_grid::withdraw_fuel_permit(),
+    );
+    assert!(quantity > 0, EZeroFuel);
+    grid.settle(clock);
+    let held = grid.online_fuel().quantity();
+    assert!(held >= quantity, EFuelShort);
+    grid.take_from_online(quantity);
+    grid.regrant(entity_id);
+    event::emit(FuelWithdrawn { entity_id, quantity, remaining: held - quantity });
+    frame.require(admin_service::admin_requirement());
+    req.enqueue(frame);
 }
 
 /// Destroy a fuel load whose bay item no longer exists.
@@ -453,6 +486,12 @@ fun enforce_fuel(
 }
 
 // === Test Functions ===
+
+/// `(entity_id, quantity, remaining)`.
+#[test_only]
+public fun fuel_withdrawn_fields(withdrawn: &FuelWithdrawn): (ID, u64, u64) {
+    (withdrawn.entity_id, withdrawn.quantity, withdrawn.remaining)
+}
 
 /// `(entity_id, fuel_bay_id, fuel_type, amount, resulting_amount, resulting_impulse,
 /// resulting_containment_burden, resulting_volatility)`.

@@ -233,9 +233,14 @@ gives the combined rate.
 
 #### Warp
 
-`withdraw_fuel(amount)` takes `amount` from the online bays in proportion to
-what each holds, all or nothing. The game server passes the warp's cost minus
-any fuel the engine kept from a cut-short warp. If it aborts, there is no warp.
+`withdraw_fuel(quantity)` takes `quantity` (at `SCALE`) from the online bays in
+proportion to what each holds, all or nothing; shares round down and the
+remainder comes off the largest bay. It settles first, so burn counts before
+the check, and aborts with `EFuelShort` when the online bays hold less. Offline
+bays and stashes don't count. The game server passes the warp's cost minus any
+fuel the engine kept from a cut-short warp. If it aborts, there is no warp. It
+is an admin action using `withdraw_fuel_requirement()` and emits
+`FuelWithdrawn { quantity, remaining }`.
 
 ### Settlement and projection
 
@@ -271,7 +276,7 @@ empty, generators give `0`, and fuel modules get no fuel.
 | `set_desired_state` | owner | power modules; never refused |
 | `set_priority` | owner | stored only |
 | `set_fuel_module` | admin | fuel modules; online with a rate (at `SCALE`), offline with none |
-| `withdraw_fuel` | admin | all or nothing |
+| `withdraw_fuel` | admin | all or nothing, at `SCALE` |
 | `shut_down` | admin | shell lost: clears every desired state and takes generators and bays offline |
 
 Requirements:

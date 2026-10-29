@@ -43,6 +43,7 @@ const TEMP_ACTION: vector<u8> = b"temp_action";
 const TAKE_STASH: vector<u8> = b"take_stash";
 const STASH_LOAD: vector<u8> = b"stash_load";
 const SET_FUEL_MODULE: vector<u8> = b"set_fuel_module";
+const WITHDRAW_FUEL: vector<u8> = b"withdraw_fuel";
 
 /// A stand-in consuming module (Inventory, Thruster, ...).
 public struct Consumer has store {}
@@ -556,6 +557,40 @@ public fun destroy_stash(
     let acl = take_acl(scenario);
     let (req, load) = take_stash(&mut entity, fuel_bay_id, scenario.ctx());
     grid_fuel::destroy_fuel_load(load);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// ADMIN exposes the `withdraw_fuel` admin action on `entity_id`.
+public fun enable_withdraw(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(
+        &mut entity,
+        &acl,
+        WITHDRAW_FUEL,
+        power_grid::withdraw_fuel_requirement(),
+        scenario.ctx(),
+    );
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` withdraws `quantity` (at `SCALE`) from `entity_id`'s online bays.
+public fun withdraw(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    quantity: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(WITHDRAW_FUEL), scenario.ctx());
+    grid_fuel::withdraw_fuel(&mut entity, &mut req, quantity, clock);
     close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);

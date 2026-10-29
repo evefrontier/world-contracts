@@ -164,6 +164,10 @@ public struct ManageStash() has drop;
 /// `grid_load::set_fuel_module`. The frame then requires the admin.
 public struct OperateFuelModule() has drop;
 
+/// Marker for the service taking warp fuel with `grid_fuel::withdraw_fuel`.
+/// The frame then requires the admin.
+public struct WithdrawFuel() has drop;
+
 /// Minimum grid state an action can require. `None` skips a check.
 public struct PowerGridRequirement has drop {
     on: bool,
@@ -289,6 +293,11 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
     grid.regrant(entity_id);
     frame.require(access_cap::owner_requirement());
     req.enqueue(frame);
+}
+
+/// Requirement satisfied by `grid_fuel::withdraw_fuel`; one per call.
+public fun withdraw_fuel_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), WithdrawFuel())
 }
 
 /// Requirement satisfied by `grid_load::set_fuel_module`; one per call.
@@ -907,6 +916,16 @@ public(package) fun new_fuel(
 }
 
 /// Keep an uninstalled bay's fuel until the bay is refitted or moved.
+/// Take `quantity` from the online bays in proportion to what each holds.
+/// Caller settles first and checks the online bays hold enough.
+public(package) fun take_from_online(grid: &mut PowerGrid, quantity: u64) {
+    take_from_online_bays(&mut grid.bays, quantity);
+}
+
+public(package) fun withdraw_fuel_permit(): Permit<WithdrawFuel> {
+    internal::permit<WithdrawFuel>()
+}
+
 public(package) fun stash_fuel(grid: &mut PowerGrid, fuel_bay_id: u64, fuel: Fuel) {
     grid.stashed.insert(fuel_bay_id, fuel);
 }

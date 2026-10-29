@@ -356,6 +356,14 @@ export function migrateWith(
 
 // === Requirements ===
 
+/** Satisfied by `withdrawFuel`; add it as the `withdraw_fuel` admin action. */
+export function withdrawFuelRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({ target: grid(config, 'withdraw_fuel_requirement') })
+}
+
 /** Satisfied by `setFuelModule`; add it as the `set_fuel_module` admin action. */
 export function operateFuelModuleRequirement(
   tx: Transaction,
@@ -548,6 +556,26 @@ export function setFuelBay(
     ],
   })
   verifyOwner(tx, config, entity, request, ownerCap)
+}
+
+/**
+ * Take `quantity` of fuel (at `POWER_SCALE`) from the online bays for a warp,
+ * all or nothing; an abort means no warp. Needs the `withdraw_fuel` admin
+ * action (`withdrawFuelRequirement`). Admin-gated.
+ */
+export function withdrawFuel(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  quantity: bigint,
+): void {
+  const request = interact(tx, config, entity, 'withdraw_fuel')
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'withdraw_fuel'),
+    arguments: [entity, request, tx.pure.u64(quantity), tx.object.clock()],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
 }
 
 /**

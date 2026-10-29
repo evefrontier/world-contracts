@@ -182,6 +182,8 @@ export {
   uninstallFuelBay,
   uninstallGenerator,
   uninstallPowerGrid,
+  withdrawFuel,
+  withdrawFuelRequirement,
 } from './packages/power.js'
 export {
   type DockingArgs,
