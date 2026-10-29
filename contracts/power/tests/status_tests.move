@@ -23,7 +23,8 @@ use power::{
         set_fuel_bay,
         set_fuel_module,
         set_generator,
-        setup_entity
+        setup_entity,
+        volatility
     },
     power_grid::{Self, PowerStatus}
 };
@@ -173,7 +174,16 @@ fun fuel_only_offline_reads_bays_offline() {
     let mut clock = clock::create_for_testing(scenario.ctx());
     let entity_id = running(&mut scenario, &clock);
     install_fuel(&mut scenario, entity_id, FUEL_B, fuel_capacity(), &clock);
-    deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 100, impulse(), burden(), 1, &clock);
+    deposit_fuel_into(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        100,
+        impulse(),
+        burden(),
+        volatility(),
+        &clock,
+    );
 
     clock.set_for_testing(DEPLETING_MS);
 

@@ -318,8 +318,8 @@ public fun set_fuel_bay(
 
 // TODO: an `Item` to fuel path once inventory can connect to the fuel bay.
 /// Load `amount` of fuel into one bay and blend its stats by weighted average,
-/// if it meets the owner's `FuelRequirement`. All values plain, supplied by the
-/// game server; the bay stores the amount at `SCALE`.
+/// if it meets the owner's `FuelRequirement`. Supplied by the game server: `amount`
+/// plain, stats at `SCALE`. The bay stores the amount at `SCALE`.
 public fun deposit_fuel(
     entity: &mut Entity,
     req: &mut Request,

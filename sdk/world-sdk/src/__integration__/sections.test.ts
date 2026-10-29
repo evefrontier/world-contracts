@@ -29,6 +29,7 @@ import {
   installFuelBay,
   installGenerator,
   installPowerGrid,
+  POWER_SCALE,
   parseProjectedBays,
   projectedBays,
 } from '../packages/power.js'
@@ -48,9 +49,9 @@ import {
 
 const TENANT = 'sections-t1'
 const DATA = [1, 2, 3, 9]
-const IMPULSE = 90n
-const BURDEN = 14n
-const VOLATILITY = 5n
+const IMPULSE = 90n * POWER_SCALE
+const BURDEN = 14n * POWER_SCALE
+const VOLATILITY = 5n * POWER_SCALE
 
 type World = ReturnType<typeof loadLocalnetWorld>
 

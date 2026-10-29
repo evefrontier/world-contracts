@@ -23,7 +23,7 @@ const MOD_A: u64 = 401;
 const OUTPUT: u64 = 15;
 const CONTAINMENT: u64 = 10;
 const DRAW: u64 = 10;
-const IMPULSE: u64 = 90;
+const IMPULSE: u64 = 900_000;
 
 /// A grid with no power sources, off.
 fun setup_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {

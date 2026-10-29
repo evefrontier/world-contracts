@@ -390,7 +390,17 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     let acl = take_acl(scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
-    grid_fuel::deposit_fuel(&mut entity, &mut req, FUEL_BAY_ID, 7, 100, 90, 14, 5, &clock);
+    grid_fuel::deposit_fuel(
+        &mut entity,
+        &mut req,
+        FUEL_BAY_ID,
+        7,
+        100,
+        900_000,
+        140_000,
+        50_000,
+        &clock,
+    );
     entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);

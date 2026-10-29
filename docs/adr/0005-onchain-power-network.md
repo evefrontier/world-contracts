@@ -172,12 +172,13 @@ public enum DrawKind has copy, drop, store { Firm, Elastic }
 public enum PowerKind has copy, drop, store { Power, Fuel }
 ```
 
-- Every input is a plain whole number: power values (`power_req`,
-  `max_output_mw`, grants), bay `capacity`, deposited fuel amounts, fuel stats
-  and generator rates. The chain does no unit scaling; any authoring scale
-  lives off chain. Only the stored fuel quantity and burn are fixed point at
-  `SCALE = 10_000`, so short settles burn fractions. Blended stats round down
-  to whole numbers. Capacity checks compare `quantity ≤ capacity × SCALE`.
+- Power values (`power_req`, `max_output_mw`, grants), bay `capacity`,
+  deposited fuel amounts, `containment_reduction` and `base_fuel_rate` are
+  plain whole numbers. Fuel stats (impulse, containment burden, volatility),
+  stored fuel quantity, burn and fuel module rates are fixed point at
+  `SCALE = 10_000`, so stats keep fractions (impulse 46.67 is `466_700`) and
+  short settles burn fractions. Blends round down at `SCALE`. Capacity checks
+  compare `quantity ≤ capacity × SCALE`.
 - The power limit is the sum of `max_output_mw` of online generators while the
   grid is on and the online bays hold fuel, else `0`.
 - `priority` and `line_loss` are stored on `ModulePowerSpec` and ignored by

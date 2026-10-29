@@ -21,6 +21,7 @@ import {
   installFuelBay,
   installGenerator,
   operateGridRequirement,
+  POWER_SCALE,
   setDesiredState,
   setFuelBay,
   setGenerator,
@@ -50,9 +51,9 @@ const CONT_REDUCTION = 10n
 const BASE_FUEL_RATE = 1n
 // 500 units of fuel: impulse 90, containment burden 14.
 const FUEL_AMOUNT = 500n
-const IMPULSE = 90n
-const BURDEN = 14n
-const VOLATILITY = 1n
+const IMPULSE = 90n * POWER_SCALE
+const BURDEN = 14n * POWER_SCALE
+const VOLATILITY = 1n * POWER_SCALE
 
 function eventNames(result: ExecutedTransaction): string[] {
   return (result.events ?? []).map(

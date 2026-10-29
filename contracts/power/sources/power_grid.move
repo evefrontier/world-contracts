@@ -98,7 +98,7 @@ public struct FuelBayState has copy, drop, store {
     fuel: Fuel,
 }
 
-/// A quantity of fuel at `SCALE` and its plain stats. Loading fuel blends the
+/// A quantity of fuel and its stats, all at `SCALE`. Loading fuel blends the
 /// stats by quantity-weighted average. Inside a stored `FuelBayState` the
 /// quantity is as of `last_settled_ms`, not live; `projected_bays` gives it now.
 public struct Fuel has copy, drop, store {
@@ -202,7 +202,7 @@ public struct PowerGridRequirement has drop {
     on: bool,
     /// Minimum fuel in online bays, plain units, if set.
     fuel_quantity: Option<u64>,
-    /// Minimum blended impulse of the online bays, if set.
+    /// Minimum blended impulse of the online bays, at `SCALE`, if set.
     fuel_impulse: Option<u64>,
     /// Minimum rated `capacity_mw`.
     capacity_mw: u64,
@@ -222,7 +222,7 @@ public struct GeneratorRequirement has drop {
 }
 
 /// The owner's rules for which fuel `deposit_fuel` accepts. Empty `fuel_types`
-/// or `None` skips a check. Stats and amounts plain.
+/// or `None` skips a check. Stats at `SCALE`, amounts plain.
 public struct FuelRequirement has drop {
     /// Allowed fuel type ids; empty allows any.
     fuel_types: vector<u64>,

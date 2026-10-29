@@ -1,6 +1,7 @@
 /// Pure fuel math. No grid state: callers pass the numbers and get a number back.
-/// Power, fuel stats and rates come in as plain integers. Fuel quantity and burn
-/// are fixed point at `SCALE` (4 decimals), so a short settle still burns a fraction.
+/// Power comes in as plain integers. Fuel quantity, stats, rates and burn are
+/// fixed point at `SCALE` (4 decimals), so stats keep fractions and a short
+/// settle still burns a fraction.
 module power::fuel_math;
 
 // === Constants ===
@@ -18,12 +19,12 @@ public fun scale(): u64 {
 }
 
 /// Fuel burned per second of load: `impulse / max(1, burden / containment_reduction)`,
-/// clamped to [1, 100]. Plain stats in, factor out at `SCALE`.
+/// clamped to [1, 100]. Stats in at `SCALE`, plain reduction, factor out at `SCALE`.
 public fun fuel_factor(impulse: u64, containment_burden: u64, containment_reduction: u64): u64 {
     let scale = SCALE as u128;
     let reduction = containment_reduction.max(1) as u128;
-    let burden_ratio = ((containment_burden as u128) * scale / reduction).max(scale);
-    let factor = (impulse as u128) * scale * scale / burden_ratio;
+    let burden_ratio = ((containment_burden as u128) / reduction).max(scale);
+    let factor = (impulse as u128) * scale / burden_ratio;
     (factor.min(MAX_FUEL_FACTOR as u128) as u64).max(MIN_FUEL_FACTOR)
 }
 
@@ -42,8 +43,8 @@ public(package) fun blend(
     (total / ((pooled_quantity + added_quantity) as u128)) as u64
 }
 
-/// One online Generator's burn over `elapsed_ms`, at `SCALE`. Rounds up. Every
-/// input is plain. Zero impulse has no fuel factor, so the Generator burns its
+/// One online Generator's burn over `elapsed_ms`, at `SCALE`. Rounds up. Stats at
+/// `SCALE`, everything else plain. Zero impulse has no fuel factor, so the Generator burns its
 /// base rate instead.
 public(package) fun generator_burn(
     impulse: u64,
@@ -89,19 +90,20 @@ fun divide_round_up(numerator: u128, denominator: u128): u128 {
 /// 1 MW split across two equal generators at fuel factor 1: each burns 0.5 a second.
 #[test]
 fun half_share_burns_half_the_load() {
-    let one_ms = generator_burn(1, 1, 2, 1, 1, 0, 1, 1);
-    let one_second = generator_burn(1, 1, 2, 1, 1, 0, 1, 1_000);
-    let three_seconds = generator_burn(1, 1, 2, 1, 1, 0, 1, 3_000);
+    let one_ms = generator_burn(10_000, 10_000, 2, 1, 1, 0, 1, 1);
+    let one_second = generator_burn(10_000, 10_000, 2, 1, 1, 0, 1, 1_000);
+    let three_seconds = generator_burn(10_000, 10_000, 2, 1, 1, 0, 1, 3_000);
     assert!(one_ms == 5);
     assert!(one_second == 5_000);
     assert!(three_seconds == 15_000);
 }
 
-/// 10 MW at impulse 46, burden 7, reduction 10 (factor 46) burns 0.2174 a second.
+/// 10 MW at impulse 46.6666, burden 7.3333, reduction 10 (factor 46.6666) burns
+/// 0.2143 a second, the overview's blend.
 #[test]
-fun plain_stats_burn() {
-    let one_second = generator_burn(46, 7, 10, 10, 10, 0, 10, 1_000);
-    assert!(one_second == 2_174);
+fun scaled_stats_burn() {
+    let one_second = generator_burn(466_666, 73_333, 10, 10, 10, 0, 10, 1_000);
+    assert!(one_second == 2_143);
 }
 
 /// Zero impulse burns the base rate: 2 units a second is 20_000 at `SCALE`.

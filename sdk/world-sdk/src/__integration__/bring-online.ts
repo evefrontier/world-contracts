@@ -14,6 +14,7 @@ import {
   installFuelBay,
   installGenerator,
   operateGridRequirement,
+  POWER_SCALE,
   setDesiredState,
   setFuelBay,
   setGenerator,
@@ -81,9 +82,9 @@ export function powerInventoryOn(
     fuelBayId: FUEL_BAY_ID,
     fuelType: 7n,
     amount: 100n,
-    impulse: 90n,
-    containmentBurden: 14n,
-    volatility: 5n,
+    impulse: 90n * POWER_SCALE,
+    containmentBurden: 14n * POWER_SCALE,
+    volatility: 5n * POWER_SCALE,
   })
   completeRequest(tx, config, entity, fuelRequest)
 

@@ -14,9 +14,9 @@ import {
   verifySponsor,
 } from './core.js'
 
-// Everything the SDK passes in is a plain integer: MW, bay capacity, deposit
-// amounts, fuel stats and rates. Stored fuel quantity is fixed point at
-// `POWER_SCALE` (0.1 units = 1_000n), so short settles still burn a fraction.
+// MW, bay capacity and deposit amounts are plain integers. Fuel quantities,
+// stats and rates are fixed point at `POWER_SCALE` (0.1 units = 1_000n), so
+// stats keep fractions and short settles still burn a fraction.
 export const POWER_SCALE = 10_000n
 
 const POWER_PACKAGE = 'power'
@@ -444,7 +444,7 @@ export function operateGridRequirement(
   return tx.moveCall({ target: grid(config, 'operate_grid_requirement') })
 }
 
-/** The owner's rules for `depositFuel`. Omitted fields skip a check; values plain. */
+/** The owner's rules for `depositFuel`. Omitted fields skip a check. Stats at `POWER_SCALE`, amounts plain. */
 export interface FuelRule {
   fuelTypes?: bigint[]
   minImpulse?: bigint | null
@@ -491,7 +491,7 @@ export function onlineRequirement(
 
 // === Handlers (satisfy the next requirement on `request`) ===
 
-/** Fuel to load into one bay. Amount and stats plain. */
+/** Fuel to load into one bay. Amount plain, stats at `POWER_SCALE`. */
 export interface DepositFuelArgs {
   fuelBayId: bigint
   fuelType: bigint
@@ -754,7 +754,7 @@ const BaysBcs = bcs.struct('VecMap', {
   ),
 })
 
-/** A fuel bay as `projectedBays` returns it. `quantity` at `POWER_SCALE`, stats plain. */
+/** A fuel bay as `projectedBays` returns it. Quantity and stats at `POWER_SCALE`. */
 export interface ProjectedBay {
   fuelBayId: bigint
   capacity: bigint
@@ -778,7 +778,7 @@ export function parseProjectedBays(bytes: Uint8Array): ProjectedBay[] {
   }))
 }
 
-/** Fuel quantity (at `POWER_SCALE`) and its plain stats. */
+/** Fuel quantity and its stats, all at `POWER_SCALE`. */
 export interface FuelAmount {
   quantity: bigint
   impulse: bigint

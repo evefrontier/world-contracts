@@ -32,9 +32,10 @@ const FUEL_CAPACITY: u64 = 100_000;
 /// Starting fuel of that bay, plain units.
 const STARTING_FUEL: u64 = 50_000;
 /// Fuel stats, plain.
-const IMPULSE: u64 = 90;
-const BURDEN: u64 = 14;
-const VOLATILITY: u64 = 1;
+/// Fuel stats at `SCALE`: impulse 90, burden 14, volatility 1.
+const IMPULSE: u64 = 900_000;
+const BURDEN: u64 = 140_000;
+const VOLATILITY: u64 = 10_000;
 const FUEL_TYPE: u64 = 7;
 
 const OPERATE: vector<u8> = b"operate_grid";

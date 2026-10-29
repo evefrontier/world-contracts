@@ -25,6 +25,7 @@ import {
   installPowerGrid,
   moduleDraw,
   operateGridRequirement,
+  POWER_SCALE,
   setDesiredState,
   setFuelBay,
   setGenerator,
@@ -121,9 +122,9 @@ describe('power sharing (localnet)', () => {
       fuelBayId: BAY_ID,
       fuelType: 1n,
       amount: 9_000n,
-      impulse: 90n,
-      containmentBurden: 14n,
-      volatility: 1n,
+      impulse: 90n * POWER_SCALE,
+      containmentBurden: 14n * POWER_SCALE,
+      volatility: 1n * POWER_SCALE,
     })
     completeRequest(onTx, config, entity, fuel)
     const bay = interact(onTx, config, entity, 'set_fuel_bay')

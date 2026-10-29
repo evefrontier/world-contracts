@@ -21,6 +21,7 @@ import {
   moduleDraw,
   moduleStatus,
   operateGridRequirement,
+  POWER_SCALE,
   type PowerStatus,
   parsePowerStatus,
   setDesiredState,
@@ -109,9 +110,9 @@ describe('shut down (localnet)', () => {
       fuelBayId: BAY_ID,
       fuelType: 1n,
       amount: 500n,
-      impulse: 90n,
-      containmentBurden: 14n,
-      volatility: 1n,
+      impulse: 90n * POWER_SCALE,
+      containmentBurden: 14n * POWER_SCALE,
+      volatility: 1n * POWER_SCALE,
     })
     completeRequest(onTx, config, entity, fuel)
     owner(onTx, entity, 'set_fuel_bay', (request) =>

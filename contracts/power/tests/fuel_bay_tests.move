@@ -88,8 +88,8 @@ fun overview_blend(scenario: &mut ts::Scenario, clock: &Clock): ID {
     let entity_id = setup_entity(scenario, vector[DRAW], vector[CONTAINMENT], clock);
     uninstall_fuel(scenario, entity_id, fuel_bay_id(), clock);
     install_fuel(scenario, entity_id, FUEL_B, BAY_B_CAPACITY, clock);
-    deposit_fuel_into(scenario, entity_id, FUEL_B, 1_000, 25, 4, 6, clock);
-    deposit_fuel_into(scenario, entity_id, FUEL_B, 500, 90, 14, 5, clock);
+    deposit_fuel_into(scenario, entity_id, FUEL_B, 1_000, 250_000, 40_000, 6_000, clock);
+    deposit_fuel_into(scenario, entity_id, FUEL_B, 500, 900_000, 140_000, 5_000, clock);
     set_fuel_bay(scenario, entity_id, FUEL_B, true, clock);
     power_up(scenario, entity_id, 1, clock);
     install_module(scenario, entity_id, MOD_A, firm_power(DRAW), clock);
@@ -107,8 +107,8 @@ fun gated_deposit(scenario: &mut ts::Scenario, clock: &Clock): ID {
         GATED_DEPOSIT,
         power_grid::deposit_fuel_requirement(
             vector[fuel_type(), OTHER_TYPE],
-            option::some(50),
-            option::some(15),
+            option::some(500_000),
+            option::some(150_000),
             option::some(10),
             option::some(1_000),
         ),
@@ -152,16 +152,19 @@ fun bay_online(scenario: &mut ts::Scenario, entity_id: ID, fuel_bay_id: u64): bo
 
 #[test]
 fun fuel_factor_matches_client() {
+    // Stats at `SCALE`.
     // impulse 90, burden 14, reduction 10 -> 90 / 1.4 = 64.2857
-    assert!(fuel_math::fuel_factor(90, 14, 10) == 642_857);
+    assert!(fuel_math::fuel_factor(900_000, 140_000, 10) == 642_857);
     // impulse 10, burden 3, reduction 10 -> burden ratio floors at 1 -> 10
-    assert!(fuel_math::fuel_factor(10, 3, 10) == 100_000);
+    assert!(fuel_math::fuel_factor(100_000, 30_000, 10) == 100_000);
     // impulse 0 clamps up to 1
-    assert!(fuel_math::fuel_factor(0, 3, 10) == 10_000);
+    assert!(fuel_math::fuel_factor(0, 30_000, 10) == 10_000);
     // impulse 200 clamps down to 100
-    assert!(fuel_math::fuel_factor(200, 3, 10) == 1_000_000);
+    assert!(fuel_math::fuel_factor(2_000_000, 30_000, 10) == 1_000_000);
     // reduction 0 floors at 1 -> 90 / 14 = 6.4285
-    assert!(fuel_math::fuel_factor(90, 14, 0) == 64_285);
+    assert!(fuel_math::fuel_factor(900_000, 140_000, 0) == 64_285);
+    // fractional stats keep their fractions: 46.6666 / max(1, 0.7333) = 46.6666
+    assert!(fuel_math::fuel_factor(466_666, 73_333, 10) == 466_666);
 }
 
 // === Install and uninstall ===
@@ -197,7 +200,7 @@ fun uninstall_stashes_the_bays_exact_fuel() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
     install_fuel(&mut scenario, entity_id, FUEL_B, BAY_B_CAPACITY, &clock);
-    deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 7, 25, 4, 6, &clock);
+    deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 7, 250_000, 40_000, 6_000, &clock);
 
     uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
 
@@ -206,10 +209,10 @@ fun uninstall_stashes_the_bays_exact_fuel() {
         0,
     ].fuel_stashed_fields();
     assert!(stashed_entity == entity_id && stashed_bay == FUEL_B);
-    assert!(quantity == 70_000 && stashed_volatility == 6);
+    assert!(quantity == 70_000 && stashed_volatility == 6_000);
     let fuel = stashed_fuel(&mut scenario, entity_id, FUEL_B).destroy_some();
-    assert!(fuel.quantity() == 70_000 && fuel.impulse() == 25);
-    assert!(fuel.containment_burden() == 4 && fuel.volatility() == 6);
+    assert!(fuel.quantity() == 70_000 && fuel.impulse() == 250_000);
+    assert!(fuel.containment_burden() == 40_000 && fuel.volatility() == 6_000);
     assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel());
 
     clock.destroy_for_testing();
@@ -590,9 +593,9 @@ fun deposit_blends_by_weighted_average() {
         entity_id,
         fuel_bay_id(),
         starting_units(),
-        10,
-        4,
-        7,
+        100_000,
+        40_000,
+        70_000,
         &clock,
     );
 
@@ -601,15 +604,15 @@ fun deposit_blends_by_weighted_average() {
     let (_, bay, _, amount, resulting, impulse, burden, volatility) = added[0].fuel_added_fields();
     assert!(bay == fuel_bay_id() && amount == starting_units());
     assert!(resulting == 2 * starting_fuel());
-    assert!(impulse == 50 && burden == 9 && volatility == 4);
+    assert!(impulse == 500_000 && burden == 90_000 && volatility == 40_000);
     assert!(settled_fuel(&mut scenario, entity_id) == 2 * starting_fuel());
 
     clock.destroy_for_testing();
     scenario.end();
 }
 
-/// The overview's blend: 1000 units of A and 500 of B. Stats round down to whole
-/// numbers: impulse 46.67 to 46, burden 7.33 to 7.
+/// The overview's blend: 1000 units of A and 500 of B. Stats keep four decimals:
+/// impulse 46.6666, burden 7.3333, volatility 0.5666.
 #[test]
 fun deposit_matches_overview_blend() {
     let mut scenario = ts::begin(admin());
@@ -619,9 +622,9 @@ fun deposit_matches_overview_blend() {
 
     let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
     assert!(fuel.quantity() == 15_000_000);
-    assert!(fuel.impulse() == 46);
-    assert!(fuel.containment_burden() == 7);
-    assert!(fuel.volatility() == 5);
+    assert!(fuel.impulse() == 466_666);
+    assert!(fuel.containment_burden() == 73_333);
+    assert!(fuel.volatility() == 5_666);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -636,29 +639,29 @@ fun deposit_blends_only_its_bay() {
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
     install_fuel(&mut scenario, entity_id, FUEL_B, BAY_B_CAPACITY, &clock);
 
-    deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 7, 10, 4, 7, &clock);
+    deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 7, 100_000, 40_000, 70_000, &clock);
 
     let default_fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
     assert!(default_fuel.quantity() == starting_fuel() && default_fuel.impulse() == impulse());
-    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).impulse() == 10);
+    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).impulse() == 100_000);
 
     clock.destroy_for_testing();
     scenario.end();
 }
 
-/// A tiny deposit pulls the average down by less than one whole step: the
-/// blend rounds down.
+/// A tiny deposit pulls impulse 90 down to 89.99466..., which rounds down to
+/// four decimals.
 #[test]
 fun deposit_blend_rounds_down() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    deposit_fuel(&mut scenario, entity_id, 3, 1, 14, &clock);
+    deposit_fuel(&mut scenario, entity_id, 3, 10_000, 140_000, &clock);
 
     let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
-    assert!(fuel.impulse() == 89);
-    assert!(fuel.containment_burden() == 14);
+    assert!(fuel.impulse() == 899_946);
+    assert!(fuel.containment_burden() == 140_000);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -718,7 +721,7 @@ fun deposit_meeting_fuel_requirement_succeeds() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = gated_deposit(&mut scenario, &clock);
-    gated(&mut scenario, entity_id, fuel_type(), 500, 60, 10, &clock);
+    gated(&mut scenario, entity_id, fuel_type(), 500, 600_000, 100_000, &clock);
     assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel() + 500 * power_grid::scale());
 
     clock.destroy_for_testing();
@@ -731,7 +734,7 @@ fun deposit_disallowed_fuel_type_aborts() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = gated_deposit(&mut scenario, &clock);
-    gated(&mut scenario, entity_id, BANNED_TYPE, 500, 60, 10, &clock);
+    gated(&mut scenario, entity_id, BANNED_TYPE, 500, 600_000, 100_000, &clock);
 
     abort
 }
@@ -742,7 +745,7 @@ fun deposit_low_impulse_aborts() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = gated_deposit(&mut scenario, &clock);
-    gated(&mut scenario, entity_id, fuel_type(), 500, 40, 10, &clock);
+    gated(&mut scenario, entity_id, fuel_type(), 500, 400_000, 100_000, &clock);
 
     abort
 }
@@ -753,7 +756,7 @@ fun deposit_high_burden_aborts() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = gated_deposit(&mut scenario, &clock);
-    gated(&mut scenario, entity_id, fuel_type(), 500, 60, 20, &clock);
+    gated(&mut scenario, entity_id, fuel_type(), 500, 600_000, 200_000, &clock);
 
     abort
 }
@@ -764,7 +767,7 @@ fun deposit_below_min_amount_aborts() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = gated_deposit(&mut scenario, &clock);
-    gated(&mut scenario, entity_id, fuel_type(), 5, 60, 10, &clock);
+    gated(&mut scenario, entity_id, fuel_type(), 5, 600_000, 100_000, &clock);
 
     abort
 }
@@ -775,7 +778,7 @@ fun deposit_above_max_amount_aborts() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = gated_deposit(&mut scenario, &clock);
-    gated(&mut scenario, entity_id, fuel_type(), 2_000, 60, 10, &clock);
+    gated(&mut scenario, entity_id, fuel_type(), 2_000, 600_000, 100_000, &clock);
 
     abort
 }
@@ -806,8 +809,8 @@ fun burn_over_time_and_view_matches_settle() {
     scenario.end();
 }
 
-/// The overview's generator example: 10 MW on the blend (factor 46, rounded
-/// down from 46.67) burns 0.2174 units in a second.
+/// The overview's generator example: 10 MW on the blend (factor 46.6666) burns
+/// 0.2143 units in a second, the overview's 0.214.
 #[test]
 fun overview_blend_burns_at_its_factor() {
     let mut scenario = ts::begin(admin());
@@ -817,7 +820,7 @@ fun overview_blend_burns_at_its_factor() {
 
     clock.set_for_testing(1_000);
     let (fuel_left, _, _, _) = projected(&mut scenario, entity_id, &clock);
-    assert!(fuel_left == 15_000_000 - 2_174);
+    assert!(fuel_left == 15_000_000 - 2_143);
 
     clock.destroy_for_testing();
     scenario.end();

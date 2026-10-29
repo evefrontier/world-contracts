@@ -81,9 +81,9 @@ describe('warp fuel (localnet)', () => {
       fuelBayId: BAY_ID,
       fuelType: 1n,
       amount: UNITS,
-      impulse: 90n,
-      containmentBurden: 14n,
-      volatility: 1n,
+      impulse: 90n * POWER_SCALE,
+      containmentBurden: 14n * POWER_SCALE,
+      volatility: 1n * POWER_SCALE,
     })
     completeRequest(fuelTx, config, entity, fuel)
     const bay = interact(fuelTx, config, entity, 'set_fuel_bay')

@@ -54,20 +54,20 @@ const CONT_REDUCTION = 10n
 const BAY_CAPACITY = 2_000n
 const BURN_WAIT_MS = 4_000
 
-// The overview's fuels, plain units and stats.
+// The overview's fuels: plain amounts, stats at `POWER_SCALE`.
 const FUEL_A = {
   fuelType: 1n,
   amount: 1_000n,
-  impulse: 25n,
-  containmentBurden: 4n,
-  volatility: 6n,
+  impulse: 25n * POWER_SCALE,
+  containmentBurden: 4n * POWER_SCALE,
+  volatility: 6_000n,
 }
 const FUEL_B = {
   fuelType: 2n,
   amount: 500n,
-  impulse: 90n,
-  containmentBurden: 14n,
-  volatility: 5n,
+  impulse: 90n * POWER_SCALE,
+  containmentBurden: 14n * POWER_SCALE,
+  volatility: 5_000n,
 }
 
 describe('fuel bays (localnet)', () => {
@@ -154,9 +154,9 @@ describe('fuel bays (localnet)', () => {
     expect(loaded.get(BAY_A)).toMatchObject({
       online: false,
       quantity: 15_000_000n,
-      impulse: 46n,
-      containmentBurden: 7n,
-      volatility: 5n,
+      impulse: 466_666n,
+      containmentBurden: 73_333n,
+      volatility: 5_666n,
     })
     expect(loaded.get(BAY_B)).toMatchObject({
       online: false,

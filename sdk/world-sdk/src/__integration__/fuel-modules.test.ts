@@ -103,9 +103,9 @@ describe('fuel modules (localnet)', () => {
       fuelBayId: BAY_ID,
       fuelType: 1n,
       amount: 500n,
-      impulse: 90n,
-      containmentBurden: 14n,
-      volatility: 1n,
+      impulse: 90n * POWER_SCALE,
+      containmentBurden: 14n * POWER_SCALE,
+      volatility: 1n * POWER_SCALE,
     })
     completeRequest(onTx, config, entity, fuel)
     const bay = interact(onTx, config, entity, 'set_fuel_bay')
