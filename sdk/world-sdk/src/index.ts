@@ -136,6 +136,7 @@ export {
 } from './packages/metadata.js'
 export { signPersonalMessage } from './packages/personal-message.js'
 export {
+  assertFits,
   assertOnline,
   DESIRED_OFFLINE_MODULE,
   type DepositFuelArgs,
@@ -145,6 +146,7 @@ export {
   destroyFuelLoad,
   type FuelAmount,
   type FuelRule,
+  fitsRequirement,
   type InstallFuelBayArgs,
   type InstallGeneratorArgs,
   installFuelBay,

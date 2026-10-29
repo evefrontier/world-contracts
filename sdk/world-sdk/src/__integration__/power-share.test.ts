@@ -15,9 +15,11 @@ import {
 } from '../packages/core.js'
 import { installGenericModule } from '../packages/generic-module.js'
 import {
+  assertFits,
   type DrawKind,
   depositFuel,
   depositFuelRequirement,
+  fitsRequirement,
   installFuelBay,
   installGenerator,
   installPowerGrid,
@@ -29,6 +31,7 @@ import {
   setPowerGrid,
 } from '../packages/power.js'
 import {
+  expectAbort,
   expectSuccess,
   loadLocalnetWorld,
   mintAccessCap,
@@ -91,6 +94,11 @@ describe('power sharing (localnet)', () => {
         operateGridRequirement(createTx, config),
       ])
     }
+    // The owner's pre-filtered switch: the operation, then the overload check.
+    enableAdminAction(createTx, config, creation, 'set_desired_state_fitted', [
+      operateGridRequirement(createTx, config),
+      fitsRequirement(createTx, config),
+    ])
     enableAdminAction(createTx, config, creation, 'deposit_fuel', [
       depositFuelRequirement(createTx, config),
     ])
@@ -165,6 +173,33 @@ describe('power sharing (localnet)', () => {
       C: 0n,
       D: 10n,
       E: 0n,
+    })
+
+    // With the pre-filter, E's switch-on aborts instead of overloading.
+    const fittedTx = new Transaction()
+    const fitted = fittedTx.object(entityId)
+    const request = interact(
+      fittedTx,
+      config,
+      fitted,
+      'set_desired_state_fitted',
+    )
+    setDesiredState(
+      fittedTx,
+      config,
+      fitted,
+      request,
+      fittedTx.object(capId),
+      MODULES.E[0],
+      true,
+    )
+    assertFits(fittedTx, config, fitted, request)
+    completeRequest(fittedTx, config, fitted, request)
+    await expectAbort(client, fittedTx, signer, /EWouldOverload/)
+    expect(await readDraws(client, config, entityId)).toMatchObject({
+      A: 70n,
+      B: 20n,
+      D: 10n,
     })
   })
 })

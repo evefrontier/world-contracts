@@ -45,6 +45,7 @@ const STASH_LOAD: vector<u8> = b"stash_load";
 const SET_FUEL_MODULE: vector<u8> = b"set_fuel_module";
 const WITHDRAW_FUEL: vector<u8> = b"withdraw_fuel";
 const SHUT_DOWN: vector<u8> = b"shut_down";
+const FITTED: vector<u8> = b"operate_fitted";
 
 /// A stand-in consuming module (Inventory, Thruster, ...).
 public struct Consumer has store {}
@@ -562,6 +563,39 @@ public fun destroy_stash(
     ts::return_shared(acl);
     ts::return_shared(entity);
 }
+
+/// OWNER exposes `FITTED`: the owner's grid operation followed by the
+/// overload pre-filter.
+public fun enable_fitted(scenario: &mut ts::Scenario, entity_id: ID) {
+    enable_action_with(
+        scenario,
+        entity_id,
+        FITTED,
+        vector[power_grid::operate_grid_requirement(), power_grid::fits_requirement()],
+    );
+}
+
+/// OWNER runs `$op` through `FITTED`, so the pre-filter checks the result.
+public macro fun fitted(
+    $scenario: &mut ts::Scenario,
+    $entity_id: ID,
+    $op: |&mut Entity, &mut Request|,
+) {
+    let scenario = $scenario;
+    ts::next_tx(scenario, owner());
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, $entity_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let mut req = entity.interact(string::utf8(fitted_action_name()), scenario.ctx());
+    $op(&mut entity, &mut req);
+    entity.verify_owner(&mut req, &cap);
+    power_grid::assert_fits(&mut entity, &mut req);
+    entity.complete_request(req);
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(entity);
+}
+
+/// Name of the action `enable_fitted` exposes.
+public fun fitted_action_name(): vector<u8> { FITTED }
 
 /// ADMIN exposes the `shut_down` admin action on `entity_id`.
 public fun enable_shut_down(scenario: &mut ts::Scenario, entity_id: ID) {

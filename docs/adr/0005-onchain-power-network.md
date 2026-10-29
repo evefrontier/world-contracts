@@ -285,9 +285,12 @@ Requirements:
 - `power_grid_requirement(...)` and `generator_requirement(...)`: grid and
   generator checks.
 - `deposit_fuel_requirement(...)`: which fuel a deposit accepts.
-- `fits_requirement()`: the pre-filter. The owner puts it after the grid
-  operation in their power actions; it aborts with `EWouldOverload` if the
-  desired Firm load no longer fits. It can't catch fuel running out.
+- `fits_requirement()`: the pre-filter, resolved by `assert_fits`. The owner
+  puts it after the grid operation in their power actions (for example
+  `[operate_grid_requirement(), fits_requirement()]`); it aborts with
+  `EWouldOverload` if `desired_firm_mw` exceeds `capacity_mw`, the online
+  generators' output. That covers switch-ons and generators going offline.
+  Elastic asks never overload. It can't catch fuel running out.
 
 Power Off (player-signed) keeps intent. `shut_down` clears it, so everything stays off until the owner switches it on.
 `shut_down` is an admin action using `shut_down_requirement()`: it settles,
@@ -315,8 +318,10 @@ There is no run-out event on chain; off chain services computes run-out from the
 - `projected_status`: power limit, `used_mw`, online module ids.
 - `module_state`: one module as of the last settle.
 
-Builders run their own shed order by reading these views and switching modules
-in one owner PTB. Choosing a bay to fill ("most room", "fill all") is a PTB
+Builders run their own shed order by reading these views (`capacity_mw`,
+`desired_firm_mw`, each module's `power_req`, `draw_kind` and `priority`) and
+switching modules in one owner PTB, for example granting Firm modules in
+priority order and skipping any that no longer fit. Choosing a bay to fill ("most room", "fill all") is a PTB
 helper over `deposit_fuel`.
 
 ## Consequences

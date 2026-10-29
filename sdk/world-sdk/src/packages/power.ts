@@ -356,6 +356,33 @@ export function migrateWith(
 
 // === Requirements ===
 
+/**
+ * The owner's overload pre-filter. Add it after `operateGridRequirement` in a
+ * power action; satisfy it with `assertFits` after the operation.
+ */
+export function fitsRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({ target: grid(config, 'fits_requirement') })
+}
+
+/**
+ * Abort with `EWouldOverload` unless the desired Firm load fits the online
+ * generators' output. Resolves `fitsRequirement`.
+ */
+export function assertFits(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: grid(config, 'assert_fits'),
+    arguments: [entity, request],
+  })
+}
+
 /** Satisfied by `shutDown`; add it as the `shut_down` admin action. */
 export function shutDownRequirement(
   tx: Transaction,

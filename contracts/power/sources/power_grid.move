@@ -55,6 +55,9 @@ const EFuelBayNotConnected: vector<u8> = b"Fuel bay is not connected to this pow
 const EUnknownDrawKind: vector<u8> = b"Unknown draw kind";
 #[error(code = 14)]
 const EFuelStashed: vector<u8> = b"Power grid still holds stashed fuel of uninstalled bays";
+#[error(code = 15)]
+const EWouldOverload: vector<u8> =
+    b"Desired Firm power would exceed the online generators' output and turn every module off";
 
 // === Constants ===
 
@@ -172,6 +175,11 @@ public struct WithdrawFuel() has drop;
 /// Marker for the service shutting a Creation down with `shut_down`. The frame
 /// then requires the admin.
 public struct ShutDown() has drop;
+
+/// The owner's overload pre-filter. Put after a grid operation in an action
+/// (`set_desired_state`, `set_generator`, ...), it aborts the whole transaction
+/// if the desired Firm load no longer fits, so nothing turns off.
+public struct Fits() has drop;
 
 /// Minimum grid state an action can require. `None` skips a check.
 public struct PowerGridRequirement has drop {
@@ -333,6 +341,21 @@ public fun shut_down(entity: &mut Entity, req: &mut Request, clock: &Clock) {
     event::emit(GridShutDown { entity_id });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
+}
+
+/// Abort with `EWouldOverload` unless the desired Firm load fits the online
+/// generators' output, as the action's earlier operations left it. Resolves a
+/// `fits_requirement`. It can't catch fuel running out, which happens over time.
+public fun assert_fits(entity: &mut Entity, req: &mut Request) {
+    let (_requirement, frame, grid) = take_grid(entity, req, fits_permit());
+    assert!(grid.desired_firm_mw() <= grid.capacity_mw(), EWouldOverload);
+    frame.destroy_empty_frame();
+}
+
+/// The overload pre-filter. Add it after the grid operation in an owner
+/// action; see `assert_fits`.
+public fun fits_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), Fits())
 }
 
 /// Requirement satisfied by `shut_down`; one per call.
@@ -815,6 +838,23 @@ public fun is_fuel(kind: &PowerKind): bool {
     }
 }
 
+/// Firm MW the desired-online power modules need. Above `capacity_mw` it
+/// overloads the grid and every power module goes off.
+public fun desired_firm_mw(grid: &PowerGrid): u64 {
+    let mut total = 0;
+    grid.modules.length().do!(|i| {
+        let (_, state) = grid.modules.get_entry_by_idx(i);
+        if (
+            state.desired_online
+                && state.module_spec.power_kind == PowerKind::Power
+                && state.module_spec.draw_kind == DrawKind::Firm
+        ) {
+            total = total + state.module_spec.power_req;
+        };
+    });
+    total
+}
+
 /// Combined rate of desired-online fuel modules, per second at `SCALE`. They
 /// burn it only while the grid is on and the online bays hold fuel.
 public fun fuel_modules_rate(grid: &PowerGrid): u64 {
@@ -965,6 +1005,10 @@ public(package) fun new_fuel(
 /// Caller settles first and checks the online bays hold enough.
 public(package) fun take_from_online(grid: &mut PowerGrid, quantity: u64) {
     take_from_online_bays(&mut grid.bays, quantity);
+}
+
+fun fits_permit(): Permit<Fits> {
+    internal::permit<Fits>()
 }
 
 fun shut_down_permit(): Permit<ShutDown> {
