@@ -146,6 +146,19 @@ public enum DrawKind has copy, drop, store {
     Elastic,
 }
 
+/// Why a module or generator is or isn't running now. Checked in this order:
+/// `Off` (switched off), `GridOff` (Power Off), `NoFuel` (no online bay and no
+/// offline bay holds fuel), `BaysOffline` (online bays empty but an offline bay
+/// holds fuel), `NoPower` (a power module the grid can't carry), else `Online`.
+public enum PowerStatus has copy, drop, store {
+    Online,
+    Off,
+    GridOff,
+    NoPower,
+    NoFuel,
+    BaysOffline,
+}
+
 /// What a module draws from. `Power` modules take grants from the generators.
 /// `Fuel` modules (leap, overdrive) burn a rate straight from the online bays
 /// while online and the grid is on; they have `power_req = 0` and take no part
@@ -582,6 +595,37 @@ public fun module_draw(entity: &Entity, module_id: u64, clock: &Clock): u64 {
 
 /// Every connected module now. Spec and desired state stay. Draw is `0` once
 /// the online bays run dry.
+/// Why connected module `module_id` is or isn't running now.
+public fun module_status(entity: &Entity, module_id: u64, clock: &Clock): PowerStatus {
+    let grid = power_grid(entity);
+    assert!(grid.modules.contains(&module_id), EModuleNotConnected);
+    grid.status_of(&grid.modules[&module_id], grid.fuel_left(clock))
+}
+
+/// Every connected module's status now, by module id.
+public fun module_statuses(entity: &Entity, clock: &Clock): VecMap<u64, PowerStatus> {
+    let grid = power_grid(entity);
+    let fuel_now = grid.fuel_left(clock);
+    let mut statuses = vec_map::empty();
+    grid.modules.length().do!(|i| {
+        let (module_id, state) = grid.modules.get_entry_by_idx(i);
+        statuses.insert(*module_id, grid.status_of(state, fuel_now));
+    });
+    statuses
+}
+
+/// Why Generator `generator_id` is or isn't supplying power now. A Generator
+/// refused fuel stays online and reads `NoFuel` or `BaysOffline`; it supplies
+/// again once fuel reaches an online bay.
+public fun generator_status(entity: &Entity, generator_id: u64, clock: &Clock): PowerStatus {
+    let grid = power_grid(entity);
+    assert!(grid.generators.contains(&generator_id), EComponentMissing);
+    if (!grid.generators[&generator_id].online) return PowerStatus::Off;
+    if (!grid.on) return PowerStatus::GridOff;
+    if (grid.fuel_left(clock) == 0) return grid.fuel_short_status();
+    PowerStatus::Online
+}
+
 public fun projected_module_states(entity: &Entity, clock: &Clock): VecMap<u64, ModuleState> {
     let grid = power_grid(entity);
     let fuel_out = grid.fuel_left(clock) == 0;
@@ -867,6 +911,18 @@ public fun fuel_modules_rate(grid: &PowerGrid): u64 {
     });
     total
 }
+
+public fun online_status(): PowerStatus { PowerStatus::Online }
+
+public fun off_status(): PowerStatus { PowerStatus::Off }
+
+public fun grid_off_status(): PowerStatus { PowerStatus::GridOff }
+
+public fun no_power_status(): PowerStatus { PowerStatus::NoPower }
+
+public fun no_fuel_status(): PowerStatus { PowerStatus::NoFuel }
+
+public fun bays_offline_status(): PowerStatus { PowerStatus::BaysOffline }
 
 public fun is_firm(kind: &DrawKind): bool {
     match (kind) {
@@ -1212,6 +1268,25 @@ fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
 }
 
 /// Fuel in online bays now. Same number `projected_fuel` returns.
+/// A module's status given the fuel in online bays now.
+fun status_of(grid: &PowerGrid, state: &ModuleState, fuel_now: u64): PowerStatus {
+    if (!state.desired_online) return PowerStatus::Off;
+    if (!grid.on) return PowerStatus::GridOff;
+    if (fuel_now == 0) return grid.fuel_short_status();
+    if (grid.live_draw(state) == 0) return PowerStatus::NoPower;
+    PowerStatus::Online
+}
+
+/// `BaysOffline` if an offline bay holds fuel, else `NoFuel`.
+fun fuel_short_status(grid: &PowerGrid): PowerStatus {
+    let mut offline_fuel = false;
+    grid.bays.length().do!(|i| {
+        let (_, bay) = grid.bays.get_entry_by_idx(i);
+        if (!bay.online && bay.fuel.quantity > 0) offline_fuel = true;
+    });
+    if (offline_fuel) PowerStatus::BaysOffline else PowerStatus::NoFuel
+}
+
 fun fuel_left(grid: &PowerGrid, clock: &Clock): u64 {
     grid.online_fuel().quantity - grid.fuel_burn(clock.timestamp_ms())
 }

@@ -313,8 +313,13 @@ There is no run-out event on chain; off chain services computes run-out from the
 
 - `projected_fuel`, `projected_bays`: fuel now, in total and per bay.
 - `stashed_fuel`: an uninstalled bay's stash, which never burns.
-- `projected_module_states`: every module now, with a reason: `Online`, `Off`,
-  `GridOff`, `NoPower`, `NoFuel` or `BaysOffline`.
+- `projected_module_states`: every module now, draws projected.
+- `module_status`, `module_statuses`, `generator_status`: why each is or isn't
+  running now, as a `PowerStatus`, checked in this order: `Off` (switched off),
+  `GridOff` (Power Off), `NoFuel` (no bay holds fuel), `BaysOffline` (online
+  bays empty, an offline bay holds fuel), `NoPower` (a power module the grid
+  can't carry), else `Online`. A generator refused fuel stays online and reads
+  `NoFuel` or `BaysOffline`; it supplies again once fuel reaches an online bay.
 - `projected_status`: power limit, `used_mw`, online module ids.
 - `module_state`: one module as of the last settle.
 

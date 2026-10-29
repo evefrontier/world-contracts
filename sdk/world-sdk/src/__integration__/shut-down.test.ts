@@ -19,7 +19,10 @@ import {
   installGenerator,
   installPowerGrid,
   moduleDraw,
+  moduleStatus,
   operateGridRequirement,
+  type PowerStatus,
+  parsePowerStatus,
   setDesiredState,
   setFuelBay,
   setGenerator,
@@ -125,6 +128,7 @@ describe('shut down (localnet)', () => {
     )
     await expectSuccess(client, onTx)
     expect(await readDraw(entityId)).toBe(DRAW)
+    expect(await readStatus(entityId)).toBe('online')
 
     // Power Off then On: the module comes back by itself.
     await powerCycle(entityId, capId)
@@ -135,6 +139,7 @@ describe('shut down (localnet)', () => {
     shutDown(shutTx, config, shutTx.object(entityId))
     await expectSuccess(client, shutTx)
     expect(await readDraw(entityId)).toBe(0n)
+    expect(await readStatus(entityId)).toBe('off')
     await powerCycle(entityId, capId)
     expect(await readDraw(entityId)).toBe(0n)
   })
@@ -160,6 +165,24 @@ describe('shut down (localnet)', () => {
       )
     }
     await expectSuccess(client, tx)
+  }
+
+  async function readStatus(entityId: string): Promise<PowerStatus> {
+    const tx = new Transaction()
+    tx.setSender(signer)
+    moduleStatus(tx, config, tx.object(entityId), MODULE_ID)
+    const res = await client.simulateTransaction({
+      transaction: tx,
+      include: { commandResults: true },
+    })
+    if (res.FailedTransaction) {
+      throw new Error(
+        res.FailedTransaction.status.error?.message ?? 'read failed',
+      )
+    }
+    const value = res.commandResults?.at(-1)?.returnValues[0]
+    if (!value) throw new Error('read returned no value')
+    return parsePowerStatus(value.bcs)
   }
 
   async function readDraw(entityId: string): Promise<bigint> {

@@ -798,6 +798,58 @@ export function parseStashedFuel(bytes: Uint8Array): FuelAmount | null {
   }
 }
 
+/** Why a module or generator is or isn't running now. */
+export type PowerStatus =
+  | 'online'
+  | 'off'
+  | 'gridOff'
+  | 'noPower'
+  | 'noFuel'
+  | 'baysOffline'
+
+// BCS variant order of `power_grid::PowerStatus`.
+const POWER_STATUSES: PowerStatus[] = [
+  'online',
+  'off',
+  'gridOff',
+  'noPower',
+  'noFuel',
+  'baysOffline',
+]
+
+/** A module's `PowerStatus` now; parse it with `parsePowerStatus`. */
+export function moduleStatus(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  moduleId: bigint,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'module_status'),
+    arguments: [entity, tx.pure.u64(moduleId), tx.object.clock()],
+  })
+}
+
+/** A generator's `PowerStatus` now; parse it with `parsePowerStatus`. */
+export function generatorStatus(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  generatorId: bigint,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'generator_status'),
+    arguments: [entity, tx.pure.u64(generatorId), tx.object.clock()],
+  })
+}
+
+/** Decode the BCS return value of `moduleStatus` or `generatorStatus`. */
+export function parsePowerStatus(bytes: Uint8Array): PowerStatus {
+  const status = POWER_STATUSES[bytes[0]]
+  if (!status) throw new Error(`unknown power status tag ${bytes[0]}`)
+  return status
+}
+
 /** `(effective capacity, used MW, online module ids)` now. Fuel at zero reads as all zeros. */
 export function projectedStatus(
   tx: Transaction,
