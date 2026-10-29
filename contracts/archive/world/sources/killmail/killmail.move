@@ -65,6 +65,7 @@ public struct KillmailCreatedEvent has copy, drop {
 }
 
 // === View Functions ===
+
 public fun id(killmail: &Killmail): ID {
     object::id(killmail)
 }
