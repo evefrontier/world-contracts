@@ -21,7 +21,6 @@ import {
   installFuelBay,
   installGenerator,
   operateGridRequirement,
-  POWER_SCALE,
   setDesiredState,
   setFuelBay,
   setGenerator,
@@ -47,13 +46,13 @@ const VOL = 2n
 // 15 MW generator, 10 MW inventory draw, containment reduction 10.
 const OUTPUT = 15n
 const DRAW = 10n
-const CONT_REDUCTION = 10n * POWER_SCALE
-const BASE_FUEL_RATE = POWER_SCALE
+const CONT_REDUCTION = 10n
+const BASE_FUEL_RATE = 1n
 // 500 units of fuel: impulse 90, containment burden 14.
-const FUEL_AMOUNT = 500n * POWER_SCALE
-const IMPULSE = 90n * POWER_SCALE
-const BURDEN = 14n * POWER_SCALE
-const VOLATILITY = POWER_SCALE / 2n
+const FUEL_AMOUNT = 500n
+const IMPULSE = 90n
+const BURDEN = 14n
+const VOLATILITY = 1n
 
 function eventNames(result: ExecutedTransaction): string[] {
   return (result.events ?? []).map(
@@ -118,7 +117,7 @@ describe('power grid powers an inventory (localnet)', () => {
     ])
     enableAdminAction(enableTx, config, enableEntity, 'deposit_fuel', [
       depositFuelRequirement(enableTx, config, {
-        minImpulse: 50n * POWER_SCALE,
+        minImpulse: 50n,
       }),
     ])
     enableAdminAction(enableTx, config, enableEntity, 'bridge_in_items', [

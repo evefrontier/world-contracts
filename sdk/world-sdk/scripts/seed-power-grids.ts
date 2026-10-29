@@ -7,7 +7,6 @@ import {
   installFuelBay,
   installGenerator,
   operateGridRequirement,
-  POWER_SCALE,
 } from '../src/packages/power.js'
 import { loadScriptContext } from './context.js'
 import { loadSeedFiles } from './seed-files.js'
@@ -17,8 +16,8 @@ import { loadSeedFiles } from './seed-files.js'
 const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
 const OUTPUT = 15n
-const CONTAINMENT_REDUCTION = 10n * POWER_SCALE
-const BASE_FUEL_RATE = POWER_SCALE
+const CONTAINMENT_REDUCTION = 10n
+const BASE_FUEL_RATE = 1n
 const FUEL_CAPACITY = 1000n
 
 const { repoRoot, config, client, keypair } = loadScriptContext()

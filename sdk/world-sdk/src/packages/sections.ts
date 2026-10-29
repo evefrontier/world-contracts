@@ -29,12 +29,10 @@ import {
 import {
   type InstallFuelBayArgs,
   type InstallGeneratorArgs,
-  installFuelBayWithLoad,
   installGenerator,
   installPowerGrid,
   migrateFuelBay,
   migrateGenerator,
-  uninstallFuelBay,
   uninstallGenerator,
   uninstallPowerGrid,
 } from './power.js'
@@ -122,11 +120,10 @@ function reinstallModule(
       uninstallGenerator(tx, config, from, id)
       installGenerator(tx, config, to, module)
       break
-    case 'fuelBay': {
-      const load = uninstallFuelBay(tx, config, from, id)
-      installFuelBayWithLoad(tx, config, to, module, load)
+    // A bay must carry its fuel, and only migrate moves the stash with it.
+    case 'fuelBay':
+      migrateFuelBay(tx, config, from, to, id)
       break
-    }
   }
 }
 

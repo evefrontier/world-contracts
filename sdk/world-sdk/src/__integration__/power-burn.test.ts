@@ -49,10 +49,10 @@ const OUTPUT = 20n
 const INVENTORY_DRAW = 10n
 const GENERIC_DRAW = 5n
 const USED = INVENTORY_DRAW + GENERIC_DRAW
-const CONT_REDUCTION = 10n * POWER_SCALE
+const CONT_REDUCTION = 10n
 // Impulse 0 burns the base rate: 1 fuel unit per second. 25 units lasts ~25s.
-const BASE_FUEL_RATE = POWER_SCALE
-const FUEL_AMOUNT = 25n * POWER_SCALE
+const BASE_FUEL_RATE = 1n
+const FUEL_AMOUNT = 25n
 const FUEL_CAPACITY = 1_000n
 
 const OUT_OF_FUEL_WAIT_MS = 70_000
@@ -239,7 +239,7 @@ function setDesiredOnline(
 
 function expectOnline(now: GridNow): void {
   expect(now.fuel).toBeGreaterThan(0n)
-  expect(now.fuel).toBeLessThanOrEqual(FUEL_AMOUNT)
+  expect(now.fuel).toBeLessThanOrEqual(FUEL_AMOUNT * POWER_SCALE)
   expect(now.capacity).toBe(OUTPUT)
   expect(now.used).toBe(USED)
   expect(now.online).toEqual([INVENTORY_ID, GENERIC_ID])

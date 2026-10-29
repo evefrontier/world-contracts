@@ -209,6 +209,20 @@ fun uninstall_with_generator_aborts() {
     abort
 }
 
+/// An uninstalled bay's stash would be lost with the grid, so the grid stays.
+#[test, expected_failure(abort_code = power_grid::EFuelStashed)]
+fun uninstall_with_stashed_fuel_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = grid_scenario::setup_empty_grid(&mut scenario, 2, &clock);
+    grid_scenario::install_fuel(&mut scenario, entity_id, 9_002, 100, &clock);
+    grid_scenario::uninstall_fuel(&mut scenario, entity_id, 9_002, &clock);
+    uninstall_grid(&mut scenario, entity_id);
+
+    abort
+}
+
 #[test, expected_failure(abort_code = power_grid::EComponentMissing)]
 fun view_without_grid_aborts() {
     let mut scenario = ts::begin(admin());

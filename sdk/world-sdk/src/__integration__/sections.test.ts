@@ -48,9 +48,9 @@ import {
 
 const TENANT = 'sections-t1'
 const DATA = [1, 2, 3, 9]
-const IMPULSE = 900_000n
-const BURDEN = 140_000n
-const VOLATILITY = 5_000n
+const IMPULSE = 90n
+const BURDEN = 14n
+const VOLATILITY = 5n
 
 type World = ReturnType<typeof loadLocalnetWorld>
 
@@ -84,14 +84,14 @@ describe('sections (localnet)', () => {
       ],
     }
 
-    // Each bay holds its own fuel: 100_000 stays, 300_000 leaves.
+    // Each bay holds its own fuel: 10 units stay, 30 leave.
     const setupTx = new Transaction()
     const source = deploy(setupTx, config, sourceKey, [kept, leaving])
     shareEntity(setupTx, config, source)
     await expectSuccess(client, setupTx)
     await seedFuel(client, config, sourceId, [
-      [0x81n, 100_000n],
-      [0x84n, 300_000n],
+      [0x81n, 10n],
+      [0x84n, 30n],
     ])
 
     const detachTx = new Transaction()
@@ -169,7 +169,7 @@ describe('sections (localnet)', () => {
       deploy(setupTx, config, absorbedKey, [absorbedSection]),
     )
     await expectSuccess(client, setupTx)
-    await seedFuel(client, config, absorbedId, [[0x94n, 250_000n]])
+    await seedFuel(client, config, absorbedId, [[0x94n, 25n]])
 
     const mergeTx = new Transaction()
     mergeCreation(
@@ -208,8 +208,8 @@ function generator(componentId: bigint): SectionModule {
     kind: 'generator',
     componentId,
     maxOutputMw: 15n,
-    containmentReduction: 100_000n,
-    baseFuelRate: 10_000n,
+    containmentReduction: 10n,
+    baseFuelRate: 1n,
   }
 }
 

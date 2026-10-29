@@ -40,6 +40,8 @@ const FUEL_TYPE: u64 = 7;
 const OPERATE: vector<u8> = b"operate_grid";
 const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
 const TEMP_ACTION: vector<u8> = b"temp_action";
+const TAKE_STASH: vector<u8> = b"take_stash";
+const STASH_LOAD: vector<u8> = b"stash_load";
 
 /// A stand-in consuming module (Inventory, Thruster, ...).
 public struct Consumer has store {}
@@ -402,38 +404,120 @@ public fun install_fuel(
     ts::return_shared(entity);
 }
 
-/// Uninstall fuel bay `fuel_bay_id`, returning the fuel it carried out.
+/// Uninstall fuel bay `fuel_bay_id`; its fuel stays on the grid as a stash.
 public fun uninstall_fuel(
     scenario: &mut ts::Scenario,
     entity_id: ID,
     fuel_bay_id: u64,
     clock: &Clock,
-): FuelLoad {
-    ts::next_tx(scenario, ADMIN);
-    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let acl = take_acl(scenario);
-    let (mut req, load) = grid_fuel::uninstall(&mut entity, fuel_bay_id, clock, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    entity.complete_request(req);
-    ts::return_shared(acl);
-    ts::return_shared(entity);
-    load
-}
-
-/// Install fuel bay `fuel_bay_id` with `capacity`, holding `load`, offline.
-public fun install_fuel_with(
-    scenario: &mut ts::Scenario,
-    entity_id: ID,
-    fuel_bay_id: u64,
-    capacity: u64,
-    load: FuelLoad,
-    clock: &Clock,
 ) {
     ts::next_tx(scenario, ADMIN);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
-    let mut req = grid_fuel::install_with_fuel(
+    let mut req = grid_fuel::uninstall(&mut entity, fuel_bay_id, clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// The grid's stashed fuel for `fuel_bay_id`, if any.
+public fun stashed_fuel(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+): Option<Fuel> {
+    ts::next_tx(scenario, OWNER);
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let stashed = power_grid::power_grid(&entity).stashed();
+    let fuel = if (stashed.contains(&fuel_bay_id)) option::some(stashed[&fuel_bay_id])
+    else option::none();
+    ts::return_shared(entity);
+    fuel
+}
+
+/// ADMIN exposes the `take_stash` and `stash_load` admin actions on `entity_id`.
+public fun enable_manage_stash(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(
         &mut entity,
+        &acl,
+        TAKE_STASH,
+        power_grid::manage_stash_requirement(),
+        scenario.ctx(),
+    );
+    enable_admin(
+        &mut entity,
+        &acl,
+        STASH_LOAD,
+        power_grid::manage_stash_requirement(),
+        scenario.ctx(),
+    );
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` takes `fuel_bay_id`'s stash out of `entity`. Close the request with
+/// `close_admin`; use the load in the same transaction.
+public fun take_stash(
+    entity: &mut Entity,
+    fuel_bay_id: u64,
+    ctx: &mut TxContext,
+): (Request, FuelLoad) {
+    let mut req = entity.interact(string::utf8(TAKE_STASH), ctx);
+    let load = grid_fuel::take_stash(entity, &mut req, fuel_bay_id);
+    (req, load)
+}
+
+/// Satisfy `req`'s admin frame with `acl` and complete it on `entity`.
+public fun close_admin(entity: &mut Entity, mut req: Request, acl: &AdminACL, ctx: &mut TxContext) {
+    admin_service::verify_admin(&mut req, acl, ctx);
+    entity.complete_request(req);
+}
+
+/// `sender` moves the stash of `fuel_bay_id` from `from_id` to `to_id`:
+/// `take_stash` on one, `stash_load` on the other, in one transaction.
+public fun move_stash(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    from_id: ID,
+    to_id: ID,
+    fuel_bay_id: u64,
+) {
+    ts::next_tx(scenario, sender);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, to_id);
+    let acl = take_acl(scenario);
+    let (from_req, load) = take_stash(&mut from, fuel_bay_id, scenario.ctx());
+    let mut to_req = to.interact(string::utf8(STASH_LOAD), scenario.ctx());
+    grid_fuel::stash_load(&mut to, &mut to_req, load);
+    close_admin(&mut from, from_req, &acl, scenario.ctx());
+    close_admin(&mut to, to_req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
+}
+
+/// `sender` takes `fuel_bay_id`'s stash from `from_id` and refits the bay on
+/// `to_id` with it, in one transaction.
+public fun refit_stash(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    from_id: ID,
+    to_id: ID,
+    fuel_bay_id: u64,
+    capacity: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, to_id);
+    let acl = take_acl(scenario);
+    let (from_req, load) = take_stash(&mut from, fuel_bay_id, scenario.ctx());
+    let to_req = grid_fuel::install_with_fuel(
+        &mut to,
         fuel_bay_id,
         option::none(),
         capacity,
@@ -441,8 +525,26 @@ public fun install_fuel_with(
         clock,
         scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    entity.complete_request(req);
+    close_admin(&mut from, from_req, &acl, scenario.ctx());
+    close_admin(&mut to, to_req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
+}
+
+/// `sender` takes `fuel_bay_id`'s stash out of `entity_id` and destroys it.
+public fun destroy_stash(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    fuel_bay_id: u64,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let (req, load) = take_stash(&mut entity, fuel_bay_id, scenario.ctx());
+    grid_fuel::destroy_fuel_load(load);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);
 }

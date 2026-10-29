@@ -206,7 +206,13 @@ zero impulse burns `base_fuel_rate`.
   It aborts above that bay's capacity.
 - Uninstall moves the bay's exact fuel into `stashed`. Reinstalling a bay under
   the same component id takes it back. Stashed fuel can't be burned.
-  `move_stash` carries it to another Creation's grid when the bay item moves.
+  When the service moves or destroys the bay item, `take_stash` returns the
+  fuel as a `FuelLoad` with no abilities, which the same transaction must use:
+  `install_with_fuel` refits it on the bay (same id, same tenant),
+  `stash_load` stashes it on another Creation, or `destroy_fuel_load` destroys it.
+  `take_stash` and `stash_load` are admin actions with
+  `manage_stash_requirement()`. `migrate` moves a fitted bay with its fuel in
+  one step. The grid can't be uninstalled while it holds a stash.
 
 #### Power modules
 
@@ -252,6 +258,10 @@ empty, generators give `0`, and fuel modules get no fuel.
 | `set_power_grid` (Power On / Off) | owner | keeps every desired state |
 | `set_generator` | owner | |
 | `set_fuel_bay` | owner | offline bays keep their fuel |
+| `take_stash` | admin | returns an uninstalled bay's stash as a `FuelLoad` |
+| `stash_load` | admin | stashes a `FuelLoad` on another Creation |
+| `install_with_fuel` | admin | installs a bay holding its `FuelLoad` |
+| `destroy_fuel_load` | holder of the load | destroys fuel whose bay item is gone |
 | `deposit_fuel` | owner + sponsor | checks the owner's `FuelRequirement` |
 | `set_desired_state` | owner | power modules; never refused |
 | `set_priority` | owner | stored only |
@@ -275,7 +285,7 @@ Power Off (player-signed) keeps intent. `shut_down` clears it, so everything sta
 
 - `PowerGridInstalled`, `PowerGridUninstalled`, `PowerToggled`, `GridShutDown`
 - `GeneratorInstalled`, `GeneratorUninstalled`, `GeneratorConnected`, `GeneratorDisconnected`, `GeneratorToggled`, `CapacityChanged`
-- `FuelBayInstalled`, `FuelBayUninstalled`, `FuelBayAttached`, `FuelBayDetached`, `FuelBayToggled`, `FuelAdded`, `FuelWithdrawn`, `BayFuelStashed`, `BayFuelRestored`
+- `FuelBayInstalled`, `FuelBayUninstalled`, `FuelBayAttached`, `FuelBayDetached`, `FuelBayToggled`, `FuelAdded`, `FuelWithdrawn`, `FuelStashed`, `FuelRestored`, `FuelUnstashed`, `FuelLoadDestroyed`
 - `ModuleConnected`, `ModuleDisconnected`, `PriorityChanged`, `DesiredStateChanged`, `FuelModuleToggled`
 - `DrawChanged { module_id, active_draw }`
 
@@ -284,6 +294,7 @@ There is no run-out event on chain; off chain services computes run-out from the
 ### Client & PTB discovery
 
 - `projected_fuel`, `projected_bays`: fuel now, in total and per bay.
+- `stashed_fuel`: an uninstalled bay's stash, which never burns.
 - `projected_module_states`: every module now, with a reason: `Online`, `Off`,
   `GridOff`, `NoPower`, `NoFuel` or `BaysOffline`.
 - `projected_status`: power limit, `used_mw`, online module ids.
@@ -301,7 +312,7 @@ on-chain. Projections are closed-form, so off-chain services can simulate them.
 
 **Harder / deferred:** stored state lags until the next mutating action. One
 Firm module that doesn't fit turns every power module off unless the owner adds
-the pre-filter. The service must switch fuel modules and call `shut_down` and
-`move_stash`. A module package must call `grid_load::disconnect` or it leaves a
+the pre-filter. The service must switch fuel modules, call `shut_down`, and
+take each stash when its bay item moves or is destroyed. A module package must call `grid_load::disconnect` or it leaves a
 stale row.
 

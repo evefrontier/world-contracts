@@ -17,18 +17,24 @@ import {
   type DepositFuelArgs,
   depositFuel,
   depositFuelRequirement,
+  type FuelAmount,
   installFuelBay,
   installGenerator,
   installPowerGrid,
+  manageStashRequirement,
+  moveStash,
   operateGridRequirement,
   POWER_SCALE,
   type ProjectedBay,
   parseProjectedBays,
+  parseStashedFuel,
   projectedBays,
   setDesiredState,
   setFuelBay,
   setGenerator,
   setPowerGrid,
+  stashedFuel,
+  uninstallFuelBay,
 } from '../packages/power.js'
 import {
   expectSuccess,
@@ -44,24 +50,24 @@ const MODULE_ID = 0xa3n
 // 10 MW generator at containment reduction 10 sends 10 MW to a 10 MW module.
 const OUTPUT = 10n
 const DRAW = 10n
-const CONT_REDUCTION = 10n * POWER_SCALE
+const CONT_REDUCTION = 10n
 const BAY_CAPACITY = 2_000n
 const BURN_WAIT_MS = 4_000
 
-// The overview's fuels, at `POWER_SCALE`.
+// The overview's fuels, plain units and stats.
 const FUEL_A = {
   fuelType: 1n,
-  amount: 1_000n * POWER_SCALE,
-  impulse: 250_000n,
-  containmentBurden: 40_000n,
-  volatility: 6_000n,
+  amount: 1_000n,
+  impulse: 25n,
+  containmentBurden: 4n,
+  volatility: 6n,
 }
 const FUEL_B = {
   fuelType: 2n,
-  amount: 500n * POWER_SCALE,
-  impulse: 900_000n,
-  containmentBurden: 140_000n,
-  volatility: 5_000n,
+  amount: 500n,
+  impulse: 90n,
+  containmentBurden: 14n,
+  volatility: 5n,
 }
 
 describe('fuel bays (localnet)', () => {
@@ -83,7 +89,7 @@ describe('fuel bays (localnet)', () => {
       componentId: GENERATOR_ID,
       maxOutputMw: OUTPUT,
       containmentReduction: CONT_REDUCTION,
-      baseFuelRate: POWER_SCALE,
+      baseFuelRate: 1n,
     })
     for (const componentId of [BAY_A, BAY_B]) {
       installFuelBay(createTx, config, creation, {
@@ -124,7 +130,8 @@ describe('fuel bays (localnet)', () => {
     ])
     await expectSuccess(client, enableTx)
 
-    // Fuel A then fuel B into bay A blend; bay B holds fuel B alone.
+    // Fuel A then fuel B into bay A blend (plain stats round down); bay B holds
+    // fuel B alone.
     const fuelTx = new Transaction()
     addSponsors(fuelTx, config, [signer])
     const fuelEntity = fuelTx.object(entityId)
@@ -147,13 +154,13 @@ describe('fuel bays (localnet)', () => {
     expect(loaded.get(BAY_A)).toMatchObject({
       online: false,
       quantity: 15_000_000n,
-      impulse: 466_666n,
-      containmentBurden: 73_333n,
-      volatility: 5_666n,
+      impulse: 46n,
+      containmentBurden: 7n,
+      volatility: 5n,
     })
     expect(loaded.get(BAY_B)).toMatchObject({
       online: false,
-      quantity: FUEL_B.amount,
+      quantity: FUEL_B.amount * POWER_SCALE,
     })
 
     // Bay A online, grid on, generator on, module on: the burn starts.
@@ -202,7 +209,7 @@ describe('fuel bays (localnet)', () => {
     await sleep(BURN_WAIT_MS)
     const reserveKept = await readBays(client, config, entityId)
     expect(amountOf(reserveKept, BAY_A)).toBeLessThan(15_000_000n)
-    expect(amountOf(reserveKept, BAY_B)).toBe(FUEL_B.amount)
+    expect(amountOf(reserveKept, BAY_B)).toBe(FUEL_B.amount * POWER_SCALE)
 
     // Bring the reserve online: both bays now burn, each by what it holds.
     const reserveTx = new Transaction()
@@ -230,6 +237,91 @@ describe('fuel bays (localnet)', () => {
     // Proportional burn keeps the ratio a / b, up to one rounding step per bay.
     const drift = a1 * b0 - b1 * a0
     expect(drift < 0n ? -drift : drift).toBeLessThanOrEqual(a0 + b0)
+  })
+
+  it('stashes an uninstalled bay and moves the stash with the bay item', async () => {
+    const fromKey = { id: 4901n, tenant: 'fuel-bays' }
+    const toKey = { id: 4902n, tenant: 'fuel-bays' }
+    const fromId = deriveObjectId(config, fromKey)
+    const toId = deriveObjectId(config, toKey)
+    const STASH_BAY = 0xb1n
+    const UNITS = 300n
+
+    const createTx = new Transaction()
+    for (const key of [fromKey, toKey]) {
+      const [creation, claim] = entityNew(createTx, config, {
+        inGameId: key.id,
+        tenant: key.tenant,
+      })
+      verifyAdmin(createTx, config, claim)
+      completeRequest(createTx, config, creation, claim)
+      installPowerGrid(createTx, config, creation)
+      for (const action of ['take_stash', 'stash_load']) {
+        enableAdminAction(createTx, config, creation, action, [
+          manageStashRequirement(createTx, config),
+        ])
+      }
+      if (key === fromKey) {
+        installFuelBay(createTx, config, creation, {
+          componentId: STASH_BAY,
+          capacity: BAY_CAPACITY,
+        })
+        enableAdminAction(createTx, config, creation, 'deposit_fuel', [
+          depositFuelRequirement(createTx, config),
+        ])
+      }
+      shareEntity(createTx, config, creation)
+    }
+    await expectSuccess(client, createTx)
+
+    const capId = await mintAccessCap(client, config, {
+      entity: fromId,
+      owner: signer,
+      transferable: true,
+    })
+    const fuelTx = new Transaction()
+    addSponsors(fuelTx, config, [signer])
+    const fuelEntity = fuelTx.object(fromId)
+    deposit(fuelTx, config, fuelEntity, fuelTx.object(capId), {
+      fuelBayId: STASH_BAY,
+      ...FUEL_B,
+      amount: UNITS,
+    })
+    await expectSuccess(client, fuelTx)
+
+    // Uninstalling keeps the bay's exact fuel on the grid as a stash.
+    const uninstallTx = new Transaction()
+    uninstallFuelBay(uninstallTx, config, uninstallTx.object(fromId), STASH_BAY)
+    await expectSuccess(client, uninstallTx)
+    expect(await readStash(client, config, fromId, STASH_BAY)).toMatchObject({
+      quantity: UNITS * POWER_SCALE,
+      impulse: FUEL_B.impulse,
+    })
+
+    // The stash follows the bay item, and a refit on the new creation takes it back.
+    const moveTx = new Transaction()
+    moveStash(
+      moveTx,
+      config,
+      moveTx.object(fromId),
+      moveTx.object(toId),
+      STASH_BAY,
+    )
+    installFuelBay(moveTx, config, moveTx.object(toId), {
+      componentId: STASH_BAY,
+      capacity: BAY_CAPACITY,
+    })
+    await expectSuccess(client, moveTx)
+
+    expect(await readStash(client, config, fromId, STASH_BAY)).toBeNull()
+    expect(await readStash(client, config, toId, STASH_BAY)).toBeNull()
+    expect((await readBays(client, config, toId)).get(STASH_BAY)).toMatchObject(
+      {
+        online: false,
+        quantity: UNITS * POWER_SCALE,
+        impulse: FUEL_B.impulse,
+      },
+    )
   })
 })
 
@@ -281,6 +373,29 @@ async function readBays(
   return new Map(
     parseProjectedBays(value.bcs).map((bay) => [bay.fuelBayId, bay]),
   )
+}
+
+async function readStash(
+  client: WorldClient,
+  config: WorldConfig,
+  entityId: string,
+  fuelBayId: bigint,
+): Promise<FuelAmount | null> {
+  const tx = new Transaction()
+  tx.setSender(signer)
+  stashedFuel(tx, config, tx.object(entityId), fuelBayId)
+  const res = await client.simulateTransaction({
+    transaction: tx,
+    include: { commandResults: true },
+  })
+  if (res.FailedTransaction) {
+    throw new Error(
+      res.FailedTransaction.status.error?.message ?? 'stash read failed',
+    )
+  }
+  const value = res.commandResults?.at(-1)?.returnValues[0]
+  if (!value) throw new Error('stash read returned no value')
+  return parseStashedFuel(value.bcs)
 }
 
 function amountOf(bays: Map<bigint, ProjectedBay>, fuelBayId: bigint): bigint {

@@ -4,7 +4,16 @@ module power::fuel_bay_tests;
 use core::{entity::Entity, test_helpers::setup};
 use power::{
     fuel_math,
-    grid_fuel::{Self, FuelAdded, FuelBayAttached, FuelBayDetached, FuelBayToggled, FuelLoadBurned},
+    grid_fuel::{
+        Self,
+        FuelRestored,
+        FuelUnstashed,
+        FuelStashed,
+        FuelAdded,
+        FuelBayAttached,
+        FuelBayToggled,
+        FuelLoadDestroyed
+    },
     grid_scenario::{
         Self,
         admin,
@@ -15,14 +24,17 @@ use power::{
         deposit_fuel_into,
         deposit_fuel_via,
         draw,
+        destroy_stash,
+        enable_manage_stash,
         enable_owner_in_handler,
         firm_power,
+        move_stash,
+        refit_stash,
         fuel_bay_id,
         fuel_capacity,
         fuel_type,
         impulse,
         install_fuel,
-        install_fuel_with,
         install_module,
         owner,
         power_up,
@@ -30,10 +42,13 @@ use power::{
         projected_bay_amount,
         set_desired,
         set_fuel_bay,
+        setup_empty_grid,
+        setup_empty_grid_in_tenant,
         setup_entity,
         settled_fuel,
         starting_fuel,
         starting_units,
+        stashed_fuel,
         uninstall_fuel,
         volatility
     },
@@ -71,7 +86,7 @@ fun loaded(scenario: &mut ts::Scenario, clock: &Clock): ID {
 /// 10 MW to `MOD_A`.
 fun overview_blend(scenario: &mut ts::Scenario, clock: &Clock): ID {
     let entity_id = setup_entity(scenario, vector[DRAW], vector[CONTAINMENT], clock);
-    grid_fuel::burn_fuel_load(uninstall_fuel(scenario, entity_id, fuel_bay_id(), clock));
+    uninstall_fuel(scenario, entity_id, fuel_bay_id(), clock);
     install_fuel(scenario, entity_id, FUEL_B, BAY_B_CAPACITY, clock);
     deposit_fuel_into(scenario, entity_id, FUEL_B, 1_000, 25, 4, 6, clock);
     deposit_fuel_into(scenario, entity_id, FUEL_B, 500, 90, 14, 5, clock);
@@ -174,9 +189,9 @@ fun install_fuel_bay_starts_offline_and_empty() {
     scenario.end();
 }
 
-/// A bay leaves with exactly its own fuel; the other bay keeps all of its own.
+/// Uninstalling stashes the bay's exact fuel on the grid; the other bay keeps its own.
 #[test]
-fun uninstall_carries_the_bays_exact_fuel() {
+fun uninstall_stashes_the_bays_exact_fuel() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
@@ -184,59 +199,102 @@ fun uninstall_carries_the_bays_exact_fuel() {
     install_fuel(&mut scenario, entity_id, FUEL_B, BAY_B_CAPACITY, &clock);
     deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 7, 25, 4, 6, &clock);
 
-    let load = uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
+    uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
 
-    assert!(load.load_entity_id() == entity_id && load.load_fuel_bay_id() == FUEL_B);
-    assert!(load.load_amount() == 70_000 && load.load_impulse() == 25);
-    assert!(load.load_containment_burden() == 4 && load.load_volatility() == 6);
-    let detached = event::events_by_type<FuelBayDetached>();
-    let (_, detached_bay, amount, _, _, detached_volatility) = detached[
+    let stashed = event::events_by_type<FuelStashed>();
+    let (stashed_entity, stashed_bay, quantity, stashed_volatility) = stashed[
         0,
-    ].fuel_bay_detached_fields();
-    assert!(detached_bay == FUEL_B && amount == 70_000 && detached_volatility == 6);
-    grid_fuel::burn_fuel_load(load);
-    let burned = event::events_by_type<FuelLoadBurned>();
-    let (burned_entity, burned_bay, burned_amount, _, _, _) = burned[0].fuel_load_burned_fields();
-    assert!(burned_entity == entity_id && burned_bay == FUEL_B && burned_amount == 70_000);
+    ].fuel_stashed_fields();
+    assert!(stashed_entity == entity_id && stashed_bay == FUEL_B);
+    assert!(quantity == 70_000 && stashed_volatility == 6);
+    let fuel = stashed_fuel(&mut scenario, entity_id, FUEL_B).destroy_some();
+    assert!(fuel.quantity() == 70_000 && fuel.impulse() == 25);
+    assert!(fuel.containment_burden() == 4 && fuel.volatility() == 6);
     assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel());
 
     clock.destroy_for_testing();
     scenario.end();
 }
 
-/// A reinstalled bay holds its fuel offline; it feeds the grid once online.
+/// A stash never burns, even when it came from the only online bay.
 #[test]
-fun install_with_fuel_holds_the_load_offline() {
+fun stashed_fuel_never_burns() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = loaded(&mut scenario, &clock);
+    clock.set_for_testing(10_000);
+    let left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
+
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    clock.set_for_testing(1_000_000);
+
+    assert!(
+        stashed_fuel(&mut scenario, entity_id, fuel_bay_id()).destroy_some().quantity() == left,
+    );
+    let (fuel_left, capacity, _, _) = projected(&mut scenario, entity_id, &clock);
+    assert!(fuel_left == 0 && capacity == 0);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Refitting the bay takes its stash back, offline; it feeds the grid once online.
+#[test]
+fun reinstall_takes_back_its_stash_offline() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    let load = uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
 
-    install_fuel_with(&mut scenario, entity_id, FUEL_B, fuel_capacity(), load, &clock);
+    install_fuel(&mut scenario, entity_id, fuel_bay_id(), fuel_capacity(), &clock);
 
-    let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
+    let restored = event::events_by_type<FuelRestored>();
+    let (_, restored_bay, restored_quantity, _) = restored[0].fuel_restored_fields();
+    assert!(restored_bay == fuel_bay_id() && restored_quantity == starting_fuel());
+    assert!(stashed_fuel(&mut scenario, entity_id, fuel_bay_id()).is_none());
+    let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
     assert!(fuel.quantity() == starting_fuel());
     assert!(fuel.impulse() == impulse() && fuel.containment_burden() == burden());
     assert!(fuel.volatility() == volatility());
     assert!(settled_fuel(&mut scenario, entity_id) == 0);
-    set_fuel_bay(&mut scenario, entity_id, FUEL_B, true, &clock);
+    set_fuel_bay(&mut scenario, entity_id, fuel_bay_id(), true, &clock);
     assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A different bay id does not take another bay's stash.
+#[test]
+fun other_bay_does_not_take_the_stash() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+
+    install_fuel(&mut scenario, entity_id, FUEL_B, BAY_B_CAPACITY, &clock);
+
+    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == 0);
+    assert!(stashed_fuel(&mut scenario, entity_id, fuel_bay_id()).is_some());
 
     clock.destroy_for_testing();
     scenario.end();
 }
 
 #[test, expected_failure(abort_code = grid_fuel::EFuelOverCapacity)]
-fun install_with_fuel_over_capacity_aborts() {
+fun reinstall_smaller_than_its_stash_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
     // The default bay holds 50_000 units, more than a 2_000 unit bay takes.
-    let load = uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
 
-    install_fuel_with(&mut scenario, entity_id, FUEL_B, BAY_B_CAPACITY, load, &clock);
+    install_fuel(&mut scenario, entity_id, fuel_bay_id(), BAY_B_CAPACITY, &clock);
 
     abort
 }
@@ -247,8 +305,169 @@ fun uninstall_unknown_fuel_bay_aborts() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    let load = uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
-    grid_fuel::burn_fuel_load(load);
+    uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
+
+    abort
+}
+
+// === Take, stash and destroy ===
+
+/// The stash follows the bay item to another grid, and a refit there takes it back.
+#[test]
+fun move_stash_carries_fuel_to_another_grid() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let from = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let to = setup_empty_grid(&mut scenario, 2, &clock);
+    uninstall_fuel(&mut scenario, from, fuel_bay_id(), &clock);
+    enable_manage_stash(&mut scenario, from);
+    enable_manage_stash(&mut scenario, to);
+
+    move_stash(&mut scenario, admin(), from, to, fuel_bay_id());
+
+    let taken = event::events_by_type<FuelUnstashed>();
+    let (taken_entity, taken_bay, taken_quantity, _) = taken[0].fuel_unstashed_fields();
+    assert!(taken_entity == from && taken_bay == fuel_bay_id());
+    assert!(taken_quantity == starting_fuel());
+    let stashed = event::events_by_type<FuelStashed>();
+    let (stashed_entity, _, stashed_quantity, _) = stashed[0].fuel_stashed_fields();
+    assert!(stashed_entity == to && stashed_quantity == starting_fuel());
+    assert!(stashed_fuel(&mut scenario, from, fuel_bay_id()).is_none());
+    install_fuel(&mut scenario, to, fuel_bay_id(), fuel_capacity(), &clock);
+    let fuel = bay_fuel(&mut scenario, to, fuel_bay_id());
+    assert!(fuel.quantity() == starting_fuel() && fuel.impulse() == impulse());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The stash can be refitted straight onto another Creation's bay.
+#[test]
+fun take_stash_refits_on_another_grid() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let from = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let to = setup_empty_grid(&mut scenario, 2, &clock);
+    uninstall_fuel(&mut scenario, from, fuel_bay_id(), &clock);
+    enable_manage_stash(&mut scenario, from);
+
+    refit_stash(&mut scenario, admin(), from, to, fuel_bay_id(), fuel_capacity(), &clock);
+
+    assert!(stashed_fuel(&mut scenario, from, fuel_bay_id()).is_none());
+    let fuel = bay_fuel(&mut scenario, to, fuel_bay_id());
+    assert!(fuel.quantity() == starting_fuel() && fuel.volatility() == volatility());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Destroying a stash removes its fuel and frees the grid to be uninstalled.
+#[test]
+fun destroy_stash_removes_the_fuel() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    enable_manage_stash(&mut scenario, entity_id);
+
+    destroy_stash(&mut scenario, admin(), entity_id, fuel_bay_id());
+
+    let destroyed = event::events_by_type<FuelLoadDestroyed>();
+    let (destroyed_entity, destroyed_bay, destroyed_quantity, _) = destroyed[
+        0,
+    ].fuel_load_destroyed_fields();
+    assert!(destroyed_entity == entity_id && destroyed_bay == fuel_bay_id());
+    assert!(destroyed_quantity == starting_fuel());
+    assert!(stashed_fuel(&mut scenario, entity_id, fuel_bay_id()).is_none());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EStashMissing)]
+fun take_stash_without_stash_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    enable_manage_stash(&mut scenario, entity_id);
+
+    destroy_stash(&mut scenario, admin(), entity_id, fuel_bay_id());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EStashExists)]
+fun stash_load_onto_a_fitted_bay_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let from = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let to = setup_empty_grid(&mut scenario, 2, &clock);
+    uninstall_fuel(&mut scenario, from, fuel_bay_id(), &clock);
+    install_fuel(&mut scenario, to, fuel_bay_id(), fuel_capacity(), &clock);
+    enable_manage_stash(&mut scenario, from);
+    enable_manage_stash(&mut scenario, to);
+
+    move_stash(&mut scenario, admin(), from, to, fuel_bay_id());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EWrongTenant)]
+fun stash_load_across_tenants_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let from = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let to = setup_empty_grid_in_tenant(&mut scenario, 2, b"OTHER", &clock);
+    uninstall_fuel(&mut scenario, from, fuel_bay_id(), &clock);
+    enable_manage_stash(&mut scenario, from);
+    enable_manage_stash(&mut scenario, to);
+
+    move_stash(&mut scenario, admin(), from, to, fuel_bay_id());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EWrongFuelBay)]
+fun refit_load_on_another_bay_id_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    enable_manage_stash(&mut scenario, entity_id);
+
+    ts::next_tx(&mut scenario, admin());
+    let mut entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let (_req, load) = grid_scenario::take_stash(&mut entity, fuel_bay_id(), scenario.ctx());
+    let _install = grid_fuel::install_with_fuel(
+        &mut entity,
+        FUEL_B,
+        option::none(),
+        fuel_capacity(),
+        load,
+        &clock,
+        scenario.ctx(),
+    );
+
+    abort
+}
+
+#[test, expected_failure(abort_code = core::admin_service::EUnauthorizedAdmin)]
+fun take_stash_by_non_admin_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    enable_manage_stash(&mut scenario, entity_id);
+
+    destroy_stash(&mut scenario, owner(), entity_id, fuel_bay_id());
 
     abort
 }

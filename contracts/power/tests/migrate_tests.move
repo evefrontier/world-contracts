@@ -28,6 +28,7 @@ use power::{
         setup_empty_grid_in_tenant,
         setup_entity,
         starting_fuel,
+        stashed_fuel,
         stored_draw,
         volatility
     },
@@ -221,6 +222,7 @@ fun migrate_fuel_moves_the_bays_exact_fuel() {
     let (_, from_bays) = grid_of(&mut scenario, from);
     assert!(from_bays == 1);
     assert!(bay_fuel(&mut scenario, from, SECOND_FUEL_ID).quantity() == 0);
+    assert!(stashed_fuel(&mut scenario, from, fuel_bay_id()).is_none());
 
     clock.destroy_for_testing();
     scenario.end();
