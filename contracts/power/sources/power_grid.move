@@ -65,6 +65,9 @@ const VERSION: u64 = 1;
 const NAME: vector<u8> = b"power_grid";
 /// Cap on connected modules.
 const MAX_CONNECTED: u64 = 100;
+/// Cap on one fuel module's rate, at `SCALE`: `u64::MAX ÷ MAX_CONNECTED`, so the
+/// combined rate of every connected module fits a u64.
+const MAX_FUEL_RATE: u64 = 184_467_440_737_095_516;
 
 // === Structs ===
 
@@ -657,6 +660,10 @@ public fun scale(): u64 {
 
 public fun max_connected(): u64 {
     MAX_CONNECTED
+}
+
+public fun max_fuel_rate(): u64 {
+    MAX_FUEL_RATE
 }
 
 public fun component_id(): u64 {

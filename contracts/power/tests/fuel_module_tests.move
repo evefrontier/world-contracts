@@ -243,6 +243,19 @@ fun fuel_module_online_at_zero_rate_aborts() {
     abort
 }
 
+#[test, expected_failure(abort_code = grid_load::EFuelRateTooHigh)]
+fun fuel_module_rate_above_max_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = with_leap(&mut scenario, &clock);
+
+    let rate = power_grid::max_fuel_rate() + 1;
+    set_fuel_module(&mut scenario, admin(), entity_id, LEAP, true, rate, &clock);
+
+    abort
+}
+
 #[test, expected_failure(abort_code = core::admin_service::EUnauthorizedAdmin)]
 fun set_fuel_module_by_non_admin_aborts() {
     let mut scenario = ts::begin(admin());

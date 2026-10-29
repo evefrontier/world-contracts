@@ -41,6 +41,8 @@ const ENotFuelModule: vector<u8> =
     b"Module draws power; the owner switches it with set_desired_state";
 #[error(code = 12)]
 const EZeroFuelRate: vector<u8> = b"A fuel module needs a fuel rate above zero to go online";
+#[error(code = 13)]
+const EFuelRateTooHigh: vector<u8> = b"Fuel module rate is above the maximum";
 
 // === Events ===
 
@@ -236,6 +238,7 @@ public fun set_fuel_module(
     grid.assert_module_connected(module_id);
     assert!(grid.module_state(module_id).power_kind().is_fuel(), ENotFuelModule);
     assert!(!online || rate > 0, EZeroFuelRate);
+    assert!(rate <= power_grid::max_fuel_rate(), EFuelRateTooHigh);
     grid.settle(clock);
     grid.set_fuel_module_rate(module_id, online, rate);
     grid.regrant(entity_id);

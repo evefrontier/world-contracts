@@ -228,6 +228,8 @@ no part in power grants, `used_mw` or overload. The service switches it with
 `operate_fuel_module_requirement()`; the owner's `set_desired_state` refuses
 it. The rate is fuel per second at `SCALE`. While online and the grid is on,
 it burns its rate from the online bays; Power Off pauses it and keeps the rate.
+The rate is capped at `max_fuel_rate()` (`u64::MAX ÷ MAX_CONNECTED`), so the
+combined rate always fits a u64 and settling can't overflow.
 Once the online bays run dry it reads a draw of `0`. `fuel_modules_rate(grid)`
 gives the combined rate.
 
