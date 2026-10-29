@@ -42,6 +42,7 @@ const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
 const TEMP_ACTION: vector<u8> = b"temp_action";
 const TAKE_STASH: vector<u8> = b"take_stash";
 const STASH_LOAD: vector<u8> = b"stash_load";
+const SET_FUEL_MODULE: vector<u8> = b"set_fuel_module";
 
 /// A stand-in consuming module (Inventory, Thruster, ...).
 public struct Consumer has store {}
@@ -74,6 +75,11 @@ public fun fuel_type(): u64 { FUEL_TYPE }
 /// Firm power for a module with no line loss and priority 0.
 public fun firm_power(power_req: u64): ModulePowerSpec {
     power_grid::module_power_spec(power_req, power_grid::firm(), power_grid::power(), 0, 0)
+}
+
+/// A fuel module (leap, overdrive): `power_req = 0`, draws fuel at a rate.
+public fun fuel_module(): ModulePowerSpec {
+    power_grid::module_power_spec(0, power_grid::firm(), power_grid::fuel_kind(), 0, 0)
 }
 
 /// Elastic power for a module with no line loss and priority 0.
@@ -550,6 +556,42 @@ public fun destroy_stash(
     let acl = take_acl(scenario);
     let (req, load) = take_stash(&mut entity, fuel_bay_id, scenario.ctx());
     grid_fuel::destroy_fuel_load(load);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// ADMIN exposes the `set_fuel_module` admin action on `entity_id`.
+public fun enable_fuel_module(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(
+        &mut entity,
+        &acl,
+        SET_FUEL_MODULE,
+        power_grid::operate_fuel_module_requirement(),
+        scenario.ctx(),
+    );
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` switches fuel module `module_id` online at `rate`, or offline.
+public fun set_fuel_module(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    module_id: u64,
+    online: bool,
+    rate: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(SET_FUEL_MODULE), scenario.ctx());
+    grid_load::set_fuel_module(&mut entity, &mut req, module_id, online, rate, clock);
     close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);

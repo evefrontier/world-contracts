@@ -72,6 +72,12 @@ public(package) fun generator_burn(
     (((numerator + denominator - 1) / denominator) as u128)
 }
 
+/// Fuel modules' burn over `elapsed_ms` at a combined `rate` per second, both at
+/// `SCALE`. Rounds up.
+public(package) fun rate_burn(rate: u64, elapsed_ms: u128): u128 {
+    divide_round_up((rate as u128) * elapsed_ms, MS_PER_SECOND as u128)
+}
+
 // === Private Functions ===
 
 fun divide_round_up(numerator: u128, denominator: u128): u128 {

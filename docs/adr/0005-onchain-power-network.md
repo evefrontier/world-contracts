@@ -222,9 +222,14 @@ Install calls `grid_load::connect` with the module's `Permit<T>` and its
 
 #### Fuel modules (leap, overdrive)
 
-A `PowerKind::Fuel` module has `power_req = 0` and takes no part in power
-grants or overload. The service switches it online with a fuel rate and
-offline again. While online, it burns its rate from the online bays.
+A `PowerKind::Fuel` module has `power_req = 0` (checked at connect) and takes
+no part in power grants, `used_mw` or overload. The service switches it with
+`set_fuel_module(module_id, online, rate)`, an admin action using
+`operate_fuel_module_requirement()`; the owner's `set_desired_state` refuses
+it. The rate is fuel per second at `SCALE`. While online and the grid is on,
+it burns its rate from the online bays; Power Off pauses it and keeps the rate.
+Once the online bays run dry it reads a draw of `0`. `fuel_modules_rate(grid)`
+gives the combined rate.
 
 #### Warp
 
@@ -265,7 +270,7 @@ empty, generators give `0`, and fuel modules get no fuel.
 | `deposit_fuel` | owner + sponsor | checks the owner's `FuelRequirement` |
 | `set_desired_state` | owner | power modules; never refused |
 | `set_priority` | owner | stored only |
-| `set_fuel_module` | admin | fuel modules; online with a rate |
+| `set_fuel_module` | admin | fuel modules; online with a rate (at `SCALE`), offline with none |
 | `withdraw_fuel` | admin | all or nothing |
 | `shut_down` | admin | shell lost: clears every desired state and takes generators and bays offline |
 

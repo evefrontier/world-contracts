@@ -44,6 +44,9 @@ function grid(
 
 export type DrawKind = 'firm' | 'elastic'
 
+/** `power` takes grants from the generators; `fuel` (leap, overdrive) burns a rate from the bays. */
+export type PowerKind = 'power' | 'fuel'
+
 function drawKindCall(
   tx: Transaction,
   config: WorldConfig,
@@ -55,6 +58,8 @@ function drawKindCall(
 export interface ModulePowerSpec {
   powerReq: bigint
   drawKind?: DrawKind
+  /** Defaults to `power`. A `fuel` module declares `powerReq: 0n`. */
+  powerKind?: PowerKind
   priority?: bigint
   lineLoss?: bigint
 }
@@ -75,7 +80,9 @@ export function modulePowerArguments(
   return [
     tx.pure.u64(spec.powerReq),
     drawKindCall(tx, config, spec.drawKind ?? 'firm'),
-    tx.moveCall({ target: grid(config, 'power') }),
+    tx.moveCall({
+      target: grid(config, spec.powerKind === 'fuel' ? 'fuel_kind' : 'power'),
+    }),
     tx.pure.u64(spec.priority ?? 0n),
     tx.pure.u64(spec.lineLoss ?? 0n),
   ]
@@ -349,6 +356,16 @@ export function migrateWith(
 
 // === Requirements ===
 
+/** Satisfied by `setFuelModule`; add it as the `set_fuel_module` admin action. */
+export function operateFuelModuleRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'operate_fuel_module_requirement'),
+  })
+}
+
 /**
  * Satisfied by `takeStash` and `stashLoad`; add it as the `take_stash` and
  * `stash_load` admin actions on each creation that handles stashes.
@@ -531,6 +548,35 @@ export function setFuelBay(
     ],
   })
   verifyOwner(tx, config, entity, request, ownerCap)
+}
+
+/**
+ * Switch a fuel module online at `rate` fuel per second (at `POWER_SCALE`), or
+ * offline. Needs the `set_fuel_module` admin action
+ * (`operateFuelModuleRequirement`). Admin-gated.
+ */
+export function setFuelModule(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  moduleId: bigint,
+  online: boolean,
+  rate: bigint,
+): void {
+  const request = interact(tx, config, entity, 'set_fuel_module')
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_load', 'set_fuel_module'),
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(moduleId),
+      tx.pure.bool(online),
+      tx.pure.u64(rate),
+      tx.object.clock(),
+    ],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
 }
 
 /** Move a connected module into priority group `priority`. Grants ignore it in v1. Owner-gated. */
