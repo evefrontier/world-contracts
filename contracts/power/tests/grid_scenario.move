@@ -44,6 +44,7 @@ const TAKE_STASH: vector<u8> = b"take_stash";
 const STASH_LOAD: vector<u8> = b"stash_load";
 const SET_FUEL_MODULE: vector<u8> = b"set_fuel_module";
 const WITHDRAW_FUEL: vector<u8> = b"withdraw_fuel";
+const SHUT_DOWN: vector<u8> = b"shut_down";
 
 /// A stand-in consuming module (Inventory, Thruster, ...).
 public struct Consumer has store {}
@@ -557,6 +558,28 @@ public fun destroy_stash(
     let acl = take_acl(scenario);
     let (req, load) = take_stash(&mut entity, fuel_bay_id, scenario.ctx());
     grid_fuel::destroy_fuel_load(load);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// ADMIN exposes the `shut_down` admin action on `entity_id`.
+public fun enable_shut_down(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(&mut entity, &acl, SHUT_DOWN, power_grid::shut_down_requirement(), scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` shuts `entity_id` down.
+public fun shut_down(scenario: &mut ts::Scenario, sender: address, entity_id: ID, clock: &Clock) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(SHUT_DOWN), scenario.ctx());
+    power_grid::shut_down(&mut entity, &mut req, clock);
     close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);

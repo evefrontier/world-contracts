@@ -188,9 +188,9 @@ public fun set_priority(
 
 /// Set a connected power module's desired state. Always accepted, even without
 /// power. The grid regrants, and the module draws only if the grid can carry it.
-/// Fuel modules are switched by the service with `set_fuel_module`.
-/// TODO: keep every module offline while the Creation is dark (no Shell, see
-/// `creation::layout::has_shell`), without `power` depending on `creation`.
+/// Fuel modules are switched by the service with `set_fuel_module`. A Creation
+/// that loses its Shell is shut down by the service with `power_grid::shut_down`,
+/// so `power` keeps no dependency on `creation`.
 public fun set_desired_state(
     entity: &mut Entity,
     req: &mut Request,

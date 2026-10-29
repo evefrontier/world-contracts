@@ -356,6 +356,14 @@ export function migrateWith(
 
 // === Requirements ===
 
+/** Satisfied by `shutDown`; add it as the `shut_down` admin action. */
+export function shutDownRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({ target: grid(config, 'shut_down_requirement') })
+}
+
 /** Satisfied by `withdrawFuel`; add it as the `withdraw_fuel` admin action. */
 export function withdrawFuelRequirement(
   tx: Transaction,
@@ -556,6 +564,26 @@ export function setFuelBay(
     ],
   })
   verifyOwner(tx, config, entity, request, ownerCap)
+}
+
+/**
+ * Shut the creation down when it loses its Shell: clear every module's intent
+ * and take every generator and bay offline. Call it in the same transaction as
+ * the Layout edit that removes the Shell. Needs the `shut_down` admin action
+ * (`shutDownRequirement`). Admin-gated.
+ */
+export function shutDown(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): void {
+  const request = interact(tx, config, entity, 'shut_down')
+  tx.moveCall({
+    target: grid(config, 'shut_down'),
+    arguments: [entity, request, tx.object.clock()],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
 }
 
 /**

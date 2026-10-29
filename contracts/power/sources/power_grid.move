@@ -13,6 +13,7 @@ module power::power_grid;
 
 use core::{
     access_cap,
+    admin_service,
     component::{Self, Component},
     entity::Entity,
     request::{Request, Frame},
@@ -168,6 +169,10 @@ public struct OperateFuelModule() has drop;
 /// The frame then requires the admin.
 public struct WithdrawFuel() has drop;
 
+/// Marker for the service shutting a Creation down with `shut_down`. The frame
+/// then requires the admin.
+public struct ShutDown() has drop;
+
 /// Minimum grid state an action can require. `None` skips a check.
 public struct PowerGridRequirement has drop {
     on: bool,
@@ -223,6 +228,12 @@ public struct PowerGridInstalled has copy, drop {
 public struct PowerGridUninstalled has copy, drop {
     entity_id: ID,
     component_id: u64,
+}
+
+/// The service shut the Creation down: every module's intent cleared and every
+/// generator and bay offline.
+public struct GridShutDown has copy, drop {
+    entity_id: ID,
 }
 
 public struct PowerToggled has copy, drop {
@@ -293,6 +304,40 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
     grid.regrant(entity_id);
     frame.require(access_cap::owner_requirement());
     req.enqueue(frame);
+}
+
+/// Shut the Creation down when it loses its Shell: clear every module's desired
+/// state, stop every fuel module, and take every generator and bay offline.
+/// Unlike Power Off, nothing comes back by itself; the owner switches things on
+/// again. `on` is unchanged. The service calls it in the same transaction as the
+/// Layout edit that removes the Shell. The request needs a
+/// `shut_down_requirement`, and the frame then requires the admin.
+public fun shut_down(entity: &mut Entity, req: &mut Request, clock: &Clock) {
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = take_grid(entity, req, shut_down_permit());
+    grid.settle(clock);
+    grid.modules.length().do!(|i| {
+        let (_, state) = grid.modules.get_entry_by_idx_mut(i);
+        state.desired_online = false;
+        if (state.module_spec.power_kind == PowerKind::Fuel) state.active_draw_at_last_settled = 0;
+    });
+    grid.generators.length().do!(|i| {
+        let (_, generator) = grid.generators.get_entry_by_idx_mut(i);
+        generator.online = false;
+    });
+    grid.bays.length().do!(|i| {
+        let (_, bay) = grid.bays.get_entry_by_idx_mut(i);
+        bay.online = false;
+    });
+    grid.regrant(entity_id);
+    event::emit(GridShutDown { entity_id });
+    frame.require(admin_service::admin_requirement());
+    req.enqueue(frame);
+}
+
+/// Requirement satisfied by `shut_down`; one per call.
+public fun shut_down_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), ShutDown())
 }
 
 /// Requirement satisfied by `grid_fuel::withdraw_fuel`; one per call.
@@ -920,6 +965,10 @@ public(package) fun new_fuel(
 /// Caller settles first and checks the online bays hold enough.
 public(package) fun take_from_online(grid: &mut PowerGrid, quantity: u64) {
     take_from_online_bays(&mut grid.bays, quantity);
+}
+
+fun shut_down_permit(): Permit<ShutDown> {
+    internal::permit<ShutDown>()
 }
 
 public(package) fun withdraw_fuel_permit(): Permit<WithdrawFuel> {

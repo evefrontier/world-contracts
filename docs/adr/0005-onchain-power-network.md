@@ -290,6 +290,11 @@ Requirements:
   desired Firm load no longer fits. It can't catch fuel running out.
 
 Power Off (player-signed) keeps intent. `shut_down` clears it, so everything stays off until the owner switches it on.
+`shut_down` is an admin action using `shut_down_requirement()`: it settles,
+clears every module's desired state (fuel modules lose their rate), takes every
+generator and bay offline, leaves `on` unchanged, and emits `GridShutDown`. The
+service calls it in the same PTB as the Layout edit that removes the Shell, so
+`power` keeps no dependency on `creation`.
 
 ### Events
 

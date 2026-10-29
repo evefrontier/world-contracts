@@ -176,6 +176,8 @@ export {
   setGenerator,
   setPowerGrid,
   setPriority,
+  shutDown,
+  shutDownRequirement,
   stashedFuel,
   stashLoad,
   takeStash,
