@@ -214,6 +214,10 @@ zero impulse burns `base_fuel_rate`.
   `take_stash` and `stash_load` are admin actions with
   `manage_stash_requirement()`. `migrate` moves a fitted bay with its fuel in
   one step. The grid can't be uninstalled while it holds a stash.
+- A grid holds at most `MAX_FUEL_BAYS` (32) bays, fitted plus stashed. A new
+  bay or an arriving stash aborts past it; uninstalling or refitting keeps the
+  total. Each bay's `capacity` is at most `u64::MAX ÷ (SCALE × MAX_FUEL_BAYS)`,
+  so the fuel of every bay at `SCALE` fits a u64.
 
 #### Power modules
 

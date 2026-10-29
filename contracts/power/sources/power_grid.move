@@ -68,6 +68,12 @@ const MAX_CONNECTED: u64 = 100;
 /// Cap on one fuel module's rate, at `SCALE`: `u64::MAX ÷ MAX_CONNECTED`, so the
 /// combined rate of every connected module fits a u64.
 const MAX_FUEL_RATE: u64 = 184_467_440_737_095_516;
+/// Cap on fuel bays fitted plus stashed on one grid. Uninstalling or refitting a
+/// bay keeps the total, so only a new bay or an arriving stash can hit it.
+const MAX_FUEL_BAYS: u64 = 32;
+/// Cap on one bay's capacity, plain units: `u64::MAX ÷ (SCALE × MAX_FUEL_BAYS)`, so
+/// the fuel of every bay at `SCALE` fits a u64.
+const MAX_FUEL_BAY_CAPACITY: u64 = 57_646_075_230_342;
 
 // === Structs ===
 
@@ -80,7 +86,7 @@ public struct PowerGrid has store {
     modules: VecMap<u64, ModuleState>,
     /// Installed Generators by component id.
     generators: VecMap<u64, GeneratorState>,
-    /// Installed fuel bays by component id. One per fitted bay, so tens at most.
+    /// Installed fuel bays by component id. With `stashed`, at most `MAX_FUEL_BAYS`.
     bays: VecMap<u64, FuelBayState>,
     /// Exact fuel of uninstalled bays by component id, until the bay is refitted
     /// here or the service takes it out with `grid_fuel::take_stash`. Stashed
@@ -664,6 +670,14 @@ public fun max_connected(): u64 {
 
 public fun max_fuel_rate(): u64 {
     MAX_FUEL_RATE
+}
+
+public fun max_fuel_bays(): u64 {
+    MAX_FUEL_BAYS
+}
+
+public fun max_fuel_bay_capacity(): u64 {
+    MAX_FUEL_BAY_CAPACITY
 }
 
 public fun component_id(): u64 {

@@ -7,7 +7,7 @@
 module power::grid_fuel;
 
 use core::{access_cap, admin_service, entity::Entity, request::Request, requirement::Requirement};
-use power::{fuel_bay, power_grid::{Self, Fuel}};
+use power::{fuel_bay, power_grid::{Self, Fuel, PowerGrid}};
 use std::string::String;
 use sui::{bcs, clock::Clock, event};
 
@@ -41,6 +41,11 @@ const EStashExists: vector<u8> = b"Fuel bay is already connected or stashed on t
 const EWrongFuelBay: vector<u8> = b"Fuel load belongs to another fuel bay";
 #[error(code = 13)]
 const EFuelShort: vector<u8> = b"Online fuel bays hold less fuel than the withdrawal";
+#[error(code = 14)]
+const ETooManyFuelBays: vector<u8> =
+    b"Power grid has reached its maximum fitted and stashed fuel bays";
+#[error(code = 15)]
+const EFuelBayTooLarge: vector<u8> = b"Fuel bay capacity is above the maximum";
 
 // === Structs ===
 
@@ -247,6 +252,7 @@ public fun stash_load(entity: &mut Entity, req: &mut Request, load: FuelLoad) {
             && !power_grid::stashed(grid).contains(&fuel_bay_id),
         EStashExists,
     );
+    assert_room_for_bay(grid);
     grid.stash_fuel(fuel_bay_id, fuel);
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
@@ -422,11 +428,13 @@ fun connect(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
+    assert!(capacity <= power_grid::max_fuel_bay_capacity(), EFuelBayTooLarge);
     let entity_id = entity.id();
     let req = fuel_bay::install(entity, fuel_bay_id, name, ctx);
     let grid = power_grid::grid_mut(entity);
     let stash = grid.take_stash(fuel_bay_id);
     assert!(moved.is_none() || stash.is_none(), EStashExists);
+    assert_room_for_bay(grid);
     let restored = if (moved.is_some()) moved else stash;
     let fuel = restored.destroy_or!(power_grid::empty_fuel());
     assert_fits(capacity, fuel.quantity() as u128);
@@ -456,6 +464,12 @@ fun emit_stashed(entity_id: ID, fuel_bay_id: u64, fuel: Fuel) {
         containment_burden: fuel.containment_burden(),
         volatility: fuel.volatility(),
     });
+}
+
+/// Abort unless the grid has room for one more fitted or stashed bay.
+fun assert_room_for_bay(grid: &PowerGrid) {
+    let held = power_grid::bays(grid).length() + power_grid::stashed(grid).length();
+    assert!(held < power_grid::max_fuel_bays(), ETooManyFuelBays);
 }
 
 /// Abort unless `quantity` (at `SCALE`) fits a bay of `capacity` plain units.

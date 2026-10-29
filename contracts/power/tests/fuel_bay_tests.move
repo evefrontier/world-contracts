@@ -140,6 +140,14 @@ fun gated(
     );
 }
 
+fun bay_capacity(scenario: &mut ts::Scenario, entity_id: ID, fuel_bay_id: u64): u64 {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let capacity = power_grid::fuel_bay_state(&entity, fuel_bay_id).capacity();
+    ts::return_shared(entity);
+    capacity
+}
+
 fun bay_online(scenario: &mut ts::Scenario, entity_id: ID, fuel_bay_id: u64): bool {
     ts::next_tx(scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
@@ -309,6 +317,89 @@ fun uninstall_unknown_fuel_bay_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
     uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
+
+    abort
+}
+
+/// Fit `count` new bays, from `FUEL_B` up.
+fun fill_bays(scenario: &mut ts::Scenario, entity_id: ID, count: u64, clock: &Clock) {
+    let mut fuel_bay_id = FUEL_B;
+    count.do!(|_| {
+        install_fuel(scenario, entity_id, fuel_bay_id, BAY_B_CAPACITY, clock);
+        fuel_bay_id = fuel_bay_id + 1;
+    });
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EFuelBayTooLarge)]
+fun install_bay_above_max_capacity_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let capacity = power_grid::max_fuel_bay_capacity() + 1;
+    install_fuel(&mut scenario, entity_id, FUEL_B, capacity, &clock);
+
+    abort
+}
+
+#[test]
+fun install_bay_at_max_capacity_succeeds() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let capacity = power_grid::max_fuel_bay_capacity();
+    install_fuel(&mut scenario, entity_id, FUEL_B, capacity, &clock);
+    assert!(bay_capacity(&mut scenario, entity_id, FUEL_B) == capacity);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = grid_fuel::ETooManyFuelBays)]
+fun install_bay_past_max_bays_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    fill_bays(&mut scenario, entity_id, power_grid::max_fuel_bays() - 1, &clock);
+
+    install_fuel(&mut scenario, entity_id, FUEL_B + 100, BAY_B_CAPACITY, &clock);
+
+    abort
+}
+
+/// Uninstalling a bay stashes its fuel, so the grid stays full; refitting the
+/// same bay still works.
+#[test]
+fun full_grid_refits_its_own_bay() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    fill_bays(&mut scenario, entity_id, power_grid::max_fuel_bays() - 1, &clock);
+
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    install_fuel(&mut scenario, entity_id, fuel_bay_id(), fuel_capacity(), &clock);
+    assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = grid_fuel::ETooManyFuelBays)]
+fun stash_load_onto_a_full_grid_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let from = setup_entity(&mut scenario, vector[], vector[], &clock);
+    let to = setup_empty_grid(&mut scenario, 2, &clock);
+    fill_bays(&mut scenario, to, power_grid::max_fuel_bays(), &clock);
+    uninstall_fuel(&mut scenario, from, fuel_bay_id(), &clock);
+    enable_manage_stash(&mut scenario, from);
+    enable_manage_stash(&mut scenario, to);
+
+    move_stash(&mut scenario, admin(), from, to, fuel_bay_id());
 
     abort
 }
