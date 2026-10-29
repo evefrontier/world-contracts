@@ -19,7 +19,7 @@ const EModuleAlreadyConnected: vector<u8> = b"Module is already connected to thi
 #[error(code = 2)]
 const ETooManyConnected: vector<u8> = b"Power grid has reached its maximum connected modules";
 #[error(code = 3)]
-const EOutOfFuel: vector<u8> = b"Power grid has run out of fuel";
+const EOutOfFuel: vector<u8> = b"Power grid has no fuel in its online bays";
 #[error(code = 4)]
 const EDrawBelowMin: vector<u8> = b"Module's granted draw is below the requirement";
 #[error(code = 5)]
@@ -202,7 +202,7 @@ public fun assert_online(entity: &mut Entity, req: &mut Request, clock: &Clock) 
     );
     grid.settle(clock);
     grid.regrant(entity_id);
-    assert!(grid.fuel_quantity_at_last_settled() > 0, EOutOfFuel);
+    assert!(grid.online_fuel().quantity() > 0, EOutOfFuel);
     enforce_online(&requirement, grid);
     frame.destroy_empty_frame();
 }

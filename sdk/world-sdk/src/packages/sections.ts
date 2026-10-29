@@ -27,14 +27,14 @@ import {
   uninstallLayout,
 } from './layout.js'
 import {
-  type InstallFuelArgs,
+  type InstallFuelBayArgs,
   type InstallGeneratorArgs,
-  installFuelWithLoad,
+  installFuelBayWithLoad,
   installGenerator,
   installPowerGrid,
-  migrateFuel,
+  migrateFuelBay,
   migrateGenerator,
-  uninstallFuel,
+  uninstallFuelBay,
   uninstallGenerator,
   uninstallPowerGrid,
 } from './power.js'
@@ -43,7 +43,7 @@ import {
  * How modules move between creations. External services use path 1.
  * - Path 1, `reinstall` (default): uninstall each module and install it fresh
  *   on the target from the given install args. Modules arrive offline, a fuel
- *   bay carries its share of fuel, an inventory's items are burned.
+ *   bay carries its exact fuel, an inventory's items are burned.
  * - Path 2, `migrate` (optional): move each module with its state intact.
  */
 export type MovePath = 'reinstall' | 'migrate'
@@ -53,7 +53,7 @@ export type SectionModule =
   | ({ kind: 'generic' } & InstallGenericModuleArgs)
   | ({ kind: 'inventory' } & InstallInventoryArgs)
   | ({ kind: 'generator' } & InstallGeneratorArgs)
-  | ({ kind: 'fuel' } & InstallFuelArgs)
+  | ({ kind: 'fuelBay' } & InstallFuelBayArgs)
 
 export interface SectionSpec {
   sectionId: bigint
@@ -95,8 +95,8 @@ function migrateModule(
     case 'generator':
       migrateGenerator(tx, config, from, to, id)
       break
-    case 'fuel':
-      migrateFuel(tx, config, from, to, id)
+    case 'fuelBay':
+      migrateFuelBay(tx, config, from, to, id)
       break
   }
 }
@@ -122,9 +122,9 @@ function reinstallModule(
       uninstallGenerator(tx, config, from, id)
       installGenerator(tx, config, to, module)
       break
-    case 'fuel': {
-      const load = uninstallFuel(tx, config, from, id)
-      installFuelWithLoad(tx, config, to, module, load)
+    case 'fuelBay': {
+      const load = uninstallFuelBay(tx, config, from, id)
+      installFuelBayWithLoad(tx, config, to, module, load)
       break
     }
   }

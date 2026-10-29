@@ -26,10 +26,11 @@ import {
 import {
   depositFuel,
   depositFuelRequirement,
-  installFuel,
+  installFuelBay,
   installGenerator,
   installPowerGrid,
-  projectedFuel,
+  parseProjectedBays,
+  projectedBays,
 } from '../packages/power.js'
 import {
   detachSection,
@@ -49,6 +50,7 @@ const TENANT = 'sections-t1'
 const DATA = [1, 2, 3, 9]
 const IMPULSE = 900_000n
 const BURDEN = 140_000n
+const VOLATILITY = 5_000n
 
 type World = ReturnType<typeof loadLocalnetWorld>
 
@@ -70,7 +72,7 @@ describe('sections (localnet)', () => {
       sectionId: 1n,
       modules: [
         generic(0x80n),
-        { kind: 'fuel', componentId: 0x81n, capacity: 1_000_000n },
+        { kind: 'fuelBay', componentId: 0x81n, capacity: 1_000_000n },
       ],
     }
     const leaving: SectionSpec = {
@@ -78,16 +80,19 @@ describe('sections (localnet)', () => {
       modules: [
         generic(0x82n),
         generator(0x83n),
-        { kind: 'fuel', componentId: 0x84n, capacity: 3_000_000n },
+        { kind: 'fuelBay', componentId: 0x84n, capacity: 3_000_000n },
       ],
     }
 
-    // The source holds 400_000 fuel across 4_000_000 of bay capacity.
+    // Each bay holds its own fuel: 100_000 stays, 300_000 leaves.
     const setupTx = new Transaction()
     const source = deploy(setupTx, config, sourceKey, [kept, leaving])
     shareEntity(setupTx, config, source)
     await expectSuccess(client, setupTx)
-    await seedFuel(client, config, sourceId, 400_000n)
+    await seedFuel(client, config, sourceId, [
+      [0x81n, 100_000n],
+      [0x84n, 300_000n],
+    ])
 
     const detachTx = new Transaction()
     detachSection(
@@ -107,9 +112,9 @@ describe('sections (localnet)', () => {
       0x83n,
       0x84n,
     ])
-    // The leaving bay is three quarters of the capacity, so it took three quarters of the fuel.
-    expect(await readFuel(client, config, sourceId)).toBe(100_000n)
-    expect(await readFuel(client, config, targetId)).toBe(300_000n)
+    // Each bay kept exactly its own fuel.
+    expect(await readBayFuel(client, config, sourceId, 0x81n)).toBe(100_000n)
+    expect(await readBayFuel(client, config, targetId, 0x84n)).toBe(300_000n)
     expect(await readGenericData(client, config, targetId, 0x82n)).toEqual(DATA)
 
     // The source's last section cannot leave.
@@ -148,7 +153,7 @@ describe('sections (localnet)', () => {
       modules: [
         generic(0x92n),
         generator(0x93n),
-        { kind: 'fuel', componentId: 0x94n, capacity: 1_000_000n },
+        { kind: 'fuelBay', componentId: 0x94n, capacity: 1_000_000n },
       ],
     }
 
@@ -164,7 +169,7 @@ describe('sections (localnet)', () => {
       deploy(setupTx, config, absorbedKey, [absorbedSection]),
     )
     await expectSuccess(client, setupTx)
-    await seedFuel(client, config, absorbedId, 250_000n)
+    await seedFuel(client, config, absorbedId, [[0x94n, 250_000n]])
 
     const mergeTx = new Transaction()
     mergeCreation(
@@ -183,7 +188,7 @@ describe('sections (localnet)', () => {
       0x93n,
       0x94n,
     ])
-    expect(await readFuel(client, config, survivorId)).toBe(250_000n)
+    expect(await readBayFuel(client, config, survivorId, 0x94n)).toBe(250_000n)
     expect(await readGenericData(client, config, survivorId, 0x92n)).toEqual(
       DATA,
     )
@@ -202,7 +207,7 @@ function generator(componentId: bigint): SectionModule {
   return {
     kind: 'generator',
     componentId,
-    maxOutputMw: 150_000n,
+    maxOutputMw: 15n,
     containmentReduction: 100_000n,
     baseFuelRate: 10_000n,
   }
@@ -230,8 +235,8 @@ function deploy(
       case 'generator':
         installGenerator(tx, config, entity, module)
         break
-      case 'fuel':
-        installFuel(tx, config, entity, module)
+      case 'fuelBay':
+        installFuelBay(tx, config, entity, module)
         break
     }
   }
@@ -243,12 +248,12 @@ function deploy(
   return entity
 }
 
-/** Deposit `amount` into a shared creation's fuel pool. */
+/** Deposit each `[fuelBayId, amount]` into that bay of a shared creation. */
 async function seedFuel(
   client: World['client'],
   config: WorldConfig,
   entityId: string,
-  amount: bigint,
+  deposits: [bigint, bigint][],
 ) {
   const capId = await mintAccessCap(client, config, {
     entity: entityId,
@@ -261,14 +266,18 @@ async function seedFuel(
   enableAdminAction(tx, config, entity, 'deposit_fuel', [
     depositFuelRequirement(tx, config),
   ])
-  const request = interact(tx, config, entity, 'deposit_fuel')
-  depositFuel(tx, config, entity, request, tx.object(capId), {
-    fuelType: 1n,
-    amount,
-    impulse: IMPULSE,
-    containmentBurden: BURDEN,
-  })
-  completeRequest(tx, config, entity, request)
+  for (const [fuelBayId, amount] of deposits) {
+    const request = interact(tx, config, entity, 'deposit_fuel')
+    depositFuel(tx, config, entity, request, tx.object(capId), {
+      fuelBayId,
+      fuelType: 1n,
+      amount,
+      impulse: IMPULSE,
+      containmentBurden: BURDEN,
+      volatility: VOLATILITY,
+    })
+    completeRequest(tx, config, entity, request)
+  }
   await expectSuccess(client, tx)
 }
 
@@ -317,15 +326,18 @@ async function readSectionModules(
   return bcs.vector(bcs.u64()).parse(bytes).map(BigInt)
 }
 
-async function readFuel(
+async function readBayFuel(
   client: World['client'],
   config: WorldConfig,
   entityId: string,
+  fuelBayId: bigint,
 ): Promise<bigint> {
   const bytes = await view(client, (tx) =>
-    projectedFuel(tx, config, tx.object(entityId)),
+    projectedBays(tx, config, tx.object(entityId)),
   )
-  return BigInt(bcs.u64().parse(bytes))
+  const bay = parseProjectedBays(bytes).find((b) => b.fuelBayId === fuelBayId)
+  if (!bay) throw new Error(`fuel bay ${fuelBayId} not installed`)
+  return bay.quantity
 }
 
 async function readGenericData(

@@ -11,10 +11,11 @@ import {
 import {
   depositFuel,
   depositFuelRequirement,
-  installFuel,
+  installFuelBay,
   installGenerator,
   operateGridRequirement,
   setDesiredState,
+  setFuelBay,
   setGenerator,
   setPowerGrid,
 } from '../packages/power.js'
@@ -40,7 +41,7 @@ export async function installInventoryPower(
     containmentReduction: 10n,
     baseFuelRate: 1n,
   })
-  installFuel(installTx, config, entity, {
+  installFuelBay(installTx, config, entity, {
     componentId: FUEL_BAY_ID,
     capacity: 1_000n,
   })
@@ -58,13 +59,16 @@ export async function installInventoryPower(
   enableAdminAction(enableTx, config, enableEntity, 'set_generator', [
     operateGridRequirement(enableTx, config),
   ])
+  enableAdminAction(enableTx, config, enableEntity, 'set_fuel_bay', [
+    operateGridRequirement(enableTx, config),
+  ])
   enableAdminAction(enableTx, config, enableEntity, 'set_desired_state', [
     operateGridRequirement(enableTx, config),
   ])
   await expectSuccess(client, enableTx)
 }
 
-/** Fuel the grid, switch it on, and grant `moduleId`. The owner cap authorizes each step. */
+/** Fuel the bay, bring it online, switch the grid on, and grant `moduleId`. The owner cap authorizes each step. */
 export function powerInventoryOn(
   tx: Transaction,
   config: WorldConfig,
@@ -74,12 +78,18 @@ export function powerInventoryOn(
 ): void {
   const fuelRequest = interact(tx, config, entity, 'deposit_fuel')
   depositFuel(tx, config, entity, fuelRequest, ownerCap, {
+    fuelBayId: FUEL_BAY_ID,
     fuelType: 7n,
     amount: 100n,
     impulse: 90n,
     containmentBurden: 14n,
+    volatility: 5n,
   })
   completeRequest(tx, config, entity, fuelRequest)
+
+  const bayRequest = interact(tx, config, entity, 'set_fuel_bay')
+  setFuelBay(tx, config, entity, bayRequest, ownerCap, FUEL_BAY_ID, true)
+  completeRequest(tx, config, entity, bayRequest)
 
   const gridRequest = interact(tx, config, entity, 'set_power_grid')
   setPowerGrid(tx, config, entity, gridRequest, ownerCap, true)

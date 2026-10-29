@@ -8,10 +8,11 @@ use power::{
     grid_load,
     grid_scenario::{
         admin,
+        bay_fuel,
         burden,
         firm_power,
+        fuel_bay_id,
         fuel_capacity,
-        fuel_source_id,
         generator_id,
         impulse,
         install_fuel,
@@ -27,33 +28,32 @@ use power::{
         setup_empty_grid_in_tenant,
         setup_entity,
         starting_fuel,
-        stored_draw
+        stored_draw,
+        volatility
     },
     power_grid
 };
 use sui::{clock::{Self, Clock}, test_scenario as ts};
 
 const MOD_A: u64 = 401;
-/// 15 MW at `SCALE`.
-const OUTPUT: u64 = 150_000;
-/// 25 MW at `SCALE`.
-const OUTPUT_2: u64 = 250_000;
-const CONTAINMENT: u64 = 100_000;
-/// 10 MW at `SCALE`.
-const DRAW: u64 = 100_000;
+/// 15 MW.
+const OUTPUT: u64 = 15;
+/// 25 MW.
+const OUTPUT_2: u64 = 25;
+const CONTAINMENT: u64 = 10;
+/// 10 MW.
+const DRAW: u64 = 10;
 const SECOND_FUEL_ID: u64 = 9_002;
 
-fun grid_of(scenario: &mut ts::Scenario, entity_id: ID): (u64, u64, u64, u64, u64) {
+/// `(capacity_mw, bay count)` of the grid.
+fun grid_of(scenario: &mut ts::Scenario, entity_id: ID): (u64, u64) {
     ts::next_tx(scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let grid = power_grid::power_grid(&entity);
     let capacity_mw = grid.capacity_mw();
-    let fuel_capacity = grid.fuel_capacity();
-    let fuel = grid.fuel_quantity_at_last_settled();
-    let fuel_impulse = grid.fuel_impulse();
-    let fuel_burden = grid.fuel_containment_burden();
+    let bay_count = grid.bays().length();
     ts::return_shared(entity);
-    (capacity_mw, fuel_capacity, fuel, fuel_impulse, fuel_burden)
+    (capacity_mw, bay_count)
 }
 
 macro fun with_entity<$R>($scenario: &mut ts::Scenario, $entity_id: ID, $f: |&Entity| -> $R): $R {
@@ -144,8 +144,8 @@ fun migrate_generator_moves_its_output_and_online_state() {
 
     migrate_generator(&mut scenario, admin(), from, to, generator_id(0), &clock);
 
-    let (from_capacity, _, _, _, _) = grid_of(&mut scenario, from);
-    let (to_capacity, _, _, _, _) = grid_of(&mut scenario, to);
+    let (from_capacity, _) = grid_of(&mut scenario, from);
+    let (to_capacity, _) = grid_of(&mut scenario, to);
     assert!(from_capacity == OUTPUT_2);
     assert!(to_capacity == OUTPUT);
     assert!(
@@ -196,44 +196,31 @@ fun migrate_generator_across_tenants_aborts() {
 
 // === fuel ===
 
+/// The bay moves with exactly its own fuel and arrives offline. The bay left
+/// behind keeps all of its own.
 #[test]
-fun migrate_fuel_moves_its_share_of_the_pool() {
+fun migrate_fuel_moves_the_bays_exact_fuel() {
     let mut scenario = ts::begin(admin());
     let clock = clock::create_for_testing(scenario.ctx());
     core::test_helpers::setup(&mut scenario);
     let from = setup_entity(&mut scenario, vector[], vector[], &clock);
-    install_fuel(&mut scenario, from, SECOND_FUEL_ID, 3 * fuel_capacity(), &clock);
+    install_fuel(&mut scenario, from, SECOND_FUEL_ID, fuel_capacity(), &clock);
     let to = setup_empty_grid(&mut scenario, 2, &clock);
 
-    migrate_fuel(&mut scenario, admin(), from, to, fuel_source_id(), &clock);
+    migrate_fuel(&mut scenario, admin(), from, to, fuel_bay_id(), &clock);
 
-    // The source holds a quarter of the capacity, so it takes a quarter of the fuel.
-    let moved = starting_fuel() / 4;
-    let (_, from_cap, from_fuel, from_impulse, _) = grid_of(&mut scenario, from);
-    let (_, to_cap, to_fuel, to_impulse, to_burden) = grid_of(&mut scenario, to);
-    assert!(from_cap == 3 * fuel_capacity() && from_fuel == starting_fuel() - moved);
-    assert!(from_impulse == impulse());
-    assert!(to_cap == fuel_capacity() && to_fuel == moved);
-    assert!(to_impulse == impulse() && to_burden == burden());
-
-    clock.destroy_for_testing();
-    scenario.end();
-}
-
-#[test]
-fun migrate_last_fuel_source_takes_all_fuel() {
-    let mut scenario = ts::begin(admin());
-    let clock = clock::create_for_testing(scenario.ctx());
-    core::test_helpers::setup(&mut scenario);
-    let from = setup_entity(&mut scenario, vector[], vector[], &clock);
-    let to = setup_empty_grid(&mut scenario, 2, &clock);
-
-    migrate_fuel(&mut scenario, admin(), from, to, fuel_source_id(), &clock);
-
-    assert!(settled_fuel(&mut scenario, from) == 0);
-    assert!(settled_fuel(&mut scenario, to) == starting_fuel());
-    let (_, from_cap, _, _, _) = grid_of(&mut scenario, from);
-    assert!(from_cap == 0);
+    let moved = bay_fuel(&mut scenario, to, fuel_bay_id());
+    assert!(moved.quantity() == starting_fuel());
+    assert!(moved.impulse() == impulse() && moved.containment_burden() == burden());
+    assert!(moved.volatility() == volatility());
+    let capacity = with_entity!(&mut scenario, to, |e| {
+        power_grid::fuel_bay_state(e, fuel_bay_id()).capacity()
+    });
+    assert!(capacity == fuel_capacity());
+    assert!(settled_fuel(&mut scenario, to) == 0);
+    let (_, from_bays) = grid_of(&mut scenario, from);
+    assert!(from_bays == 1);
+    assert!(bay_fuel(&mut scenario, from, SECOND_FUEL_ID).quantity() == 0);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -253,16 +240,17 @@ fun migrate_fuel_settles_burn_first() {
     let left = with_entity!(&mut scenario, from, |e| power_grid::projected_fuel(e, &clock));
     assert!(left < starting_fuel());
 
-    migrate_fuel(&mut scenario, admin(), from, to, fuel_source_id(), &clock);
+    migrate_fuel(&mut scenario, admin(), from, to, fuel_bay_id(), &clock);
 
-    assert!(settled_fuel(&mut scenario, to) == left);
+    assert!(bay_fuel(&mut scenario, to, fuel_bay_id()).quantity() == left);
+    assert!(stored_draw(&mut scenario, from, MOD_A) == 0);
 
     clock.destroy_for_testing();
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = power_grid::EFuelSourceNotConnected)]
-fun migrate_unknown_fuel_source_aborts() {
+#[test, expected_failure(abort_code = power_grid::EFuelBayNotConnected)]
+fun migrate_unknown_fuel_bay_aborts() {
     let mut scenario = ts::begin(admin());
     let clock = clock::create_for_testing(scenario.ctx());
     core::test_helpers::setup(&mut scenario);
@@ -282,7 +270,7 @@ fun migrate_fuel_across_tenants_aborts() {
     let from = setup_entity(&mut scenario, vector[], vector[], &clock);
     let to = setup_empty_grid_in_tenant(&mut scenario, 2, b"OTHER", &clock);
 
-    migrate_fuel(&mut scenario, admin(), from, to, fuel_source_id(), &clock);
+    migrate_fuel(&mut scenario, admin(), from, to, fuel_bay_id(), &clock);
 
     abort
 }
@@ -302,7 +290,7 @@ fun migrate_fuel_to_entity_without_grid_aborts() {
     ts::return_shared(registry);
     ts::return_shared(acl);
 
-    migrate_fuel(&mut scenario, admin(), from, to, fuel_source_id(), &clock);
+    migrate_fuel(&mut scenario, admin(), from, to, fuel_bay_id(), &clock);
 
     abort
 }

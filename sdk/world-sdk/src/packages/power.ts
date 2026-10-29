@@ -1,3 +1,4 @@
+import { bcs } from '@mysten/sui/bcs'
 import type {
   Transaction,
   TransactionArgument,
@@ -12,7 +13,8 @@ import {
   verifySponsor,
 } from './core.js'
 
-// Power, fuel and fuel stats are fixed point at `POWER_SCALE`: 0.1 MW = 1_000n.
+// Power (MW) and fuel bay capacity are plain integers. Fuel amounts, stats and
+// rates are fixed point at `POWER_SCALE`: 0.1 units = 1_000n.
 export const POWER_SCALE = 10_000n
 
 const POWER_PACKAGE = 'power'
@@ -93,7 +95,7 @@ export function installPowerGrid(
   completeRequest(tx, config, entity, request)
 }
 
-/** Remove the grid. Aborts while a module, generator, or fuel source is still connected. */
+/** Remove the grid. Aborts while a module, generator, or fuel bay is still connected. */
 export function uninstallPowerGrid(
   tx: Transaction,
   config: WorldConfig,
@@ -138,18 +140,18 @@ export function installGenerator(
   completeRequest(tx, config, entity, request)
 }
 
-export interface InstallFuelArgs {
+export interface InstallFuelBayArgs {
   componentId: bigint
   name?: string | null
   capacity: bigint
 }
 
-/** Install a Fuel source and add its capacity to the grid. Admin-gated. */
-export function installFuel(
+/** Install an empty fuel bay, offline. Admin-gated. */
+export function installFuelBay(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
-  args: InstallFuelArgs,
+  args: InstallFuelBayArgs,
 ): void {
   const request = tx.moveCall({
     target: moveCallTarget(config, 'grid_fuel', 'install'),
@@ -180,8 +182,8 @@ export function uninstallGenerator(
   completeRequest(tx, config, entity, request)
 }
 
-/** Remove a fuel source. Pass the load to `installFuelWithLoad` or `burnFuelLoad`. */
-export function uninstallFuel(
+/** Remove a fuel bay with its exact fuel. Pass the load to `installFuelBayWithLoad` or `burnFuelLoad`. */
+export function uninstallFuelBay(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
@@ -208,12 +210,12 @@ export function burnFuelLoad(
   })
 }
 
-/** Install a Fuel source already holding `load`. Admin-gated. */
-export function installFuelWithLoad(
+/** Install a fuel bay already holding `load`, offline. Admin-gated. */
+export function installFuelBayWithLoad(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
-  args: InstallFuelArgs,
+  args: InstallFuelBayArgs,
   load: TransactionArgument,
 ): void {
   const request = tx.moveCall({
@@ -249,8 +251,8 @@ export function migrateGenerator(
   )
 }
 
-/** Move a Fuel source to `to` with its share of the fuel. Admin-gated. */
-export function migrateFuel(
+/** Move a fuel bay to `to` with its exact fuel. It arrives offline. Admin-gated. */
+export function migrateFuelBay(
   tx: Transaction,
   config: WorldConfig,
   from: TransactionArgument,
@@ -292,8 +294,8 @@ export function migrateWith(
 // === Requirements ===
 
 /**
- * Satisfied by `setPowerGrid`, `setGenerator`, `setPriority` and `setDesiredState`.
- * Each handler also takes the owner's cap.
+ * Satisfied by `setPowerGrid`, `setGenerator`, `setFuelBay`, `setPriority` and
+ * `setDesiredState`. Each handler also takes the owner's cap.
  */
 export function operateGridRequirement(
   tx: Transaction,
@@ -349,16 +351,19 @@ export function onlineRequirement(
 
 // === Handlers (satisfy the next requirement on `request`) ===
 
+/** Fuel to load into one bay. Amount and stats at `POWER_SCALE`. */
 export interface DepositFuelArgs {
+  fuelBayId: bigint
   fuelType: bigint
   amount: bigint
   impulse: bigint
   containmentBurden: bigint
+  volatility: bigint
 }
 
 /**
- * Bridge fuel into the pool. The owner's `ownerCap` authorizes the deposit, and
- * the gas sponsor must be on `AdminACL`.
+ * Load fuel into one bay; its stats blend by amount. The owner's `ownerCap`
+ * authorizes the deposit, and the gas sponsor must be on `AdminACL`.
  */
 export function depositFuel(
   tx: Transaction,
@@ -373,10 +378,12 @@ export function depositFuel(
     arguments: [
       entity,
       request,
+      tx.pure.u64(args.fuelBayId),
       tx.pure.u64(args.fuelType),
       tx.pure.u64(args.amount),
       tx.pure.u64(args.impulse),
       tx.pure.u64(args.containmentBurden),
+      tx.pure.u64(args.volatility),
       tx.object.clock(),
     ],
   })
@@ -416,6 +423,29 @@ export function setGenerator(
       entity,
       request,
       tx.pure.u64(generatorId),
+      tx.pure.bool(online),
+      tx.object.clock(),
+    ],
+  })
+  verifyOwner(tx, config, entity, request, ownerCap)
+}
+
+/** Bring a fuel bay online or offline. An offline bay keeps its fuel. Owner-gated. */
+export function setFuelBay(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
+  fuelBayId: bigint,
+  online: boolean,
+): void {
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'set_fuel_bay'),
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(fuelBayId),
       tx.pure.bool(online),
       tx.object.clock(),
     ],
@@ -469,7 +499,7 @@ export function setDesiredState(
   verifyOwner(tx, config, entity, request, ownerCap)
 }
 
-/** Fuel left on the creation now, with burn since the last settle applied. */
+/** Fuel in online bays now, with burn since the last settle applied. */
 export function projectedFuel(
   tx: Transaction,
   config: WorldConfig,
@@ -479,6 +509,64 @@ export function projectedFuel(
     target: grid(config, 'projected_fuel'),
     arguments: [entity, tx.object.clock()],
   })
+}
+
+/**
+ * Every installed bay now, as a `VecMap<u64, FuelBayState>`; parse it with
+ * `parseProjectedBays`.
+ */
+export function projectedBays(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'projected_bays'),
+    arguments: [entity, tx.object.clock()],
+  })
+}
+
+const FuelBcs = bcs.struct('Fuel', {
+  quantity: bcs.u64(),
+  impulse: bcs.u64(),
+  containment_burden: bcs.u64(),
+  volatility: bcs.u64(),
+})
+
+const FuelBayStateBcs = bcs.struct('FuelBayState', {
+  capacity: bcs.u64(),
+  online: bcs.bool(),
+  fuel: FuelBcs,
+})
+
+const BaysBcs = bcs.struct('VecMap', {
+  contents: bcs.vector(
+    bcs.struct('Entry', { key: bcs.u64(), value: FuelBayStateBcs }),
+  ),
+})
+
+/** A fuel bay as `projectedBays` returns it. Fuel values at `POWER_SCALE`. */
+export interface ProjectedBay {
+  fuelBayId: bigint
+  capacity: bigint
+  online: boolean
+  quantity: bigint
+  impulse: bigint
+  containmentBurden: bigint
+  volatility: bigint
+}
+
+/** Decode the BCS return value of `projectedBays`. */
+export function parseProjectedBays(bytes: Uint8Array): ProjectedBay[] {
+  return BaysBcs.parse(bytes).contents.map(({ key, value }) => ({
+    fuelBayId: BigInt(key),
+    capacity: BigInt(value.capacity),
+    online: value.online,
+    quantity: BigInt(value.fuel.quantity),
+    impulse: BigInt(value.fuel.impulse),
+    containmentBurden: BigInt(value.fuel.containment_burden),
+    volatility: BigInt(value.fuel.volatility),
+  }))
 }
 
 /** `(effective capacity, used MW, online module ids)` now. Fuel at zero reads as all zeros. */

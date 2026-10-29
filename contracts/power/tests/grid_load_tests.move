@@ -36,12 +36,12 @@ use sui::{clock::{Self, Clock}, test_scenario as ts};
 const MOD_A: u64 = 401;
 const MOD_B: u64 = 402;
 const MOD_E: u64 = 403;
-/// 15 MW at `SCALE`.
-const OUTPUT: u64 = 150_000;
-/// Containment reduction 10 at `SCALE`.
-const CONTAINMENT: u64 = 100_000;
-/// 10 MW at `SCALE`.
-const DRAW: u64 = 100_000;
+/// 15 MW.
+const OUTPUT: u64 = 15;
+/// Containment reduction 10.
+const CONTAINMENT: u64 = 10;
+/// 10 MW.
+const DRAW: u64 = 10;
 /// Long enough at 10 MW that the whole tank burns, in ms.
 const DEPLETING_MS: u64 = 10_000_000_000_000;
 
@@ -417,7 +417,7 @@ fun refuel_regrants_desired_module() {
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
 
-    deposit_fuel(&mut scenario, entity_id, 1_000_000, impulse(), burden(), &clock);
+    deposit_fuel(&mut scenario, entity_id, 100, impulse(), burden(), &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
 
     clock.destroy_for_testing();
