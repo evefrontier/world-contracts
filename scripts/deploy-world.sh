@@ -7,7 +7,8 @@
 source "$(dirname "$0")/lib.sh"
 
 # Packages in dependency order. inventory and generic_module depend on core and power; creation on core.
-PACKAGES=(core character metadata creation power inventory generic_module)
+# killmail depends on core and character.
+PACKAGES=(core character metadata creation power inventory generic_module killmail)
 
 setup
 ENV=$(get_env "${1:-}")

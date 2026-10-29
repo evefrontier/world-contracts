@@ -18,7 +18,7 @@ Sui Move smart contracts for EVE Frontier.
 2. **Get your private key:**
    ```bash
    # If you have an existing Sui wallet:
-   sui keytool export --address YOUR_ADDRESS
+   sui keytool export --key-identity YOUR_ADDRESS
    
    # Or generate a new one:
    sui keytool generate ed25519

@@ -161,7 +161,13 @@ public fun install_module(
         std::internal::permit<Consumer>(),
         scenario.ctx(),
     );
-    grid_load::connect<Consumer>(&mut entity, module_id, spec, std::internal::permit<Consumer>(), clock);
+    grid_load::connect<Consumer>(
+        &mut entity,
+        module_id,
+        spec,
+        std::internal::permit<Consumer>(),
+        clock,
+    );
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
     ts::return_shared(acl);

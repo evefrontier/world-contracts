@@ -103,6 +103,12 @@ export {
   withdrawRequirement,
 } from './packages/inventory.js'
 export {
+  createKillmail,
+  type KillmailArgs,
+  killmailId,
+  type LossType,
+} from './packages/killmail.js'
+export {
   addModule,
   addSections,
   clearShell,
