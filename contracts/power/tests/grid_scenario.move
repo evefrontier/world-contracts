@@ -15,7 +15,7 @@ use power::{
     grid_fuel::{Self, FuelLoad},
     grid_generator,
     grid_load,
-    power_grid::{Self, ModulePowerSpec}
+    power_grid::{Self, Fuel, ModulePowerSpec}
 };
 use std::string;
 use sui::{clock::Clock, test_scenario as ts};
@@ -23,21 +23,30 @@ use sui::{clock::Clock, test_scenario as ts};
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
 const GENERATOR_BASE: u64 = 101;
-/// Base burn rate of every Generator, 1 unit per second at `SCALE`.
-const BASE_FUEL_RATE: u64 = 10_000;
-/// Component id of the Fuel source every `setup_entity` grid gets.
-const FUEL_ID: u64 = 9_001;
-/// Fuel capacity and starting fuel of that source, units at `SCALE`.
-const FUEL_CAPACITY: u64 = 1_000_000_000;
-const STARTING_FUEL: u64 = 500_000_000;
-/// Fuel stats at `SCALE`: impulse 90, containment burden 14.
+/// Base burn rate of every Generator, 1 unit per second.
+const BASE_FUEL_RATE: u64 = 1;
+/// Component id of the fuel bay every `setup_entity` grid gets.
+const FUEL_BAY_ID: u64 = 9_001;
+/// Capacity of that bay, plain units.
+const FUEL_CAPACITY: u64 = 100_000;
+/// Starting fuel of that bay, plain units.
+const STARTING_FUEL: u64 = 50_000;
+/// Fuel stats, plain.
+/// Fuel stats at `SCALE`: impulse 90, burden 14, volatility 1.
 const IMPULSE: u64 = 900_000;
 const BURDEN: u64 = 140_000;
+const VOLATILITY: u64 = 10_000;
 const FUEL_TYPE: u64 = 7;
 
 const OPERATE: vector<u8> = b"operate_grid";
 const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
 const TEMP_ACTION: vector<u8> = b"temp_action";
+const TAKE_STASH: vector<u8> = b"take_stash";
+const STASH_LOAD: vector<u8> = b"stash_load";
+const SET_FUEL_MODULE: vector<u8> = b"set_fuel_module";
+const WITHDRAW_FUEL: vector<u8> = b"withdraw_fuel";
+const SHUT_DOWN: vector<u8> = b"shut_down";
+const FITTED: vector<u8> = b"operate_fitted";
 
 /// A stand-in consuming module (Inventory, Thruster, ...).
 public struct Consumer has store {}
@@ -49,15 +58,21 @@ public fun owner(): address { OWNER }
 /// Component id of the `index`-th Generator from `setup_entity`.
 public fun generator_id(index: u64): u64 { GENERATOR_BASE + index }
 
-public fun fuel_source_id(): u64 { FUEL_ID }
+public fun fuel_bay_id(): u64 { FUEL_BAY_ID }
 
 public fun fuel_capacity(): u64 { FUEL_CAPACITY }
 
-public fun starting_fuel(): u64 { STARTING_FUEL }
+/// Starting fuel as the bay stores it, at `SCALE`.
+public fun starting_fuel(): u64 { STARTING_FUEL * power_grid::scale() }
+
+/// Starting fuel as deposited, plain units.
+public fun starting_units(): u64 { STARTING_FUEL }
 
 public fun impulse(): u64 { IMPULSE }
 
 public fun burden(): u64 { BURDEN }
+
+public fun volatility(): u64 { VOLATILITY }
 
 public fun fuel_type(): u64 { FUEL_TYPE }
 
@@ -66,13 +81,18 @@ public fun firm_power(power_req: u64): ModulePowerSpec {
     power_grid::module_power_spec(power_req, power_grid::firm(), power_grid::power(), 0, 0)
 }
 
+/// A fuel module (leap, overdrive): `power_req = 0`, draws fuel at a rate.
+public fun fuel_module(): ModulePowerSpec {
+    power_grid::module_power_spec(0, power_grid::firm(), power_grid::fuel_kind(), 0, 0)
+}
+
 /// Elastic power for a module with no line loss and priority 0.
 public fun elastic_power(power_req: u64): ModulePowerSpec {
     power_grid::module_power_spec(power_req, power_grid::elastic(), power_grid::power(), 0, 0)
 }
 
 /// Share an entity with an installed, off grid, offline Generators of
-/// `max_outputs_mw` with `containments`, and a Fuel source holding
+/// `max_outputs_mw` with `containments`, and an online fuel bay holding
 /// `starting_fuel()`. Modules are installed afterwards with `install_module`.
 public fun setup_entity(
     scenario: &mut ts::Scenario,
@@ -103,7 +123,7 @@ public fun setup_entity(
     });
     let mut req = grid_fuel::install(
         &mut entity,
-        FUEL_ID,
+        FUEL_BAY_ID,
         option::none(),
         FUEL_CAPACITY,
         clock,
@@ -128,6 +148,7 @@ public fun setup_entity(
     );
     deposit_fuel(scenario, entity_id, STARTING_FUEL, IMPULSE, BURDEN, clock);
     enable_owner_in_handler(scenario, entity_id, OPERATE, power_grid::operate_grid_requirement());
+    set_fuel_bay(scenario, entity_id, FUEL_BAY_ID, true, clock);
     entity_id
 }
 
@@ -358,11 +379,27 @@ public fun set_priority(
     );
 }
 
-/// Install Fuel source `fuel_source_id` with `capacity` (not the default one).
+/// Bring fuel bay `fuel_bay_id` online or offline.
+public fun set_fuel_bay(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    online: bool,
+    clock: &Clock,
+) {
+    as_owner!(
+        scenario,
+        entity_id,
+        OPERATE,
+        |entity, req| grid_fuel::set_fuel_bay(entity, req, fuel_bay_id, online, clock),
+    );
+}
+
+/// Install empty fuel bay `fuel_bay_id` with `capacity` plain units, offline.
 public fun install_fuel(
     scenario: &mut ts::Scenario,
     entity_id: ID,
-    fuel_source_id: u64,
+    fuel_bay_id: u64,
     capacity: u64,
     clock: &Clock,
 ) {
@@ -371,7 +408,7 @@ public fun install_fuel(
     let acl = take_acl(scenario);
     let mut req = grid_fuel::install(
         &mut entity,
-        fuel_source_id,
+        fuel_bay_id,
         option::none(),
         capacity,
         clock,
@@ -383,53 +420,278 @@ public fun install_fuel(
     ts::return_shared(entity);
 }
 
-/// Uninstall Fuel source `fuel_source_id`, returning the fuel it carried out.
+/// Uninstall fuel bay `fuel_bay_id`; its fuel stays on the grid as a stash.
 public fun uninstall_fuel(
     scenario: &mut ts::Scenario,
     entity_id: ID,
-    fuel_source_id: u64,
-    clock: &Clock,
-): FuelLoad {
-    ts::next_tx(scenario, ADMIN);
-    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let acl = take_acl(scenario);
-    let (mut req, load) = grid_fuel::uninstall(&mut entity, fuel_source_id, clock, scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    entity.complete_request(req);
-    ts::return_shared(acl);
-    ts::return_shared(entity);
-    load
-}
-
-/// Install Fuel source `fuel_source_id` with `capacity`, holding `load`.
-public fun install_fuel_with(
-    scenario: &mut ts::Scenario,
-    entity_id: ID,
-    fuel_source_id: u64,
-    capacity: u64,
-    load: FuelLoad,
+    fuel_bay_id: u64,
     clock: &Clock,
 ) {
     ts::next_tx(scenario, ADMIN);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
-    let mut req = grid_fuel::install_with_fuel(
+    let mut req = grid_fuel::uninstall(&mut entity, fuel_bay_id, clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// The grid's stashed fuel for `fuel_bay_id`, if any.
+public fun stashed_fuel(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+): Option<Fuel> {
+    ts::next_tx(scenario, OWNER);
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let stashed = power_grid::power_grid(&entity).stashed();
+    let fuel = if (stashed.contains(&fuel_bay_id)) option::some(stashed[&fuel_bay_id])
+    else option::none();
+    ts::return_shared(entity);
+    fuel
+}
+
+/// ADMIN exposes the `take_stash` and `stash_load` admin actions on `entity_id`.
+public fun enable_manage_stash(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(
         &mut entity,
-        fuel_source_id,
+        &acl,
+        TAKE_STASH,
+        power_grid::manage_stash_requirement(),
+        scenario.ctx(),
+    );
+    enable_admin(
+        &mut entity,
+        &acl,
+        STASH_LOAD,
+        power_grid::manage_stash_requirement(),
+        scenario.ctx(),
+    );
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` takes `fuel_bay_id`'s stash out of `entity`. Close the request with
+/// `close_admin`; use the load in the same transaction.
+public fun take_stash(
+    entity: &mut Entity,
+    fuel_bay_id: u64,
+    ctx: &mut TxContext,
+): (Request, FuelLoad) {
+    let mut req = entity.interact(string::utf8(TAKE_STASH), ctx);
+    let load = grid_fuel::take_stash(entity, &mut req, fuel_bay_id);
+    (req, load)
+}
+
+/// Satisfy `req`'s admin frame with `acl` and complete it on `entity`.
+public fun close_admin(entity: &mut Entity, mut req: Request, acl: &AdminACL, ctx: &mut TxContext) {
+    admin_service::verify_admin(&mut req, acl, ctx);
+    entity.complete_request(req);
+}
+
+/// `sender` moves the stash of `fuel_bay_id` from `from_id` to `to_id`:
+/// `take_stash` on one, `stash_load` on the other, in one transaction.
+public fun move_stash(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    from_id: ID,
+    to_id: ID,
+    fuel_bay_id: u64,
+) {
+    ts::next_tx(scenario, sender);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, to_id);
+    let acl = take_acl(scenario);
+    let (from_req, load) = take_stash(&mut from, fuel_bay_id, scenario.ctx());
+    let mut to_req = to.interact(string::utf8(STASH_LOAD), scenario.ctx());
+    grid_fuel::stash_load(&mut to, &mut to_req, load);
+    close_admin(&mut from, from_req, &acl, scenario.ctx());
+    close_admin(&mut to, to_req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
+}
+
+/// `sender` takes `fuel_bay_id`'s stash from `from_id` and refits the bay on
+/// `to_id` with it, in one transaction.
+public fun refit_stash(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    from_id: ID,
+    to_id: ID,
+    fuel_bay_id: u64,
+    capacity: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut from = ts::take_shared_by_id<Entity>(scenario, from_id);
+    let mut to = ts::take_shared_by_id<Entity>(scenario, to_id);
+    let acl = take_acl(scenario);
+    let (from_req, load) = take_stash(&mut from, fuel_bay_id, scenario.ctx());
+    let to_req = grid_fuel::install_with_fuel(
+        &mut to,
+        fuel_bay_id,
         option::none(),
         capacity,
         load,
         clock,
         scenario.ctx(),
     );
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
-    entity.complete_request(req);
+    close_admin(&mut from, from_req, &acl, scenario.ctx());
+    close_admin(&mut to, to_req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(to);
+    ts::return_shared(from);
+}
+
+/// `sender` takes `fuel_bay_id`'s stash out of `entity_id` and destroys it.
+public fun destroy_stash(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    fuel_bay_id: u64,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let (req, load) = take_stash(&mut entity, fuel_bay_id, scenario.ctx());
+    grid_fuel::destroy_fuel_load(load);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);
 }
 
-/// Bridge `amount` of fuel with the given stats into the pool, through the
-/// default (unrestricted) deposit action.
+/// OWNER exposes `FITTED`: the owner's grid operation followed by the
+/// overload pre-filter.
+public fun enable_fitted(scenario: &mut ts::Scenario, entity_id: ID) {
+    enable_action_with(
+        scenario,
+        entity_id,
+        FITTED,
+        vector[power_grid::operate_grid_requirement(), power_grid::fits_requirement()],
+    );
+}
+
+/// OWNER runs `$op` through `FITTED`, so the pre-filter checks the result.
+public macro fun fitted(
+    $scenario: &mut ts::Scenario,
+    $entity_id: ID,
+    $op: |&mut Entity, &mut Request|,
+) {
+    let scenario = $scenario;
+    ts::next_tx(scenario, owner());
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, $entity_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let mut req = entity.interact(string::utf8(fitted_action_name()), scenario.ctx());
+    $op(&mut entity, &mut req);
+    entity.verify_owner(&mut req, &cap);
+    power_grid::assert_fits(&mut entity, &mut req);
+    entity.complete_request(req);
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(entity);
+}
+
+/// Name of the action `enable_fitted` exposes.
+public fun fitted_action_name(): vector<u8> { FITTED }
+
+/// ADMIN exposes the `shut_down` admin action on `entity_id`.
+public fun enable_shut_down(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(&mut entity, &acl, SHUT_DOWN, power_grid::shut_down_requirement(), scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` shuts `entity_id` down.
+public fun shut_down(scenario: &mut ts::Scenario, sender: address, entity_id: ID, clock: &Clock) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(SHUT_DOWN), scenario.ctx());
+    power_grid::shut_down(&mut entity, &mut req, clock);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// ADMIN exposes the `withdraw_fuel` admin action on `entity_id`.
+public fun enable_withdraw(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(
+        &mut entity,
+        &acl,
+        WITHDRAW_FUEL,
+        power_grid::withdraw_fuel_requirement(),
+        scenario.ctx(),
+    );
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` withdraws `quantity` (at `SCALE`) from `entity_id`'s online bays.
+public fun withdraw(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    quantity: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(WITHDRAW_FUEL), scenario.ctx());
+    grid_fuel::withdraw_fuel(&mut entity, &mut req, quantity, clock);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// ADMIN exposes the `set_fuel_module` admin action on `entity_id`.
+public fun enable_fuel_module(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(
+        &mut entity,
+        &acl,
+        SET_FUEL_MODULE,
+        power_grid::operate_fuel_module_requirement(),
+        scenario.ctx(),
+    );
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` switches fuel module `module_id` online at `rate`, or offline.
+public fun set_fuel_module(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    module_id: u64,
+    online: bool,
+    rate: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(SET_FUEL_MODULE), scenario.ctx());
+    grid_load::set_fuel_module(&mut entity, &mut req, module_id, online, rate, clock);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// Load `amount` of fuel with the given stats and `volatility()` into the
+/// default bay, through the default (unrestricted) deposit action.
 public fun deposit_fuel(
     scenario: &mut ts::Scenario,
     entity_id: ID,
@@ -438,7 +700,32 @@ public fun deposit_fuel(
     burden: u64,
     clock: &Clock,
 ) {
-    deposit_fuel_via(scenario, entity_id, DEPOSIT_FUEL, FUEL_TYPE, amount, impulse, burden, clock);
+    deposit_fuel_into(scenario, entity_id, FUEL_BAY_ID, amount, impulse, burden, VOLATILITY, clock);
+}
+
+/// Load fuel into bay `fuel_bay_id` through the default deposit action.
+public fun deposit_fuel_into(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    amount: u64,
+    impulse: u64,
+    burden: u64,
+    volatility: u64,
+    clock: &Clock,
+) {
+    deposit_fuel_via(
+        scenario,
+        entity_id,
+        DEPOSIT_FUEL,
+        fuel_bay_id,
+        FUEL_TYPE,
+        amount,
+        impulse,
+        burden,
+        volatility,
+        clock,
+    );
 }
 
 /// OWNER signs owner action `name` to deposit fuel; ADMIN sponsors the gas.
@@ -446,10 +733,12 @@ public fun deposit_fuel_via(
     scenario: &mut ts::Scenario,
     entity_id: ID,
     name: vector<u8>,
+    fuel_bay_id: u64,
     fuel_type: u64,
     amount: u64,
     impulse: u64,
     burden: u64,
+    volatility: u64,
     clock: &Clock,
 ) {
     ensure_admin_sponsors(scenario);
@@ -458,7 +747,17 @@ public fun deposit_fuel_via(
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
     let mut req = entity.interact(string::utf8(name), scenario.ctx());
-    grid_fuel::deposit_fuel(&mut entity, &mut req, fuel_type, amount, impulse, burden, clock);
+    grid_fuel::deposit_fuel(
+        &mut entity,
+        &mut req,
+        fuel_bay_id,
+        fuel_type,
+        amount,
+        impulse,
+        burden,
+        volatility,
+        clock,
+    );
     entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
@@ -524,13 +823,37 @@ public fun stored_draw(scenario: &mut ts::Scenario, entity_id: ID, module_id: u6
     draw
 }
 
-/// The grid's stored (settled) fuel quantity.
+/// Stored (settled) fuel in the online bays.
 public fun settled_fuel(scenario: &mut ts::Scenario, entity_id: ID): u64 {
     ts::next_tx(scenario, OWNER);
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let quantity = power_grid::power_grid(&entity).fuel_quantity_at_last_settled();
+    let quantity = power_grid::power_grid(&entity).online_fuel().quantity();
     ts::return_shared(entity);
     quantity
+}
+
+/// Bay `fuel_bay_id`'s stored (settled) fuel.
+public fun bay_fuel(scenario: &mut ts::Scenario, entity_id: ID, fuel_bay_id: u64): Fuel {
+    ts::next_tx(scenario, OWNER);
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let fuel = power_grid::fuel_bay_state(&entity, fuel_bay_id).fuel();
+    ts::return_shared(entity);
+    fuel
+}
+
+/// Bay `fuel_bay_id`'s projected fuel amount at `clock`.
+public fun projected_bay_amount(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    clock: &Clock,
+): u64 {
+    ts::next_tx(scenario, OWNER);
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let bays = power_grid::projected_bays(&entity, clock);
+    let amount = bays[&fuel_bay_id].fuel().quantity();
+    ts::return_shared(entity);
+    amount
 }
 
 /// Owner runs a no-op mutation that settles the grid at `clock`.
@@ -642,17 +965,17 @@ public fun migrate_generator(
     });
 }
 
-/// `sender` moves Fuel source `fuel_source_id` from `from_id` to `to_id`.
+/// `sender` moves fuel bay `fuel_bay_id` from `from_id` to `to_id`.
 public fun migrate_fuel(
     scenario: &mut ts::Scenario,
     sender: address,
     from_id: ID,
     to_id: ID,
-    fuel_source_id: u64,
+    fuel_bay_id: u64,
     clock: &Clock,
 ) {
     migrate_with!(scenario, sender, from_id, to_id, |from, to, ctx| {
-        grid_fuel::migrate(from, to, fuel_source_id, clock, ctx)
+        grid_fuel::migrate(from, to, fuel_bay_id, clock, ctx)
     });
 }
 

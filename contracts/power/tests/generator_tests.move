@@ -9,11 +9,11 @@ use power::{
 };
 use sui::{clock::{Self, Clock}, test_scenario as ts};
 
-/// Containment reduction 10 at `SCALE`.
-const CONTAINMENT: u64 = 100_000;
-/// 10 MW and 5 MW at `SCALE`.
-const OUTPUT_A: u64 = 100_000;
-const OUTPUT_B: u64 = 50_000;
+/// Containment reduction 10.
+const CONTAINMENT: u64 = 10;
+/// 10 MW and 5 MW.
+const OUTPUT_A: u64 = 10;
+const OUTPUT_B: u64 = 5;
 
 /// Grid with Generators A (`OUTPUT_A`) and B (`OUTPUT_B`), off.
 fun two_generators(scenario: &mut ts::Scenario, clock: &Clock): ID {

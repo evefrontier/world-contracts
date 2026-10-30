@@ -36,12 +36,19 @@ use sui::{clock::{Self, Clock}, test_scenario as ts};
 const MOD_A: u64 = 401;
 const MOD_B: u64 = 402;
 const MOD_E: u64 = 403;
-/// 15 MW at `SCALE`.
-const OUTPUT: u64 = 150_000;
-/// Containment reduction 10 at `SCALE`.
-const CONTAINMENT: u64 = 100_000;
-/// 10 MW at `SCALE`.
-const DRAW: u64 = 100_000;
+const MOD_F: u64 = 404;
+/// The overview's power example modules.
+const OV_A: u64 = 501;
+const OV_B: u64 = 502;
+const OV_C: u64 = 503;
+const OV_D: u64 = 504;
+const OV_E: u64 = 505;
+/// 15 MW.
+const OUTPUT: u64 = 15;
+/// Containment reduction 10.
+const CONTAINMENT: u64 = 10;
+/// 10 MW.
+const DRAW: u64 = 10;
 /// Long enough at 10 MW that the whole tank burns, in ms.
 const DEPLETING_MS: u64 = 10_000_000_000_000;
 
@@ -274,6 +281,70 @@ fun elastic_does_not_block_firm() {
     scenario.end();
 }
 
+/// Elastic asks that overflow the leftover share it by ask: 5 MW left after
+/// Firm, asks of 6 and 4 get 3 and 2.
+#[test]
+fun elastic_asks_share_leftover_in_proportion() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    install_module(&mut scenario, entity_id, MOD_E, elastic_power(6), &clock);
+    install_module(&mut scenario, entity_id, MOD_F, elastic_power(4), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    set_desired(&mut scenario, entity_id, MOD_E, true, &clock);
+    set_desired(&mut scenario, entity_id, MOD_F, true, &clock);
+
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
+    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == 3);
+    assert!(draw(&mut scenario, entity_id, MOD_F, &clock) == 2);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The overview's power example on a 100 MW limit, step by step.
+#[test]
+fun overview_power_example() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[100], vector[CONTAINMENT], &clock);
+    power_up(&mut scenario, entity_id, 1, &clock);
+    install_module(&mut scenario, entity_id, OV_A, firm_power(70), &clock);
+    install_module(&mut scenario, entity_id, OV_B, firm_power(20), &clock);
+    install_module(&mut scenario, entity_id, OV_C, elastic_power(30), &clock);
+    install_module(&mut scenario, entity_id, OV_D, firm_power(10), &clock);
+    install_module(&mut scenario, entity_id, OV_E, firm_power(20), &clock);
+
+    // A needs 70, B needs 20: both run, 10 spare.
+    set_desired(&mut scenario, entity_id, OV_A, true, &clock);
+    set_desired(&mut scenario, entity_id, OV_B, true, &clock);
+    assert!(draw(&mut scenario, entity_id, OV_A, &clock) == 70);
+    assert!(draw(&mut scenario, entity_id, OV_B, &clock) == 20);
+    // C asks to charge at 30 and gets the 10 left.
+    set_desired(&mut scenario, entity_id, OV_C, true, &clock);
+    assert!(draw(&mut scenario, entity_id, OV_C, &clock) == 10);
+    // D's fixed 10 comes before charging, so C drops to 0.
+    set_desired(&mut scenario, entity_id, OV_D, true, &clock);
+    assert!(draw(&mut scenario, entity_id, OV_D, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, OV_C, &clock) == 0);
+    // E's 20 overloads: everything that needs power goes off.
+    set_desired(&mut scenario, entity_id, OV_E, true, &clock);
+    let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
+    assert!(capacity == 100 && used == 0 && online.is_empty());
+    // E off again: the rest come back by themselves.
+    set_desired(&mut scenario, entity_id, OV_E, false, &clock);
+    assert!(draw(&mut scenario, entity_id, OV_A, &clock) == 70);
+    assert!(draw(&mut scenario, entity_id, OV_B, &clock) == 20);
+    assert!(draw(&mut scenario, entity_id, OV_D, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, OV_C, &clock) == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
 /// Intent is accepted with no power, and draws once the grid comes on.
 #[test]
 fun desired_state_is_stored_without_power() {
@@ -417,7 +488,7 @@ fun refuel_regrants_desired_module() {
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
 
-    deposit_fuel(&mut scenario, entity_id, 1_000_000, impulse(), burden(), &clock);
+    deposit_fuel(&mut scenario, entity_id, 100, impulse(), burden(), &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
 
     clock.destroy_for_testing();

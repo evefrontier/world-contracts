@@ -1,3 +1,4 @@
+import { bcs } from '@mysten/sui/bcs'
 import type {
   Transaction,
   TransactionArgument,
@@ -7,12 +8,15 @@ import { mvrName } from '../config/env.js'
 import type { WorldConfig } from '../config/types.js'
 import {
   completeRequest,
+  interact,
   verifyAdmin,
   verifyOwner,
   verifySponsor,
 } from './core.js'
 
-// Power, fuel and fuel stats are fixed point at `POWER_SCALE`: 0.1 MW = 1_000n.
+// MW, bay capacity and deposit amounts are plain integers. Fuel quantities,
+// stats and rates are fixed point at `POWER_SCALE` (0.1 units = 1_000n), so
+// stats keep fractions and short settles still burn a fraction.
 export const POWER_SCALE = 10_000n
 
 const POWER_PACKAGE = 'power'
@@ -40,6 +44,9 @@ function grid(
 
 export type DrawKind = 'firm' | 'elastic'
 
+/** `power` takes grants from the generators; `fuel` (leap, overdrive) burns a rate from the bays. */
+export type PowerKind = 'power' | 'fuel'
+
 function drawKindCall(
   tx: Transaction,
   config: WorldConfig,
@@ -51,6 +58,8 @@ function drawKindCall(
 export interface ModulePowerSpec {
   powerReq: bigint
   drawKind?: DrawKind
+  /** Defaults to `power`. A `fuel` module declares `powerReq: 0n`. */
+  powerKind?: PowerKind
   priority?: bigint
   lineLoss?: bigint
 }
@@ -71,7 +80,9 @@ export function modulePowerArguments(
   return [
     tx.pure.u64(spec.powerReq),
     drawKindCall(tx, config, spec.drawKind ?? 'firm'),
-    tx.moveCall({ target: grid(config, 'power') }),
+    tx.moveCall({
+      target: grid(config, spec.powerKind === 'fuel' ? 'fuel_kind' : 'power'),
+    }),
     tx.pure.u64(spec.priority ?? 0n),
     tx.pure.u64(spec.lineLoss ?? 0n),
   ]
@@ -93,7 +104,7 @@ export function installPowerGrid(
   completeRequest(tx, config, entity, request)
 }
 
-/** Remove the grid. Aborts while a module, generator, or fuel source is still connected. */
+/** Remove the grid. Aborts while a module, generator, or fuel bay is still connected. */
 export function uninstallPowerGrid(
   tx: Transaction,
   config: WorldConfig,
@@ -138,18 +149,18 @@ export function installGenerator(
   completeRequest(tx, config, entity, request)
 }
 
-export interface InstallFuelArgs {
+export interface InstallFuelBayArgs {
   componentId: bigint
   name?: string | null
   capacity: bigint
 }
 
-/** Install a Fuel source and add its capacity to the grid. Admin-gated. */
-export function installFuel(
+/** Install an empty fuel bay, offline. Admin-gated. */
+export function installFuelBay(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
-  args: InstallFuelArgs,
+  args: InstallFuelBayArgs,
 ): void {
   const request = tx.moveCall({
     target: moveCallTarget(config, 'grid_fuel', 'install'),
@@ -180,40 +191,82 @@ export function uninstallGenerator(
   completeRequest(tx, config, entity, request)
 }
 
-/** Remove a fuel source. Pass the load to `installFuelWithLoad` or `burnFuelLoad`. */
-export function uninstallFuel(
+/**
+ * Remove a fuel bay. Its exact fuel stays on the grid as a stash until the bay
+ * is refitted here with `installFuelBay` or taken out with `takeStash`. Admin-gated.
+ */
+export function uninstallFuelBay(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
   componentId: bigint,
-): TransactionArgument {
-  const [request, load] = tx.moveCall({
+): void {
+  const request = tx.moveCall({
     target: moveCallTarget(config, 'grid_fuel', 'uninstall'),
     arguments: [entity, tx.pure.u64(componentId), tx.object.clock()],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
+/**
+ * Take an uninstalled bay's stash out of `entity` as a `FuelLoad`. Use the load
+ * in the same transaction: `installFuelBayWithLoad`, `stashLoad` or
+ * `destroyFuelLoad`. Needs the `take_stash` admin action (`manageStashRequirement`).
+ * Admin-gated.
+ */
+export function takeStash(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  fuelBayId: bigint,
+): TransactionArgument {
+  const request = interact(tx, config, entity, 'take_stash')
+  const load = tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'take_stash'),
+    arguments: [entity, request, tx.pure.u64(fuelBayId)],
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
   return load
 }
 
-/** Destroy a fuel load that is not reinstalled. */
-export function burnFuelLoad(
-  tx: Transaction,
-  config: WorldConfig,
-  load: TransactionArgument,
-): void {
-  tx.moveCall({
-    target: moveCallTarget(config, 'grid_fuel', 'burn_fuel_load'),
-    arguments: [load],
-  })
-}
-
-/** Install a Fuel source already holding `load`. Admin-gated. */
-export function installFuelWithLoad(
+/**
+ * Stash `load` on `entity`, for a bay item that arrives there uninstalled.
+ * Needs the `stash_load` admin action (`manageStashRequirement`). Admin-gated.
+ */
+export function stashLoad(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
-  args: InstallFuelArgs,
+  load: TransactionArgument,
+): void {
+  const request = interact(tx, config, entity, 'stash_load')
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'stash_load'),
+    arguments: [entity, request, load],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
+/** Move an uninstalled bay's stash from `from` to `to`: `takeStash` then `stashLoad`. */
+export function moveStash(
+  tx: Transaction,
+  config: WorldConfig,
+  from: TransactionArgument,
+  to: TransactionArgument,
+  fuelBayId: bigint,
+): void {
+  stashLoad(tx, config, to, takeStash(tx, config, from, fuelBayId))
+}
+
+/** Install a fuel bay holding `load`, its own fuel from `takeStash`, offline. Admin-gated. */
+export function installFuelBayWithLoad(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  args: InstallFuelBayArgs,
   load: TransactionArgument,
 ): void {
   const request = tx.moveCall({
@@ -229,6 +282,18 @@ export function installFuelWithLoad(
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
+}
+
+/** Destroy a fuel load whose bay item no longer exists. */
+export function destroyFuelLoad(
+  tx: Transaction,
+  config: WorldConfig,
+  load: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'destroy_fuel_load'),
+    arguments: [load],
+  })
 }
 
 /** Move a Generator to `to` with its stats and online state. Admin-gated. */
@@ -249,8 +314,8 @@ export function migrateGenerator(
   )
 }
 
-/** Move a Fuel source to `to` with its share of the fuel. Admin-gated. */
-export function migrateFuel(
+/** Move a fuel bay to `to` with its exact fuel. It arrives offline. Admin-gated. */
+export function migrateFuelBay(
   tx: Transaction,
   config: WorldConfig,
   from: TransactionArgument,
@@ -292,8 +357,85 @@ export function migrateWith(
 // === Requirements ===
 
 /**
- * Satisfied by `setPowerGrid`, `setGenerator`, `setPriority` and `setDesiredState`.
- * Each handler also takes the owner's cap.
+ * The owner's overload pre-filter. Add it after `operateGridRequirement` in a
+ * power action; satisfy it with `assertFits` after the operation.
+ */
+export function fitsRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({ target: grid(config, 'fits_requirement') })
+}
+
+/**
+ * Abort with `EWouldOverload` unless the desired Firm load fits the online
+ * generators' output. Resolves `fitsRequirement`.
+ */
+export function assertFits(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+): void {
+  tx.moveCall({
+    target: grid(config, 'assert_fits'),
+    arguments: [entity, request],
+  })
+}
+
+/** Satisfied by `shutDown`; add it as the `shut_down` admin action. */
+export function shutDownRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({ target: grid(config, 'shut_down_requirement') })
+}
+
+/** Satisfied by `withdrawFuel`; add it as the `withdraw_fuel` admin action. */
+export function withdrawFuelRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({ target: grid(config, 'withdraw_fuel_requirement') })
+}
+
+/** Satisfied by `setFuelModule`; add it as the `set_fuel_module` admin action. */
+export function operateFuelModuleRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'operate_fuel_module_requirement'),
+  })
+}
+
+/**
+ * Satisfied by `takeStash` and `stashLoad`; add it as the `take_stash` and
+ * `stash_load` admin actions on each creation that handles stashes.
+ */
+export function manageStashRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({ target: grid(config, 'manage_stash_requirement') })
+}
+
+/** Stashed fuel of uninstalled bay `fuelBayId` as `Option<Fuel>`; parse with `parseStashedFuel`. */
+export function stashedFuel(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  fuelBayId: bigint,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'stashed_fuel'),
+    arguments: [entity, tx.pure.u64(fuelBayId)],
+  })
+}
+
+/**
+ * Satisfied by `setPowerGrid`, `setGenerator`, `setFuelBay`, `setPriority` and
+ * `setDesiredState`. Each handler also takes the owner's cap.
  */
 export function operateGridRequirement(
   tx: Transaction,
@@ -302,7 +444,7 @@ export function operateGridRequirement(
   return tx.moveCall({ target: grid(config, 'operate_grid_requirement') })
 }
 
-/** The owner's rules for `depositFuel`. Omitted fields skip a check; values at `POWER_SCALE`. */
+/** The owner's rules for `depositFuel`. Omitted fields skip a check. Stats at `POWER_SCALE`, amounts plain. */
 export interface FuelRule {
   fuelTypes?: bigint[]
   minImpulse?: bigint | null
@@ -349,16 +491,19 @@ export function onlineRequirement(
 
 // === Handlers (satisfy the next requirement on `request`) ===
 
+/** Fuel to load into one bay. Amount plain, stats at `POWER_SCALE`. */
 export interface DepositFuelArgs {
+  fuelBayId: bigint
   fuelType: bigint
   amount: bigint
   impulse: bigint
   containmentBurden: bigint
+  volatility: bigint
 }
 
 /**
- * Bridge fuel into the pool. The owner's `ownerCap` authorizes the deposit, and
- * the gas sponsor must be on `AdminACL`.
+ * Load fuel into one bay; its stats blend by amount. The owner's `ownerCap`
+ * authorizes the deposit, and the gas sponsor must be on `AdminACL`.
  */
 export function depositFuel(
   tx: Transaction,
@@ -373,10 +518,12 @@ export function depositFuel(
     arguments: [
       entity,
       request,
+      tx.pure.u64(args.fuelBayId),
       tx.pure.u64(args.fuelType),
       tx.pure.u64(args.amount),
       tx.pure.u64(args.impulse),
       tx.pure.u64(args.containmentBurden),
+      tx.pure.u64(args.volatility),
       tx.object.clock(),
     ],
   })
@@ -421,6 +568,98 @@ export function setGenerator(
     ],
   })
   verifyOwner(tx, config, entity, request, ownerCap)
+}
+
+/** Bring a fuel bay online or offline. An offline bay keeps its fuel. Owner-gated. */
+export function setFuelBay(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
+  fuelBayId: bigint,
+  online: boolean,
+): void {
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'set_fuel_bay'),
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(fuelBayId),
+      tx.pure.bool(online),
+      tx.object.clock(),
+    ],
+  })
+  verifyOwner(tx, config, entity, request, ownerCap)
+}
+
+/**
+ * Shut the creation down when it loses its Shell: clear every module's intent
+ * and take every generator and bay offline. Call it in the same transaction as
+ * the Layout edit that removes the Shell. Needs the `shut_down` admin action
+ * (`shutDownRequirement`). Admin-gated.
+ */
+export function shutDown(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): void {
+  const request = interact(tx, config, entity, 'shut_down')
+  tx.moveCall({
+    target: grid(config, 'shut_down'),
+    arguments: [entity, request, tx.object.clock()],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
+/**
+ * Take `quantity` of fuel (at `POWER_SCALE`) from the online bays for a warp,
+ * all or nothing; an abort means no warp. Needs the `withdraw_fuel` admin
+ * action (`withdrawFuelRequirement`). Admin-gated.
+ */
+export function withdrawFuel(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  quantity: bigint,
+): void {
+  const request = interact(tx, config, entity, 'withdraw_fuel')
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'withdraw_fuel'),
+    arguments: [entity, request, tx.pure.u64(quantity), tx.object.clock()],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
+/**
+ * Switch a fuel module online at `rate` fuel per second (at `POWER_SCALE`), or
+ * offline. Needs the `set_fuel_module` admin action
+ * (`operateFuelModuleRequirement`). Admin-gated.
+ */
+export function setFuelModule(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  moduleId: bigint,
+  online: boolean,
+  rate: bigint,
+): void {
+  const request = interact(tx, config, entity, 'set_fuel_module')
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_load', 'set_fuel_module'),
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(moduleId),
+      tx.pure.bool(online),
+      tx.pure.u64(rate),
+      tx.object.clock(),
+    ],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
 }
 
 /** Move a connected module into priority group `priority`. Grants ignore it in v1. Owner-gated. */
@@ -469,7 +708,7 @@ export function setDesiredState(
   verifyOwner(tx, config, entity, request, ownerCap)
 }
 
-/** Fuel left on the creation now, with burn since the last settle applied. */
+/** Fuel in online bays now, with burn since the last settle applied. */
 export function projectedFuel(
   tx: Transaction,
   config: WorldConfig,
@@ -479,6 +718,136 @@ export function projectedFuel(
     target: grid(config, 'projected_fuel'),
     arguments: [entity, tx.object.clock()],
   })
+}
+
+/**
+ * Every installed bay now, as a `VecMap<u64, FuelBayState>`; parse it with
+ * `parseProjectedBays`.
+ */
+export function projectedBays(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'projected_bays'),
+    arguments: [entity, tx.object.clock()],
+  })
+}
+
+const FuelBcs = bcs.struct('Fuel', {
+  quantity: bcs.u64(),
+  impulse: bcs.u64(),
+  containment_burden: bcs.u64(),
+  volatility: bcs.u64(),
+})
+
+const FuelBayStateBcs = bcs.struct('FuelBayState', {
+  capacity: bcs.u64(),
+  online: bcs.bool(),
+  fuel: FuelBcs,
+})
+
+const BaysBcs = bcs.struct('VecMap', {
+  contents: bcs.vector(
+    bcs.struct('Entry', { key: bcs.u64(), value: FuelBayStateBcs }),
+  ),
+})
+
+/** A fuel bay as `projectedBays` returns it. Quantity and stats at `POWER_SCALE`. */
+export interface ProjectedBay {
+  fuelBayId: bigint
+  capacity: bigint
+  online: boolean
+  quantity: bigint
+  impulse: bigint
+  containmentBurden: bigint
+  volatility: bigint
+}
+
+/** Decode the BCS return value of `projectedBays`. */
+export function parseProjectedBays(bytes: Uint8Array): ProjectedBay[] {
+  return BaysBcs.parse(bytes).contents.map(({ key, value }) => ({
+    fuelBayId: BigInt(key),
+    capacity: BigInt(value.capacity),
+    online: value.online,
+    quantity: BigInt(value.fuel.quantity),
+    impulse: BigInt(value.fuel.impulse),
+    containmentBurden: BigInt(value.fuel.containment_burden),
+    volatility: BigInt(value.fuel.volatility),
+  }))
+}
+
+/** Fuel quantity and its stats, all at `POWER_SCALE`. */
+export interface FuelAmount {
+  quantity: bigint
+  impulse: bigint
+  containmentBurden: bigint
+  volatility: bigint
+}
+
+/** Decode the BCS return value of `stashedFuel`: `null` when no stash. */
+export function parseStashedFuel(bytes: Uint8Array): FuelAmount | null {
+  const fuel = bcs.option(FuelBcs).parse(bytes)
+  if (!fuel) return null
+  return {
+    quantity: BigInt(fuel.quantity),
+    impulse: BigInt(fuel.impulse),
+    containmentBurden: BigInt(fuel.containment_burden),
+    volatility: BigInt(fuel.volatility),
+  }
+}
+
+/** Why a module or generator is or isn't running now. */
+export type PowerStatus =
+  | 'online'
+  | 'off'
+  | 'gridOff'
+  | 'noPower'
+  | 'noFuel'
+  | 'baysOffline'
+
+// BCS variant order of `power_grid::PowerStatus`.
+const POWER_STATUSES: PowerStatus[] = [
+  'online',
+  'off',
+  'gridOff',
+  'noPower',
+  'noFuel',
+  'baysOffline',
+]
+
+/** A module's `PowerStatus` now; parse it with `parsePowerStatus`. */
+export function moduleStatus(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  moduleId: bigint,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'module_status'),
+    arguments: [entity, tx.pure.u64(moduleId), tx.object.clock()],
+  })
+}
+
+/** A generator's `PowerStatus` now; parse it with `parsePowerStatus`. */
+export function generatorStatus(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  generatorId: bigint,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'generator_status'),
+    arguments: [entity, tx.pure.u64(generatorId), tx.object.clock()],
+  })
+}
+
+/** Decode the BCS return value of `moduleStatus` or `generatorStatus`. */
+export function parsePowerStatus(bytes: Uint8Array): PowerStatus {
+  const status = POWER_STATUSES[bytes[0]]
+  if (!status) throw new Error(`unknown power status tag ${bytes[0]}`)
+  return status
 }
 
 /** `(effective capacity, used MW, online module ids)` now. Fuel at zero reads as all zeros. */

@@ -11,6 +11,7 @@ use power::{
         power,
         setup_entity,
         starting_fuel,
+        starting_units,
         temp_action,
         owner
     },
@@ -19,9 +20,9 @@ use power::{
 use sui::{clock::{Self, Clock}, test_scenario as ts};
 
 const MOD_A: u64 = 401;
-const OUTPUT: u64 = 150_000;
-const CONTAINMENT: u64 = 100_000;
-const DRAW: u64 = 100_000;
+const OUTPUT: u64 = 15;
+const CONTAINMENT: u64 = 10;
+const DRAW: u64 = 10;
 const IMPULSE: u64 = 900_000;
 
 /// A grid with no power sources, off.
@@ -72,13 +73,13 @@ fun uninstall_grid(scenario: &mut ts::Scenario, entity_id: ID) {
     ts::return_shared(entity);
 }
 
-/// `(on, fuel_quantity_at_last_settled, capacity_mw)` of the installed grid.
+/// `(on, settled fuel in online bays, capacity_mw)` of the installed grid.
 fun grid_flags(scenario: &mut ts::Scenario, entity_id: ID): (bool, u64, u64) {
     ts::next_tx(scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let grid = power_grid::power_grid(&entity);
     let on = grid.on();
-    let fuel = grid.fuel_quantity_at_last_settled();
+    let fuel = grid.online_fuel().quantity();
     let capacity = grid.capacity_mw();
     ts::return_shared(entity);
     (on, fuel, capacity)
@@ -208,6 +209,20 @@ fun uninstall_with_generator_aborts() {
     abort
 }
 
+/// An uninstalled bay's stash would be lost with the grid, so the grid stays.
+#[test, expected_failure(abort_code = power_grid::EFuelStashed)]
+fun uninstall_with_stashed_fuel_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = grid_scenario::setup_empty_grid(&mut scenario, 2, &clock);
+    grid_scenario::install_fuel(&mut scenario, entity_id, 9_002, 100, &clock);
+    grid_scenario::uninstall_fuel(&mut scenario, entity_id, 9_002, &clock);
+    uninstall_grid(&mut scenario, entity_id);
+
+    abort
+}
+
 #[test, expected_failure(abort_code = power_grid::EComponentMissing)]
 fun view_without_grid_aborts() {
     let mut scenario = ts::begin(admin());
@@ -275,7 +290,7 @@ fun check_aborts_when_fuel_below() {
         entity_id,
         power_grid::power_grid_requirement(
             false,
-            option::some(starting_fuel() + 1),
+            option::some(starting_units() + 1),
             option::none(),
             0,
             option::none(),

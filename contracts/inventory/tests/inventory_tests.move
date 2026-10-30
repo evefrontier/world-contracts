@@ -330,7 +330,7 @@ fun withdraw(
     item
 }
 
-/// Install a generator and fuel bay, fill the pool, and grant `MODULE_ID`.
+/// Install a generator and fuel bay, fuel the bay, and grant `MODULE_ID`.
 fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) {
     ts::next_tx(scenario, ADMIN);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
@@ -390,7 +390,17 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     let acl = take_acl(scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
-    grid_fuel::deposit_fuel(&mut entity, &mut req, 7, 100, 90, 14, &clock);
+    grid_fuel::deposit_fuel(
+        &mut entity,
+        &mut req,
+        FUEL_BAY_ID,
+        7,
+        100,
+        900_000,
+        140_000,
+        50_000,
+        &clock,
+    );
     entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
@@ -399,6 +409,9 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     ts::return_shared(acl);
     ts::return_shared(entity);
 
+    run_operate_grid!(scenario, entity_id, owner, |entity, req, clock| {
+        grid_fuel::set_fuel_bay(entity, req, FUEL_BAY_ID, true, clock);
+    });
     run_operate_grid!(scenario, entity_id, owner, |entity, req, clock| {
         power_grid::set_power_grid(entity, req, true, clock);
     });

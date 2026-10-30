@@ -17,52 +17,57 @@ let better fuel last longer.
 guessing.
 - Store which modules the owner wants online, and grant power only when the
 grid can carry them.
-- Let a tribe assign power-management actions to different members through
-contract-level permissions.
+- Write their own shed order, and catch an overload before it happens.
 
-This ADR covers a deliberately small v1: enough on-chain state and rules to
-support power management, not a full port of the game client's power system
-(batteries, burst weapon draw, multi-ship power sharing). See [Scope](#scope).
+The chain owns module online state and the power rules; the game server follows
+the chain. See [Scope](#scope).
 
 ## Summary
 
-A creation has one power grid. The grid is installed first. Installing a
-generator, fuel source, or module connects to it.
+A Creation has one power grid. The grid is installed first. Installing a
+generator, fuel bay, or module connects to it.
 
-- **Generators** burn fuel and produce power (MW). More generators raise capacity.
-- **Fuel sources** hold the fuel generators burn, pooled together.
-- Every other fitting that needs power is a load. Install stores `power_req`,
-`draw_kind` (**Firm** or **Elastic**), `power_kind`, `priority`, and `line_loss`.
-It starts desired offline.
+- **Fuel bays** each hold their own fuel: amount, impulse, containment burden
+and volatility. A bay is online or offline; an offline bay keeps its fuel and
+feeds nothing.
+- **Generators** burn fuel from the online bays and produce power (MW).
+- **Modules** draw either **power** (from the generators) or **fuel** (straight
+from the online bays, for leap and overdrive). Each has one online or offline
+state.
 
 ```mermaid
 flowchart LR
-    FS1[Fuel source] --> Pool[(Shared fuel pool)]
-    FS2[Fuel source] --> Pool
-    Pool --> Gen1[Generator]
-    Pool --> Gen2[Generator]
-    Gen1 --> Ceiling[Power pool]
+    B1[Fuel bay, online] --> Online[(Online bays)]
+    B2[Fuel bay, online] --> Online
+    B3[Fuel bay, offline] -.keeps its fuel.-> Online
+    Online --> Gen1[Generator]
+    Online --> Gen2[Generator]
+    Online --> Leap[Leap drive: fuel rate]
+    Online --> Warp[Warp: one withdrawal]
+    Gen1 --> Ceiling[Power limit]
     Gen2 --> Ceiling
     Ceiling --> Inventory[Inventory: 10 MW]
-    Ceiling --> Thruster[Thruster: 25 MW]
     Ceiling --> Turret[Turret: 15 MW]
 ```
 
+Online bays burn together, each in proportion to what it holds, so they all
+run dry at the same moment. Generator burn uses the amount-weighted average of
+the online bays' stats.
 
-
-The owner sets **desired state** (online or offline). It is always stored.
-The grant is separate: `active_draw_at_last_settled`.
+The owner sets each power module's **desired state**. It is always stored and
+never refused, even with no fuel. The grant is separate:
 
 - **Firm:** every desired-online Firm module draws `power_req`, or none do.
-- **Elastic:** leftover watts, in module-id order, up to each `power_req`.
+  If they don't fit, every module that needs power goes offline. Generators and
+  bays stay online. There is no built-in shed order.
+- **Elastic:** shares what is left after Firm, in proportion to each ask, up to
+  its `power_req`.
 
-The same rule runs again when capacity changes. Desired state stays. Fuel
-hitting zero is not written until the next mutating transaction. Views show
-the live fuel and draws. Power Off treats capacity as zero. Generator totals,
-fuel, and desired state stay.
+Desired state survives an overload and Power Off, so modules come back by
+themselves once everything fits again.
 
-**Not covered in v1:** no battery or burst power. Priority is stored and does
-not change grants. See [Scope](#scope).
+Nothing is written when fuel runs out. Stored state can be out of date; every
+view projects it to the current time.
 
 ### End-to-end flow
 
@@ -70,33 +75,27 @@ not change grants. See [Scope](#scope).
 sequenceDiagram
     participant Admin
     participant Owner
-    participant Generator
-    participant FuelSource
-    participant PowerGrid
-    participant Inventory
+    participant Service
+    participant Grid as PowerGrid
 
-    Admin->>PowerGrid: install (off, empty)
-    Admin->>Generator: install (max_output_mw: 50)
-    Generator->>PowerGrid: connects, offline
-    Admin->>FuelSource: install (capacity)
-    FuelSource->>PowerGrid: connects to the fuel pool
-    Admin->>Inventory: install (power_req: 25, Firm)
-    Inventory->>PowerGrid: connects, desired offline
-    Owner->>PowerGrid: set_generator (online)
-    Note over PowerGrid: capacity_mw += 50
-    Owner->>PowerGrid: deposit fuel
-    Owner->>PowerGrid: Power On
-    Owner->>PowerGrid: set_desired_state (Inventory, online)
-    PowerGrid-->>Inventory: DrawChanged { active_draw: 25 }
+    Admin->>Grid: install grid, generator, fuel bay, modules
+    Owner->>Grid: deposit_fuel(bay)
+    Owner->>Grid: set_fuel_bay(online)
+    Owner->>Grid: set_generator(online)
+    Owner->>Grid: set_power_grid(on)
+    Owner->>Grid: set_desired_state(Inventory, online)
+    Grid-->>Owner: DrawChanged(Inventory, 10)
 
-    Note over PowerGrid: Generator goes offline<br/>capacity_mw -= 50
-    PowerGrid-->>Inventory: DrawChanged { active_draw: 0 }
+    Service->>Grid: set_fuel_module(Leap, online, rate)
+    Note over Grid: bays burn generator load plus leap rate
+    Service->>Grid: set_fuel_module(Leap, offline)
 
-    Note over PowerGrid: Generator back online<br/>capacity_mw += 50
-    PowerGrid-->>Inventory: DrawChanged { active_draw: 25 }
+    Service->>Grid: withdraw_fuel(warp cost)
+    Note over Grid: all or nothing, abort means no warp
+
+    Service->>Grid: shut_down (shell lost)
+    Note over Grid: clears every desired state
 ```
-
-
 
 A consuming action checks a grant with `online_requirement`. The grid settles,
 then aborts unless the module holds at least `draw` of `draw_kind`:
@@ -110,70 +109,80 @@ public fun online_requirement(module_id: u64, draw: u64, draw_kind: DrawKind): R
 }
 ```
 
-
-
 ## Scope
 
-**In scope for v1:**
+**In scope:**
 
 - One `PowerGrid` per Creation, installed before any power component.
-- Generators contributing rated output while online.
-- Fuel sources pooled into one supply (quantity, impulse, containment burden).
-- Modules connected at install, up to `MAX_CONNECTED` (100).
-- Firm grants: all desired-online Firm modules draw, or none do.
-- Elastic grants: leftover watts, in module-id order.
-- Owner-set desired state. Grants recompute from it.
-- Priority groups, stored but unused for grants.
-- Power On/Off.
-- Lazy fuel burn, and owner rules on which fuel may be deposited.
+- Fuel bays with their own fuel and online state; proportional burn.
+- Generators contributing rated output while online and fed.
+- Power modules (Firm, Elastic) and fuel modules (leap, overdrive).
+- Warp (and later jump) fuel as one all-or-nothing withdrawal.
+- Power On/Off, and a service shutdown for a Creation that loses its shell.
+- A removed bay keeps its fuel until it is reinstalled.
+- An owner pre-filter requirement that rejects a switch-on that would overload.
+- Lazy settlement and projected views.
 
-**Out of scope for v1:**
+**Out of scope:**
 
+- Docking and heat: game server.
+- Run-out time and the fuel-exhausted notification: go-services.
 - Batteries, capacitors, and burst draw.
 - Cross-Creation power sharing.
-- Online or offline by priority group.
-- Installing a power component before the grid.
-
-
+- Power control by whoever is in command; power control is owner-only.
+- A built-in shed order.
 
 ## On-chain design
 
-
-
 ### Data model
-
-
 
 #### `PowerGrid`
 
 ```move
 public struct PowerGrid has store {
     on: bool,
-    fuel_quantity_at_last_settled: u64, // as of last_settled_ms, not live
-    fuel_capacity: u64,
-    fuel_impulse: u64,
-    fuel_containment_burden: u64,
-    capacity_mw: u64,                   // sum of online Generators
     last_settled_ms: u64,
-    modules: VecMap<u64, ModuleState>,
     generators: VecMap<u64, GeneratorState>,
-    fuel_sources: VecMap<u64, u64>,     // id -> capacity
+    bays: VecMap<u64, FuelBayState>,
+    stashed: VecMap<u64, Fuel>,      // fuel of uninstalled bays, by component id
+    modules: VecMap<u64, ModuleState>,
+}
+
+public struct FuelBayState has copy, drop, store {
+    capacity: u64,
+    online: bool,
+    fuel: Fuel,
+}
+
+public struct Fuel has copy, drop, store {
+    quantity: u64,                      // in stored state: as of last_settled_ms, not live
+    impulse: u64,
+    containment_burden: u64,
+    volatility: u64,
 }
 
 public struct ModuleState has copy, drop, store {
     module_spec: ModulePowerSpec,
     desired_online: bool,
+    // Power: MW granted. Fuel: fuel per second while online.
     active_draw_at_last_settled: u64,
 }
 
 public enum DrawKind has copy, drop, store { Firm, Elastic }
-public enum PowerKind has copy, drop, store { Power }
+public enum PowerKind has copy, drop, store { Power, Fuel }
 ```
 
-Effective capacity is `capacity_mw` while the grid is on and fuel is above zero, else `0`.
-`used_mw` is the sum of `active_draw` for modules with a nonzero draw. `line_loss` is stored and ignored by grants and fuel burn in v1.
-Values are fixed point at `SCALE = 10_000`. Each mutating call settles fuel burn since
-`last_settled_ms`. Views project that burn without writing it.
+- Power values (`power_req`, `max_output_mw`, grants), bay `capacity`,
+  deposited fuel amounts, `containment_reduction` and `base_fuel_rate` are
+  plain whole numbers. Fuel stats (impulse, containment burden, volatility),
+  stored fuel quantity, burn and fuel module rates are fixed point at
+  `SCALE = 10_000`, so stats keep fractions (impulse 46.67 is `466_700`) and
+  short settles burn fractions. Blends round down at `SCALE`. Capacity checks
+  compare `quantity ≤ capacity × SCALE`.
+- The power limit is the sum of `max_output_mw` of online generators while the
+  grid is on and the online bays hold fuel, else `0`.
+- `priority` and `line_loss` are stored on `ModulePowerSpec` and ignored by
+  grants. Builders read `priority` for their own shed order.
 
 #### `Generator`
 
@@ -186,62 +195,156 @@ public struct GeneratorState has copy, drop, store {
 }
 ```
 
-Stats live on the grid. Online adds `max_output_mw` to `capacity_mw`.
+Each online generator burns `its share of the load ÷ fuel factor`, where the
+fuel factor is `impulse ÷ max(1, burden ÷ containment_reduction)` clamped to
+`[1, 100]`, and the share is `load × max_output_mw ÷ power limit`. Fuel with
+zero impulse burns `base_fuel_rate`.
 
-#### Fuel source
+#### Fuel bays
 
-Deposit blends quantity, impulse, and containment burden by weighted average
-(`new = (old * old_qty + added * added_qty) / (old_qty + added_qty)`) and aborts
-above `fuel_capacity`. Uninstall aborts if settled fuel would exceed the reduced capacity.
+- `deposit_fuel` targets one bay and blends its stats by weighted average
+  (`new = (old × old_qty + added × added_qty) ÷ (old_qty + added_qty)`).
+  It aborts above that bay's capacity.
+- Uninstall moves the bay's exact fuel into `stashed`. Reinstalling a bay under
+  the same component id takes it back. Stashed fuel can't be burned.
+  When the service moves or destroys the bay item, `take_stash` returns the
+  fuel as a `FuelLoad` with no abilities, which the same transaction must use:
+  `install_with_fuel` refits it on the bay (same id, same tenant),
+  `stash_load` stashes it on another Creation, or `destroy_fuel_load` destroys it.
+  `take_stash` and `stash_load` are admin actions with
+  `manage_stash_requirement()`. `migrate` moves a fitted bay with its fuel in
+  one step. The grid can't be uninstalled while it holds a stash.
+- A grid holds at most `MAX_FUEL_BAYS` (32) bays, fitted plus stashed. A new
+  bay or an arriving stash aborts past it; uninstalling or refitting keeps the
+  total. Each bay's `capacity` is at most `u64::MAX ÷ (SCALE × MAX_FUEL_BAYS)`,
+  so the fuel of every bay at `SCALE` fits a u64.
 
-#### Consuming modules
+#### Power modules
 
-Install calls `grid_load::connect` with the module's `Permit<T>` and stores the `ModulePowerSpec`,
-desired offline, draw `0`. Uninstall calls `grid_load::disconnect`, which drops the
-module and regrants. A module is online when `desired_online` and its draw is nonzero.
+Install calls `grid_load::connect` with the module's `Permit<T>` and its
+`ModulePowerSpec`, desired offline, draw `0`. Uninstall calls
+`grid_load::disconnect`, which drops the module and regrants.
+
+#### Fuel modules (leap, overdrive)
+
+A `PowerKind::Fuel` module has `power_req = 0` (checked at connect) and takes
+no part in power grants, `used_mw` or overload. The service switches it with
+`set_fuel_module(module_id, online, rate)`, an admin action using
+`operate_fuel_module_requirement()`; the owner's `set_desired_state` refuses
+it. The rate is fuel per second at `SCALE`. While online and the grid is on,
+it burns its rate from the online bays; Power Off pauses it and keeps the rate.
+The rate is capped at `max_fuel_rate()` (`u64::MAX ÷ MAX_CONNECTED`), so the
+combined rate always fits a u64 and settling can't overflow.
+Once the online bays run dry it reads a draw of `0`. `fuel_modules_rate(grid)`
+gives the combined rate.
+
+#### Warp
+
+`withdraw_fuel(quantity)` takes `quantity` (at `SCALE`) from the online bays in
+proportion to what each holds, all or nothing; shares round down and the
+remainder comes off the largest bay. It settles first, so burn counts before
+the check, and aborts with `EFuelShort` when the online bays hold less. Offline
+bays and stashes don't count. The game server passes the warp's cost minus any
+fuel the engine kept from a cut-short warp. If it aborts, there is no warp. It
+is an admin action using `withdraw_fuel_requirement()` and emits
+`FuelWithdrawn { quantity, remaining }`.
+
+### Settlement and projection
+
+Between transactions the total burn is constant:
+
+```
+rate = Σ generator burn + Σ online fuel module rates
+burn = min(Q, rate × elapsed)        // Q = fuel in online bays
+bay_i = qty_i × (Q − burn) ÷ Q       // qty_i = stored quantity, online bays only
+```
+
+Generator burn uses the amount-weighted stats of the online bays, which stay
+constant between settles because every bay burns the same fraction. Each bay's
+share rounds down; the remainder comes off the largest online bay.
+
+Every mutating call settles this into stored state first. Nothing settles at
+run-out. Past run-out (`Q ÷ rate` after the last settle), the online bays read
+empty, generators give `0`, and fuel modules get no fuel.
 
 ### Actions & Requirements
 
-- **Install / uninstall the grid**: admin-gated. Starts off and empty. Uninstall aborts while anything is still connected.
-- **Power On / Off**: `set_power_grid`, owner `AccessCap` plus `operate_grid_requirement()`.
-- **Desired state**: `set_desired_state`. Always stored. Same transaction regrants.
-- **Priority**: `set_priority`. Stored only.
-- **Online check**: `online_requirement(module_id, draw, draw_kind)`.
-- **Generator**: install connects it with its stats. `set_generator` updates `capacity_mw`.
-- **Fuel**: install adds capacity. `deposit_fuel` checks the owner's `FuelRequirement`, then blends.
-- **Checks**: `power_grid_requirement(...)` and `generator_requirement(...)`.
+| Action | Who | Notes |
+|---|---|---|
+| Install / uninstall grid, generator, bay, module | admin | grid uninstall aborts while anything is connected |
+| `set_power_grid` (Power On / Off) | owner | keeps every desired state |
+| `set_generator` | owner | |
+| `set_fuel_bay` | owner | offline bays keep their fuel |
+| `take_stash` | admin | returns an uninstalled bay's stash as a `FuelLoad` |
+| `stash_load` | admin | stashes a `FuelLoad` on another Creation |
+| `install_with_fuel` | admin | installs a bay holding its `FuelLoad` |
+| `destroy_fuel_load` | holder of the load | destroys fuel whose bay item is gone |
+| `deposit_fuel` | owner + sponsor | checks the owner's `FuelRequirement` |
+| `set_desired_state` | owner | power modules; never refused |
+| `set_priority` | owner | stored only |
+| `set_fuel_module` | admin | fuel modules; online with a rate (at `SCALE`), offline with none |
+| `withdraw_fuel` | admin | all or nothing, at `SCALE` |
+| `shut_down` | admin | shell lost: clears every desired state and takes generators and bays offline |
 
+Requirements:
 
+- `online_requirement(module_id, draw, draw_kind)`: the module holds a grant.
+- `power_grid_requirement(...)` and `generator_requirement(...)`: grid and
+  generator checks.
+- `deposit_fuel_requirement(...)`: which fuel a deposit accepts.
+- `fits_requirement()`: the pre-filter, resolved by `assert_fits`. The owner
+  puts it after the grid operation in their power actions (for example
+  `[operate_grid_requirement(), fits_requirement()]`); it aborts with
+  `EWouldOverload` if `desired_firm_mw` exceeds `capacity_mw`, the online
+  generators' output. That covers switch-ons and generators going offline.
+  Elastic asks never overload. It can't catch fuel running out.
+
+Power Off (player-signed) keeps intent. `shut_down` clears it, so everything stays off until the owner switches it on.
+`shut_down` is an admin action using `shut_down_requirement()`: it settles,
+clears every module's desired state (fuel modules lose their rate), takes every
+generator and bay offline, leaves `on` unchanged, and emits `GridShutDown`. The
+service calls it in the same PTB as the Layout edit that removes the Shell, so
+`power` keeps no dependency on `creation`.
 
 ### Events
 
-- `PowerGridInstalled`, `PowerGridUninstalled`, `PowerToggled`, `CapacityChanged`
-- `GeneratorInstalled`, `GeneratorUninstalled`, `GeneratorConnected`, `GeneratorDisconnected`, `GeneratorToggled`
-- `FuelInstalled`, `FuelUninstalled`, `FuelSourceAttached`, `FuelSourceDetached`, `FuelAdded`
-- `ModuleConnected`, `ModuleDisconnected`, `PriorityChanged`, `DesiredStateChanged`
+- `PowerGridInstalled`, `PowerGridUninstalled`, `PowerToggled`, `GridShutDown`
+- `GeneratorInstalled`, `GeneratorUninstalled`, `GeneratorConnected`, `GeneratorDisconnected`, `GeneratorToggled`, `CapacityChanged`
+- `FuelBayInstalled`, `FuelBayUninstalled`, `FuelBayAttached`, `FuelBayDetached`, `FuelBayToggled`, `FuelAdded`, `FuelWithdrawn`, `FuelStashed`, `FuelRestored`, `FuelUnstashed`, `FuelLoadDestroyed`
+- `ModuleConnected`, `ModuleDisconnected`, `PriorityChanged`, `DesiredStateChanged`, `FuelModuleToggled`
 - `DrawChanged { module_id, active_draw }`
 
-Depletion shows up in the views.
+There is no run-out event on chain; off chain services computes run-out from the views.
 
 ### Client & PTB discovery
 
-- `projected_fuel`: fuel left now.
-- `projected_status`: effective capacity, `used_mw`, online module ids. Fuel at zero reads as capacity `0` and every draw `0`.
-- `projected_module_states`: every connected module now. Draw is `0` once fuel has run out. Desired state stays.
+- `projected_fuel`, `projected_bays`: fuel now, in total and per bay.
+- `stashed_fuel`: an uninstalled bay's stash, which never burns.
+- `projected_module_states`: every module now, draws projected.
+- `module_status`, `module_statuses`, `generator_status`: why each is or isn't
+  running now, as a `PowerStatus`, checked in this order: `Off` (switched off),
+  `GridOff` (Power Off), `NoFuel` (no bay holds fuel), `BaysOffline` (online
+  bays empty, an offline bay holds fuel), `NoPower` (a power module the grid
+  can't carry), else `Online`. A generator refused fuel stays online and reads
+  `NoFuel` or `BaysOffline`; it supplies again once fuel reaches an online bay.
+- `projected_status`: power limit, `used_mw`, online module ids.
 - `module_state`: one module as of the last settle.
 
-Stored draws lag until the next mutating action. There is no `settle()` action.
+Builders run their own shed order by reading these views (`capacity_mw`,
+`desired_firm_mw`, each module's `power_req`, `draw_kind` and `priority`) and
+switching modules in one owner PTB, for example granting Firm modules in
+priority order and skipping any that no longer fit. Choosing a bay to fill ("most room", "fill all") is a PTB
+helper over `deposit_fuel`.
 
 ## Consequences
 
-**Easier:** effective capacity, desired state, live draws, and projected fuel are on-chain. 
+**Easier:** per-bay fuel, the power limit, desired state, live draws and
+projected fuel are on-chain. Fuel use for leap, overdrive and warp is accounted
+on-chain. Projections are closed-form, so off-chain services can simulate them.
 
-**Harder / deferred:** no capacitor grace period. One Firm module that does not fit blocks every module. Priority does not change grants yet. A module package must call `grid_load::disconnect` or it leaves a stale row.
-
-## Open questions carried forward
-
-- Whether a module can install when no grid is present.
-- Elastic leftover order. Current rule: module-id order.
-- How priority groups bring modules online and offline.
-- Whether indexers need anything beyond `DrawChanged`.
+**Harder / deferred:** stored state lags until the next mutating action. One
+Firm module that doesn't fit turns every power module off unless the owner adds
+the pre-filter. The service must switch fuel modules, call `shut_down`, and
+take each stash when its bay item moves or is destroyed. A module package must call `grid_load::disconnect` or it leaves a
+stale row.
 

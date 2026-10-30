@@ -4,10 +4,9 @@ import { componentIdFromName } from '../src/packages/component-id.js'
 import { deriveObjectId, enableAdminAction } from '../src/packages/core.js'
 import {
   depositFuelRequirement,
-  installFuel,
+  installFuelBay,
   installGenerator,
   operateGridRequirement,
-  POWER_SCALE,
 } from '../src/packages/power.js'
 import { loadScriptContext } from './context.js'
 import { loadSeedFiles } from './seed-files.js'
@@ -16,10 +15,10 @@ import { loadSeedFiles } from './seed-files.js'
 // already connected to the grid when the storage unit was created.
 const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
-const OUTPUT = 15n * POWER_SCALE
-const CONTAINMENT_REDUCTION = 10n * POWER_SCALE
-const BASE_FUEL_RATE = POWER_SCALE
-const FUEL_CAPACITY = 1000n * POWER_SCALE
+const OUTPUT = 15n
+const CONTAINMENT_REDUCTION = 10n
+const BASE_FUEL_RATE = 1n
+const FUEL_CAPACITY = 1000n
 
 const { repoRoot, config, client, keypair } = loadScriptContext()
 const { resources } = loadSeedFiles(repoRoot)
@@ -48,7 +47,7 @@ for (const [alias, unit] of entries) {
     containmentReduction: CONTAINMENT_REDUCTION,
     baseFuelRate: BASE_FUEL_RATE,
   })
-  installFuel(tx, config, entity, {
+  installFuelBay(tx, config, entity, {
     componentId: FUEL_ID,
     capacity: FUEL_CAPACITY,
   })
@@ -56,6 +55,9 @@ for (const [alias, unit] of entries) {
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'set_generator', [
+    operateGridRequirement(tx, config),
+  ])
+  enableAdminAction(tx, config, entity, 'set_fuel_bay', [
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'set_priority', [
