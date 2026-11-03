@@ -179,16 +179,9 @@ public fun uninstall(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
-    assert!(power_grid::is_fuel_bay_connected(entity, fuel_bay_id), EFuelBayNotConnected);
-    let entity_id = entity.id();
-    let req = fuel_bay::uninstall(entity, fuel_bay_id, ctx);
-    let grid = power_grid::grid_mut(entity);
-    grid.settle(clock);
-    let fuel = grid.disconnect_fuel_bay(fuel_bay_id);
-    grid.stash_fuel(fuel_bay_id, fuel);
-    grid.regrant(entity_id);
-    event::emit(FuelBayDetached { entity_id, fuel_bay_id });
-    emit_stashed(entity_id, fuel_bay_id, fuel);
+    let (req, fuel) = detach(entity, fuel_bay_id, clock, ctx);
+    power_grid::grid_mut(entity).stash_fuel(fuel_bay_id, fuel);
+    emit_stashed(entity.id(), fuel_bay_id, fuel);
     req
 }
 
@@ -204,9 +197,9 @@ public fun migrate(
     assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
     let capacity = power_grid::fuel_bay_state(from, fuel_bay_id).capacity();
     let name = fuel_bay::name(from, fuel_bay_id);
-    let from_req = uninstall(from, fuel_bay_id, clock, ctx);
-    let fuel = power_grid::grid_mut(from).take_stash(fuel_bay_id);
-    let to_req = connect(to, fuel_bay_id, name, capacity, fuel, clock, ctx);
+    // The fuel goes straight across: it is never stashed on `from`.
+    let (from_req, fuel) = detach(from, fuel_bay_id, clock, ctx);
+    let to_req = connect(to, fuel_bay_id, name, capacity, option::some(fuel), clock, ctx);
     (from_req, to_req)
 }
 
@@ -453,6 +446,25 @@ fun connect(
         });
     };
     req
+}
+
+/// Uninstall the bay component and disconnect it from the grid, returning its
+/// fuel. The caller stashes the fuel or moves it on.
+fun detach(
+    entity: &mut Entity,
+    fuel_bay_id: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Request, Fuel) {
+    assert!(power_grid::is_fuel_bay_connected(entity, fuel_bay_id), EFuelBayNotConnected);
+    let entity_id = entity.id();
+    let req = fuel_bay::uninstall(entity, fuel_bay_id, ctx);
+    let grid = power_grid::grid_mut(entity);
+    grid.settle(clock);
+    let fuel = grid.disconnect_fuel_bay(fuel_bay_id);
+    grid.regrant(entity_id);
+    event::emit(FuelBayDetached { entity_id, fuel_bay_id });
+    (req, fuel)
 }
 
 fun emit_stashed(entity_id: ID, fuel_bay_id: u64, fuel: Fuel) {
