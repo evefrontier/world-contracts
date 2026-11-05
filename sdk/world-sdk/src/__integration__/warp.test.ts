@@ -92,14 +92,14 @@ describe('warp fuel (localnet)', () => {
     await expectSuccess(client, fuelTx)
 
     const warpTx = new Transaction()
-    withdrawFuel(warpTx, config, warpTx.object(entityId), WARP_COST)
+    withdrawFuel(warpTx, config, warpTx.object(entityId), 1n, WARP_COST)
     await expectSuccess(client, warpTx)
     const left = UNITS * POWER_SCALE - WARP_COST
     expect(await readFuel(entityId)).toBe(left)
 
     // More than the bays hold: no warp, and nothing is taken.
     const shortTx = new Transaction()
-    withdrawFuel(shortTx, config, shortTx.object(entityId), left + 1n)
+    withdrawFuel(shortTx, config, shortTx.object(entityId), 1n, left + 1n)
     await expectAbort(client, shortTx, signer, /EFuelShort/)
     expect(await readFuel(entityId)).toBe(left)
   })

@@ -49,6 +49,7 @@ const TEMP_ACTION: vector<u8> = b"temp_action";
 const TAKE_STASH: vector<u8> = b"take_stash";
 const STASH_LOAD: vector<u8> = b"stash_load";
 const WITHDRAW_FUEL: vector<u8> = b"withdraw_fuel";
+const SIPHON: vector<u8> = b"siphon";
 const SHUT_DOWN: vector<u8> = b"shut_down";
 const FITTED: vector<u8> = b"operate_fitted";
 
@@ -695,7 +696,7 @@ public fun enable_withdraw(scenario: &mut ts::Scenario, entity_id: ID) {
     ts::return_shared(entity);
 }
 
-/// `sender` withdraws `quantity` (at `SCALE`) from `entity_id`'s online bays.
+/// `sender` withdraws `quantity` (at `SCALE`) from the `fuel_type()` pool.
 public fun withdraw(
     scenario: &mut ts::Scenario,
     sender: address,
@@ -703,11 +704,52 @@ public fun withdraw(
     quantity: u64,
     clock: &Clock,
 ) {
+    withdraw_type(scenario, sender, entity_id, FUEL_TYPE, quantity, clock);
+}
+
+/// `sender` withdraws `quantity` (at `SCALE`) from the `fuel_type` pool.
+public fun withdraw_type(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    fuel_type: u64,
+    quantity: u64,
+    clock: &Clock,
+) {
     ts::next_tx(scenario, sender);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
     let mut req = entity.interact(string::utf8(WITHDRAW_FUEL), scenario.ctx());
-    grid_fuel::withdraw_fuel(&mut entity, &mut req, quantity, clock);
+    grid_fuel::withdraw_fuel(&mut entity, &mut req, fuel_type, quantity, clock);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// ADMIN exposes the `siphon` admin action on `entity_id`.
+public fun enable_siphon(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(&mut entity, &acl, SIPHON, power_grid::siphon_requirement(), scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` siphons `quantity` (at `SCALE`) out of bay `fuel_bay_id`.
+public fun siphon(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    quantity: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(SIPHON), scenario.ctx());
+    grid_fuel::siphon(&mut entity, &mut req, fuel_bay_id, quantity, clock);
     close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);

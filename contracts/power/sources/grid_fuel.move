@@ -40,7 +40,7 @@ const EStashExists: vector<u8> = b"Fuel bay is already connected or stashed on t
 #[error(code = 12)]
 const EWrongFuelBay: vector<u8> = b"Fuel load belongs to another fuel bay";
 #[error(code = 13)]
-const EFuelShort: vector<u8> = b"Online fuel bays hold less fuel than the withdrawal";
+const EFuelShort: vector<u8> = b"The fuel pool holds less fuel than the withdrawal";
 #[error(code = 14)]
 const ETooManyFuelBays: vector<u8> =
     b"Power grid has reached its maximum fitted and stashed fuel bays";
@@ -50,6 +50,8 @@ const EFuelBayTooLarge: vector<u8> = b"Fuel bay capacity is above the maximum";
 const EZeroImpulse: vector<u8> = b"Fuel with zero impulse holds no energy";
 #[error(code = 17)]
 const EFuelTypeMismatch: vector<u8> = b"Fuel bay holds another fuel type until it is empty";
+#[error(code = 18)]
+const EBayShort: vector<u8> = b"Fuel bay holds less fuel than the siphon";
 
 // === Structs ===
 
@@ -131,12 +133,26 @@ public struct FuelBayToggled has copy, drop {
     online: bool,
 }
 
-/// The service took `quantity` (at `SCALE`) from the online bays, for a warp.
-/// `remaining` is what the online bays hold after.
+/// The service took `quantity` (at `SCALE`) from the pool of `fuel_type`, for
+/// a warp. `remaining` is what that pool holds after.
 public struct FuelWithdrawn has copy, drop {
     entity_id: ID,
+    fuel_type: u64,
     quantity: u64,
     remaining: u64,
+}
+
+/// The admin siphoned `quantity` (at `SCALE`) out of one bay, with the bay's
+/// values at that moment. The service mints the siphoned stack from it.
+public struct FuelSiphoned has copy, drop {
+    entity_id: ID,
+    fuel_bay_id: u64,
+    fuel_type: u64,
+    quantity: u64,
+    impulse: u64,
+    volatility: u64,
+    containment_burden: u64,
+    thermal_inefficiency: u64,
 }
 
 /// Fuel was loaded into a bay; the `resulting_*` values are that bay after blending.
@@ -298,12 +314,18 @@ public fun stash_load(entity: &mut Entity, req: &mut Request, load: FuelLoad) {
     emit_stashed(entity_id, fuel_bay_id, fuel);
 }
 
-/// Take `quantity` of fuel (at `SCALE`) from the online bays, all or nothing,
-/// each bay giving in proportion to what it holds. The game server calls it
-/// before a warp with the warp's cost; an abort means no warp. Settles first, so
-/// burn counts before the check. The request needs a `withdraw_fuel_requirement`,
-/// and the frame then requires the admin.
-public fun withdraw_fuel(entity: &mut Entity, req: &mut Request, quantity: u64, clock: &Clock) {
+/// Take `quantity` of fuel (at `SCALE`) from the pool of `fuel_type`, all or
+/// nothing, each of its online bays giving in proportion to what it holds. The
+/// game server calls it before a warp with the warp's cost; an abort means no
+/// warp. Settles first, so burn counts before the check. The request needs a
+/// `withdraw_fuel_requirement`, and the frame then requires the admin.
+public fun withdraw_fuel(
+    entity: &mut Entity,
+    req: &mut Request,
+    fuel_type: u64,
+    quantity: u64,
+    clock: &Clock,
+) {
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,
@@ -312,11 +334,48 @@ public fun withdraw_fuel(entity: &mut Entity, req: &mut Request, quantity: u64, 
     );
     assert!(quantity > 0, EZeroFuel);
     grid.settle(clock);
-    let held = grid.online_fuel().quantity();
+    let held = grid.pool_fuel(fuel_type).quantity();
     assert!(held >= quantity, EFuelShort);
-    grid.take_from_online(quantity);
+    grid.take_from_pool(fuel_type, quantity);
     grid.regrant(entity_id);
-    event::emit(FuelWithdrawn { entity_id, quantity, remaining: held - quantity });
+    event::emit(FuelWithdrawn { entity_id, fuel_type, quantity, remaining: held - quantity });
+    frame.require(admin_service::admin_requirement());
+    req.enqueue(frame);
+}
+
+/// Siphon `quantity` (at `SCALE`) out of bay `fuel_bay_id`, online or not.
+/// Settles first, so burn counts before the check. Emits `FuelSiphoned` with
+/// the bay's values, from which the service mints the stack. The request needs
+/// a `siphon_requirement`, and the frame then requires the admin.
+public fun siphon(
+    entity: &mut Entity,
+    req: &mut Request,
+    fuel_bay_id: u64,
+    quantity: u64,
+    clock: &Clock,
+) {
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = power_grid::take_grid(
+        entity,
+        req,
+        power_grid::siphon_permit(),
+    );
+    assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
+    assert!(quantity > 0, EZeroFuel);
+    grid.settle(clock);
+    assert!(grid.bay_state(fuel_bay_id).fuel().quantity() >= quantity, EBayShort);
+    let taken = grid.take_from_bay(fuel_bay_id, quantity);
+    grid.regrant(entity_id);
+    event::emit(FuelSiphoned {
+        entity_id,
+        fuel_bay_id,
+        fuel_type: taken.fuel_type().destroy_some(),
+        quantity,
+        impulse: taken.impulse(),
+        volatility: taken.volatility(),
+        containment_burden: taken.containment_burden(),
+        thermal_inefficiency: taken.thermal_inefficiency(),
+    });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
 }
@@ -587,10 +646,26 @@ fun enforce_fuel(
 
 // === Test Functions ===
 
-/// `(entity_id, quantity, remaining)`.
+/// `(entity_id, fuel_type, quantity, remaining)`.
 #[test_only]
-public fun fuel_withdrawn_fields(withdrawn: &FuelWithdrawn): (ID, u64, u64) {
-    (withdrawn.entity_id, withdrawn.quantity, withdrawn.remaining)
+public fun fuel_withdrawn_fields(withdrawn: &FuelWithdrawn): (ID, u64, u64, u64) {
+    (withdrawn.entity_id, withdrawn.fuel_type, withdrawn.quantity, withdrawn.remaining)
+}
+
+/// `(entity_id, fuel_bay_id, fuel_type, quantity, impulse, volatility,
+/// containment_burden, thermal_inefficiency)`.
+#[test_only]
+public fun fuel_siphoned_fields(siphoned: &FuelSiphoned): (ID, u64, u64, u64, u64, u64, u64, u64) {
+    (
+        siphoned.entity_id,
+        siphoned.fuel_bay_id,
+        siphoned.fuel_type,
+        siphoned.quantity,
+        siphoned.impulse,
+        siphoned.volatility,
+        siphoned.containment_burden,
+        siphoned.thermal_inefficiency,
+    )
 }
 
 /// `(entity_id, fuel_bay_id, fuel_type, amount, resulting_amount, resulting_impulse,

@@ -205,6 +205,10 @@ public struct ManageStash() has drop;
 /// The frame then requires the admin.
 public struct WithdrawFuel() has drop;
 
+/// Marker for the service siphoning fuel out of one bay with
+/// `grid_fuel::siphon`. The frame then requires the admin.
+public struct Siphon() has drop;
+
 /// Marker for the service shutting a Creation down with `shut_down`. The frame
 /// then requires the admin.
 public struct ShutDown() has drop;
@@ -396,6 +400,11 @@ public fun shut_down_requirement(): Requirement {
 /// Requirement satisfied by `grid_fuel::withdraw_fuel`; one per call.
 public fun withdraw_fuel_requirement(): Requirement {
     requirement::from_config(option::some(component_id()), WithdrawFuel())
+}
+
+/// Requirement satisfied by `grid_fuel::siphon`; one per call.
+public fun siphon_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), Siphon())
 }
 
 public fun manage_stash_requirement(): Requirement {
@@ -1083,11 +1092,23 @@ public(package) fun new_fuel(
     }
 }
 
-/// Keep an uninstalled bay's fuel until the bay is refitted or moved.
-/// Take `quantity` from the online bays in proportion to what each holds.
-/// Caller settles first and checks the online bays hold enough.
-public(package) fun take_from_online(grid: &mut PowerGrid, quantity: u64) {
-    take_from_online_bays(&mut grid.bays, option::none(), quantity);
+/// Take `quantity` from the pool of `fuel_type`, its online bays giving in
+/// proportion to what each holds. Caller settles first and checks the pool
+/// holds enough.
+public(package) fun take_from_pool(grid: &mut PowerGrid, fuel_type: u64, quantity: u64) {
+    take_from_online_bays(&mut grid.bays, option::some(fuel_type), quantity);
+}
+
+/// Take `quantity` out of one bay, online or not, and return it with the bay's
+/// type and stats. The bay goes back to empty, type cleared, if that was all.
+/// Caller settles first and checks the bay holds enough.
+public(package) fun take_from_bay(grid: &mut PowerGrid, fuel_bay_id: u64, quantity: u64): Fuel {
+    let fuel = &mut grid.bays[&fuel_bay_id].fuel;
+    let mut taken = *fuel;
+    taken.quantity = quantity;
+    fuel.quantity = fuel.quantity - quantity;
+    if (fuel.quantity == 0) *fuel = empty_fuel();
+    taken
 }
 
 fun fits_permit(): Permit<Fits> {
@@ -1100,6 +1121,10 @@ fun shut_down_permit(): Permit<ShutDown> {
 
 public(package) fun withdraw_fuel_permit(): Permit<WithdrawFuel> {
     internal::permit<WithdrawFuel>()
+}
+
+public(package) fun siphon_permit(): Permit<Siphon> {
+    internal::permit<Siphon>()
 }
 
 public(package) fun stash_fuel(grid: &mut PowerGrid, fuel_bay_id: u64, fuel: Fuel) {

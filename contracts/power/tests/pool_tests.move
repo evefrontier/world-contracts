@@ -369,7 +369,8 @@ fun projected_pools_step_through_run_outs() {
     let own = pools[&fuel_type()];
     assert!(own.pool_view_fuel().quantity() == starting_fuel());
     assert!(own.run_out_ms() == option::some(9_000 + 449_995_500));
-    let other = pools[&OTHER_TYPE];
+    let other_type = OTHER_TYPE;
+    let other = pools[&other_type];
     assert!(other.pool_view_fuel().quantity() == power_grid::scale());
     assert!(other.pool_view_fuel().impulse() == OTHER_IMPULSE);
     assert!(other.run_out_ms() == option::some(9_000));
@@ -390,7 +391,8 @@ fun idle_pools_never_run_out() {
 
     let pools = pools(&mut scenario, entity_id, &clock);
     assert!(pools[&fuel_type()].run_out_ms().is_none());
-    let other = pools[&OTHER_TYPE];
+    let other_type = OTHER_TYPE;
+    let other = pools[&other_type];
     assert!(other.pool_view_fuel().quantity() == 0 && other.run_out_ms().is_none());
 
     clock.destroy_for_testing();

@@ -403,6 +403,14 @@ export function withdrawFuelRequirement(
   return tx.moveCall({ target: grid(config, 'withdraw_fuel_requirement') })
 }
 
+/** Satisfied by `siphon`; add it as the `siphon` admin action. */
+export function siphonRequirement(
+  tx: Transaction,
+  config: WorldConfig,
+): TransactionResult {
+  return tx.moveCall({ target: grid(config, 'siphon_requirement') })
+}
+
 /**
  * Satisfied by `takeStash` and `stashLoad`; add it as the `take_stash` and
  * `stash_load` admin actions on each creation that handles stashes.
@@ -612,20 +620,54 @@ export function shutDown(
 }
 
 /**
- * Take `quantity` of fuel (at `POWER_SCALE`) from the online bays for a warp,
- * all or nothing; an abort means no warp. Needs the `withdraw_fuel` admin
- * action (`withdrawFuelRequirement`). Admin-gated.
+ * Take `quantity` of fuel (at `POWER_SCALE`) from the `fuelType` pool for a
+ * warp, all or nothing; an abort means no warp. Needs the `withdraw_fuel`
+ * admin action (`withdrawFuelRequirement`). Admin-gated.
  */
 export function withdrawFuel(
   tx: Transaction,
   config: WorldConfig,
   entity: TransactionArgument,
+  fuelType: bigint,
   quantity: bigint,
 ): void {
   const request = interact(tx, config, entity, 'withdraw_fuel')
   tx.moveCall({
     target: moveCallTarget(config, 'grid_fuel', 'withdraw_fuel'),
-    arguments: [entity, request, tx.pure.u64(quantity), tx.object.clock()],
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(fuelType),
+      tx.pure.u64(quantity),
+      tx.object.clock(),
+    ],
+  })
+  verifyAdmin(tx, config, request)
+  completeRequest(tx, config, entity, request)
+}
+
+/**
+ * Siphon `quantity` (at `POWER_SCALE`) out of bay `fuelBayId`, online or not.
+ * The `FuelSiphoned` event carries the bay's values for minting the stack.
+ * Needs the `siphon` admin action (`siphonRequirement`). Admin-gated.
+ */
+export function siphon(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  fuelBayId: bigint,
+  quantity: bigint,
+): void {
+  const request = interact(tx, config, entity, 'siphon')
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_fuel', 'siphon'),
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(fuelBayId),
+      tx.pure.u64(quantity),
+      tx.object.clock(),
+    ],
   })
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)

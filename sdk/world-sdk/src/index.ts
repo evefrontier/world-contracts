@@ -184,6 +184,8 @@ export {
   setPriority,
   shutDown,
   shutDownRequirement,
+  siphon,
+  siphonRequirement,
   stashedFuel,
   stashLoad,
   takeStash,
