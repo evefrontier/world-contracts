@@ -7,6 +7,7 @@ use power::{
         admin,
         bay_fuel,
         catch_up,
+        draw,
         deposit_typed,
         firm_power,
         fuel_bay_id,
@@ -24,13 +25,14 @@ use power::{
         set_fuel_bay,
         setup_entity,
         starting_fuel,
+        stored_draw,
         thermal,
         volatility,
         volatility_limit
     },
-    power_grid::{Self, Fuel}
+    power_grid::{Self, DrawChanged, Fuel}
 };
-use sui::{clock::{Self, Clock}, test_scenario as ts};
+use sui::{clock::{Self, Clock}, event, test_scenario as ts};
 
 const MOD_A: u64 = 401;
 /// Second bay, holding `OTHER_TYPE`.
@@ -49,6 +51,11 @@ const OTHER_UNITS: u64 = 1_000;
 /// Generator 0 burns `fuel_type()` from the default bay; Generator 1 burns
 /// `OTHER_TYPE` from `FUEL_B`. Both online, grid on, `MOD_A` drawing `draw` MW.
 fun two_pools(scenario: &mut ts::Scenario, draw: u64, clock: &Clock): ID {
+    two_pools_holding(scenario, draw, OTHER_UNITS, clock)
+}
+
+/// `two_pools` with `other_units` plain units in the `OTHER_TYPE` pool.
+fun two_pools_holding(scenario: &mut ts::Scenario, draw: u64, other_units: u64, clock: &Clock): ID {
     let entity_id = setup_entity(scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], clock);
     install_other_generator(scenario, entity_id, clock);
     install_fuel(scenario, entity_id, FUEL_B, fuel_capacity(), clock);
@@ -57,7 +64,7 @@ fun two_pools(scenario: &mut ts::Scenario, draw: u64, clock: &Clock): ID {
         entity_id,
         FUEL_B,
         OTHER_TYPE,
-        OTHER_UNITS,
+        other_units,
         OTHER_IMPULSE,
         thermal(),
         clock,
@@ -233,6 +240,84 @@ fun offline_bay_leaves_its_pool() {
     assert!(
         bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == OTHER_UNITS * power_grid::scale(),
     );
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === Run-out ===
+
+/// 20 MW Firm across two 15 MW Generators. The 1-unit `OTHER_TYPE` pool burns
+/// 2.2222 a ms and runs dry at 4.5 s; the default pool has burned 5_000 by
+/// then. Capacity drops to 15 MW, the Firm load no longer fits, and nothing
+/// draws or burns after. The view at 10 s matches the settle, which emits the
+/// drop once.
+#[test]
+fun run_out_overloads_at_that_moment() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_pools_holding(&mut scenario, 20, 1, &clock);
+
+    clock.set_for_testing(10_000);
+    let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
+    assert!(capacity == OUTPUT && used == 0 && online.is_empty());
+    let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    assert!(own_left == starting_fuel() - 5_000);
+    assert!(projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock) == 0);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+
+    catch_up(&mut scenario, entity_id, MOD_A, &clock);
+    let changed = event::events_by_type<DrawChanged>();
+    assert!(changed.length() == 1);
+    assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == own_left);
+    let other = bay_fuel(&mut scenario, entity_id, FUEL_B);
+    assert!(other.quantity() == 0 && other.fuel_type().is_none());
+    assert!(stored_draw(&mut scenario, entity_id, MOD_A) == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// 10 MW Firm across two 15 MW Generators, 5 MW each. The 1-unit `OTHER_TYPE`
+/// pool runs dry at 9 s, when the default pool has burned 5_000. The default
+/// Generator then serves all 10 MW, burning 1_112 more over the last second:
+/// 6_112 in all, not the 5_556 a single stretch would give.
+#[test]
+fun other_pool_burns_at_the_new_rate_after_a_run_out() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+
+    clock.set_for_testing(10_000);
+    let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
+    assert!(capacity == OUTPUT && used == 10 && online == vector[MOD_A]);
+    let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    assert!(own_left == starting_fuel() - 6_112);
+
+    catch_up(&mut scenario, entity_id, MOD_A, &clock);
+    assert!(event::events_by_type<DrawChanged>().is_empty());
+    assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == own_left);
+    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A read before the run-out still burns both pools at the shared rate.
+#[test]
+fun read_before_run_out_uses_one_stretch() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+
+    clock.set_for_testing(4_000);
+    let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
+    assert!(own_left == starting_fuel() - 2_223);
+    assert!(other_left == power_grid::scale() - 4_445);
 
     clock.destroy_for_testing();
     scenario.end();
