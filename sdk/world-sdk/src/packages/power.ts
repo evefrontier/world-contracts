@@ -553,6 +553,31 @@ export function setPowerGrid(
   verifyOwner(tx, config, entity, request, ownerCap)
 }
 
+/**
+ * Switch an offline Generator to burn `fuelType`, one of its selectable types.
+ * It changes nothing until the Generator comes back online. Owner-gated.
+ */
+export function setGeneratorFuelType(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
+  generatorId: bigint,
+  fuelType: bigint,
+): void {
+  tx.moveCall({
+    target: moveCallTarget(config, 'grid_generator', 'set_generator_fuel_type'),
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(generatorId),
+      tx.pure.u64(fuelType),
+    ],
+  })
+  verifyOwner(tx, config, entity, request, ownerCap)
+}
+
 /** Bring a Generator online or offline. Owner-gated. */
 export function setGenerator(
   tx: Transaction,

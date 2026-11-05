@@ -180,6 +180,7 @@ export {
   setDesiredState,
   setFuelBay,
   setGenerator,
+  setGeneratorFuelType,
   setPowerGrid,
   setPriority,
   shutDown,

@@ -16,8 +16,11 @@ import { loadSeedFiles } from './seed-files.js'
 const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
 const OUTPUT = 15n
-const CONTAINMENT_REDUCTION = 10n
-const BASE_FUEL_RATE = 1n
+// Fuel type 7, impulse limit 100 and volatility limit 0.0001 (at POWER_SCALE):
+// any type-7 fuel with volatility gives full output.
+const FUEL_TYPE = 7n
+const IMPULSE_LIMIT = 1_000_000n
+const VOLATILITY_LIMIT = 1n
 const FUEL_CAPACITY = 1000n
 
 const { repoRoot, config, client, keypair } = loadScriptContext()
@@ -43,9 +46,10 @@ for (const [alias, unit] of entries) {
   const entity = tx.object(entityId)
   installGenerator(tx, config, entity, {
     componentId: GENERATOR_ID,
+    fuelType: FUEL_TYPE,
     maxOutputMw: OUTPUT,
-    containmentReduction: CONTAINMENT_REDUCTION,
-    baseFuelRate: BASE_FUEL_RATE,
+    impulseLimit: IMPULSE_LIMIT,
+    volatilityLimit: VOLATILITY_LIMIT,
   })
   installFuelBay(tx, config, entity, {
     componentId: FUEL_ID,
