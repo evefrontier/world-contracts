@@ -767,6 +767,48 @@ export interface FuelAmount {
   thermalInefficiency: bigint
 }
 
+/**
+ * Every pool now, by fuel type, with run-out times if grants hold. Decode the
+ * result with `parseProjectedPools`.
+ */
+export function projectedPools(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'projected_pools'),
+    arguments: [entity, tx.object.clock()],
+  })
+}
+
+const PoolsBcs = bcs.struct('VecMap', {
+  contents: bcs.vector(
+    bcs.struct('Entry', {
+      key: bcs.u64(),
+      value: bcs.struct('PoolView', {
+        fuel: FuelBcs,
+        run_out_ms: bcs.option(bcs.u64()),
+      }),
+    }),
+  ),
+})
+
+/** One fuel type's pool now. `runOutMs` is `null` while nothing burns it. */
+export interface ProjectedPool extends FuelAmount {
+  poolFuelType: bigint
+  runOutMs: bigint | null
+}
+
+/** Decode the BCS return value of `projectedPools`. */
+export function parseProjectedPools(bytes: Uint8Array): ProjectedPool[] {
+  return PoolsBcs.parse(bytes).contents.map(({ key, value }) => ({
+    ...fuelAmount(value.fuel),
+    poolFuelType: BigInt(key),
+    runOutMs: value.run_out_ms == null ? null : BigInt(value.run_out_ms),
+  }))
+}
+
 /** Decode the BCS return value of `stashedFuel`: `null` when no stash. */
 export function parseStashedFuel(bytes: Uint8Array): FuelAmount | null {
   const fuel = bcs.option(FuelBcs).parse(bytes)

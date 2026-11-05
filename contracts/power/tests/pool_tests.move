@@ -30,9 +30,9 @@ use power::{
         volatility,
         volatility_limit
     },
-    power_grid::{Self, DrawChanged, Fuel}
+    power_grid::{Self, DrawChanged, Fuel, PoolView, PowerStatus}
 };
-use sui::{clock::{Self, Clock}, event, test_scenario as ts};
+use sui::{clock::{Self, Clock}, event, test_scenario as ts, vec_map::VecMap};
 
 const MOD_A: u64 = 401;
 /// Second bay, holding `OTHER_TYPE`.
@@ -318,6 +318,162 @@ fun read_before_run_out_uses_one_stretch() {
     let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
     assert!(own_left == starting_fuel() - 2_223);
     assert!(other_left == power_grid::scale() - 4_445);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === Pool reads ===
+
+fun pools(scenario: &mut ts::Scenario, entity_id: ID, clock: &Clock): VecMap<u64, PoolView> {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let pools = power_grid::projected_pools(&entity, clock);
+    ts::return_shared(entity);
+    pools
+}
+
+fun generator_status(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    index: u64,
+    clock: &Clock,
+): PowerStatus {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let status = power_grid::generator_status(&entity, generator_id(index), clock);
+    ts::return_shared(entity);
+    status
+}
+
+fun module_status(scenario: &mut ts::Scenario, entity_id: ID, clock: &Clock): PowerStatus {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let status = power_grid::module_status(&entity, MOD_A, clock);
+    ts::return_shared(entity);
+    status
+}
+
+/// Each pool reads its fuel and run-out. The 1-unit pool runs dry at 9 s; the
+/// default pool then carries all 10 MW at 10/9 a ms, so its 499_995_000 left
+/// lasts 449_995_500 ms more.
+#[test]
+fun projected_pools_step_through_run_outs() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+
+    let pools = pools(&mut scenario, entity_id, &clock);
+    assert!(pools.length() == 2);
+    let own = pools[&fuel_type()];
+    assert!(own.pool_view_fuel().quantity() == starting_fuel());
+    assert!(own.run_out_ms() == option::some(9_000 + 449_995_500));
+    let other = pools[&OTHER_TYPE];
+    assert!(other.pool_view_fuel().quantity() == power_grid::scale());
+    assert!(other.pool_view_fuel().impulse() == OTHER_IMPULSE);
+    assert!(other.run_out_ms() == option::some(9_000));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// With nothing drawing, no pool runs out; an online Generator's empty pool is listed.
+#[test]
+fun idle_pools_never_run_out() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+    install_other_generator(&mut scenario, entity_id, &clock);
+    power_up(&mut scenario, entity_id, 2, &clock);
+
+    let pools = pools(&mut scenario, entity_id, &clock);
+    assert!(pools[&fuel_type()].run_out_ms().is_none());
+    let other = pools[&OTHER_TYPE];
+    assert!(other.pool_view_fuel().quantity() == 0 && other.run_out_ms().is_none());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === Statuses ===
+
+/// A Generator reads its own pool: empty reads `NoFuel`, held only in an
+/// offline bay reads `BaysOffline`, while the other Generator stays `Online`.
+#[test]
+fun generator_status_reads_its_own_pool() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+    install_other_generator(&mut scenario, entity_id, &clock);
+    power_up(&mut scenario, entity_id, 2, &clock);
+
+    assert!(generator_status(&mut scenario, entity_id, 0, &clock) == power_grid::online_status());
+    assert!(generator_status(&mut scenario, entity_id, 1, &clock) == power_grid::no_fuel_status());
+
+    install_fuel(&mut scenario, entity_id, FUEL_B, fuel_capacity(), &clock);
+    deposit_typed(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        OTHER_TYPE,
+        OTHER_UNITS,
+        OTHER_IMPULSE,
+        thermal(),
+        &clock,
+    );
+    assert!(
+        generator_status(&mut scenario, entity_id, 1, &clock) == power_grid::bays_offline_status(),
+    );
+    set_fuel_bay(&mut scenario, entity_id, FUEL_B, true, &clock);
+    assert!(generator_status(&mut scenario, entity_id, 1, &clock) == power_grid::online_status());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Fuel of a type no online Generator burns doesn't power anything: a module
+/// reads `NoFuel`, not `NoPower`.
+#[test]
+fun fuel_of_another_type_reads_no_fuel() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_generator(
+        &mut scenario,
+        entity_id,
+        generator_id(0),
+        OTHER_TYPE,
+        vector[],
+        OUTPUT,
+        IMPULSE_LIMIT,
+        volatility_limit(),
+        &clock,
+    );
+    power_up(&mut scenario, entity_id, 1, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+
+    assert!(module_status(&mut scenario, entity_id, &clock) == power_grid::no_fuel_status());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// One pool empty, the other supplying: the module still reads `Online`.
+#[test]
+fun one_supplying_pool_keeps_modules_online() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+
+    clock.set_for_testing(10_000);
+    assert!(module_status(&mut scenario, entity_id, &clock) == power_grid::online_status());
+    assert!(generator_status(&mut scenario, entity_id, 1, &clock) == power_grid::no_fuel_status());
 
     clock.destroy_for_testing();
     scenario.end();
