@@ -1,11 +1,11 @@
 /// Module connect, disconnect, priority and desired state. A module connects to
 /// the grid inside its own install and disconnects inside its own uninstall.
-/// The owner sets a power module's desired state, and `power_grid` derives the
-/// grant. The service switches a fuel module with its fuel rate. Only the module's own package can call `connect` or `disconnect`, since
-/// both take its `Permit<Module>`.
+/// The owner sets a module's desired state, and `power_grid` derives the
+/// grant. Only the module's own package can call `connect` or `disconnect`,
+/// since both take its `Permit<Module>`.
 module power::grid_load;
 
-use core::{access_cap, admin_service, entity::Entity, request::Request, requirement::Requirement};
+use core::{access_cap, entity::Entity, request::Request, requirement::Requirement};
 use power::power_grid::{Self, DrawKind, ModulePowerSpec, PowerGrid};
 use std::internal::Permit;
 use sui::{bcs, clock::Clock, event};
@@ -31,18 +31,6 @@ const EModuleStillInstalled: vector<u8> =
     b"Module component must be uninstalled before disconnecting";
 #[error(code = 8)]
 const EWrongTenant: vector<u8> = b"Modules can only move between entities of the same tenant";
-#[error(code = 9)]
-const EFuelModuleNeedsPower: vector<u8> = b"A fuel module must declare power_req = 0";
-#[error(code = 10)]
-const ENotPowerModule: vector<u8> =
-    b"Module draws fuel; the service switches it with set_fuel_module";
-#[error(code = 11)]
-const ENotFuelModule: vector<u8> =
-    b"Module draws power; the owner switches it with set_desired_state";
-#[error(code = 12)]
-const EZeroFuelRate: vector<u8> = b"A fuel module needs a fuel rate above zero to go online";
-#[error(code = 13)]
-const EFuelRateTooHigh: vector<u8> = b"Fuel module rate is above the maximum";
 
 // === Events ===
 
@@ -63,14 +51,6 @@ public struct PriorityChanged has copy, drop {
     module_id: u64,
     /// Priority group the module moved into.
     priority: u64,
-}
-
-/// The service switched a fuel module; `rate` is fuel per second at `SCALE`, 0 when offline.
-public struct FuelModuleToggled has copy, drop {
-    entity_id: ID,
-    module_id: u64,
-    online: bool,
-    rate: u64,
 }
 
 /// The owner set a module's desired state.
@@ -97,10 +77,6 @@ public fun connect<Module: store>(
     let grid = power_grid::grid_mut(entity);
     assert!(!grid.is_module_connected(module_id), EModuleAlreadyConnected);
     assert!(grid.modules().length() < power_grid::max_connected(), ETooManyConnected);
-    assert!(
-        !module_spec.spec_power_kind().is_fuel() || module_spec.spec_power_req() == 0,
-        EFuelModuleNeedsPower,
-    );
     grid.settle(clock);
     let line_loss = module_spec.spec_line_loss();
     let priority = module_spec.spec_priority();
@@ -188,9 +164,9 @@ public fun set_priority(
     req.enqueue(frame);
 }
 
-/// Set a connected power module's desired state. Always accepted, even without
+/// Set a connected module's desired state. Always accepted, even without
 /// power. The grid regrants, and the module draws only if the grid can carry it.
-/// Fuel modules are switched by the service with `set_fuel_module`. A Creation
+/// A Creation
 /// that loses its Shell is shut down by the service with `power_grid::shut_down`,
 /// so `power` keeps no dependency on `creation`.
 public fun set_desired_state(
@@ -207,44 +183,11 @@ public fun set_desired_state(
         power_grid::operate_grid_permit(),
     );
     grid.assert_module_connected(module_id);
-    assert!(!grid.module_state(module_id).power_kind().is_fuel(), ENotPowerModule);
     grid.settle(clock);
     grid.set_module_desired_online(module_id, online);
     grid.regrant(entity_id);
     event::emit(DesiredStateChanged { entity_id, module_id, online });
     frame.require(access_cap::owner_requirement());
-    req.enqueue(frame);
-}
-
-/// Switch a fuel module (leap, overdrive) online at `rate` fuel per second, at
-/// `SCALE`, or offline. The game server calls it while it refills the module's
-/// buffer. While online and the grid is on, the rate burns from the online bays.
-/// The request needs an `operate_fuel_module_requirement`, and the frame then
-/// requires the admin.
-public fun set_fuel_module(
-    entity: &mut Entity,
-    req: &mut Request,
-    module_id: u64,
-    online: bool,
-    rate: u64,
-    clock: &Clock,
-) {
-    let entity_id = entity.id();
-    let (_requirement, mut frame, grid) = power_grid::take_grid(
-        entity,
-        req,
-        power_grid::operate_fuel_module_permit(),
-    );
-    grid.assert_module_connected(module_id);
-    assert!(grid.module_state(module_id).power_kind().is_fuel(), ENotFuelModule);
-    assert!(!online || rate > 0, EZeroFuelRate);
-    assert!(rate <= power_grid::max_fuel_rate(), EFuelRateTooHigh);
-    grid.settle(clock);
-    grid.set_fuel_module_rate(module_id, online, rate);
-    grid.regrant(entity_id);
-    let rate = if (online) rate else 0;
-    event::emit(FuelModuleToggled { entity_id, module_id, online, rate });
-    frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
 }
 
@@ -275,9 +218,7 @@ fun enforce_online(requirement: &Requirement, grid: &PowerGrid) {
     let draw_kind: DrawKind = power_grid::draw_kind_from_tag(encoded.peel_enum_tag());
     grid.assert_module_connected(module_id);
     let state = grid.module_state(module_id);
-    // A fuel module gets nothing while the grid is off.
-    let granted = if (state.power_kind().is_fuel() && !grid.on()) 0
-    else state.active_draw_at_last_settled();
+    let granted = state.active_draw_at_last_settled();
     assert!(granted > 0, ENoGrant);
     assert!(state.draw_kind() == draw_kind, EDrawKindMismatch);
     assert!(granted >= draw, EDrawBelowMin);
@@ -301,12 +242,6 @@ public fun module_disconnected_fields(disconnected: &ModuleDisconnected): (ID, u
 #[test_only]
 public fun priority_changed_fields(changed: &PriorityChanged): (ID, u64, u64) {
     (changed.entity_id, changed.module_id, changed.priority)
-}
-
-/// `(entity_id, module_id, online, rate)`.
-#[test_only]
-public fun fuel_module_toggled_fields(toggled: &FuelModuleToggled): (ID, u64, bool, u64) {
-    (toggled.entity_id, toggled.module_id, toggled.online, toggled.rate)
 }
 
 /// `(entity_id, module_id, online)`.

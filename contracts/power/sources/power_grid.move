@@ -65,9 +65,6 @@ const VERSION: u64 = 1;
 const NAME: vector<u8> = b"power_grid";
 /// Cap on connected modules.
 const MAX_CONNECTED: u64 = 100;
-/// Cap on one fuel module's rate, at `SCALE`: `u64::MAX ÷ MAX_CONNECTED`, so the
-/// combined rate of every connected module fits a u64.
-const MAX_FUEL_RATE: u64 = 184_467_440_737_095_516;
 /// Cap on fuel bays fitted plus stashed on one grid. Uninstalling or refitting a
 /// bay keeps the total, so only a new bay or an arriving stash can hit it.
 const MAX_FUEL_BAYS: u64 = 32;
@@ -130,9 +127,7 @@ public struct ModuleState has copy, drop, store {
     module_spec: ModulePowerSpec,
     /// Owner intent. Set with `set_desired_state`.
     desired_online: bool,
-    /// Power modules: MW granted at the last settle, plain; zero means no grant.
-    /// Fuel modules: fuel per second at `SCALE` while desired online, set by
-    /// the service.
+    /// MW granted at the last settle, plain; zero means no grant.
     active_draw_at_last_settled: u64,
 }
 
@@ -141,7 +136,6 @@ public struct ModulePowerSpec has copy, drop, store {
     /// MW the module needs to operate, plain.
     power_req: u64,
     draw_kind: DrawKind,
-    power_kind: PowerKind,
     /// Priority group. Stored only; grants ignore it in v1.
     priority: u64,
     /// Stored only; grants and fuel burn ignore it in v1.
@@ -168,15 +162,6 @@ public enum PowerStatus has copy, drop, store {
     BaysOffline,
 }
 
-/// What a module draws from. `Power` modules take grants from the generators.
-/// `Fuel` modules (leap, overdrive) burn a rate straight from the online bays
-/// while online and the grid is on; they have `power_req = 0` and take no part
-/// in grants or overload.
-public enum PowerKind has copy, drop, store {
-    Power,
-    Fuel,
-}
-
 /// Marker for the owner's grid operations: `set_power_grid`, `set_generator`,
 /// `set_priority` and `set_desired_state`. Each also requires the owner in its
 /// own frame.
@@ -185,10 +170,6 @@ public struct OperateGrid() has drop;
 /// Marker for the service taking a stash out with `grid_fuel::take_stash` or
 /// putting fuel back with `grid_fuel::stash_load`. The frame then requires the admin.
 public struct ManageStash() has drop;
-
-/// Marker for the service switching a fuel module with
-/// `grid_load::set_fuel_module`. The frame then requires the admin.
-public struct OperateFuelModule() has drop;
 
 /// Marker for the service taking warp fuel with `grid_fuel::withdraw_fuel`.
 /// The frame then requires the admin.
@@ -337,7 +318,7 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
 }
 
 /// Shut the Creation down when it loses its Shell: clear every module's desired
-/// state, stop every fuel module, and take every generator and bay offline.
+/// state, and take every generator and bay offline.
 /// Unlike Power Off, nothing comes back by itself; the owner switches things on
 /// again. `on` is unchanged. The service calls it in the same transaction as the
 /// Layout edit that removes the Shell. The request needs a
@@ -349,7 +330,6 @@ public fun shut_down(entity: &mut Entity, req: &mut Request, clock: &Clock) {
     grid.modules.length().do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx_mut(i);
         state.desired_online = false;
-        if (state.module_spec.power_kind == PowerKind::Fuel) state.active_draw_at_last_settled = 0;
     });
     grid.generators.length().do!(|i| {
         let (_, generator) = grid.generators.get_entry_by_idx_mut(i);
@@ -388,11 +368,6 @@ public fun shut_down_requirement(): Requirement {
 /// Requirement satisfied by `grid_fuel::withdraw_fuel`; one per call.
 public fun withdraw_fuel_requirement(): Requirement {
     requirement::from_config(option::some(component_id()), WithdrawFuel())
-}
-
-/// Requirement satisfied by `grid_load::set_fuel_module`; one per call.
-public fun operate_fuel_module_requirement(): Requirement {
-    requirement::from_config(option::some(component_id()), OperateFuelModule())
 }
 
 public fun manage_stash_requirement(): Requirement {
@@ -474,11 +449,10 @@ public fun deposit_fuel_requirement(
 public fun module_power_spec(
     power_req: u64,
     draw_kind: DrawKind,
-    power_kind: PowerKind,
     priority: u64,
     line_loss: u64,
 ): ModulePowerSpec {
-    ModulePowerSpec { power_req, draw_kind, power_kind, priority, line_loss }
+    ModulePowerSpec { power_req, draw_kind, priority, line_loss }
 }
 
 /// Firm: all or nothing.
@@ -486,12 +460,6 @@ public fun firm(): DrawKind { DrawKind::Firm }
 
 /// Elastic: up to the ask, from what is left.
 public fun elastic(): DrawKind { DrawKind::Elastic }
-
-/// Draws from power.
-public fun power(): PowerKind { PowerKind::Power }
-
-/// Draws fuel from the online bays at a rate.
-public fun fuel_kind(): PowerKind { PowerKind::Fuel }
 
 // === View Functions ===
 
@@ -599,7 +567,7 @@ public fun module_draw(entity: &Entity, module_id: u64, clock: &Clock): u64 {
     let grid = power_grid(entity);
     assert!(grid.modules.contains(&module_id), EModuleNotConnected);
     if (grid.fuel_left(clock) == 0) return 0;
-    grid.live_draw(&grid.modules[&module_id])
+    grid.modules[&module_id].active_draw_at_last_settled
 }
 
 /// Every connected module now. Spec and desired state stay. Draw is `0` once
@@ -642,20 +610,19 @@ public fun projected_module_states(entity: &Entity, clock: &Clock): VecMap<u64, 
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx(i);
         let mut current = *state;
-        current.active_draw_at_last_settled = if (fuel_out) 0 else grid.live_draw(state);
+        current.active_draw_at_last_settled = if (fuel_out) 0
+        else state.active_draw_at_last_settled;
         states.insert(*module_id, current);
     });
     states
 }
 
-/// MW in use at the last settle: the sum of power modules' grants.
+/// MW in use at the last settle: the sum of modules' grants.
 public fun used_mw(grid: &PowerGrid): u64 {
     let mut total = 0;
     grid.modules.length().do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
-        if (state.module_spec.power_kind == PowerKind::Power) {
-            total = total + state.active_draw_at_last_settled;
-        };
+        total = total + state.active_draw_at_last_settled;
     });
     total
 }
@@ -666,10 +633,6 @@ public fun scale(): u64 {
 
 public fun max_connected(): u64 {
     MAX_CONNECTED
-}
-
-public fun max_fuel_rate(): u64 {
-    MAX_FUEL_RATE
 }
 
 public fun max_fuel_bays(): u64 {
@@ -788,10 +751,6 @@ public fun draw_kind(state: &ModuleState): DrawKind {
     state.module_spec.draw_kind
 }
 
-public fun power_kind(state: &ModuleState): PowerKind {
-    state.module_spec.power_kind
-}
-
 public fun line_loss(state: &ModuleState): u64 {
     state.module_spec.line_loss
 }
@@ -814,10 +773,6 @@ public fun spec_power_req(module_spec: &ModulePowerSpec): u64 {
 
 public fun spec_draw_kind(module_spec: &ModulePowerSpec): DrawKind {
     module_spec.draw_kind
-}
-
-public fun spec_power_kind(module_spec: &ModulePowerSpec): PowerKind {
-    module_spec.power_kind
 }
 
 public fun spec_priority(module_spec: &ModulePowerSpec): u64 {
@@ -896,38 +851,14 @@ public fun max_amount(rule: &FuelRequirement): Option<u64> {
     rule.max_amount
 }
 
-public fun is_fuel(kind: &PowerKind): bool {
-    match (kind) {
-        PowerKind::Power => false,
-        PowerKind::Fuel => true,
-    }
-}
-
-/// Firm MW the desired-online power modules need. Above `capacity_mw` it
+/// Firm MW the desired-online modules need. Above `capacity_mw` it
 /// overloads the grid and every power module goes off.
 public fun desired_firm_mw(grid: &PowerGrid): u64 {
     let mut total = 0;
     grid.modules.length().do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
-        if (
-            state.desired_online
-                && state.module_spec.power_kind == PowerKind::Power
-                && state.module_spec.draw_kind == DrawKind::Firm
-        ) {
+        if (state.desired_online && state.module_spec.draw_kind == DrawKind::Firm) {
             total = total + state.module_spec.power_req;
-        };
-    });
-    total
-}
-
-/// Combined rate of desired-online fuel modules, per second at `SCALE`. They
-/// burn it only while the grid is on and the online bays hold fuel.
-public fun fuel_modules_rate(grid: &PowerGrid): u64 {
-    let mut total = 0;
-    grid.modules.length().do!(|i| {
-        let (_, state) = grid.modules.get_entry_by_idx(i);
-        if (state.desired_online && state.module_spec.power_kind == PowerKind::Fuel) {
-            total = total + state.active_draw_at_last_settled;
         };
     });
     total
@@ -1004,7 +935,7 @@ public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
     let mut elastic_asks = 0;
     module_count.do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
-        if (state.desired_online && state.module_spec.power_kind == PowerKind::Power) {
+        if (state.desired_online) {
             let power_req = state.module_spec.power_req;
             if (state.module_spec.draw_kind == DrawKind::Firm) firm_cost = firm_cost + power_req
             else elastic_asks = elastic_asks + power_req;
@@ -1016,18 +947,15 @@ public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
     module_count.do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx_mut(i);
         let module_spec = state.module_spec;
-        // Fuel modules keep the rate the service set.
-        if (module_spec.power_kind == PowerKind::Power) {
-            let mut draw = 0;
-            if (state.desired_online && module_spec.draw_kind == DrawKind::Firm && firm_fits) {
-                draw = module_spec.power_req;
-            } else if (state.desired_online && module_spec.draw_kind == DrawKind::Elastic) {
-                draw = elastic_share(module_spec.power_req, leftover, elastic_asks);
-            };
-            if (state.active_draw_at_last_settled != draw) {
-                state.active_draw_at_last_settled = draw;
-                event::emit(DrawChanged { entity_id, module_id: *module_id, active_draw: draw });
-            };
+        let mut draw = 0;
+        if (state.desired_online && module_spec.draw_kind == DrawKind::Firm && firm_fits) {
+            draw = module_spec.power_req;
+        } else if (state.desired_online && module_spec.draw_kind == DrawKind::Elastic) {
+            draw = elastic_share(module_spec.power_req, leftover, elastic_asks);
+        };
+        if (state.active_draw_at_last_settled != draw) {
+            state.active_draw_at_last_settled = draw;
+            event::emit(DrawChanged { entity_id, module_id: *module_id, active_draw: draw });
         };
     });
 }
@@ -1161,14 +1089,12 @@ public(package) fun connect_module(
 /// Connect a module moved from another grid, keeping its spec and desired
 /// state. It draws nothing until the caller regrants.
 public(package) fun reconnect_module(grid: &mut PowerGrid, module_id: u64, state: ModuleState) {
-    let ModuleState { module_spec, desired_online, active_draw_at_last_settled } = state;
-    // A fuel module keeps its rate; a power module waits for the regrant.
-    let draw = if (module_spec.power_kind == PowerKind::Fuel) active_draw_at_last_settled else 0;
+    let ModuleState { module_spec, desired_online, .. } = state;
     grid
         .modules
         .insert(
             module_id,
-            ModuleState { module_spec, desired_online, active_draw_at_last_settled: draw },
+            ModuleState { module_spec, desired_online, active_draw_at_last_settled: 0 },
         );
 }
 
@@ -1178,22 +1104,6 @@ public(package) fun disconnect_module(grid: &mut PowerGrid, module_id: u64) {
 
 public(package) fun set_module_priority(grid: &mut PowerGrid, module_id: u64, priority: u64) {
     grid.modules[&module_id].module_spec.priority = priority;
-}
-
-/// Switch a fuel module: online at `rate` per second (at `SCALE`), or offline.
-public(package) fun set_fuel_module_rate(
-    grid: &mut PowerGrid,
-    module_id: u64,
-    online: bool,
-    rate: u64,
-) {
-    let state = &mut grid.modules[&module_id];
-    state.desired_online = online;
-    state.active_draw_at_last_settled = if (online) rate else 0;
-}
-
-public(package) fun operate_fuel_module_permit(): Permit<OperateFuelModule> {
-    internal::permit<OperateFuelModule>()
 }
 
 public(package) fun set_module_desired_online(grid: &mut PowerGrid, module_id: u64, online: bool) {
@@ -1250,19 +1160,12 @@ fun elastic_share(ask: u64, leftover: u64, asks: u64): u64 {
     ((ask as u128) * (leftover as u128) / (asks as u128)) as u64
 }
 
-/// A module's draw as of the last settle: a power module's grant, or a fuel
-/// module's rate while the grid is on.
-fun live_draw(grid: &PowerGrid, state: &ModuleState): u64 {
-    if (state.module_spec.power_kind == PowerKind::Fuel && !grid.on) return 0;
-    state.active_draw_at_last_settled
-}
-
 /// Module ids whose live draw is nonzero and that are desired online.
 fun online_modules(grid: &PowerGrid): vector<u64> {
     let mut module_ids = vector[];
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx(i);
-        if (state.desired_online && grid.live_draw(state) > 0) {
+        if (state.desired_online && state.active_draw_at_last_settled > 0) {
             module_ids.push_back(*module_id);
         };
     });
@@ -1294,7 +1197,7 @@ fun status_of(grid: &PowerGrid, state: &ModuleState, fuel_now: u64): PowerStatus
     if (!state.desired_online) return PowerStatus::Off;
     if (!grid.on) return PowerStatus::GridOff;
     if (fuel_now == 0) return grid.fuel_short_status();
-    if (grid.live_draw(state) == 0) return PowerStatus::NoPower;
+    if (state.active_draw_at_last_settled == 0) return PowerStatus::NoPower;
     PowerStatus::Online
 }
 
@@ -1315,7 +1218,7 @@ fun fuel_left(grid: &PowerGrid, clock: &Clock): u64 {
 /// Fuel burned between `last_settled_ms` and `now_ms`, capped at what the
 /// online bays hold. Each online Generator burns its share of the load at the
 /// online bays' blended stats, using the grants stored at the last settle.
-/// Fuel modules add their rate while the grid is on. Proportional burn keeps
+/// Proportional burn keeps
 /// that blend constant between settles.
 fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
     if (now_ms <= grid.last_settled_ms) return 0;
@@ -1324,7 +1227,7 @@ fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
     let fuel = grid.online_fuel();
     if (fuel.quantity == 0) return 0;
     let elapsed_ms = (now_ms - grid.last_settled_ms) as u128;
-    let mut burn = if (grid.on) fuel_math::rate_burn(grid.fuel_modules_rate(), elapsed_ms) else 0;
+    let mut burn = 0;
     grid.generators.length().do!(|i| {
         let (_, state) = grid.generators.get_entry_by_idx(i);
         if (state.online && load > 0) {

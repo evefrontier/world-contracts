@@ -5,11 +5,9 @@ use core::{entity::Entity, test_helpers::setup};
 use power::{
     grid_scenario::{
         admin,
-        enable_fuel_module,
         firm_power,
         fuel_bay_id,
         fuel_capacity,
-        fuel_module,
         generator_id,
         impulse,
         burden,
@@ -21,7 +19,6 @@ use power::{
         deposit_fuel_into,
         set_desired,
         set_fuel_bay,
-        set_fuel_module,
         set_generator,
         setup_entity,
         volatility
@@ -32,7 +29,6 @@ use sui::{clock::{Self, Clock}, test_scenario as ts};
 
 const MOD_A: u64 = 401;
 const MOD_B: u64 = 402;
-const LEAP: u64 = 411;
 const FUEL_B: u64 = 9_002;
 /// 15 MW.
 const OUTPUT: u64 = 15;
@@ -216,28 +212,6 @@ fun switch_on_with_bays_offline_reads_bays_offline() {
     assert!(
         module_status(&mut scenario, entity_id, MOD_A, &clock) == power_grid::bays_offline_status(),
     );
-
-    clock.destroy_for_testing();
-    scenario.end();
-}
-
-// === Fuel modules ===
-
-/// A fuel module reads `Online` with fuel and `NoFuel` once the bays run dry.
-#[test]
-fun fuel_module_reads_online_then_no_fuel() {
-    let mut scenario = ts::begin(admin());
-    setup(&mut scenario);
-    let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = running(&mut scenario, &clock);
-    install_module(&mut scenario, entity_id, LEAP, fuel_module(), &clock);
-    enable_fuel_module(&mut scenario, entity_id);
-
-    assert!(module_status(&mut scenario, entity_id, LEAP, &clock) == power_grid::off_status());
-    set_fuel_module(&mut scenario, admin(), entity_id, LEAP, true, 5_680, &clock);
-    assert!(module_status(&mut scenario, entity_id, LEAP, &clock) == power_grid::online_status());
-    clock.set_for_testing(DEPLETING_MS);
-    assert!(module_status(&mut scenario, entity_id, LEAP, &clock) == power_grid::no_fuel_status());
 
     clock.destroy_for_testing();
     scenario.end();

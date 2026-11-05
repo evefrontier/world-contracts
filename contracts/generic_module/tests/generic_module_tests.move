@@ -59,7 +59,6 @@ fun install_generic(
         data,
         1,
         power_grid::firm(),
-        power_grid::power(),
         0,
         0,
         &clock,
