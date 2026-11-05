@@ -515,10 +515,9 @@ public fun stashed_fuel(entity: &Entity, fuel_bay_id: u64): Option<Fuel> {
     if (stashed.contains(&fuel_bay_id)) option::some(stashed[&fuel_bay_id]) else option::none()
 }
 
-/// Capacity available to grants, as of the last settle: 0 while off or while
-/// the online bays are empty.
+/// Capacity available to grants, as of the last settle: 0 while off.
 public fun effective_capacity_mw(grid: &PowerGrid): u64 {
-    if (grid.on && grid.online_fuel().quantity > 0) grid.capacity_mw() else 0
+    if (grid.on) grid.capacity_mw() else 0
 }
 
 /// Fuel in online bays now, with the burn since the last settle applied.
@@ -531,7 +530,7 @@ public fun projected_fuel(entity: &Entity, clock: &Clock): u64 {
 public fun projected_bays(entity: &Entity, clock: &Clock): VecMap<u64, FuelBayState> {
     let grid = power_grid(entity);
     let mut bays = grid.bays;
-    take_from_online_bays(&mut bays, grid.fuel_burn(clock.timestamp_ms()));
+    take_burns(&mut bays, &grid.fuel_burns(clock.timestamp_ms()));
     bays
 }
 
@@ -539,33 +538,13 @@ public fun projected_bays(entity: &Entity, clock: &Clock): VecMap<u64, FuelBaySt
 /// quantity-weighted stats. Spans every type, so `fuel_type` is `None`. Empty
 /// when no online bay holds fuel. See `projected_fuel` for the quantity now.
 public fun online_fuel(grid: &PowerGrid): Fuel {
-    let mut quantity = 0u128;
-    let mut impulse = 0u128;
-    let mut containment_burden = 0u128;
-    let mut volatility = 0u128;
-    let mut thermal_inefficiency = 0u128;
-    grid.bays.length().do!(|i| {
-        let (_, state) = grid.bays.get_entry_by_idx(i);
-        if (state.online) {
-            let held = state.fuel.quantity as u128;
-            quantity = quantity + held;
-            impulse = impulse + held * (state.fuel.impulse as u128);
-            containment_burden =
-                containment_burden + held * (state.fuel.containment_burden as u128);
-            volatility = volatility + held * (state.fuel.volatility as u128);
-            thermal_inefficiency =
-                thermal_inefficiency + held * (state.fuel.thermal_inefficiency as u128);
-        };
-    });
-    if (quantity == 0) return empty_fuel();
-    Fuel {
-        fuel_type: option::none(),
-        quantity: quantity as u64,
-        impulse: (impulse / quantity) as u64,
-        containment_burden: (containment_burden / quantity) as u64,
-        volatility: (volatility / quantity) as u64,
-        thermal_inefficiency: (thermal_inefficiency / quantity) as u64,
-    }
+    grid.blend_online(option::none())
+}
+
+/// The pool of `fuel_type`: its online bays as of the last settle, not live,
+/// with their quantity-weighted stats. Empty when none of them holds fuel.
+public fun pool_fuel(grid: &PowerGrid, fuel_type: u64): Fuel {
+    grid.blend_online(option::some(fuel_type))
 }
 
 /// `(effective capacity, used MW, online module ids)` now. If the online bays
@@ -665,15 +644,26 @@ public fun on(grid: &PowerGrid): bool {
     grid.on
 }
 
-/// Rated power limit: the sum of online Generators' output, plain MW. Derived
-/// from the generators, not stored. `effective_capacity_mw` is what grants use.
+/// Power limit as of the last settle: the sum of `output_mw` over the
+/// Generators, plain MW. Derived, not stored. `effective_capacity_mw` is what
+/// grants use.
 public fun capacity_mw(grid: &PowerGrid): u64 {
     let mut total = 0;
     grid.generators.length().do!(|i| {
         let (_, state) = grid.generators.get_entry_by_idx(i);
-        if (state.online) total = total + state.max_output_mw;
+        total = total + grid.output_mw(state);
     });
     total
+}
+
+/// What a Generator sends out as of the last settle, plain MW: its rated output
+/// scaled by its pool's volatility, or 0 while offline or its pool is empty.
+public fun output_mw(grid: &PowerGrid, state: &GeneratorState): u64 {
+    if (!state.online) return 0;
+    let pool = grid.pool_fuel(state.fuel_type);
+    if (pool.quantity == 0) return 0;
+    let share = fuel_math::volatility_share(pool.volatility, state.volatility_limit);
+    fuel_math::generator_output(state.max_output_mw, share)
 }
 
 public fun last_settled_ms(grid: &PowerGrid): u64 {
@@ -947,9 +937,9 @@ public(package) fun grid_mut(entity: &mut Entity): &mut PowerGrid {
 /// regrant: the caller regrants once after its change, since burn can move capacity.
 public(package) fun settle(grid: &mut PowerGrid, clock: &Clock) {
     let now_ms = clock.timestamp_ms();
-    let burn = grid.fuel_burn(now_ms);
+    let burns = grid.fuel_burns(now_ms);
     grid.last_settled_ms = now_ms.max(grid.last_settled_ms);
-    take_from_online_bays(&mut grid.bays, burn);
+    take_burns(&mut grid.bays, &burns);
 }
 
 /// Recompute every module's grant from desired state and effective capacity.
@@ -1064,7 +1054,7 @@ public(package) fun new_fuel(
 /// Take `quantity` from the online bays in proportion to what each holds.
 /// Caller settles first and checks the online bays hold enough.
 public(package) fun take_from_online(grid: &mut PowerGrid, quantity: u64) {
-    take_from_online_bays(&mut grid.bays, quantity);
+    take_from_online_bays(&mut grid.bays, option::none(), quantity);
 }
 
 fun fits_permit(): Permit<Fits> {
@@ -1283,55 +1273,117 @@ fun fuel_short_status(grid: &PowerGrid): PowerStatus {
 }
 
 fun fuel_left(grid: &PowerGrid, clock: &Clock): u64 {
-    grid.online_fuel().quantity - grid.fuel_burn(clock.timestamp_ms())
+    let burns = grid.fuel_burns(clock.timestamp_ms());
+    let mut burned = 0;
+    burns.length().do!(|i| {
+        let (_, burn) = burns.get_entry_by_idx(i);
+        burned = burned + *burn;
+    });
+    grid.online_fuel().quantity - burned
 }
 
-/// Fuel burned between `last_settled_ms` and `now_ms`, capped at what the
-/// online bays hold. Each online Generator burns its share of the load over the
-/// online bays' blended impulse, up to its own limit, using the grants stored
-/// at the last settle. Proportional burn keeps that blend constant between settles.
-fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
-    if (now_ms <= grid.last_settled_ms) return 0;
+/// Fuel burned per fuel type between `last_settled_ms` and `now_ms`, each capped
+/// at what its pool holds. Load splits across Generators by `output_mw`; each
+/// burns its share over its pool's impulse, up to its own limit, using the
+/// grants stored at the last settle. Proportional burn keeps each pool's blend
+/// constant between settles.
+fun fuel_burns(grid: &PowerGrid, now_ms: u64): VecMap<u64, u64> {
+    let mut burns = vec_map::empty<u64, u64>();
+    if (now_ms <= grid.last_settled_ms) return burns;
     let capacity_mw = grid.capacity_mw();
     let load = grid.used_mw().min(capacity_mw) as u128;
-    let fuel = grid.online_fuel();
-    if (fuel.quantity == 0) return 0;
+    if (load == 0) return burns;
     let elapsed_ms = (now_ms - grid.last_settled_ms) as u128;
-    let mut burn = 0;
     grid.generators.length().do!(|i| {
         let (_, state) = grid.generators.get_entry_by_idx(i);
-        if (state.online && load > 0) {
-            burn =
-                burn + fuel_math::generator_burn(
-                fuel_math::usable_impulse(fuel.impulse, state.impulse_limit),
+        let output = grid.output_mw(state);
+        if (output > 0) {
+            let pool = grid.pool_fuel(state.fuel_type);
+            let burn = fuel_math::generator_burn(
+                fuel_math::usable_impulse(pool.impulse, state.impulse_limit),
                 capacity_mw,
-                state.max_output_mw,
+                output,
                 load,
                 elapsed_ms,
             );
+            let so_far = if (burns.contains(&state.fuel_type)) {
+                let (_, prior) = burns.remove(&state.fuel_type);
+                prior as u128
+            } else 0;
+            let total = (so_far + burn).min(pool.quantity as u128) as u64;
+            burns.insert(state.fuel_type, total);
         };
     });
-    (burn.min(fuel.quantity as u128)) as u64
+    burns
 }
 
-/// Take `amount` from the online bays, each in proportion to what it holds, so
-/// every bay runs dry at the same moment. The rounding remainder comes off the
+/// Take each pool's burn from its own online bays.
+fun take_burns(bays: &mut VecMap<u64, FuelBayState>, burns: &VecMap<u64, u64>) {
+    burns.length().do!(|i| {
+        let (fuel_type, burn) = burns.get_entry_by_idx(i);
+        take_from_online_bays(bays, option::some(*fuel_type), *burn);
+    });
+}
+
+/// Quantity-weighted blend of the online bays holding `fuel_type`, or of every
+/// online bay when `None`. The blend's own type is the filter.
+fun blend_online(grid: &PowerGrid, fuel_type: Option<u64>): Fuel {
+    let mut quantity = 0u128;
+    let mut impulse = 0u128;
+    let mut containment_burden = 0u128;
+    let mut volatility = 0u128;
+    let mut thermal_inefficiency = 0u128;
+    grid.bays.length().do!(|i| {
+        let (_, state) = grid.bays.get_entry_by_idx(i);
+        if (feeds(state, &fuel_type)) {
+            let held = state.fuel.quantity as u128;
+            quantity = quantity + held;
+            impulse = impulse + held * (state.fuel.impulse as u128);
+            containment_burden =
+                containment_burden + held * (state.fuel.containment_burden as u128);
+            volatility = volatility + held * (state.fuel.volatility as u128);
+            thermal_inefficiency =
+                thermal_inefficiency + held * (state.fuel.thermal_inefficiency as u128);
+        };
+    });
+    if (quantity == 0) return empty_fuel();
+    Fuel {
+        fuel_type,
+        quantity: quantity as u64,
+        impulse: (impulse / quantity) as u64,
+        containment_burden: (containment_burden / quantity) as u64,
+        volatility: (volatility / quantity) as u64,
+        thermal_inefficiency: (thermal_inefficiency / quantity) as u64,
+    }
+}
+
+/// Whether a bay feeds the pool of `fuel_type` (any online bay when `None`).
+fun feeds(state: &FuelBayState, fuel_type: &Option<u64>): bool {
+    state.online && (fuel_type.is_none() || &state.fuel.fuel_type == fuel_type)
+}
+
+/// Take `amount` from the online bays of `fuel_type` (every online bay when
+/// `None`), each in proportion to what it holds, so they run dry at the same moment. The rounding remainder comes off the
 /// largest online bay, then off the others in install order if that one runs
 /// short. A bay that runs dry goes back to empty, type cleared. `amount` must
-/// not exceed the online bays' total.
-fun take_from_online_bays(bays: &mut VecMap<u64, FuelBayState>, amount: u64) {
+/// not exceed those bays' total.
+fun take_from_online_bays(
+    bays: &mut VecMap<u64, FuelBayState>,
+    fuel_type: Option<u64>,
+    amount: u64,
+) {
     if (amount == 0) return;
     let mut total = 0u128;
     bays.length().do!(|i| {
         let (_, state) = bays.get_entry_by_idx(i);
-        if (state.online) total = total + (state.fuel.quantity as u128);
+        if (feeds(state, &fuel_type)) total = total + (state.fuel.quantity as u128);
     });
     let mut taken = 0;
     let mut largest_idx = 0;
     let mut largest_amount = 0;
     bays.length().do!(|i| {
         let (_, state) = bays.get_entry_by_idx_mut(i);
-        if (state.online && state.fuel.quantity > 0) {
+        if (feeds(state, &fuel_type) && state.fuel.quantity > 0) {
             if (state.fuel.quantity > largest_amount) {
                 largest_amount = state.fuel.quantity;
                 largest_idx = i;
@@ -1342,20 +1394,25 @@ fun take_from_online_bays(bays: &mut VecMap<u64, FuelBayState>, amount: u64) {
         };
     });
     let mut remainder = amount - taken;
-    remainder = take_up_to(bays, largest_idx, remainder);
-    bays.length().do!(|i| remainder = take_up_to(bays, i, remainder));
+    remainder = take_up_to(bays, &fuel_type, largest_idx, remainder);
+    bays.length().do!(|i| remainder = take_up_to(bays, &fuel_type, i, remainder));
     bays.length().do!(|i| {
         let (_, state) = bays.get_entry_by_idx_mut(i);
         if (state.fuel.quantity == 0) state.fuel = empty_fuel();
     });
 }
 
-/// Take up to `remainder` from the bay at `idx` if it is online. Returns what is
-/// still to take.
-fun take_up_to(bays: &mut VecMap<u64, FuelBayState>, idx: u64, remainder: u64): u64 {
+/// Take up to `remainder` from the bay at `idx` if it feeds `fuel_type`'s pool.
+/// Returns what is still to take.
+fun take_up_to(
+    bays: &mut VecMap<u64, FuelBayState>,
+    fuel_type: &Option<u64>,
+    idx: u64,
+    remainder: u64,
+): u64 {
     if (remainder == 0) return 0;
     let (_, state) = bays.get_entry_by_idx_mut(idx);
-    if (!state.online) return remainder;
+    if (!feeds(state, fuel_type)) return remainder;
     let take = remainder.min(state.fuel.quantity);
     state.fuel.quantity = state.fuel.quantity - take;
     remainder - take

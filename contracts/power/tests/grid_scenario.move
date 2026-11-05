@@ -35,6 +35,9 @@ const STARTING_FUEL: u64 = 50_000;
 const IMPULSE: u64 = 900_000;
 const BURDEN: u64 = 140_000;
 const VOLATILITY: u64 = 10_000;
+/// Generators' volatility limit 0.5: the test fuels sit above it, so Generators
+/// send out their full rated output.
+const VOLATILITY_LIMIT: u64 = 5_000;
 const FUEL_TYPE: u64 = 7;
 const THERMAL: u64 = 20_000;
 /// Bay containment rating 10, below `BURDEN`: deposits are not checked against it.
@@ -75,6 +78,8 @@ public fun burden(): u64 { BURDEN }
 
 public fun volatility(): u64 { VOLATILITY }
 
+public fun volatility_limit(): u64 { VOLATILITY_LIMIT }
+
 public fun fuel_type(): u64 { FUEL_TYPE }
 
 public fun thermal(): u64 { THERMAL }
@@ -93,7 +98,7 @@ public fun elastic_power(power_req: u64): ModulePowerSpec {
 
 /// Share an entity with an installed, off grid, offline Generators of
 /// `max_outputs_mw` and `impulse_limits` burning `fuel_type()` at full output
-/// on `volatility()`, and an online fuel bay holding
+/// on any fuel with volatility of at least `volatility_limit()`, and an online fuel bay holding
 /// `starting_fuel()`. Modules are installed afterwards with `install_module`.
 public fun setup_entity(
     scenario: &mut ts::Scenario,
@@ -117,7 +122,7 @@ public fun setup_entity(
             vector[],
             max_outputs_mw[i],
             impulse_limits[i],
-            VOLATILITY,
+            VOLATILITY_LIMIT,
             clock,
             scenario.ctx(),
         );

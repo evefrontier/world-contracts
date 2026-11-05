@@ -29,6 +29,7 @@ use power::{
         setup_entity,
         starting_fuel,
         thermal,
+        volatility_limit,
         fuel_type,
         containment_rating,
         stashed_fuel,
@@ -151,8 +152,9 @@ fun migrate_generator_moves_its_output_and_online_state() {
 
     let (from_capacity, _) = grid_of(&mut scenario, from);
     let (to_capacity, _) = grid_of(&mut scenario, to);
+    // `to` has no fuel yet, so the Generator arrives online but sends out nothing.
     assert!(from_capacity == OUTPUT_2);
-    assert!(to_capacity == OUTPUT);
+    assert!(to_capacity == 0);
     assert!(
         !with_entity!(
             &mut scenario,
@@ -167,7 +169,8 @@ fun migrate_generator_moves_its_output_and_online_state() {
     );
     assert!(state.online());
     assert!(state.max_output_mw() == OUTPUT);
-    assert!(state.impulse_limit() == IMPULSE_LIMIT && state.volatility_limit() == volatility());
+    assert!(state.impulse_limit() == IMPULSE_LIMIT);
+    assert!(state.volatility_limit() == volatility_limit());
     assert!(state.generator_fuel_type() == fuel_type());
 
     clock.destroy_for_testing();
