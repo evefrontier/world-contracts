@@ -50,8 +50,10 @@ const INVENTORY_DRAW = 10n
 const GENERIC_DRAW = 5n
 const USED = INVENTORY_DRAW + GENERIC_DRAW
 const CONT_REDUCTION = 10n
-// Impulse 0 burns the base rate: 1 fuel unit per second. 25 units lasts ~25s.
 const BASE_FUEL_RATE = 1n
+// Impulse 15 (at POWER_SCALE) and no burden: 15 MW burns 1 fuel unit per second,
+// so 25 units last ~25s.
+const FUEL_IMPULSE = 150_000n
 const FUEL_AMOUNT = 25n
 const FUEL_CAPACITY = 1_000n
 
@@ -218,7 +220,7 @@ function deposit(
     fuelBayId: FUEL_ID,
     fuelType: ITEM,
     amount,
-    impulse: 0n,
+    impulse: FUEL_IMPULSE,
     containmentBurden: 0n,
     volatility: 0n,
   })

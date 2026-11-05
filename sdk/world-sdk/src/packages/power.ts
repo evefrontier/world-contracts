@@ -481,10 +481,13 @@ export interface DepositFuelArgs {
   impulse: bigint
   containmentBurden: bigint
   volatility: bigint
+  /** Defaults to `0n`. */
+  thermalInefficiency?: bigint
 }
 
 /**
- * Load fuel into one bay; its stats blend by amount. The owner's `ownerCap`
+ * Load fuel into one bay; its stats blend by amount. An empty bay locks to
+ * `fuelType` until it runs dry; another type or zero impulse aborts. The owner's `ownerCap`
  * authorizes the deposit, and the gas sponsor must be on `AdminACL`.
  */
 export function depositFuel(
@@ -506,6 +509,7 @@ export function depositFuel(
       tx.pure.u64(args.impulse),
       tx.pure.u64(args.containmentBurden),
       tx.pure.u64(args.volatility),
+      tx.pure.u64(args.thermalInefficiency ?? 0n),
       tx.object.clock(),
     ],
   })
@@ -689,11 +693,24 @@ export function projectedBays(
 }
 
 const FuelBcs = bcs.struct('Fuel', {
+  fuel_type: bcs.option(bcs.u64()),
   quantity: bcs.u64(),
   impulse: bcs.u64(),
   containment_burden: bcs.u64(),
   volatility: bcs.u64(),
+  thermal_inefficiency: bcs.u64(),
 })
+
+function fuelAmount(fuel: typeof FuelBcs.$inferType): FuelAmount {
+  return {
+    fuelType: fuel.fuel_type == null ? null : BigInt(fuel.fuel_type),
+    quantity: BigInt(fuel.quantity),
+    impulse: BigInt(fuel.impulse),
+    containmentBurden: BigInt(fuel.containment_burden),
+    volatility: BigInt(fuel.volatility),
+    thermalInefficiency: BigInt(fuel.thermal_inefficiency),
+  }
+}
 
 const FuelBayStateBcs = bcs.struct('FuelBayState', {
   capacity: bcs.u64(),
@@ -708,14 +725,10 @@ const BaysBcs = bcs.struct('VecMap', {
 })
 
 /** A fuel bay as `projectedBays` returns it. Quantity and stats at `POWER_SCALE`. */
-export interface ProjectedBay {
+export interface ProjectedBay extends FuelAmount {
   fuelBayId: bigint
   capacity: bigint
   online: boolean
-  quantity: bigint
-  impulse: bigint
-  containmentBurden: bigint
-  volatility: bigint
 }
 
 /** Decode the BCS return value of `projectedBays`. */
@@ -724,31 +737,24 @@ export function parseProjectedBays(bytes: Uint8Array): ProjectedBay[] {
     fuelBayId: BigInt(key),
     capacity: BigInt(value.capacity),
     online: value.online,
-    quantity: BigInt(value.fuel.quantity),
-    impulse: BigInt(value.fuel.impulse),
-    containmentBurden: BigInt(value.fuel.containment_burden),
-    volatility: BigInt(value.fuel.volatility),
+    ...fuelAmount(value.fuel),
   }))
 }
 
-/** Fuel quantity and its stats, all at `POWER_SCALE`. */
+/** Fuel quantity and its stats, all at `POWER_SCALE`. `fuelType` is `null` while empty. */
 export interface FuelAmount {
+  fuelType: bigint | null
   quantity: bigint
   impulse: bigint
   containmentBurden: bigint
   volatility: bigint
+  thermalInefficiency: bigint
 }
 
 /** Decode the BCS return value of `stashedFuel`: `null` when no stash. */
 export function parseStashedFuel(bytes: Uint8Array): FuelAmount | null {
   const fuel = bcs.option(FuelBcs).parse(bytes)
-  if (!fuel) return null
-  return {
-    quantity: BigInt(fuel.quantity),
-    impulse: BigInt(fuel.impulse),
-    containmentBurden: BigInt(fuel.containment_burden),
-    volatility: BigInt(fuel.volatility),
-  }
+  return fuel ? fuelAmount(fuel) : null
 }
 
 /** Why a module or generator is or isn't running now. */

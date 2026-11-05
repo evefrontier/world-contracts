@@ -28,6 +28,8 @@ use power::{
         setup_empty_grid_in_tenant,
         setup_entity,
         starting_fuel,
+        thermal,
+        fuel_type,
         stashed_fuel,
         stored_draw,
         volatility
@@ -226,6 +228,8 @@ fun migrate_fuel_moves_the_bays_exact_fuel() {
     assert!(moved.quantity() == starting_fuel());
     assert!(moved.impulse() == impulse() && moved.containment_burden() == burden());
     assert!(moved.volatility() == volatility());
+    assert!(moved.fuel_type() == option::some(fuel_type()));
+    assert!(moved.thermal_inefficiency() == thermal());
     let capacity = with_entity!(&mut scenario, to, |e| {
         power_grid::fuel_bay_state(e, fuel_bay_id()).capacity()
     });

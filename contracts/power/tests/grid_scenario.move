@@ -37,6 +37,7 @@ const IMPULSE: u64 = 900_000;
 const BURDEN: u64 = 140_000;
 const VOLATILITY: u64 = 10_000;
 const FUEL_TYPE: u64 = 7;
+const THERMAL: u64 = 20_000;
 
 const OPERATE: vector<u8> = b"operate_grid";
 const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
@@ -74,6 +75,8 @@ public fun burden(): u64 { BURDEN }
 public fun volatility(): u64 { VOLATILITY }
 
 public fun fuel_type(): u64 { FUEL_TYPE }
+
+public fun thermal(): u64 { THERMAL }
 
 /// Firm power for a module with no line loss and priority 0.
 public fun firm_power(power_req: u64): ModulePowerSpec {
@@ -682,6 +685,34 @@ public fun deposit_fuel_into(
         impulse,
         burden,
         volatility,
+        THERMAL,
+        clock,
+    );
+}
+
+/// Load `amount` of `fuel_type` at `impulse` and `thermal` into bay `fuel_bay_id`
+/// through the default deposit action, with the default burden and volatility.
+public fun deposit_typed(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    fuel_type: u64,
+    amount: u64,
+    impulse: u64,
+    thermal: u64,
+    clock: &Clock,
+) {
+    deposit_fuel_via(
+        scenario,
+        entity_id,
+        DEPOSIT_FUEL,
+        fuel_bay_id,
+        fuel_type,
+        amount,
+        impulse,
+        BURDEN,
+        VOLATILITY,
+        thermal,
         clock,
     );
 }
@@ -697,6 +728,7 @@ public fun deposit_fuel_via(
     impulse: u64,
     burden: u64,
     volatility: u64,
+    thermal: u64,
     clock: &Clock,
 ) {
     ensure_admin_sponsors(scenario);
@@ -714,6 +746,7 @@ public fun deposit_fuel_via(
         impulse,
         burden,
         volatility,
+        thermal,
         clock,
     );
     entity.verify_owner(&mut req, &cap);

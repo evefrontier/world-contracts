@@ -23,6 +23,7 @@ use power::{
         deposit_fuel,
         deposit_fuel_into,
         deposit_fuel_via,
+        deposit_typed,
         draw,
         destroy_stash,
         enable_manage_stash,
@@ -48,6 +49,7 @@ use power::{
         settled_fuel,
         starting_fuel,
         starting_units,
+        thermal,
         stashed_fuel,
         uninstall_fuel,
         volatility
@@ -136,6 +138,7 @@ fun gated(
         impulse,
         burden,
         volatility(),
+        thermal(),
         clock,
     );
 }
@@ -692,7 +695,9 @@ fun deposit_blends_by_weighted_average() {
 
     let added = event::events_by_type<FuelAdded>();
     assert!(added.length() == 1);
-    let (_, bay, _, amount, resulting, impulse, burden, volatility) = added[0].fuel_added_fields();
+    let (_, bay, _, amount, resulting, impulse, burden, volatility, _) = added[
+        0,
+    ].fuel_added_fields();
     assert!(bay == fuel_bay_id() && amount == starting_units());
     assert!(resulting == 2 * starting_fuel());
     assert!(impulse == 500_000 && burden == 90_000 && volatility == 40_000);
@@ -793,6 +798,146 @@ fun deposit_into_unknown_bay_aborts() {
     deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 7, impulse(), burden(), 0, &clock);
 
     abort
+}
+
+// === Fuel type ===
+
+/// An empty bay takes the type of its first deposit.
+#[test]
+fun first_deposit_sets_the_bay_type() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, BAY_B_CAPACITY, &clock);
+    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).fuel_type().is_none());
+
+    deposit_typed(&mut scenario, entity_id, FUEL_B, OTHER_TYPE, 7, impulse(), thermal(), &clock);
+
+    let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
+    assert!(fuel.fuel_type() == option::some(OTHER_TYPE));
+    assert!(fuel.thermal_inefficiency() == thermal());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A bay holding one type refuses another.
+#[test, expected_failure(abort_code = grid_fuel::EFuelTypeMismatch)]
+fun deposit_of_another_type_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+
+    deposit_typed(
+        &mut scenario,
+        entity_id,
+        fuel_bay_id(),
+        OTHER_TYPE,
+        7,
+        impulse(),
+        thermal(),
+        &clock,
+    );
+
+    abort
+}
+
+/// The same type blends thermal inefficiency by weight, like the other stats.
+#[test]
+fun same_type_blends_thermal() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+
+    deposit_typed(
+        &mut scenario,
+        entity_id,
+        fuel_bay_id(),
+        fuel_type(),
+        starting_units(),
+        impulse(),
+        3 * thermal(),
+        &clock,
+    );
+
+    let added = event::events_by_type<FuelAdded>();
+    let (_, _, added_type, _, _, _, _, _, thermal_after) = added[0].fuel_added_fields();
+    assert!(added_type == fuel_type() && thermal_after == 2 * thermal());
+    let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
+    assert!(fuel.fuel_type() == option::some(fuel_type()));
+    assert!(fuel.thermal_inefficiency() == 2 * thermal());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Zero-impulse fuel holds no energy and is refused.
+#[test, expected_failure(abort_code = grid_fuel::EZeroImpulse)]
+fun deposit_zero_impulse_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+
+    deposit_typed(&mut scenario, entity_id, fuel_bay_id(), fuel_type(), 7, 0, thermal(), &clock);
+
+    abort
+}
+
+/// A bay that runs dry clears its type and then takes any type.
+#[test]
+fun dry_bay_clears_its_type() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = loaded(&mut scenario, &clock);
+
+    clock.set_for_testing(10_000_000_000);
+    catch_up(&mut scenario, entity_id, MOD_A, &clock);
+    let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
+    assert!(fuel.quantity() == 0 && fuel.fuel_type().is_none());
+
+    deposit_typed(
+        &mut scenario,
+        entity_id,
+        fuel_bay_id(),
+        OTHER_TYPE,
+        7,
+        impulse(),
+        thermal(),
+        &clock,
+    );
+    assert!(
+        bay_fuel(&mut scenario, entity_id, fuel_bay_id()).fuel_type() == option::some(OTHER_TYPE),
+    );
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The type and thermal inefficiency travel with the stash and come back on reinstall.
+#[test]
+fun stash_keeps_type_and_thermal() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+
+    uninstall_fuel(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    let stashed = stashed_fuel(&mut scenario, entity_id, fuel_bay_id()).destroy_some();
+    assert!(stashed.fuel_type() == option::some(fuel_type()));
+    assert!(stashed.thermal_inefficiency() == thermal());
+    install_fuel(&mut scenario, entity_id, fuel_bay_id(), fuel_capacity(), &clock);
+
+    let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
+    assert!(fuel.fuel_type() == option::some(fuel_type()));
+    assert!(fuel.thermal_inefficiency() == thermal());
+
+    clock.destroy_for_testing();
+    scenario.end();
 }
 
 #[test, expected_failure(abort_code = grid_fuel::EZeroFuel)]

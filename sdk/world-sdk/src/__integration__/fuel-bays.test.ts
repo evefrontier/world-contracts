@@ -54,7 +54,8 @@ const CONT_REDUCTION = 10n
 const BAY_CAPACITY = 2_000n
 const BURN_WAIT_MS = 4_000
 
-// The overview's fuels: plain amounts, stats at `POWER_SCALE`.
+// The overview's fuels: two stacks of one type (a bay holds one type), plain
+// amounts, stats at `POWER_SCALE`.
 const FUEL_A = {
   fuelType: 1n,
   amount: 1_000n,
@@ -63,7 +64,7 @@ const FUEL_A = {
   volatility: 6_000n,
 }
 const FUEL_B = {
-  fuelType: 2n,
+  fuelType: 1n,
   amount: 500n,
   impulse: 90n * POWER_SCALE,
   containmentBurden: 14n * POWER_SCALE,

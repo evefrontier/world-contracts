@@ -46,6 +46,10 @@ const ETooManyFuelBays: vector<u8> =
     b"Power grid has reached its maximum fitted and stashed fuel bays";
 #[error(code = 15)]
 const EFuelBayTooLarge: vector<u8> = b"Fuel bay capacity is above the maximum";
+#[error(code = 16)]
+const EZeroImpulse: vector<u8> = b"Fuel with zero impulse holds no energy";
+#[error(code = 17)]
+const EFuelTypeMismatch: vector<u8> = b"Fuel bay holds another fuel type until it is empty";
 
 // === Structs ===
 
@@ -76,40 +80,48 @@ public struct FuelBayDetached has copy, drop {
 public struct FuelStashed has copy, drop {
     entity_id: ID,
     fuel_bay_id: u64,
+    fuel_type: Option<u64>,
     quantity: u64,
     impulse: u64,
     containment_burden: u64,
     volatility: u64,
+    thermal_inefficiency: u64,
 }
 
 /// A refitted bay took its fuel back from the stash, or arrived with it.
 public struct FuelRestored has copy, drop {
     entity_id: ID,
     fuel_bay_id: u64,
+    fuel_type: Option<u64>,
     quantity: u64,
     impulse: u64,
     containment_burden: u64,
     volatility: u64,
+    thermal_inefficiency: u64,
 }
 
 /// The service took a bay's stash out of the grid as a `FuelLoad`.
 public struct FuelUnstashed has copy, drop {
     entity_id: ID,
     fuel_bay_id: u64,
+    fuel_type: Option<u64>,
     quantity: u64,
     impulse: u64,
     containment_burden: u64,
     volatility: u64,
+    thermal_inefficiency: u64,
 }
 
 /// A fuel load was destroyed; its fuel is gone.
 public struct FuelLoadDestroyed has copy, drop {
     entity_id: ID,
     fuel_bay_id: u64,
+    fuel_type: Option<u64>,
     quantity: u64,
     impulse: u64,
     containment_burden: u64,
     volatility: u64,
+    thermal_inefficiency: u64,
 }
 
 public struct FuelBayToggled has copy, drop {
@@ -137,6 +149,7 @@ public struct FuelAdded has copy, drop {
     resulting_impulse: u64,
     resulting_containment_burden: u64,
     resulting_volatility: u64,
+    resulting_thermal_inefficiency: u64,
 }
 
 // === Public Functions ===
@@ -220,10 +233,12 @@ public fun take_stash(entity: &mut Entity, req: &mut Request, fuel_bay_id: u64):
     event::emit(FuelUnstashed {
         entity_id,
         fuel_bay_id,
+        fuel_type: fuel.fuel_type(),
         quantity: fuel.quantity(),
         impulse: fuel.impulse(),
         containment_burden: fuel.containment_burden(),
         volatility: fuel.volatility(),
+        thermal_inefficiency: fuel.thermal_inefficiency(),
     });
     FuelLoad { tenant, entity_id, fuel_bay_id, fuel }
 }
@@ -281,10 +296,12 @@ public fun destroy_fuel_load(load: FuelLoad) {
     event::emit(FuelLoadDestroyed {
         entity_id,
         fuel_bay_id,
+        fuel_type: fuel.fuel_type(),
         quantity: fuel.quantity(),
         impulse: fuel.impulse(),
         containment_burden: fuel.containment_burden(),
         volatility: fuel.volatility(),
+        thermal_inefficiency: fuel.thermal_inefficiency(),
     });
 }
 
@@ -316,9 +333,11 @@ public fun set_fuel_bay(
 }
 
 // TODO: an `Item` to fuel path once inventory can connect to the fuel bay.
-/// Load `amount` of fuel into one bay and blend its stats by weighted average,
-/// if it meets the owner's `FuelRequirement`. Supplied by the game server: `amount`
-/// plain, stats at `SCALE`. The bay stores the amount at `SCALE`.
+/// Load `amount` of `fuel_type` into one bay and blend its stats by weighted
+/// average, if it meets the owner's `FuelRequirement`. An empty bay takes any
+/// type and locks to it until it runs dry; zero-impulse fuel is refused.
+/// Supplied by the game server: `amount` plain, stats at `SCALE`. The bay stores
+/// the amount at `SCALE`.
 public fun deposit_fuel(
     entity: &mut Entity,
     req: &mut Request,
@@ -328,6 +347,7 @@ public fun deposit_fuel(
     impulse: u64,
     containment_burden: u64,
     volatility: u64,
+    thermal_inefficiency: u64,
     clock: &Clock,
 ) {
     let entity_id = entity.id();
@@ -337,15 +357,24 @@ public fun deposit_fuel(
         power_grid::deposit_fuel_permit(),
     );
     assert!(amount > 0, EZeroFuel);
+    assert!(impulse > 0, EZeroImpulse);
     enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     grid.settle(clock);
     let bay = grid.bay_state(fuel_bay_id);
+    bay.fuel().fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
     let scaled = (amount as u128) * (power_grid::scale() as u128);
     assert_fits(bay.capacity(), (bay.fuel().quantity() as u128) + scaled);
     grid.blend_into_bay(
         fuel_bay_id,
-        power_grid::new_fuel(scaled as u64, impulse, containment_burden, volatility),
+        power_grid::new_fuel(
+            fuel_type,
+            scaled as u64,
+            impulse,
+            containment_burden,
+            volatility,
+            thermal_inefficiency,
+        ),
     );
     let fuel = grid.bay_state(fuel_bay_id).fuel();
     event::emit(FuelAdded {
@@ -357,6 +386,7 @@ public fun deposit_fuel(
         resulting_impulse: fuel.impulse(),
         resulting_containment_burden: fuel.containment_burden(),
         resulting_volatility: fuel.volatility(),
+        resulting_thermal_inefficiency: fuel.thermal_inefficiency(),
     });
     grid.regrant(entity_id);
     frame.require(access_cap::owner_requirement());
@@ -399,6 +429,14 @@ public fun load_volatility(load: &FuelLoad): u64 {
     load.fuel.volatility()
 }
 
+public fun load_fuel_type(load: &FuelLoad): Option<u64> {
+    load.fuel.fuel_type()
+}
+
+public fun load_thermal_inefficiency(load: &FuelLoad): u64 {
+    load.fuel.thermal_inefficiency()
+}
+
 // === Private Functions ===
 
 /// Unpack `load` for bay `fuel_bay_id` on `entity`. Aborts unless the load is
@@ -439,10 +477,12 @@ fun connect(
         event::emit(FuelRestored {
             entity_id,
             fuel_bay_id,
+            fuel_type: fuel.fuel_type(),
             quantity: fuel.quantity(),
             impulse: fuel.impulse(),
             containment_burden: fuel.containment_burden(),
             volatility: fuel.volatility(),
+            thermal_inefficiency: fuel.thermal_inefficiency(),
         });
     };
     req
@@ -471,10 +511,12 @@ fun emit_stashed(entity_id: ID, fuel_bay_id: u64, fuel: Fuel) {
     event::emit(FuelStashed {
         entity_id,
         fuel_bay_id,
+        fuel_type: fuel.fuel_type(),
         quantity: fuel.quantity(),
         impulse: fuel.impulse(),
         containment_burden: fuel.containment_burden(),
         volatility: fuel.volatility(),
+        thermal_inefficiency: fuel.thermal_inefficiency(),
     });
 }
 
@@ -520,9 +562,9 @@ public fun fuel_withdrawn_fields(withdrawn: &FuelWithdrawn): (ID, u64, u64) {
 }
 
 /// `(entity_id, fuel_bay_id, fuel_type, amount, resulting_amount, resulting_impulse,
-/// resulting_containment_burden, resulting_volatility)`.
+/// resulting_containment_burden, resulting_volatility, resulting_thermal_inefficiency)`.
 #[test_only]
-public fun fuel_added_fields(added: &FuelAdded): (ID, u64, u64, u64, u64, u64, u64, u64) {
+public fun fuel_added_fields(added: &FuelAdded): (ID, u64, u64, u64, u64, u64, u64, u64, u64) {
     (
         added.entity_id,
         added.fuel_bay_id,
@@ -532,6 +574,7 @@ public fun fuel_added_fields(added: &FuelAdded): (ID, u64, u64, u64, u64, u64, u
         added.resulting_impulse,
         added.resulting_containment_burden,
         added.resulting_volatility,
+        added.resulting_thermal_inefficiency,
     )
 }
 

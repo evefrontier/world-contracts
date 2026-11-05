@@ -398,6 +398,7 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
         900_000,
         140_000,
         50_000,
+        0,
         &clock,
     );
     entity.verify_owner(&mut req, &cap);
