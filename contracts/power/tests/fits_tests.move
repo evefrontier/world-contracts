@@ -30,8 +30,8 @@ const B: u64 = 502;
 const C: u64 = 503;
 const D: u64 = 504;
 const E: u64 = 505;
-/// Containment reduction 10.
-const CONTAINMENT: u64 = 10;
+/// Impulse limit 100, above the test fuel's impulse, so it never caps.
+const IMPULSE_LIMIT: u64 = 1_000_000;
 
 // === Helpers ===
 
@@ -39,8 +39,8 @@ const CONTAINMENT: u64 = 10;
 /// installed and offline, and the owner's pre-filtered action exposed.
 fun overview(scenario: &mut ts::Scenario, outputs: vector<u64>, clock: &Clock): ID {
     let count = outputs.length();
-    let containments = vector::tabulate!(count, |_| CONTAINMENT);
-    let entity_id = setup_entity(scenario, outputs, containments, clock);
+    let impulse_limits = vector::tabulate!(count, |_| IMPULSE_LIMIT);
+    let entity_id = setup_entity(scenario, outputs, impulse_limits, clock);
     power_up(scenario, entity_id, count, clock);
     install_module(scenario, entity_id, A, firm_power(70), clock);
     install_module(scenario, entity_id, B, firm_power(20), clock);

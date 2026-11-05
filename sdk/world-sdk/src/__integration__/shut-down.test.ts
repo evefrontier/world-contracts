@@ -61,8 +61,9 @@ describe('shut down (localnet)', () => {
     installGenerator(createTx, config, creation, {
       componentId: GENERATOR_ID,
       maxOutputMw: 15n,
-      containmentReduction: 10n,
-      baseFuelRate: 1n,
+      fuelType: 1n,
+      impulseLimit: 100n * POWER_SCALE,
+      volatilityLimit: 1n,
     })
     installFuelBay(createTx, config, creation, {
       componentId: BAY_ID,

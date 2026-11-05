@@ -39,8 +39,9 @@ export async function installInventoryPower(
   installGenerator(installTx, config, entity, {
     componentId: GENERATOR_ID,
     maxOutputMw: 10n,
-    containmentReduction: 10n,
-    baseFuelRate: 1n,
+    fuelType: 7n,
+    impulseLimit: 100n * POWER_SCALE,
+    volatilityLimit: 1n,
   })
   installFuelBay(installTx, config, entity, {
     componentId: FUEL_BAY_ID,

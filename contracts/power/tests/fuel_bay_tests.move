@@ -65,8 +65,8 @@ const MOD_A: u64 = 401;
 const OUTPUT: u64 = 15;
 /// 10 MW.
 const DRAW: u64 = 10;
-/// Containment reduction 10.
-const CONTAINMENT: u64 = 10;
+/// Impulse limit 100, above the test fuel's impulse, so it never caps.
+const IMPULSE_LIMIT: u64 = 1_000_000;
 const GATED_DEPOSIT: vector<u8> = b"gated_deposit";
 const OTHER_TYPE: u64 = 8;
 const BANNED_TYPE: u64 = 9;
@@ -77,7 +77,7 @@ const BAY_B_CAPACITY: u64 = 2_000;
 
 /// One online Generator of `OUTPUT`, grid on, `MOD_A` desired and drawing `DRAW`.
 fun loaded(scenario: &mut ts::Scenario, clock: &Clock): ID {
-    let entity_id = setup_entity(scenario, vector[OUTPUT], vector[CONTAINMENT], clock);
+    let entity_id = setup_entity(scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], clock);
     power_up(scenario, entity_id, 1, clock);
     install_module(scenario, entity_id, MOD_A, firm_power(DRAW), clock);
     set_desired(scenario, entity_id, MOD_A, true, clock);
@@ -88,7 +88,7 @@ fun loaded(scenario: &mut ts::Scenario, clock: &Clock): ID {
 /// `FUEL_B`, the only bay, online. A 10 MW Generator at reduction 10 sends out
 /// 10 MW to `MOD_A`.
 fun overview_blend(scenario: &mut ts::Scenario, clock: &Clock): ID {
-    let entity_id = setup_entity(scenario, vector[DRAW], vector[CONTAINMENT], clock);
+    let entity_id = setup_entity(scenario, vector[DRAW], vector[IMPULSE_LIMIT], clock);
     uninstall_fuel(scenario, entity_id, fuel_bay_id(), clock);
     install_fuel(scenario, entity_id, FUEL_B, BAY_B_CAPACITY, clock);
     deposit_fuel_into(scenario, entity_id, FUEL_B, 1_000, 250_000, 40_000, 6_000, clock);
@@ -158,25 +158,6 @@ fun bay_online(scenario: &mut ts::Scenario, entity_id: ID, fuel_bay_id: u64): bo
     let online = power_grid::fuel_bay_state(&entity, fuel_bay_id).bay_online();
     ts::return_shared(entity);
     online
-}
-
-// === Fuel factor ===
-
-#[test]
-fun fuel_factor_matches_client() {
-    // Stats at `SCALE`.
-    // impulse 90, burden 14, reduction 10 -> 90 / 1.4 = 64.2857
-    assert!(fuel_math::fuel_factor(900_000, 140_000, 10) == 642_857);
-    // impulse 10, burden 3, reduction 10 -> burden ratio floors at 1 -> 10
-    assert!(fuel_math::fuel_factor(100_000, 30_000, 10) == 100_000);
-    // impulse 0 clamps up to 1
-    assert!(fuel_math::fuel_factor(0, 30_000, 10) == 10_000);
-    // impulse 200 clamps down to 100
-    assert!(fuel_math::fuel_factor(2_000_000, 30_000, 10) == 1_000_000);
-    // reduction 0 floors at 1 -> 90 / 14 = 6.4285
-    assert!(fuel_math::fuel_factor(900_000, 140_000, 0) == 64_285);
-    // fractional stats keep their fractions: 46.6666 / max(1, 0.7333) = 46.6666
-    assert!(fuel_math::fuel_factor(466_666, 73_333, 10) == 466_666);
 }
 
 // === Install and uninstall ===
@@ -648,7 +629,7 @@ fun offline_bay_keeps_its_fuel() {
     clock.set_for_testing(10_000);
     assert!(projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock) == 70_000);
     let default_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
-    assert!(default_left == starting_fuel() - 15_556);
+    assert!(default_left == starting_fuel() - 11_112);
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == 70_000);
 
@@ -1047,7 +1028,7 @@ fun deposit_above_max_amount_aborts() {
 
 // === Burn ===
 
-/// 10 MW at factor 64.2857 burns 0.15556 units/s: 15_556 at `SCALE` over 10 s,
+/// 10 MW at impulse 90 burns 0.11112 units/s: 11_112 at `SCALE` over 10 s,
 /// rounded up. The view matches the state after the next settle.
 #[test]
 fun burn_over_time_and_view_matches_settle() {
@@ -1058,7 +1039,7 @@ fun burn_over_time_and_view_matches_settle() {
 
     clock.set_for_testing(10_000);
     let (fuel_left, capacity, used_mw, online) = projected(&mut scenario, entity_id, &clock);
-    assert!(fuel_left == starting_fuel() - 15_556);
+    assert!(fuel_left == starting_fuel() - 11_112);
     assert!(capacity == OUTPUT);
     assert!(used_mw == DRAW);
     assert!(online == vector[MOD_A]);
@@ -1088,7 +1069,7 @@ fun overview_blend_burns_at_its_factor() {
     scenario.end();
 }
 
-/// Two online bays share the burn by what they hold: 4/5 and 1/5 of 15_556.
+/// Two online bays share the burn by what they hold: 4/5 and 1/5 of 11_112.
 /// The rounding remainder comes off the larger bay, and the view matches the settle.
 #[test]
 fun online_bays_burn_in_proportion() {
@@ -1113,8 +1094,8 @@ fun online_bays_burn_in_proportion() {
     clock.set_for_testing(10_000);
     let default_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
     let b_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
-    assert!(default_left == starting_fuel() - 12_445);
-    assert!(b_left == quarter * power_grid::scale() - 3_111);
+    assert!(default_left == starting_fuel() - 8_890);
+    assert!(b_left == quarter * power_grid::scale() - 2_222);
 
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == default_left);
@@ -1181,9 +1162,9 @@ fun assert_power_grid_rejects_fuel_already_burned() {
     abort
 }
 
-/// impulse 90, burden 14, 120 MW of 150 MW. Gen A (100 MW, reduction 10) serves
-/// 80 MW at factor 64.2857; Gen B (50 MW, reduction 1) serves 40 MW at factor
-/// 6.4285. 12_445 + 62_223 per second at `SCALE`.
+/// impulse 90, 120 MW of 150 MW. Gen A (100 MW, limit 100) serves 80 MW at
+/// impulse 90; Gen B (50 MW, limit 30) serves 40 MW at impulse 30. 8_889 +
+/// 13_334 per second at `SCALE`, each rounded up.
 #[test]
 fun each_generator_burns_its_share() {
     let mut scenario = ts::begin(admin());
@@ -1192,7 +1173,7 @@ fun each_generator_burns_its_share() {
     let entity_id = setup_entity(
         &mut scenario,
         vector[100, 50],
-        vector[10, 1],
+        vector[1_000_000, 300_000],
         &clock,
     );
     power_up(&mut scenario, entity_id, 2, &clock);
@@ -1201,13 +1182,13 @@ fun each_generator_burns_its_share() {
 
     clock.set_for_testing(1_000);
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
-    assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel() - (12_445 + 62_223));
+    assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel() - (8_889 + 13_334));
 
     clock.destroy_for_testing();
     scenario.end();
 }
 
-/// Ten 100 ms settles burn 10 × 156; one 1 s settle burns 1_556. Rounding up
+/// Ten 100 ms settles burn 10 × 112; one 1 s settle burns 1_112. Rounding up
 /// costs at most one step per settle and never gives free power.
 #[test]
 fun frequent_settles_never_burn_less() {
@@ -1221,12 +1202,12 @@ fun frequent_settles_never_burn_less() {
         catch_up(&mut scenario, entity_id, MOD_A, &clock);
     });
     let frequent = starting_fuel() - settled_fuel(&mut scenario, entity_id);
-    assert!(frequent == 1_560);
+    assert!(frequent == 1_120);
 
     clock.set_for_testing(2_000);
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     let once = starting_fuel() - frequent - settled_fuel(&mut scenario, entity_id);
-    assert!(once == 1_556);
+    assert!(once == 1_112);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -1238,7 +1219,7 @@ fun idle_grid_burns_nothing() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
 

@@ -124,7 +124,7 @@ fun withdraw_everything_after_burn() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[15], vector[10], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[15], vector[1_000_000], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
@@ -149,7 +149,7 @@ fun withdraw_more_than_left_after_burn_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[15], vector[10], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[15], vector[1_000_000], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);

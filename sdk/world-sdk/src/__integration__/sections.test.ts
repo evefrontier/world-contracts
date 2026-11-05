@@ -209,8 +209,9 @@ function generator(componentId: bigint): SectionModule {
     kind: 'generator',
     componentId,
     maxOutputMw: 15n,
-    containmentReduction: 10n,
-    baseFuelRate: 1n,
+    fuelType: 1n,
+    impulseLimit: 100n * POWER_SCALE,
+    volatilityLimit: 1n,
   }
 }
 

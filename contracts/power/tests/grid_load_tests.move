@@ -45,8 +45,8 @@ const OV_D: u64 = 504;
 const OV_E: u64 = 505;
 /// 15 MW.
 const OUTPUT: u64 = 15;
-/// Containment reduction 10.
-const CONTAINMENT: u64 = 10;
+/// Impulse limit 100, above the test fuel's impulse, so it never caps.
+const IMPULSE_LIMIT: u64 = 1_000_000;
 /// 10 MW.
 const DRAW: u64 = 10;
 /// Long enough at 10 MW that the whole tank burns, in ms.
@@ -54,7 +54,7 @@ const DEPLETING_MS: u64 = 10_000_000_000_000;
 
 /// Grid on, one online Generator of `OUTPUT`, fuel full. Modules are installed by the test.
 fun powered(scenario: &mut ts::Scenario, clock: &Clock): ID {
-    let entity_id = setup_entity(scenario, vector[OUTPUT], vector[CONTAINMENT], clock);
+    let entity_id = setup_entity(scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], clock);
     power_up(scenario, entity_id, 1, clock);
     entity_id
 }
@@ -310,7 +310,7 @@ fun overview_power_example() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[100], vector[CONTAINMENT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[100], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
     install_module(&mut scenario, entity_id, OV_A, firm_power(70), &clock);
     install_module(&mut scenario, entity_id, OV_B, firm_power(20), &clock);
@@ -351,7 +351,7 @@ fun desired_state_is_stored_without_power() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
 

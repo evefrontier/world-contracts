@@ -21,7 +21,8 @@ use sui::{clock::{Self, Clock}, test_scenario as ts};
 
 const MOD_A: u64 = 401;
 const OUTPUT: u64 = 15;
-const CONTAINMENT: u64 = 10;
+/// Impulse limit 100, above the test fuel's impulse, so it never caps.
+const IMPULSE_LIMIT: u64 = 1_000_000;
 const DRAW: u64 = 10;
 const IMPULSE: u64 = 900_000;
 
@@ -203,7 +204,7 @@ fun uninstall_with_generator_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     uninstall_grid(&mut scenario, entity_id);
 
     abort
@@ -352,7 +353,7 @@ fun check_aborts_when_used_above() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     grid_scenario::power_up(&mut scenario, entity_id, 1, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
     grid_scenario::set_desired(&mut scenario, entity_id, MOD_A, true, &clock);

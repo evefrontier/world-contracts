@@ -31,8 +31,8 @@ const MOD_B: u64 = 402;
 const OUTPUT: u64 = 15;
 /// 10 MW.
 const DRAW: u64 = 10;
-/// Containment reduction 10.
-const CONTAINMENT: u64 = 10;
+/// Impulse limit 100, above the test fuel's impulse, so it never caps.
+const IMPULSE_LIMIT: u64 = 1_000_000;
 /// 5 MW.
 const DRAW_B: u64 = 5;
 
@@ -40,7 +40,7 @@ const DRAW_B: u64 = 5;
 
 /// Grid on, one online Generator, `MOD_A` and `MOD_B` drawing.
 fun running(scenario: &mut ts::Scenario, clock: &Clock): ID {
-    let entity_id = setup_entity(scenario, vector[OUTPUT], vector[CONTAINMENT], clock);
+    let entity_id = setup_entity(scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], clock);
     power_up(scenario, entity_id, 1, clock);
     install_module(scenario, entity_id, MOD_A, firm_power(DRAW), clock);
     set_desired(scenario, entity_id, MOD_A, true, clock);

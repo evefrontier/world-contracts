@@ -49,8 +49,6 @@ const OUTPUT = 20n
 const INVENTORY_DRAW = 10n
 const GENERIC_DRAW = 5n
 const USED = INVENTORY_DRAW + GENERIC_DRAW
-const CONT_REDUCTION = 10n
-const BASE_FUEL_RATE = 1n
 // Impulse 15 (at POWER_SCALE) and no burden: 15 MW burns 1 fuel unit per second,
 // so 25 units last ~25s.
 const FUEL_IMPULSE = 150_000n
@@ -88,8 +86,9 @@ describe('power grid fuel burn (localnet)', () => {
       componentId: GENERATOR_ID,
       name: 'generator',
       maxOutputMw: OUTPUT,
-      containmentReduction: CONT_REDUCTION,
-      baseFuelRate: BASE_FUEL_RATE,
+      fuelType: ITEM,
+      impulseLimit: 100n * POWER_SCALE,
+      volatilityLimit: 1n,
     })
     installFuelBay(createTx, config, creation, {
       componentId: FUEL_ID,
@@ -222,7 +221,7 @@ function deposit(
     amount,
     impulse: FUEL_IMPULSE,
     containmentBurden: 0n,
-    volatility: 0n,
+    volatility: 1n * POWER_SCALE,
   })
   completeRequest(tx, config, entity, request)
 }

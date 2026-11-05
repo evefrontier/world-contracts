@@ -50,7 +50,6 @@ const MODULE_ID = 0xa3n
 // 10 MW generator at containment reduction 10 sends 10 MW to a 10 MW module.
 const OUTPUT = 10n
 const DRAW = 10n
-const CONT_REDUCTION = 10n
 const BAY_CAPACITY = 2_000n
 const BURN_WAIT_MS = 4_000
 
@@ -89,8 +88,9 @@ describe('fuel bays (localnet)', () => {
     installGenerator(createTx, config, creation, {
       componentId: GENERATOR_ID,
       maxOutputMw: OUTPUT,
-      containmentReduction: CONT_REDUCTION,
-      baseFuelRate: 1n,
+      fuelType: 1n,
+      impulseLimit: 100n * POWER_SCALE,
+      volatilityLimit: 1n,
     })
     for (const componentId of [BAY_A, BAY_B]) {
       installFuelBay(createTx, config, creation, {

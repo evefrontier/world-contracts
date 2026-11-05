@@ -339,9 +339,11 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
         &mut entity,
         GENERATOR_ID,
         option::none(),
+        7,
+        vector[],
         10,
-        10,
-        1,
+        1_000_000,
+        50_000,
         &clock,
         scenario.ctx(),
     );

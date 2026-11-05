@@ -119,14 +119,18 @@ public struct Fuel has copy, drop, store {
     thermal_inefficiency: u64,
 }
 
-/// A Generator's fixed stats and online state, held by the grid.
+/// A Generator's fuel type, limits and online state, held by the grid.
 public struct GeneratorState has copy, drop, store {
-    /// Plain MW.
+    /// The one fuel type it burns. Only `set_generator_fuel_type` changes it.
+    fuel_type: u64,
+    /// Types the owner may switch to. Empty for a fixed-type Generator.
+    selectable_fuel_types: vector<u64>,
+    /// Rated output, plain MW.
     max_output_mw: u64,
-    /// Softens the fuel's containment burden for this Generator's burn.
-    containment_reduction: u64,
-    /// Units per second burned while online and the fuel has zero impulse.
-    base_fuel_rate: u64,
+    /// Most impulse it can use, at `SCALE`.
+    impulse_limit: u64,
+    /// Volatility that gives full rated output, at `SCALE`.
+    volatility_limit: u64,
     online: bool,
 }
 
@@ -212,8 +216,6 @@ public struct GeneratorRequirement has drop {
     online: bool,
     /// Minimum `max_output_mw`, if set.
     max_output_mw: Option<u64>,
-    /// Minimum `containment_reduction`, if set.
-    containment_reduction: Option<u64>,
 }
 
 /// The owner's rules for which fuel `deposit_fuel` accepts. Empty `fuel_types`
@@ -417,11 +419,10 @@ public fun generator_requirement(
     generator_id: u64,
     online: bool,
     max_output_mw: Option<u64>,
-    containment_reduction: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(component_id()),
-        GeneratorRequirement { generator_id, online, max_output_mw, containment_reduction },
+        GeneratorRequirement { generator_id, online, max_output_mw },
     )
 }
 
@@ -757,12 +758,20 @@ public fun max_output_mw(state: &GeneratorState): u64 {
     state.max_output_mw
 }
 
-public fun containment_reduction(state: &GeneratorState): u64 {
-    state.containment_reduction
+public fun generator_fuel_type(state: &GeneratorState): u64 {
+    state.fuel_type
 }
 
-public fun base_fuel_rate(state: &GeneratorState): u64 {
-    state.base_fuel_rate
+public fun selectable_fuel_types(state: &GeneratorState): vector<u64> {
+    state.selectable_fuel_types
+}
+
+public fun impulse_limit(state: &GeneratorState): u64 {
+    state.impulse_limit
+}
+
+public fun volatility_limit(state: &GeneratorState): u64 {
+    state.volatility_limit
 }
 
 public fun online(state: &GeneratorState): bool {
@@ -839,10 +848,6 @@ public fun required_generator_online(rule: &GeneratorRequirement): bool {
 
 public fun required_max_output_mw(rule: &GeneratorRequirement): Option<u64> {
     rule.max_output_mw
-}
-
-public fun required_containment_reduction(rule: &GeneratorRequirement): Option<u64> {
-    rule.containment_reduction
 }
 
 public fun module_id(rule: &OnlineRequirement): u64 {
@@ -1099,35 +1104,44 @@ public(package) fun empty_fuel(): Fuel {
 public(package) fun connect_generator(
     grid: &mut PowerGrid,
     generator_id: u64,
+    fuel_type: u64,
+    selectable_fuel_types: vector<u64>,
     max_output_mw: u64,
-    containment_reduction: u64,
-    base_fuel_rate: u64,
+    impulse_limit: u64,
+    volatility_limit: u64,
 ) {
     grid
         .generators
         .insert(
             generator_id,
-            GeneratorState { max_output_mw, containment_reduction, base_fuel_rate, online: false },
+            GeneratorState {
+                fuel_type,
+                selectable_fuel_types,
+                max_output_mw,
+                impulse_limit,
+                volatility_limit,
+                online: false,
+            },
         );
 }
 
 /// Remove a Generator. An online Generator's output leaves `capacity_mw`.
 /// Caller settles first, so burn still includes this Generator.
 public(package) fun disconnect_generator(grid: &mut PowerGrid, generator_id: u64) {
-    let (
-        _,
-        GeneratorState {
-            max_output_mw: _,
-            containment_reduction: _,
-            base_fuel_rate: _,
-            online: _,
-        },
-    ) = grid.generators.remove(&generator_id);
+    grid.generators.remove(&generator_id);
 }
 
 /// Set online state; `capacity_mw` follows from it.
 public(package) fun set_generator_online(grid: &mut PowerGrid, generator_id: u64, online: bool) {
     grid.generators.get_mut(&generator_id).online = online;
+}
+
+public(package) fun set_generator_fuel_type(
+    grid: &mut PowerGrid,
+    generator_id: u64,
+    fuel_type: u64,
+) {
+    grid.generators.get_mut(&generator_id).fuel_type = fuel_type;
 }
 
 public(package) fun connect_module(
@@ -1273,10 +1287,9 @@ fun fuel_left(grid: &PowerGrid, clock: &Clock): u64 {
 }
 
 /// Fuel burned between `last_settled_ms` and `now_ms`, capped at what the
-/// online bays hold. Each online Generator burns its share of the load at the
-/// online bays' blended stats, using the grants stored at the last settle.
-/// Proportional burn keeps
-/// that blend constant between settles.
+/// online bays hold. Each online Generator burns its share of the load over the
+/// online bays' blended impulse, up to its own limit, using the grants stored
+/// at the last settle. Proportional burn keeps that blend constant between settles.
 fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
     if (now_ms <= grid.last_settled_ms) return 0;
     let capacity_mw = grid.capacity_mw();
@@ -1290,12 +1303,9 @@ fun fuel_burn(grid: &PowerGrid, now_ms: u64): u64 {
         if (state.online && load > 0) {
             burn =
                 burn + fuel_math::generator_burn(
-                fuel.impulse,
-                fuel.containment_burden,
+                fuel_math::usable_impulse(fuel.impulse, state.impulse_limit),
                 capacity_mw,
                 state.max_output_mw,
-                state.containment_reduction,
-                state.base_fuel_rate,
                 load,
                 elapsed_ms,
             );

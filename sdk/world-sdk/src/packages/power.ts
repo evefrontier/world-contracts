@@ -113,9 +113,15 @@ export function uninstallPowerGrid(
 export interface InstallGeneratorArgs {
   componentId: bigint
   name?: string | null
+  /** The one fuel type it burns. */
+  fuelType: bigint
+  /** Types the owner may switch to; empty (default) for a fixed-type Generator. */
+  selectableFuelTypes?: bigint[]
   maxOutputMw: bigint
-  containmentReduction: bigint
-  baseFuelRate: bigint
+  /** Most impulse it can use, at `POWER_SCALE`. */
+  impulseLimit: bigint
+  /** Volatility that gives full rated output, at `POWER_SCALE`. */
+  volatilityLimit: bigint
 }
 
 /** Install a Generator and connect it to the grid, offline. Admin-gated. */
@@ -131,9 +137,11 @@ export function installGenerator(
       entity,
       tx.pure.u64(args.componentId),
       tx.pure.option('string', args.name ?? null),
+      tx.pure.u64(args.fuelType),
+      tx.pure.vector('u64', args.selectableFuelTypes ?? []),
       tx.pure.u64(args.maxOutputMw),
-      tx.pure.u64(args.containmentReduction),
-      tx.pure.u64(args.baseFuelRate),
+      tx.pure.u64(args.impulseLimit),
+      tx.pure.u64(args.volatilityLimit),
       tx.object.clock(),
     ],
   })

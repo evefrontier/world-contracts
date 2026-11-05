@@ -24,7 +24,6 @@ const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
 const GENERATOR_BASE: u64 = 101;
 /// Base burn rate of every Generator, 1 unit per second.
-const BASE_FUEL_RATE: u64 = 1;
 /// Component id of the fuel bay every `setup_entity` grid gets.
 const FUEL_BAY_ID: u64 = 9_001;
 /// Capacity of that bay, plain units.
@@ -93,12 +92,13 @@ public fun elastic_power(power_req: u64): ModulePowerSpec {
 }
 
 /// Share an entity with an installed, off grid, offline Generators of
-/// `max_outputs_mw` with `containments`, and an online fuel bay holding
+/// `max_outputs_mw` and `impulse_limits` burning `fuel_type()` at full output
+/// on `volatility()`, and an online fuel bay holding
 /// `starting_fuel()`. Modules are installed afterwards with `install_module`.
 public fun setup_entity(
     scenario: &mut ts::Scenario,
     max_outputs_mw: vector<u64>,
-    containments: vector<u64>,
+    impulse_limits: vector<u64>,
     clock: &Clock,
 ): ID {
     ts::next_tx(scenario, ADMIN);
@@ -113,9 +113,11 @@ public fun setup_entity(
             &mut entity,
             generator_id(i),
             option::none(),
+            FUEL_TYPE,
+            vector[],
             max_outputs_mw[i],
-            containments[i],
-            BASE_FUEL_RATE,
+            impulse_limits[i],
+            VOLATILITY,
             clock,
             scenario.ctx(),
         );
@@ -340,6 +342,54 @@ public fun set_generator(
             online,
             clock,
         ),
+    );
+}
+
+/// ADMIN installs Generator `generator_id`, offline.
+public fun install_generator(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    generator_id: u64,
+    fuel_type: u64,
+    selectable_fuel_types: vector<u64>,
+    max_output_mw: u64,
+    impulse_limit: u64,
+    volatility_limit: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = grid_generator::install(
+        &mut entity,
+        generator_id,
+        option::none(),
+        fuel_type,
+        selectable_fuel_types,
+        max_output_mw,
+        impulse_limit,
+        volatility_limit,
+        clock,
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// OWNER switches Generator `generator_id` to burn `fuel_type`.
+public fun set_generator_fuel_type(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    generator_id: u64,
+    fuel_type: u64,
+) {
+    as_owner!(
+        scenario,
+        entity_id,
+        OPERATE,
+        |entity, req| grid_generator::set_generator_fuel_type(entity, req, generator_id, fuel_type),
     );
 }
 

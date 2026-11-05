@@ -34,8 +34,8 @@ const FUEL_B: u64 = 9_002;
 const OUTPUT: u64 = 15;
 /// 10 MW.
 const DRAW: u64 = 10;
-/// Containment reduction 10.
-const CONTAINMENT: u64 = 10;
+/// Impulse limit 100, above the test fuel's impulse, so it never caps.
+const IMPULSE_LIMIT: u64 = 1_000_000;
 /// Long enough at 10 MW that the whole bay burns, in ms.
 const DEPLETING_MS: u64 = 10_000_000_000_000;
 
@@ -43,7 +43,7 @@ const DEPLETING_MS: u64 = 10_000_000_000_000;
 
 /// Grid on, one online Generator of `OUTPUT`, `MOD_A` desired and drawing.
 fun running(scenario: &mut ts::Scenario, clock: &Clock): ID {
-    let entity_id = setup_entity(scenario, vector[OUTPUT], vector[CONTAINMENT], clock);
+    let entity_id = setup_entity(scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], clock);
     power_up(scenario, entity_id, 1, clock);
     install_module(scenario, entity_id, MOD_A, firm_power(DRAW), clock);
     set_desired(scenario, entity_id, MOD_A, true, clock);
@@ -202,7 +202,7 @@ fun switch_on_with_bays_offline_reads_bays_offline() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
     set_fuel_bay(&mut scenario, entity_id, fuel_bay_id(), false, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);

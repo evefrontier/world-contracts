@@ -44,7 +44,8 @@ const MOD_A: u64 = 401;
 const OUTPUT: u64 = 15;
 /// 25 MW.
 const OUTPUT_2: u64 = 25;
-const CONTAINMENT: u64 = 10;
+/// Impulse limit 100, above the test fuel's impulse, so it never caps.
+const IMPULSE_LIMIT: u64 = 1_000_000;
 /// 10 MW.
 const DRAW: u64 = 10;
 const SECOND_FUEL_ID: u64 = 9_002;
@@ -76,7 +77,7 @@ fun migrate_module_keeps_spec_and_desired_state() {
     let mut scenario = ts::begin(admin());
     let clock = clock::create_for_testing(scenario.ctx());
     core::test_helpers::setup(&mut scenario);
-    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, from, 1, &clock);
     install_module(&mut scenario, from, MOD_A, firm_power(DRAW), &clock);
     set_desired(&mut scenario, from, MOD_A, true, &clock);
@@ -140,7 +141,7 @@ fun migrate_generator_moves_its_output_and_online_state() {
     let from = setup_entity(
         &mut scenario,
         vector[OUTPUT, OUTPUT_2],
-        vector[CONTAINMENT, CONTAINMENT],
+        vector[IMPULSE_LIMIT, IMPULSE_LIMIT],
         &clock,
     );
     power_up(&mut scenario, from, 2, &clock);
@@ -166,7 +167,8 @@ fun migrate_generator_moves_its_output_and_online_state() {
     );
     assert!(state.online());
     assert!(state.max_output_mw() == OUTPUT);
-    assert!(state.containment_reduction() == CONTAINMENT);
+    assert!(state.impulse_limit() == IMPULSE_LIMIT && state.volatility_limit() == volatility());
+    assert!(state.generator_fuel_type() == fuel_type());
 
     clock.destroy_for_testing();
     scenario.end();
@@ -177,7 +179,7 @@ fun migrate_generator_by_non_admin_aborts() {
     let mut scenario = ts::begin(admin());
     let clock = clock::create_for_testing(scenario.ctx());
     core::test_helpers::setup(&mut scenario);
-    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     let to = setup_empty_grid(&mut scenario, 2, &clock);
 
     migrate_generator(&mut scenario, owner(), from, to, generator_id(0), &clock);
@@ -190,7 +192,7 @@ fun migrate_generator_across_tenants_aborts() {
     let mut scenario = ts::begin(admin());
     let clock = clock::create_for_testing(scenario.ctx());
     core::test_helpers::setup(&mut scenario);
-    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     let to = setup_empty_grid_in_tenant(&mut scenario, 2, b"OTHER", &clock);
 
     migrate_generator(&mut scenario, admin(), from, to, generator_id(0), &clock);
@@ -254,7 +256,7 @@ fun migrate_fuel_settles_burn_first() {
     let mut scenario = ts::begin(admin());
     let mut clock = clock::create_for_testing(scenario.ctx());
     core::test_helpers::setup(&mut scenario);
-    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, from, 1, &clock);
     install_module(&mut scenario, from, MOD_A, firm_power(DRAW), &clock);
     set_desired(&mut scenario, from, MOD_A, true, &clock);

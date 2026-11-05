@@ -47,8 +47,6 @@ const VOL = 2n
 // 15 MW generator, 10 MW inventory draw, containment reduction 10.
 const OUTPUT = 15n
 const DRAW = 10n
-const CONT_REDUCTION = 10n
-const BASE_FUEL_RATE = 1n
 // 500 units of fuel: impulse 90, containment burden 14.
 const FUEL_AMOUNT = 500n
 const IMPULSE = 90n * POWER_SCALE
@@ -86,8 +84,9 @@ describe('power grid powers an inventory (localnet)', () => {
     installGenerator(installTx, config, installEntity, {
       componentId: GENERATOR_ID,
       maxOutputMw: OUTPUT,
-      containmentReduction: CONT_REDUCTION,
-      baseFuelRate: BASE_FUEL_RATE,
+      fuelType: ITEM,
+      impulseLimit: 100n * POWER_SCALE,
+      volatilityLimit: 1n,
     })
     installFuelBay(installTx, config, installEntity, {
       componentId: FUEL_ID,
