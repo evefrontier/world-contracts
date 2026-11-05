@@ -96,6 +96,12 @@
       "appCap": "0x502533d12a53a8aa78851fecb9ec669bec1cb9e68a59469ae62e24b9c4a390ca",
       "name": "@evefrontier/world-generic-module-dev",
       "packageInfo": "0xec0861cda218176f0977e1a46195be3cb9823c9b1f6af5bb0516b73030973557"
+    },
+    "killmail": {
+      "appCap": "0x4c7c5b15925bfd1763d99e04a49479076b33a73e67bb92dca7c07c80209710d6"
+    },
+    "creation": {
+      "appCap": "0x31ed7189517ffffd683b794e507f8ffe1cb0b8a2bd97692c53506efda6c1d847"
     }
   }
 }
