@@ -352,6 +352,7 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
         FUEL_BAY_ID,
         option::none(),
         1_000,
+        0,
         &clock,
         scenario.ctx(),
     );

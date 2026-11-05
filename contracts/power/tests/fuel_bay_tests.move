@@ -20,6 +20,7 @@ use power::{
         bay_fuel,
         burden,
         catch_up,
+        containment_rating,
         deposit_fuel,
         deposit_fuel_into,
         deposit_fuel_via,
@@ -189,13 +190,17 @@ fun install_fuel_bay_starts_offline_and_empty() {
     install_fuel(&mut scenario, entity_id, FUEL_B, BAY_B_CAPACITY, &clock);
 
     let attached = event::events_by_type<FuelBayAttached>();
-    let (_, attached_bay, attached_capacity) = attached[0].fuel_bay_attached_fields();
+    let (_, attached_bay, attached_capacity, attached_rating) = attached[
+        0,
+    ].fuel_bay_attached_fields();
     assert!(attached_bay == FUEL_B && attached_capacity == BAY_B_CAPACITY);
+    assert!(attached_rating == containment_rating());
     ts::next_tx(&mut scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
     assert!(power_grid::is_fuel_bay_connected(&entity, FUEL_B));
     let state = power_grid::fuel_bay_state(&entity, FUEL_B);
     assert!(state.capacity() == BAY_B_CAPACITY && !state.bay_online());
+    assert!(state.containment_rating() == containment_rating());
     assert!(state.fuel().quantity() == 0);
     ts::return_shared(entity);
 
@@ -547,6 +552,7 @@ fun refit_load_on_another_bay_id_aborts() {
         FUEL_B,
         option::none(),
         fuel_capacity(),
+        containment_rating(),
         load,
         &clock,
         scenario.ctx(),
@@ -869,6 +875,26 @@ fun same_type_blends_thermal() {
     let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
     assert!(fuel.fuel_type() == option::some(fuel_type()));
     assert!(fuel.thermal_inefficiency() == 2 * thermal());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The bay's containment rating is stored only: fuel whose burden is above it
+/// is still accepted.
+#[test]
+fun deposit_above_containment_rating_is_accepted() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    assert!(burden() > containment_rating());
+
+    deposit_fuel(&mut scenario, entity_id, 7, impulse(), burden(), &clock);
+
+    let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
+    assert!(fuel.quantity() == starting_fuel() + 70_000);
+    assert!(fuel.containment_burden() == burden());
 
     clock.destroy_for_testing();
     scenario.end();

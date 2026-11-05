@@ -69,6 +69,7 @@ public struct FuelBayAttached has copy, drop {
     entity_id: ID,
     fuel_bay_id: u64,
     capacity: u64,
+    containment_rating: u64,
 }
 
 public struct FuelBayDetached has copy, drop {
@@ -154,18 +155,29 @@ public struct FuelAdded has copy, drop {
 
 // === Public Functions ===
 
-/// Install a fuel bay of `capacity` plain units, offline. It takes back its
-/// stashed fuel if this grid holds any for `component_id`, else starts empty.
-/// Admin-gated. Aborts if the stash exceeds `capacity`.
+/// Install a fuel bay of `capacity` plain units and `containment_rating` (at
+/// `SCALE`), offline. It takes back its stashed fuel if this grid holds any for
+/// `component_id`, else starts empty. Admin-gated. Aborts if the stash exceeds
+/// `capacity`.
 public fun install(
     entity: &mut Entity,
     component_id: u64,
     name: Option<String>,
     capacity: u64,
+    containment_rating: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
-    connect(entity, component_id, name, capacity, option::none(), clock, ctx)
+    connect(
+        entity,
+        component_id,
+        name,
+        capacity,
+        containment_rating,
+        option::none(),
+        clock,
+        ctx,
+    )
 }
 
 /// Install a fuel bay holding `load`, offline. `load` must be this bay's fuel
@@ -175,12 +187,22 @@ public fun install_with_fuel(
     fuel_bay_id: u64,
     name: Option<String>,
     capacity: u64,
+    containment_rating: u64,
     load: FuelLoad,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
     let fuel = unpack_for(entity, fuel_bay_id, load);
-    connect(entity, fuel_bay_id, name, capacity, option::some(fuel), clock, ctx)
+    connect(
+        entity,
+        fuel_bay_id,
+        name,
+        capacity,
+        containment_rating,
+        option::some(fuel),
+        clock,
+        ctx,
+    )
 }
 
 /// Uninstall a fuel bay. Its exact fuel stays on this grid as a stash, which
@@ -208,11 +230,20 @@ public fun migrate(
     ctx: &mut TxContext,
 ): (Request, Request) {
     assert!(from.key().tenant() == to.key().tenant(), EWrongTenant);
-    let capacity = power_grid::fuel_bay_state(from, fuel_bay_id).capacity();
+    let state = power_grid::fuel_bay_state(from, fuel_bay_id);
     let name = fuel_bay::name(from, fuel_bay_id);
     // The fuel goes straight across: it is never stashed on `from`.
     let (from_req, fuel) = detach(from, fuel_bay_id, clock, ctx);
-    let to_req = connect(to, fuel_bay_id, name, capacity, option::some(fuel), clock, ctx);
+    let to_req = connect(
+        to,
+        fuel_bay_id,
+        name,
+        state.capacity(),
+        state.containment_rating(),
+        option::some(fuel),
+        clock,
+        ctx,
+    );
     (from_req, to_req)
 }
 
@@ -455,6 +486,7 @@ fun connect(
     fuel_bay_id: u64,
     name: Option<String>,
     capacity: u64,
+    containment_rating: u64,
     moved: Option<Fuel>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -470,9 +502,9 @@ fun connect(
     let fuel = restored.destroy_or!(power_grid::empty_fuel());
     assert_fits(capacity, fuel.quantity() as u128);
     grid.settle(clock);
-    grid.connect_fuel_bay(fuel_bay_id, capacity, fuel);
+    grid.connect_fuel_bay(fuel_bay_id, capacity, containment_rating, fuel);
     grid.regrant(entity_id);
-    event::emit(FuelBayAttached { entity_id, fuel_bay_id, capacity });
+    event::emit(FuelBayAttached { entity_id, fuel_bay_id, capacity, containment_rating });
     if (restored.is_some()) {
         event::emit(FuelRestored {
             entity_id,
@@ -578,10 +610,10 @@ public fun fuel_added_fields(added: &FuelAdded): (ID, u64, u64, u64, u64, u64, u
     )
 }
 
-/// `(entity_id, fuel_bay_id, capacity)`.
+/// `(entity_id, fuel_bay_id, capacity, containment_rating)`.
 #[test_only]
-public fun fuel_bay_attached_fields(attached: &FuelBayAttached): (ID, u64, u64) {
-    (attached.entity_id, attached.fuel_bay_id, attached.capacity)
+public fun fuel_bay_attached_fields(attached: &FuelBayAttached): (ID, u64, u64, u64) {
+    (attached.entity_id, attached.fuel_bay_id, attached.capacity, attached.containment_rating)
 }
 
 /// `(entity_id, fuel_bay_id, online)`.

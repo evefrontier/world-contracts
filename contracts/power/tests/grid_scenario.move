@@ -38,6 +38,8 @@ const BURDEN: u64 = 140_000;
 const VOLATILITY: u64 = 10_000;
 const FUEL_TYPE: u64 = 7;
 const THERMAL: u64 = 20_000;
+/// Bay containment rating 10, below `BURDEN`: deposits are not checked against it.
+const CONTAINMENT_RATING: u64 = 100_000;
 
 const OPERATE: vector<u8> = b"operate_grid";
 const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
@@ -77,6 +79,8 @@ public fun volatility(): u64 { VOLATILITY }
 public fun fuel_type(): u64 { FUEL_TYPE }
 
 public fun thermal(): u64 { THERMAL }
+
+public fun containment_rating(): u64 { CONTAINMENT_RATING }
 
 /// Firm power for a module with no line loss and priority 0.
 public fun firm_power(power_req: u64): ModulePowerSpec {
@@ -123,6 +127,7 @@ public fun setup_entity(
         FUEL_BAY_ID,
         option::none(),
         FUEL_CAPACITY,
+        CONTAINMENT_RATING,
         clock,
         scenario.ctx(),
     );
@@ -408,6 +413,7 @@ public fun install_fuel(
         fuel_bay_id,
         option::none(),
         capacity,
+        CONTAINMENT_RATING,
         clock,
         scenario.ctx(),
     );
@@ -534,6 +540,7 @@ public fun refit_stash(
         fuel_bay_id,
         option::none(),
         capacity,
+        CONTAINMENT_RATING,
         load,
         clock,
         scenario.ctx(),

@@ -30,6 +30,7 @@ use power::{
         starting_fuel,
         thermal,
         fuel_type,
+        containment_rating,
         stashed_fuel,
         stored_draw,
         volatility
@@ -234,6 +235,10 @@ fun migrate_fuel_moves_the_bays_exact_fuel() {
         power_grid::fuel_bay_state(e, fuel_bay_id()).capacity()
     });
     assert!(capacity == fuel_capacity());
+    let rating = with_entity!(&mut scenario, to, |e| {
+        power_grid::fuel_bay_state(e, fuel_bay_id()).containment_rating()
+    });
+    assert!(rating == containment_rating());
     assert!(settled_fuel(&mut scenario, to) == 0);
     let (_, from_bays) = grid_of(&mut scenario, from);
     assert!(from_bays == 1);

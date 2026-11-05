@@ -95,6 +95,9 @@ public struct PowerGrid has store {
 public struct FuelBayState has copy, drop, store {
     /// Plain fuel units.
     capacity: u64,
+    /// At `SCALE`, set at install and fixed. Stored only; deposits are not
+    /// checked against it yet.
+    containment_rating: u64,
     /// Only online bays feed the grid. An offline bay keeps its fuel.
     online: bool,
     /// As of `last_settled_ms`, not live. See `projected_bays` for now.
@@ -712,6 +715,10 @@ public fun capacity(state: &FuelBayState): u64 {
     state.capacity
 }
 
+public fun containment_rating(state: &FuelBayState): u64 {
+    state.containment_rating
+}
+
 public fun bay_online(state: &FuelBayState): bool {
     state.online
 }
@@ -984,14 +991,20 @@ public(package) fun connect_fuel_bay(
     grid: &mut PowerGrid,
     fuel_bay_id: u64,
     capacity: u64,
+    containment_rating: u64,
     fuel: Fuel,
 ) {
-    grid.bays.insert(fuel_bay_id, FuelBayState { capacity, online: false, fuel });
+    grid
+        .bays
+        .insert(
+            fuel_bay_id,
+            FuelBayState { capacity, containment_rating, online: false, fuel },
+        );
 }
 
 /// Disconnect a fuel bay and return its fuel. Caller settles first.
 public(package) fun disconnect_fuel_bay(grid: &mut PowerGrid, fuel_bay_id: u64): Fuel {
-    let (_, FuelBayState { capacity: _, online: _, fuel }) = grid.bays.remove(&fuel_bay_id);
+    let (_, FuelBayState { fuel, .. }) = grid.bays.remove(&fuel_bay_id);
     fuel
 }
 

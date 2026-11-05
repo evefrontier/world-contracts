@@ -145,6 +145,8 @@ export interface InstallFuelBayArgs {
   componentId: bigint
   name?: string | null
   capacity: bigint
+  /** At `POWER_SCALE`; defaults to `0n`. Stored only; deposits are not checked against it yet. */
+  containmentRating?: bigint
 }
 
 /** Install an empty fuel bay, offline. Admin-gated. */
@@ -161,6 +163,7 @@ export function installFuelBay(
       tx.pure.u64(args.componentId),
       tx.pure.option('string', args.name ?? null),
       tx.pure.u64(args.capacity),
+      tx.pure.u64(args.containmentRating ?? 0n),
       tx.object.clock(),
     ],
   })
@@ -268,6 +271,7 @@ export function installFuelBayWithLoad(
       tx.pure.u64(args.componentId),
       tx.pure.option('string', args.name ?? null),
       tx.pure.u64(args.capacity),
+      tx.pure.u64(args.containmentRating ?? 0n),
       load,
       tx.object.clock(),
     ],
@@ -714,6 +718,7 @@ function fuelAmount(fuel: typeof FuelBcs.$inferType): FuelAmount {
 
 const FuelBayStateBcs = bcs.struct('FuelBayState', {
   capacity: bcs.u64(),
+  containment_rating: bcs.u64(),
   online: bcs.bool(),
   fuel: FuelBcs,
 })
@@ -728,6 +733,8 @@ const BaysBcs = bcs.struct('VecMap', {
 export interface ProjectedBay extends FuelAmount {
   fuelBayId: bigint
   capacity: bigint
+  /** At `POWER_SCALE`. Stored only; deposits are not checked against it yet. */
+  containmentRating: bigint
   online: boolean
 }
 
@@ -736,6 +743,7 @@ export function parseProjectedBays(bytes: Uint8Array): ProjectedBay[] {
   return BaysBcs.parse(bytes).contents.map(({ key, value }) => ({
     fuelBayId: BigInt(key),
     capacity: BigInt(value.capacity),
+    containmentRating: BigInt(value.containment_rating),
     online: value.online,
     ...fuelAmount(value.fuel),
   }))
