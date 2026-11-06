@@ -1,8 +1,8 @@
 /// Module connect, disconnect, priority and desired state. A module connects to
 /// the grid inside its own install and disconnects inside its own uninstall.
-/// The owner sets desired state, and `power_grid` derives
-/// the grant. Only the module's own package can call `connect` or `disconnect`, since
-/// both take its `Permit<Module>`.
+/// The owner sets a module's desired state, and `power_grid` derives the
+/// grant. Only the module's own package can call `connect` or `disconnect`,
+/// since both take its `Permit<Module>`.
 module power::grid_load;
 
 use core::{access_cap, entity::Entity, request::Request, requirement::Requirement};
@@ -19,7 +19,7 @@ const EModuleAlreadyConnected: vector<u8> = b"Module is already connected to thi
 #[error(code = 2)]
 const ETooManyConnected: vector<u8> = b"Power grid has reached its maximum connected modules";
 #[error(code = 3)]
-const EOutOfFuel: vector<u8> = b"Power grid has run out of fuel";
+const EOutOfFuel: vector<u8> = b"Power grid has no fuel in its online bays";
 #[error(code = 4)]
 const EDrawBelowMin: vector<u8> = b"Module's granted draw is below the requirement";
 #[error(code = 5)]
@@ -164,10 +164,11 @@ public fun set_priority(
     req.enqueue(frame);
 }
 
-/// Set a connected module's desired state. Always accepted, even without power.
-/// The grid regrants, and the module draws only if the grid can carry it.
-/// TODO: keep every module offline while the Creation is dark (no Shell, see
-/// `creation::layout::has_shell`), without `power` depending on `creation`.
+/// Set a connected module's desired state. Always accepted, even without
+/// power. The grid regrants, and the module draws only if the grid can carry it.
+/// A Creation
+/// that loses its Shell is shut down by the service with `power_grid::shut_down`,
+/// so `power` keeps no dependency on `creation`.
 public fun set_desired_state(
     entity: &mut Entity,
     req: &mut Request,
@@ -202,7 +203,7 @@ public fun assert_online(entity: &mut Entity, req: &mut Request, clock: &Clock) 
     );
     grid.settle(clock);
     grid.regrant(entity_id);
-    assert!(grid.fuel_quantity_at_last_settled() > 0, EOutOfFuel);
+    assert!(grid.online_fuel().quantity() > 0, EOutOfFuel);
     enforce_online(&requirement, grid);
     frame.destroy_empty_frame();
 }

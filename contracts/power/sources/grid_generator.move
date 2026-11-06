@@ -1,5 +1,5 @@
-/// Generator install, uninstall and on/off. Installing the component connects it
-/// to the grid. Borrows the grid and asks `power_grid` to write capacity.
+/// Generator install, uninstall, on/off and fuel type. Installing the component
+/// connects it to the grid. Borrows the grid and asks `power_grid` to write capacity.
 module power::grid_generator;
 
 use core::{access_cap, entity::Entity, request::Request, requirement::Requirement};
@@ -10,7 +10,7 @@ use sui::{bcs, clock::Clock, event};
 // === Errors ===
 
 #[error(code = 0)]
-const EZeroBaseFuelRate: vector<u8> = b"Generator base fuel rate must be greater than zero";
+const EZeroOutput: vector<u8> = b"Generator rated output must be greater than zero";
 #[error(code = 1)]
 const EGeneratorNotConnected: vector<u8> = b"Generator is not connected to this power grid";
 #[error(code = 2)]
@@ -21,10 +21,18 @@ const EGeneratorAlreadyOffline: vector<u8> = b"Generator is already offline";
 const EGeneratorNotOnline: vector<u8> = b"Generator's online state does not match the requirement";
 #[error(code = 5)]
 const EOutputBelowMin: vector<u8> = b"Generator output is below the requirement";
-#[error(code = 6)]
-const EContainmentBelowMin: vector<u8> = b"Containment reduction is below the requirement";
 #[error(code = 7)]
 const EWrongTenant: vector<u8> = b"Generators can only move between entities of the same tenant";
+#[error(code = 8)]
+const EZeroImpulseLimit: vector<u8> = b"Generator impulse limit must be greater than zero";
+#[error(code = 9)]
+const EZeroVolatilityLimit: vector<u8> = b"Generator volatility limit must be greater than zero";
+#[error(code = 10)]
+const EFuelTypeNotSelectable: vector<u8> = b"Fuel type is not one the Generator can burn";
+#[error(code = 11)]
+const ESameFuelType: vector<u8> = b"Generator already burns this fuel type";
+#[error(code = 12)]
+const EGeneratorOnline: vector<u8> = b"Switch the Generator offline before changing its fuel type";
 
 // === Events ===
 
@@ -37,9 +45,11 @@ public struct CapacityChanged has copy, drop {
 public struct GeneratorConnected has copy, drop {
     entity_id: ID,
     generator_id: u64,
+    fuel_type: u64,
+    selectable_fuel_types: vector<u64>,
     max_output_mw: u64,
-    containment_reduction: u64,
-    base_fuel_rate: u64,
+    impulse_limit: u64,
+    volatility_limit: u64,
 }
 
 public struct GeneratorDisconnected has copy, drop {
@@ -53,32 +63,59 @@ public struct GeneratorToggled has copy, drop {
     online: bool,
 }
 
+/// The owner switched an offline Generator to burn `fuel_type`.
+public struct GeneratorFuelTypeChanged has copy, drop {
+    entity_id: ID,
+    generator_id: u64,
+    fuel_type: u64,
+}
+
 // === Public Functions ===
 
-/// Install a Generator and add it to the grid, offline. Admin-gated.
+/// Install a Generator burning `fuel_type` and add it to the grid, offline.
+/// `selectable_fuel_types` is empty for a fixed-type Generator, else lists the
+/// types the owner may switch to, `fuel_type` among them. Limits at `SCALE`.
+/// Admin-gated.
 public fun install(
     entity: &mut Entity,
     component_id: u64,
     name: Option<String>,
+    fuel_type: u64,
+    selectable_fuel_types: vector<u64>,
     max_output_mw: u64,
-    containment_reduction: u64,
-    base_fuel_rate: u64,
+    impulse_limit: u64,
+    volatility_limit: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
-    assert!(base_fuel_rate > 0, EZeroBaseFuelRate);
+    assert!(max_output_mw > 0, EZeroOutput);
+    assert!(impulse_limit > 0, EZeroImpulseLimit);
+    assert!(volatility_limit > 0, EZeroVolatilityLimit);
+    assert!(
+        selectable_fuel_types.is_empty() || selectable_fuel_types.contains(&fuel_type),
+        EFuelTypeNotSelectable,
+    );
     let entity_id = entity.id();
     let req = generator::install(entity, component_id, name, ctx);
     let grid = power_grid::grid_mut(entity);
     grid.settle(clock);
-    grid.connect_generator(component_id, max_output_mw, containment_reduction, base_fuel_rate);
+    grid.connect_generator(
+        component_id,
+        fuel_type,
+        selectable_fuel_types,
+        max_output_mw,
+        impulse_limit,
+        volatility_limit,
+    );
     grid.regrant(entity_id);
     event::emit(GeneratorConnected {
         entity_id,
         generator_id: component_id,
+        fuel_type,
+        selectable_fuel_types,
         max_output_mw,
-        containment_reduction,
-        base_fuel_rate,
+        impulse_limit,
+        volatility_limit,
     });
     req
 }
@@ -126,9 +163,11 @@ public fun migrate(
         to,
         generator_id,
         name,
+        state.generator_fuel_type(),
+        state.selectable_fuel_types(),
         state.max_output_mw(),
-        state.containment_reduction(),
-        state.base_fuel_rate(),
+        state.impulse_limit(),
+        state.volatility_limit(),
         clock,
         ctx,
     );
@@ -171,6 +210,31 @@ public fun set_generator(
     req.enqueue(frame);
 }
 
+/// Switch an offline Generator to burn `fuel_type`, one of its selectable
+/// types. It changes nothing until the Generator comes back online. Owner-gated.
+public fun set_generator_fuel_type(
+    entity: &mut Entity,
+    req: &mut Request,
+    generator_id: u64,
+    fuel_type: u64,
+) {
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = power_grid::take_grid(
+        entity,
+        req,
+        power_grid::operate_grid_permit(),
+    );
+    assert!(power_grid::generators(grid).contains(&generator_id), EGeneratorNotConnected);
+    let state = power_grid::generators(grid).get(&generator_id);
+    assert!(!state.online(), EGeneratorOnline);
+    assert!(state.selectable_fuel_types().contains(&fuel_type), EFuelTypeNotSelectable);
+    assert!(state.generator_fuel_type() != fuel_type, ESameFuelType);
+    grid.set_generator_fuel_type(generator_id, fuel_type);
+    event::emit(GeneratorFuelTypeChanged { entity_id, generator_id, fuel_type });
+    frame.require(access_cap::owner_requirement());
+    req.enqueue(frame);
+}
+
 /// Abort unless a Generator meets the next `GeneratorRequirement`.
 public fun assert_generator(entity: &mut Entity, req: &mut Request) {
     let (requirement, frame, grid) = power_grid::take_grid(
@@ -182,6 +246,18 @@ public fun assert_generator(entity: &mut Entity, req: &mut Request) {
     frame.destroy_empty_frame();
 }
 
+// === Package Functions ===
+
+/// Emit `CapacityChanged` if the grid's capacity is no longer `before_mw`.
+public(package) fun emit_if_capacity_changed(
+    entity_id: ID,
+    grid: &power_grid::PowerGrid,
+    before_mw: u64,
+) {
+    let capacity_mw = power_grid::capacity_mw(grid);
+    if (capacity_mw != before_mw) event::emit(CapacityChanged { entity_id, capacity_mw });
+}
+
 // === Private Functions ===
 
 /// Abort if a Generator is short of a `GeneratorRequirement`.
@@ -190,15 +266,11 @@ fun enforce_generator(requirement: &Requirement, grid: &power_grid::PowerGrid) {
     let generator_id = encoded.peel_u64();
     let online = encoded.peel_bool();
     let max_output_mw = encoded.peel_option_u64();
-    let containment_reduction = encoded.peel_option_u64();
     assert!(power_grid::generators(grid).contains(&generator_id), EGeneratorNotConnected);
     let state = power_grid::generators(grid).get(&generator_id);
     assert!(state.online() == online, EGeneratorNotOnline);
     max_output_mw.do!(|min_output| {
         assert!(state.max_output_mw() >= min_output, EOutputBelowMin)
-    });
-    containment_reduction.do!(|min_containment| {
-        assert!(state.containment_reduction() >= min_containment, EContainmentBelowMin)
     });
 }
 
@@ -210,18 +282,27 @@ public fun capacity_changed_fields(capacity_changed: &CapacityChanged): (ID, u64
     (capacity_changed.entity_id, capacity_changed.capacity_mw)
 }
 
-/// `(entity_id, generator_id, max_output_mw, containment_reduction, base_fuel_rate)`.
+/// `(entity_id, generator_id, fuel_type, selectable_fuel_types, max_output_mw,
+/// impulse_limit, volatility_limit)`.
 #[test_only]
 public fun generator_connected_fields(
     generator_connected: &GeneratorConnected,
-): (ID, u64, u64, u64, u64) {
+): (ID, u64, u64, vector<u64>, u64, u64, u64) {
     (
         generator_connected.entity_id,
         generator_connected.generator_id,
+        generator_connected.fuel_type,
+        generator_connected.selectable_fuel_types,
         generator_connected.max_output_mw,
-        generator_connected.containment_reduction,
-        generator_connected.base_fuel_rate,
+        generator_connected.impulse_limit,
+        generator_connected.volatility_limit,
     )
+}
+
+/// `(entity_id, generator_id, fuel_type)`.
+#[test_only]
+public fun generator_fuel_type_changed_fields(changed: &GeneratorFuelTypeChanged): (ID, u64, u64) {
+    (changed.entity_id, changed.generator_id, changed.fuel_type)
 }
 
 /// `(entity_id, generator_id)`.

@@ -4,10 +4,9 @@ import { componentIdFromName } from '../src/packages/component-id.js'
 import { deriveObjectId, enableAdminAction } from '../src/packages/core.js'
 import {
   depositFuelRequirement,
-  installFuel,
+  installFuelBay,
   installGenerator,
   operateGridRequirement,
-  POWER_SCALE,
 } from '../src/packages/power.js'
 import { loadScriptContext } from './context.js'
 import { loadSeedFiles } from './seed-files.js'
@@ -16,10 +15,13 @@ import { loadSeedFiles } from './seed-files.js'
 // already connected to the grid when the storage unit was created.
 const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
-const OUTPUT = 15n * POWER_SCALE
-const CONTAINMENT_REDUCTION = 10n * POWER_SCALE
-const BASE_FUEL_RATE = POWER_SCALE
-const FUEL_CAPACITY = 1000n * POWER_SCALE
+const OUTPUT = 15n
+// Fuel type 7, impulse limit 100 and volatility limit 0.0001 (at POWER_SCALE):
+// any type-7 fuel with volatility gives full output.
+const FUEL_TYPE = 7n
+const IMPULSE_LIMIT = 1_000_000n
+const VOLATILITY_LIMIT = 1n
+const FUEL_CAPACITY = 1000n
 
 const { repoRoot, config, client, keypair } = loadScriptContext()
 const { resources } = loadSeedFiles(repoRoot)
@@ -44,11 +46,12 @@ for (const [alias, unit] of entries) {
   const entity = tx.object(entityId)
   installGenerator(tx, config, entity, {
     componentId: GENERATOR_ID,
+    fuelType: FUEL_TYPE,
     maxOutputMw: OUTPUT,
-    containmentReduction: CONTAINMENT_REDUCTION,
-    baseFuelRate: BASE_FUEL_RATE,
+    impulseLimit: IMPULSE_LIMIT,
+    volatilityLimit: VOLATILITY_LIMIT,
   })
-  installFuel(tx, config, entity, {
+  installFuelBay(tx, config, entity, {
     componentId: FUEL_ID,
     capacity: FUEL_CAPACITY,
   })
@@ -56,6 +59,9 @@ for (const [alias, unit] of entries) {
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'set_generator', [
+    operateGridRequirement(tx, config),
+  ])
+  enableAdminAction(tx, config, entity, 'set_fuel_bay', [
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'set_priority', [

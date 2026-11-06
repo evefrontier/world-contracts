@@ -11,6 +11,7 @@ use power::{
         power,
         setup_entity,
         starting_fuel,
+        starting_units,
         temp_action,
         owner
     },
@@ -19,9 +20,10 @@ use power::{
 use sui::{clock::{Self, Clock}, test_scenario as ts};
 
 const MOD_A: u64 = 401;
-const OUTPUT: u64 = 150_000;
-const CONTAINMENT: u64 = 100_000;
-const DRAW: u64 = 100_000;
+const OUTPUT: u64 = 15;
+/// Impulse limit 100, above the test fuel's impulse, so it never caps.
+const IMPULSE_LIMIT: u64 = 1_000_000;
+const DRAW: u64 = 10;
 const IMPULSE: u64 = 900_000;
 
 /// A grid with no power sources, off.
@@ -72,16 +74,41 @@ fun uninstall_grid(scenario: &mut ts::Scenario, entity_id: ID) {
     ts::return_shared(entity);
 }
 
-/// `(on, fuel_quantity_at_last_settled, capacity_mw)` of the installed grid.
+/// `(on, settled fuel in online bays, capacity_mw)` of the installed grid.
 fun grid_flags(scenario: &mut ts::Scenario, entity_id: ID): (bool, u64, u64) {
     ts::next_tx(scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let grid = power_grid::power_grid(&entity);
     let on = grid.on();
-    let fuel = grid.fuel_quantity_at_last_settled();
+    let fuel = grid.online_fuel().quantity();
     let capacity = grid.capacity_mw();
     ts::return_shared(entity);
     (on, fuel, capacity)
+}
+
+// === Overflow ===
+
+/// Two Generators at `u64::MAX` saturate capacity instead of aborting settle.
+#[test]
+fun huge_outputs_saturate_capacity() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let max = std::u64::max_value!();
+    let entity_id = setup_entity(
+        &mut scenario,
+        vector[max, max],
+        vector[IMPULSE_LIMIT, IMPULSE_LIMIT],
+        &clock,
+    );
+    grid_scenario::power_up(&mut scenario, entity_id, 2, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+
+    let (_, _, capacity) = grid_flags(&mut scenario, entity_id);
+    assert!(capacity == max);
+
+    clock.destroy_for_testing();
+    scenario.end();
 }
 
 // === Install and uninstall ===
@@ -202,7 +229,21 @@ fun uninstall_with_generator_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+    uninstall_grid(&mut scenario, entity_id);
+
+    abort
+}
+
+/// An uninstalled bay's stash would be lost with the grid, so the grid stays.
+#[test, expected_failure(abort_code = power_grid::EFuelStashed)]
+fun uninstall_with_stashed_fuel_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = grid_scenario::setup_empty_grid(&mut scenario, 2, &clock);
+    grid_scenario::install_fuel(&mut scenario, entity_id, 9_002, 100, &clock);
+    grid_scenario::uninstall_fuel(&mut scenario, entity_id, 9_002, &clock);
     uninstall_grid(&mut scenario, entity_id);
 
     abort
@@ -275,7 +316,7 @@ fun check_aborts_when_fuel_below() {
         entity_id,
         power_grid::power_grid_requirement(
             false,
-            option::some(starting_fuel() + 1),
+            option::some(starting_units() + 1),
             option::none(),
             0,
             option::none(),
@@ -337,7 +378,7 @@ fun check_aborts_when_used_above() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[CONTAINMENT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
     grid_scenario::power_up(&mut scenario, entity_id, 1, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
     grid_scenario::set_desired(&mut scenario, entity_id, MOD_A, true, &clock);

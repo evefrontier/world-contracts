@@ -289,6 +289,17 @@ fun new_zero_id_aborts() {
 - [ ] Handlers `take_next<T>` → enforce `requirement.data()` → mutate, in that order?
 - [ ] Every persisted struct asserts `version == VERSION` on entry?
 - [ ] Extension data stored as dynamic fields with typed keys, not new `Entity` fields?
+
+**Data structures** 
+
+- [ ] Every collection's worst-case size stated, with what bounds it?
+- [ ] Inline collections (`vector`, `VecSet`, `VecMap`) bounded to tens or hundreds and well
+      under 256KB; anything larger or user-driven is a `Table`/`Bag` or similar?
+- [ ] No full scans or nested loops on hot paths; reverse indexes or counters used instead?
+- [ ] Dynamic field accesses per transaction counted against the 1,000 limit (including
+      `has_component` / `contains` inside loops)?
+- [ ] Teardown reclaims every entry, or the cost of stranding entries is accepted
+      explicitly?
 - [ ] `Request`/`Frame` declare no abilities; constructors `public(package)`?
 - [ ] BCS decode mirrors encode field order exactly?
 

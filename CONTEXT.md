@@ -129,8 +129,14 @@ Concrete `T` values installed on Entities. Migrated from the legacy assembly mod
   - **Settle** — burn the fuel used since the last settle and recompute grants. Writes settle
     first. Views (`projected_fuel`, `projected_status`, `module_draw`) show live values as of now.
     Stored values update on the next transaction, so indexers and clients read the views.
-  - **Fuel factor** — `impulse / max(1, burden / containment_reduction)`, clamped to 1–100.
-    Each online Generator burns `load_share / factor` fuel units per second.
+  - **Fuel type** — each fuel bay holds one type, set by its first deposit and cleared when it
+    runs dry. Each Generator burns one type and never switches by itself.
+  - **Pool** — the online bays of one fuel type. They burn in proportion and run dry together.
+  - **Generator output** — `max_output_mw × min(pool volatility ÷ volatility_limit, 1)`, or 0
+    while its pool is empty. Load splits across Generators by output; each burns
+    `its load ÷ min(pool impulse, impulse_limit)` fuel units per second. Burden plays no part.
+  - **Run-out step** — when a pool runs dry between settles, settle and views stop at that
+    moment, recompute capacity and grants, and carry on.
   - **SCALE** — MW, fuel quantity, and fuel stats are fixed-point `u64` values times 10_000.
 - *Planned:* Access control, Transport, Weapon, Creation tag, KillMail.
   Each is a component type with its own Requirement types, handlers, and PTB templates.

@@ -1,14 +1,13 @@
 /// Pure fuel math. No grid state: callers pass the numbers and get a number back.
-/// Power, fuel and fuel stats are fixed point at `SCALE` (4 decimals).
+/// Power comes in as plain integers. Fuel quantity, stats, rates and burn are
+/// fixed point at `SCALE` (4 decimals), so stats keep fractions and a short
+/// settle still burns a fraction.
 module power::fuel_math;
 
 // === Constants ===
 
 const SCALE: u64 = 10_000;
 const MS_PER_SECOND: u64 = 1_000;
-/// Fuel factor bounds, matching the game client: [1, 100] at `SCALE`.
-const MIN_FUEL_FACTOR: u64 = 10_000;
-const MAX_FUEL_FACTOR: u64 = 1_000_000;
 
 // === Public Functions ===
 
@@ -16,15 +15,28 @@ public fun scale(): u64 {
     SCALE
 }
 
-/// Fuel burned per second of load: `impulse / max(1, burden / containment_reduction)`,
-/// clamped to [1, 100]. All values at `SCALE`.
-public fun fuel_factor(impulse: u64, containment_burden: u64, containment_reduction: u64): u64 {
-    let reduction = containment_reduction.max(SCALE) as u128;
-    let burden_ratio = ((containment_burden as u128) * (SCALE as u128) / reduction).max(
-        SCALE as u128,
-    );
-    let factor = (impulse as u128) * (SCALE as u128) / burden_ratio;
-    (factor.min(MAX_FUEL_FACTOR as u128) as u64).max(MIN_FUEL_FACTOR)
+// TODO: the stand-ins below are a sharp bend; swap for the smooth curve once
+// its formula and precision are shared.
+
+/// Impulse a Generator can use from its pool: `min(pool impulse, impulse_limit)`, at `SCALE`.
+public fun usable_impulse(pool_impulse: u64, impulse_limit: u64): u64 {
+    pool_impulse.min(impulse_limit)
+}
+
+/// Share of rated output the pool's volatility allows:
+/// `min(volatility × SCALE ÷ volatility_limit, SCALE)`, at `SCALE`. Any
+/// volatility above zero gives a share of at least 1, so the fuel still burns.
+public fun volatility_share(pool_volatility: u64, volatility_limit: u64): u64 {
+    let share = (pool_volatility as u128) * (SCALE as u128) / (volatility_limit as u128);
+    let share = (share.min(SCALE as u128)) as u64;
+    if (pool_volatility > 0) share.max(1) else share
+}
+
+/// Plain MW a Generator sends out at `share` (at `SCALE`): `max_output_mw × share ÷ SCALE`,
+/// floored, but at least 1 MW while both are above zero.
+public fun generator_output(max_output_mw: u64, share: u64): u64 {
+    let output = ((max_output_mw as u128) * (share as u128) / (SCALE as u128)) as u64;
+    if (max_output_mw > 0 && share > 0) output.max(1) else output
 }
 
 // === Package Functions ===
@@ -42,45 +54,70 @@ public(package) fun blend(
     (total / ((pooled_quantity + added_quantity) as u128)) as u64
 }
 
-/// One online Generator's burn over `elapsed_ms`. Rounds up.
-/// Zero impulse has no fuel factor, so the Generator burns its base rate instead.
+/// One online Generator's burn over `elapsed_ms`, at `SCALE`, rounded up:
+/// its load (`load × output ÷ capacity_mw`) over `usable_impulse` (at `SCALE`).
+/// The share stays in the numerator, so a load that does not split evenly
+/// still burns. Capped at `u64::MAX`, so a sum over generators fits a u128.
 public(package) fun generator_burn(
-    impulse: u64,
-    containment_burden: u64,
+    usable_impulse: u64,
     capacity_mw: u64,
-    max_output_mw: u64,
-    containment_reduction: u64,
-    base_fuel_rate: u64,
+    output_mw: u64,
     load: u128,
     elapsed_ms: u128,
 ): u128 {
-    if (impulse == 0) {
-        return divide_round_up((base_fuel_rate as u128) * elapsed_ms, MS_PER_SECOND as u128)
-    };
-    let factor = fuel_factor(impulse, containment_burden, containment_reduction);
-    // Share stays in the numerator. Dividing it off first drops a nonzero load
-    // when that load does not split evenly across generators.
+    // One `SCALE` lifts plain MW to fuel units, the other cancels the impulse's.
     let numerator =
-        (load as u256) * (max_output_mw as u256) * (SCALE as u256) * (elapsed_ms as u256);
-    let denominator = (capacity_mw as u256) * (factor as u256) * (MS_PER_SECOND as u256);
-    (((numerator + denominator - 1) / denominator) as u128)
-}
-
-// === Private Functions ===
-
-fun divide_round_up(numerator: u128, denominator: u128): u128 {
-    (numerator + denominator - 1) / denominator
+        (load as u256) * (output_mw as u256) * ((SCALE * SCALE) as u256) * (elapsed_ms as u256);
+    let denominator = (capacity_mw as u256) * (usable_impulse as u256) * (MS_PER_SECOND as u256);
+    let burn = (numerator + denominator - 1) / denominator;
+    (burn.min(std::u64::max_value!() as u256)) as u128
 }
 
 // === Test Functions ===
 
-/// Load 1 split across two equal generators is a half share. It must still burn.
+/// 1 MW split across two equal generators at impulse 1: each burns 0.5 a second.
 #[test]
-fun fractional_generator_share_still_burns() {
-    let one_second = generator_burn(10_000, 10_000, 2, 1, 10_000, 0, 1, 1_000);
-    let two_seconds = generator_burn(10_000, 10_000, 2, 1, 10_000, 0, 1, 2_000);
-    let three_seconds = generator_burn(10_000, 10_000, 2, 1, 10_000, 0, 1, 3_000);
-    assert!(one_second == 1);
-    assert!(two_seconds == 1);
-    assert!(three_seconds == 2);
+fun half_share_burns_half_the_load() {
+    assert!(generator_burn(10_000, 2, 1, 1, 1) == 5);
+    assert!(generator_burn(10_000, 2, 1, 1, 1_000) == 5_000);
+    assert!(generator_burn(10_000, 2, 1, 1, 3_000) == 15_000);
+}
+
+/// 10 MW at impulse 46.6666 burns 0.2143 a second; burden plays no part.
+#[test]
+fun scaled_impulse_burns() {
+    assert!(generator_burn(466_666, 10, 10, 10, 1_000) == 2_143);
+}
+
+/// A tiny impulse with a huge load caps at `u64::MAX`.
+#[test]
+fun burn_caps_at_u64_max() {
+    let max = std::u64::max_value!();
+    assert!(generator_burn(1, max, max, max as u128, 1_000_000) == max as u128);
+}
+
+/// The pool's impulse is used up to the Generator's limit.
+#[test]
+fun usable_impulse_caps_at_limit() {
+    assert!(usable_impulse(250_000, 500_000) == 250_000);
+    assert!(usable_impulse(900_000, 500_000) == 500_000);
+}
+
+/// Share scales with volatility up to the limit, then stays at `SCALE`.
+#[test]
+fun volatility_share_caps_at_scale() {
+    assert!(volatility_share(5_000, 10_000) == 5_000);
+    assert!(volatility_share(10_000, 10_000) == 10_000);
+    assert!(volatility_share(30_000, 10_000) == 10_000);
+    assert!(volatility_share(0, 10_000) == 0);
+    assert!(volatility_share(1, 30_000) == 1);
+}
+
+/// Output is rated × share, floored, but at least 1 MW for any share.
+#[test]
+fun generator_output_floors() {
+    assert!(generator_output(15, 10_000) == 15);
+    assert!(generator_output(15, 5_000) == 7);
+    assert!(generator_output(15, 1) == 1);
+    assert!(generator_output(15, 0) == 0);
 }
