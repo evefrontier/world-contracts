@@ -350,7 +350,9 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
 }
 
 /// Shut the Creation down when it loses its Shell: clear every module's desired
-/// state, and take every generator and bay offline.
+/// state, and take every generator and bay offline. `GridShutDown` stands for
+/// all of it: no `GeneratorToggled`, `FuelBayToggled` or `CapacityChanged`
+/// follows, and capacity is 0 after.
 /// Unlike Power Off, nothing comes back by itself; the owner switches things on
 /// again. `on` is unchanged. The service calls it in the same transaction as the
 /// Layout edit that removes the Shell. The request needs a
@@ -936,11 +938,11 @@ public fun max_amount(rule: &FuelRequirement): Option<u64> {
 /// Firm MW the desired-online modules need. Above `capacity_mw` it
 /// overloads the grid and every power module goes off.
 public fun desired_firm_mw(grid: &PowerGrid): u64 {
-    let mut total = 0;
+    let mut total = 0u64;
     grid.modules.length().do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
         if (state.desired_online && state.module_spec.draw_kind == DrawKind::Firm) {
-            total = total + state.module_spec.power_req;
+            total = total.saturating_add(state.module_spec.power_req);
         };
     });
     total
@@ -1007,8 +1009,8 @@ public(package) fun settle(grid: &mut PowerGrid, clock: &Clock) {
 
 /// Recompute every module's grant from desired state and effective capacity.
 /// Firm desired modules gate the grid: if their costs fit, each draws its
-/// `power_req`; if not, nothing draws. Desired Elastic modules share the
-/// leftover in proportion to their asks, each up to its `power_req`. Emits
+/// `power_req`; if not, nothing draws. Desired Elastic modules take the
+/// leftover in connect order, each its `power_req` or whatever is left. Emits
 /// `DrawChanged` for each module whose grant moved. Walks the map by index, so
 /// it costs O(n).
 public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
@@ -1272,37 +1274,31 @@ public(package) fun draw_kind_from_tag(tag: u32): DrawKind {
 
 // === Private Functions ===
 
-/// An Elastic module's grant: its full ask while all asks fit the leftover,
-/// else `leftover × ask ÷ asks`, rounded down.
-fun elastic_share(ask: u64, leftover: u64, asks: u64): u64 {
-    if (asks <= leftover) return ask;
-    ((ask as u128) * (leftover as u128) / (asks as u128)) as u64
-}
-
 /// Each module's grant at `capacity`, by index into `modules`. Desired Firm
 /// modules gate the grid: if their costs fit, each draws its `power_req`; if
-/// not, nothing draws. Desired Elastic modules share the leftover in
-/// proportion to their asks, each up to its `power_req`.
+/// not, nothing draws. Desired Elastic modules then take the leftover in
+/// connect order, each its full `power_req` or whatever is left.
 fun draws_at(grid: &PowerGrid, capacity: u64): vector<u64> {
-    let mut firm_cost = 0;
-    let mut elastic_asks = 0;
+    let mut firm_cost = 0u64;
     grid.modules.length().do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
-        if (state.desired_online) {
-            let power_req = state.module_spec.power_req;
-            if (state.module_spec.draw_kind == DrawKind::Firm) firm_cost = firm_cost + power_req
-            else elastic_asks = elastic_asks + power_req;
+        if (state.desired_online && state.module_spec.draw_kind == DrawKind::Firm) {
+            firm_cost = firm_cost.saturating_add(state.module_spec.power_req);
         };
     });
     let firm_fits = firm_cost <= capacity;
-    let leftover = if (firm_fits) capacity - firm_cost else 0;
+    let mut leftover = if (firm_fits) capacity - firm_cost else 0;
     vector::tabulate!(grid.modules.length(), |i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
         let module_spec = state.module_spec;
         if (!state.desired_online) 0
         else if (module_spec.draw_kind == DrawKind::Firm) {
             if (firm_fits) module_spec.power_req else 0
-        } else elastic_share(module_spec.power_req, leftover, elastic_asks)
+        } else {
+            let grant = module_spec.power_req.min(leftover);
+            leftover = leftover - grant;
+            grant
+        }
     })
 }
 
@@ -1495,10 +1491,10 @@ fun first_run_out(rates: &vector<PoolRate>, capacity: u64, load: u64, remaining:
 
 /// The grid's capacity with `bays`: the sum of each Generator's output.
 fun capacity_of(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): u64 {
-    let mut total = 0;
+    let mut total = 0u64;
     grid.generators.length().do!(|i| {
         let (_, state) = grid.generators.get_entry_by_idx(i);
-        total = total + output_of(bays, state);
+        total = total.saturating_add(output_of(bays, state));
     });
     total
 }

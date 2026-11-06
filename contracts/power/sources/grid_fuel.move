@@ -7,7 +7,7 @@
 module power::grid_fuel;
 
 use core::{access_cap, admin_service, entity::Entity, request::Request, requirement::Requirement};
-use power::{fuel_bay, power_grid::{Self, Fuel, PowerGrid}};
+use power::{fuel_bay, grid_generator, power_grid::{Self, Fuel, PowerGrid}};
 use std::string::String;
 use sui::{bcs, clock::Clock, event};
 
@@ -52,6 +52,8 @@ const EZeroImpulse: vector<u8> = b"Fuel with zero impulse holds no energy";
 const EFuelTypeMismatch: vector<u8> = b"Fuel bay holds another fuel type until it is empty";
 #[error(code = 18)]
 const EBayShort: vector<u8> = b"Fuel bay holds less fuel than the siphon";
+#[error(code = 19)]
+const EZeroVolatility: vector<u8> = b"Fuel with zero volatility gives no output";
 
 // === Structs ===
 
@@ -333,11 +335,13 @@ public fun withdraw_fuel(
         power_grid::withdraw_fuel_permit(),
     );
     assert!(quantity > 0, EZeroFuel);
+    let before_mw = power_grid::capacity_mw(grid);
     grid.settle(clock);
     let held = grid.pool_fuel(fuel_type).quantity();
     assert!(held >= quantity, EFuelShort);
     grid.take_from_pool(fuel_type, quantity);
     grid.regrant(entity_id);
+    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     event::emit(FuelWithdrawn { entity_id, fuel_type, quantity, remaining: held - quantity });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
@@ -362,10 +366,12 @@ public fun siphon(
     );
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     assert!(quantity > 0, EZeroFuel);
+    let before_mw = power_grid::capacity_mw(grid);
     grid.settle(clock);
     assert!(grid.bay_state(fuel_bay_id).fuel().quantity() >= quantity, EBayShort);
     let taken = grid.take_from_bay(fuel_bay_id, quantity);
     grid.regrant(entity_id);
+    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     event::emit(FuelSiphoned {
         entity_id,
         fuel_bay_id,
@@ -411,6 +417,7 @@ public fun set_fuel_bay(
         power_grid::operate_grid_permit(),
     );
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
+    let before_mw = power_grid::capacity_mw(grid);
     grid.settle(clock);
     let already_online = grid.bay_state(fuel_bay_id).bay_online();
     if (online) assert!(!already_online, EFuelBayAlreadyOnline)
@@ -418,6 +425,7 @@ public fun set_fuel_bay(
     grid.set_bay_online(fuel_bay_id, online);
     event::emit(FuelBayToggled { entity_id, fuel_bay_id, online });
     grid.regrant(entity_id);
+    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     frame.require(access_cap::owner_requirement());
     req.enqueue(frame);
 }
@@ -448,8 +456,10 @@ public fun deposit_fuel(
     );
     assert!(amount > 0, EZeroFuel);
     assert!(impulse > 0, EZeroImpulse);
+    assert!(volatility > 0, EZeroVolatility);
     enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
+    let before_mw = power_grid::capacity_mw(grid);
     grid.settle(clock);
     let bay = grid.bay_state(fuel_bay_id);
     bay.fuel().fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
@@ -479,6 +489,7 @@ public fun deposit_fuel(
         resulting_thermal_inefficiency: fuel.thermal_inefficiency(),
     });
     grid.regrant(entity_id);
+    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     frame.require(access_cap::owner_requirement());
     frame.require(admin_service::sponsor_requirement());
     req.enqueue(frame);
@@ -591,9 +602,11 @@ fun detach(
     let entity_id = entity.id();
     let req = fuel_bay::uninstall(entity, fuel_bay_id, ctx);
     let grid = power_grid::grid_mut(entity);
+    let before_mw = power_grid::capacity_mw(grid);
     grid.settle(clock);
     let fuel = grid.disconnect_fuel_bay(fuel_bay_id);
     grid.regrant(entity_id);
+    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     event::emit(FuelBayDetached { entity_id, fuel_bay_id });
     (req, fuel)
 }

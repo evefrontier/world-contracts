@@ -24,15 +24,19 @@ public fun usable_impulse(pool_impulse: u64, impulse_limit: u64): u64 {
 }
 
 /// Share of rated output the pool's volatility allows:
-/// `min(volatility × SCALE ÷ volatility_limit, SCALE)`, at `SCALE`.
+/// `min(volatility × SCALE ÷ volatility_limit, SCALE)`, at `SCALE`. Any
+/// volatility above zero gives a share of at least 1, so the fuel still burns.
 public fun volatility_share(pool_volatility: u64, volatility_limit: u64): u64 {
     let share = (pool_volatility as u128) * (SCALE as u128) / (volatility_limit as u128);
-    (share.min(SCALE as u128)) as u64
+    let share = (share.min(SCALE as u128)) as u64;
+    if (pool_volatility > 0) share.max(1) else share
 }
 
-/// Plain MW a Generator sends out at `share` (at `SCALE`): `max_output_mw × share ÷ SCALE`, floored.
+/// Plain MW a Generator sends out at `share` (at `SCALE`): `max_output_mw × share ÷ SCALE`,
+/// floored, but at least 1 MW while both are above zero.
 public fun generator_output(max_output_mw: u64, share: u64): u64 {
-    ((max_output_mw as u128) * (share as u128) / (SCALE as u128)) as u64
+    let output = ((max_output_mw as u128) * (share as u128) / (SCALE as u128)) as u64;
+    if (max_output_mw > 0 && share > 0) output.max(1) else output
 }
 
 // === Package Functions ===
@@ -106,13 +110,14 @@ fun volatility_share_caps_at_scale() {
     assert!(volatility_share(10_000, 10_000) == 10_000);
     assert!(volatility_share(30_000, 10_000) == 10_000);
     assert!(volatility_share(0, 10_000) == 0);
-    assert!(volatility_share(1, 30_000) == 0);
+    assert!(volatility_share(1, 30_000) == 1);
 }
 
-/// Output is rated × share, floored.
+/// Output is rated × share, floored, but at least 1 MW for any share.
 #[test]
 fun generator_output_floors() {
     assert!(generator_output(15, 10_000) == 15);
     assert!(generator_output(15, 5_000) == 7);
+    assert!(generator_output(15, 1) == 1);
     assert!(generator_output(15, 0) == 0);
 }

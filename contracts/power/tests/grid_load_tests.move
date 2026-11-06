@@ -281,10 +281,10 @@ fun elastic_does_not_block_firm() {
     scenario.end();
 }
 
-/// Elastic asks that overflow the leftover share it by ask: 5 MW left after
-/// Firm, asks of 6 and 4 get 3 and 2.
+/// Elastic asks that overflow the leftover fill in connect order: 5 MW left
+/// after Firm, asks of 6 and 4 get 5 and 0.
 #[test]
-fun elastic_asks_share_leftover_in_proportion() {
+fun elastic_first_ask_takes_the_leftover() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
@@ -297,8 +297,30 @@ fun elastic_asks_share_leftover_in_proportion() {
     set_desired(&mut scenario, entity_id, MOD_F, true, &clock);
 
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
-    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == 3);
-    assert!(draw(&mut scenario, entity_id, MOD_F, &clock) == 2);
+    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == 5);
+    assert!(draw(&mut scenario, entity_id, MOD_F, &clock) == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The first Elastic ask is met in full and the next gets what is left:
+/// 5 MW left after Firm, asks of 4 and 4 get 4 and 1.
+#[test]
+fun elastic_next_ask_gets_what_is_left() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    install_module(&mut scenario, entity_id, MOD_E, elastic_power(4), &clock);
+    install_module(&mut scenario, entity_id, MOD_F, elastic_power(4), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    set_desired(&mut scenario, entity_id, MOD_E, true, &clock);
+    set_desired(&mut scenario, entity_id, MOD_F, true, &clock);
+
+    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == 4);
+    assert!(draw(&mut scenario, entity_id, MOD_F, &clock) == 1);
 
     clock.destroy_for_testing();
     scenario.end();

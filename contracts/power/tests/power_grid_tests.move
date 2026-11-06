@@ -86,6 +86,31 @@ fun grid_flags(scenario: &mut ts::Scenario, entity_id: ID): (bool, u64, u64) {
     (on, fuel, capacity)
 }
 
+// === Overflow ===
+
+/// Two Generators at `u64::MAX` saturate capacity instead of aborting settle.
+#[test]
+fun huge_outputs_saturate_capacity() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let max = std::u64::max_value!();
+    let entity_id = setup_entity(
+        &mut scenario,
+        vector[max, max],
+        vector[IMPULSE_LIMIT, IMPULSE_LIMIT],
+        &clock,
+    );
+    grid_scenario::power_up(&mut scenario, entity_id, 2, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+
+    let (_, _, capacity) = grid_flags(&mut scenario, entity_id);
+    assert!(capacity == max);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
 // === Install and uninstall ===
 
 #[test]

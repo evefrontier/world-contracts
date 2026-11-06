@@ -579,6 +579,24 @@ fun set_fuel_bay_toggles_online() {
     scenario.end();
 }
 
+/// Taking the only fuelled bay offline drops capacity to 0 and says so.
+#[test]
+fun set_fuel_bay_emits_capacity_changed() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = loaded(&mut scenario, &clock);
+
+    set_fuel_bay(&mut scenario, entity_id, fuel_bay_id(), false, &clock);
+
+    let changed = event::events_by_type<power::grid_generator::CapacityChanged>();
+    let (_, capacity_mw) = changed[changed.length() - 1].capacity_changed_fields();
+    assert!(capacity_mw == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
 #[test, expected_failure(abort_code = grid_fuel::EFuelBayAlreadyOnline)]
 fun set_fuel_bay_online_twice_aborts() {
     let mut scenario = ts::begin(admin());
@@ -624,7 +642,16 @@ fun offline_bay_keeps_its_fuel() {
     let mut clock = clock::create_for_testing(scenario.ctx());
     let entity_id = loaded(&mut scenario, &clock);
     install_fuel(&mut scenario, entity_id, FUEL_B, BAY_B_CAPACITY, &clock);
-    deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 7, impulse(), burden(), 0, &clock);
+    deposit_fuel_into(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        7,
+        impulse(),
+        burden(),
+        volatility(),
+        &clock,
+    );
 
     clock.set_for_testing(10_000);
     assert!(projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock) == 70_000);
@@ -782,7 +809,16 @@ fun deposit_into_unknown_bay_aborts() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    deposit_fuel_into(&mut scenario, entity_id, FUEL_B, 7, impulse(), burden(), 0, &clock);
+    deposit_fuel_into(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        7,
+        impulse(),
+        burden(),
+        volatility(),
+        &clock,
+    );
 
     abort
 }
@@ -890,6 +926,19 @@ fun deposit_zero_impulse_aborts() {
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
 
     deposit_typed(&mut scenario, entity_id, fuel_bay_id(), fuel_type(), 7, 0, thermal(), &clock);
+
+    abort
+}
+
+/// Zero-volatility fuel gives no output and is refused.
+#[test, expected_failure(abort_code = grid_fuel::EZeroVolatility)]
+fun deposit_zero_volatility_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+
+    deposit_fuel_into(&mut scenario, entity_id, fuel_bay_id(), 7, impulse(), burden(), 0, &clock);
 
     abort
 }

@@ -246,6 +246,18 @@ public fun assert_generator(entity: &mut Entity, req: &mut Request) {
     frame.destroy_empty_frame();
 }
 
+// === Package Functions ===
+
+/// Emit `CapacityChanged` if the grid's capacity is no longer `before_mw`.
+public(package) fun emit_if_capacity_changed(
+    entity_id: ID,
+    grid: &power_grid::PowerGrid,
+    before_mw: u64,
+) {
+    let capacity_mw = power_grid::capacity_mw(grid);
+    if (capacity_mw != before_mw) event::emit(CapacityChanged { entity_id, capacity_mw });
+}
+
 // === Private Functions ===
 
 /// Abort if a Generator is short of a `GeneratorRequirement`.

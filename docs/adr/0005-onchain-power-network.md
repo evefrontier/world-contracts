@@ -62,8 +62,8 @@ never refused, even with no fuel. The grant is separate:
 - **Firm:** every desired-online Firm module draws `power_req`, or none do.
   If they don't fit, every module that needs power goes offline. Generators and
   bays stay online. There is no built-in shed order.
-- **Elastic:** shares what is left after Firm, in proportion to each ask, up to
-  its `power_req`.
+- **Elastic:** takes what is left after Firm in connect order: the first ask
+  gets its full `power_req`, the next gets what is left, and so on.
 
 Desired state survives an overload and Power Off, so modules come back by
 themselves once everything fits again.
@@ -208,8 +208,8 @@ public struct GeneratorState has copy, drop, store {
 | What | Formula |
 |---|---|
 | Usable impulse | `min(pool impulse, impulse_limit)` |
-| Volatility share | `min(pool volatility × SCALE ÷ volatility_limit, SCALE)` |
-| Output | `max_output_mw × share ÷ SCALE` (floor) while online and its pool holds fuel, else `0` |
+| Volatility share | `min(pool volatility × SCALE ÷ volatility_limit, SCALE)`, at least 1 while volatility > 0 |
+| Output | `max_output_mw × share ÷ SCALE` (floor, at least 1 MW while share > 0) while online and its pool holds fuel, else `0` |
 | Load share | `load × output ÷ power limit`, `load = min(used MW, power limit)` |
 | Burn | `ceil(load share × SCALE² × elapsed_ms ÷ (usable impulse × 1000))` |
 
@@ -320,7 +320,8 @@ Requirements:
 Power Off (player-signed) keeps intent. `shut_down` clears it, so everything stays off until the owner switches it on.
 `shut_down` is an admin action using `shut_down_requirement()`: it settles,
 clears every module's desired state, takes every
-generator and bay offline, leaves `on` unchanged, and emits `GridShutDown`. The
+generator and bay offline, leaves `on` unchanged, and emits `GridShutDown`, which
+stands for every toggle and the drop to 0 capacity (no per-item events). The
 service calls it in the same PTB as the Layout edit that removes the Shell, so
 `power` keeps no dependency on `creation`.
 
