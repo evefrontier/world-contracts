@@ -336,7 +336,7 @@ public fun withdraw_fuel(
     );
     assert!(quantity > 0, EZeroFuel);
     let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     let held = grid.pool_fuel(fuel_type).quantity();
     assert!(held >= quantity, EFuelShort);
     grid.take_from_pool(fuel_type, quantity);
@@ -367,7 +367,7 @@ public fun siphon(
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     assert!(quantity > 0, EZeroFuel);
     let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     assert!(grid.bay_state(fuel_bay_id).fuel().quantity() >= quantity, EBayShort);
     let taken = grid.take_from_bay(fuel_bay_id, quantity);
     grid.regrant(entity_id);
@@ -418,7 +418,7 @@ public fun set_fuel_bay(
     );
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     let already_online = grid.bay_state(fuel_bay_id).bay_online();
     if (online) assert!(!already_online, EFuelBayAlreadyOnline)
     else assert!(already_online, EFuelBayAlreadyOffline);
@@ -460,7 +460,7 @@ public fun deposit_fuel(
     enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     let bay = grid.bay_state(fuel_bay_id);
     bay.fuel().fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
     let scaled = (amount as u128) * (power_grid::scale() as u128);
@@ -571,7 +571,7 @@ fun connect(
     let restored = if (moved.is_some()) moved else stash;
     let fuel = restored.destroy_or!(power_grid::empty_fuel());
     assert_fits(capacity, fuel.quantity() as u128);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.connect_fuel_bay(fuel_bay_id, capacity, containment_rating, fuel);
     grid.regrant(entity_id);
     event::emit(FuelBayAttached { entity_id, fuel_bay_id, capacity, containment_rating });
@@ -603,7 +603,7 @@ fun detach(
     let req = fuel_bay::uninstall(entity, fuel_bay_id, ctx);
     let grid = power_grid::grid_mut(entity);
     let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     let fuel = grid.disconnect_fuel_bay(fuel_bay_id);
     grid.regrant(entity_id);
     grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);

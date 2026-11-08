@@ -159,9 +159,20 @@ describe('power sharing (localnet)', () => {
       return readDraws(client, config, entityId)
     }
 
+    const switchOn = async () => {
+      const tx = new Transaction()
+      const target = tx.object(entityId)
+      const request = interact(tx, config, target, 'set_power_grid')
+      setPowerGrid(tx, config, target, request, tx.object(capId), true)
+      completeRequest(tx, config, target, request)
+      await expectSuccess(client, tx)
+      return readDraws(client, config, entityId)
+    }
+
     expect(await desire(['A', 'B'], true)).toMatchObject({ A: 70n, B: 20n })
     expect(await desire(['C'], true)).toMatchObject({ C: 10n })
     expect(await desire(['D'], true)).toMatchObject({ C: 0n, D: 10n })
+    // E overloads: the grid trips.
     expect(await desire(['E'], true)).toEqual({
       A: 0n,
       B: 0n,
@@ -169,7 +180,9 @@ describe('power sharing (localnet)', () => {
       D: 0n,
       E: 0n,
     })
-    expect(await desire(['E'], false)).toEqual({
+    // E off again: still tripped until the owner switches the grid on.
+    expect(await desire(['E'], false)).toMatchObject({ A: 0n, B: 0n, D: 0n })
+    expect(await switchOn()).toEqual({
       A: 70n,
       B: 20n,
       C: 0n,

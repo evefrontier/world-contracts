@@ -33,6 +33,8 @@ const EFuelTypeNotSelectable: vector<u8> = b"Fuel type is not one the Generator 
 const ESameFuelType: vector<u8> = b"Generator already burns this fuel type";
 #[error(code = 12)]
 const EGeneratorOnline: vector<u8> = b"Switch the Generator offline before changing its fuel type";
+#[error(code = 13)]
+const ETooManyGenerators: vector<u8> = b"Power grid has reached its maximum installed generators";
 
 // === Events ===
 
@@ -98,7 +100,11 @@ public fun install(
     let entity_id = entity.id();
     let req = generator::install(entity, component_id, name, ctx);
     let grid = power_grid::grid_mut(entity);
-    grid.settle(clock);
+    assert!(
+        power_grid::generators(grid).length() < power_grid::max_generators(),
+        ETooManyGenerators,
+    );
+    grid.settle(entity_id, clock);
     grid.connect_generator(
         component_id,
         fuel_type,
@@ -134,7 +140,7 @@ public fun uninstall(
     let entity_id = entity.id();
     let req = generator::uninstall(entity, generator_id, ctx);
     let grid = power_grid::grid_mut(entity);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.disconnect_generator(generator_id);
     if (was_online) {
         event::emit(CapacityChanged { entity_id, capacity_mw: power_grid::capacity_mw(grid) });
@@ -198,7 +204,7 @@ public fun set_generator(
         power_grid::operate_grid_permit(),
     );
     assert!(power_grid::generators(grid).contains(&generator_id), EGeneratorNotConnected);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     let already_online = power_grid::generators(grid).get(&generator_id).online();
     if (online) assert!(!already_online, EGeneratorAlreadyOnline)
     else assert!(already_online, EGeneratorAlreadyOffline);

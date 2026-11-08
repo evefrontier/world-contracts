@@ -221,7 +221,8 @@ fun desired_firm_module_draws_when_it_fits() {
 }
 
 /// Firm draws are all or nothing: when two desired Firm modules do not both fit,
-/// neither draws, and both draw again once one steps down.
+/// the grid trips and neither draws. Stepping one down leaves it tripped; the
+/// other draws once the owner switches the grid on.
 #[test]
 fun firm_modules_are_all_or_nothing() {
     let mut scenario = ts::begin(admin());
@@ -238,6 +239,8 @@ fun firm_modules_are_all_or_nothing() {
     assert!(draw(&mut scenario, entity_id, MOD_B, &clock) == 0);
 
     set_desired(&mut scenario, entity_id, MOD_B, false, &clock);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+    power(&mut scenario, entity_id, true, &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
 
     clock.destroy_for_testing();
@@ -352,12 +355,14 @@ fun overview_power_example() {
     set_desired(&mut scenario, entity_id, OV_D, true, &clock);
     assert!(draw(&mut scenario, entity_id, OV_D, &clock) == 10);
     assert!(draw(&mut scenario, entity_id, OV_C, &clock) == 0);
-    // E's 20 overloads: everything that needs power goes off.
+    // E's 20 overloads: the grid trips.
     set_desired(&mut scenario, entity_id, OV_E, true, &clock);
     let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
-    assert!(capacity == 100 && used == 0 && online.is_empty());
-    // E off again: the rest come back by themselves.
+    assert!(capacity == 0 && used == 0 && online.is_empty());
+    // E off again: still tripped until the owner switches the grid on.
     set_desired(&mut scenario, entity_id, OV_E, false, &clock);
+    assert!(draw(&mut scenario, entity_id, OV_A, &clock) == 0);
+    power(&mut scenario, entity_id, true, &clock);
     assert!(draw(&mut scenario, entity_id, OV_A, &clock) == 70);
     assert!(draw(&mut scenario, entity_id, OV_B, &clock) == 20);
     assert!(draw(&mut scenario, entity_id, OV_D, &clock) == 10);
@@ -367,7 +372,8 @@ fun overview_power_example() {
     scenario.end();
 }
 
-/// Intent is accepted with no power, and draws once the grid comes on.
+/// Intent is accepted with no power. Switching on before a Generator is online
+/// trips the grid; it draws once a Generator is online and the grid is on.
 #[test]
 fun desired_state_is_stored_without_power() {
     let mut scenario = ts::begin(admin());
@@ -383,8 +389,10 @@ fun desired_state_is_stored_without_power() {
     assert!(granted == 0);
 
     power(&mut scenario, entity_id, true, &clock);
-    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+    assert!(!power_grid_on(&mut scenario, entity_id));
     grid_scenario::set_generator(&mut scenario, entity_id, 0, true, &clock);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+    power(&mut scenario, entity_id, true, &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
 
     clock.destroy_for_testing();
@@ -416,7 +424,7 @@ fun power_off_drops_and_power_on_regrants() {
 }
 
 #[test]
-fun generator_offline_drops_and_online_regrants() {
+fun generator_offline_trips_until_power_on() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
@@ -427,6 +435,8 @@ fun generator_offline_drops_and_online_regrants() {
     grid_scenario::set_generator(&mut scenario, entity_id, 0, false, &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
     grid_scenario::set_generator(&mut scenario, entity_id, 0, true, &clock);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+    power(&mut scenario, entity_id, true, &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
 
     clock.destroy_for_testing();
@@ -496,9 +506,10 @@ fun depletion_is_view_only_until_settle() {
     scenario.end();
 }
 
-/// Refuelling regrants the desired module with no action from the owner.
+/// Running dry trips the grid. Refuelling leaves it tripped; the desired module
+/// draws again once the owner switches the grid on.
 #[test]
-fun refuel_regrants_desired_module() {
+fun refuel_leaves_grid_tripped() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -511,6 +522,9 @@ fun refuel_regrants_desired_module() {
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
 
     deposit_fuel(&mut scenario, entity_id, 100, impulse(), burden(), &clock);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+    assert!(!power_grid_on(&mut scenario, entity_id));
+    power(&mut scenario, entity_id, true, &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
 
     clock.destroy_for_testing();
@@ -575,4 +589,53 @@ fun online_check_aborts_after_fuel_runs_out() {
     );
 
     abort
+}
+
+/// Whether the grid is on, as stored.
+fun power_grid_on(scenario: &mut ts::Scenario, entity_id: ID): bool {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let on = power_grid::power_grid(&entity).on();
+    ts::return_shared(entity);
+    on
+}
+
+/// Power On while the desired Firm load still doesn't fit trips the grid again.
+#[test]
+fun power_on_that_does_not_fit_trips_again() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    install_module(&mut scenario, entity_id, MOD_B, firm_power(DRAW), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    set_desired(&mut scenario, entity_id, MOD_B, true, &clock);
+    assert!(!power_grid_on(&mut scenario, entity_id));
+
+    power(&mut scenario, entity_id, true, &clock);
+    assert!(!power_grid_on(&mut scenario, entity_id));
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// With no Firm load, running dry leaves nothing overloaded: the grid stays on.
+#[test]
+fun elastic_run_out_does_not_trip() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, elastic_power(DRAW), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+
+    clock.set_for_testing(DEPLETING_MS);
+    catch_up(&mut scenario, entity_id, MOD_A, &clock);
+    assert!(power_grid_on(&mut scenario, entity_id));
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+
+    clock.destroy_for_testing();
+    scenario.end();
 }

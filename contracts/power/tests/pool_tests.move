@@ -30,7 +30,7 @@ use power::{
         volatility,
         volatility_limit
     },
-    power_grid::{Self, DrawChanged, Fuel, PoolView, PowerStatus}
+    power_grid::{Self, DrawChanged, Fuel, PoolView, PowerStatus, PowerTripped}
 };
 use sui::{clock::{Self, Clock}, event, test_scenario as ts, vec_map::VecMap};
 
@@ -261,7 +261,7 @@ fun run_out_overloads_at_that_moment() {
 
     clock.set_for_testing(10_000);
     let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
-    assert!(capacity == OUTPUT && used == 0 && online.is_empty());
+    assert!(capacity == 0 && used == 0 && online.is_empty());
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
     assert!(own_left == starting_fuel() - 5_000);
     assert!(projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock) == 0);
@@ -270,6 +270,7 @@ fun run_out_overloads_at_that_moment() {
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     let changed = event::events_by_type<DrawChanged>();
     assert!(changed.length() == 1);
+    assert!(event::events_by_type<PowerTripped>().length() == 1);
     assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == own_left);
     let other = bay_fuel(&mut scenario, entity_id, FUEL_B);
     assert!(other.quantity() == 0 && other.fuel_type().is_none());

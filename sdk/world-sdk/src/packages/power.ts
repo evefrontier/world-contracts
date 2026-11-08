@@ -537,7 +537,10 @@ export function depositFuel(
   verifySponsor(tx, config, request)
 }
 
-/** Switch the grid on or off. Owner-gated. */
+/**
+ * Switch the grid on or off. Owner-gated. Switching on after a trip is the
+ * only way back; if the desired Firm load still doesn't fit, it trips again.
+ */
 export function setPowerGrid(
   tx: Transaction,
   config: WorldConfig,

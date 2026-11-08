@@ -664,8 +664,8 @@ fun offline_bay_keeps_its_fuel() {
     scenario.end();
 }
 
-/// With every fuel-holding bay offline the grid has no capacity; bringing the
-/// bay back regrants.
+/// With every fuel-holding bay offline the grid has no capacity and trips;
+/// bringing the bay back leaves it tripped until the owner switches it on.
 #[test]
 fun all_fuel_offline_cuts_power() {
     let mut scenario = ts::begin(admin());
@@ -680,6 +680,8 @@ fun all_fuel_offline_cuts_power() {
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
 
     set_fuel_bay(&mut scenario, entity_id, fuel_bay_id(), true, &clock);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+    grid_scenario::power(&mut scenario, entity_id, true, &clock);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
 
     clock.destroy_for_testing();

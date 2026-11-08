@@ -3,11 +3,13 @@
 /// Modules, generators and fuel bays connect when installed and disconnect when
 /// uninstalled. Online bays burn together, each in proportion to what it holds.
 /// Grants are derived from each module's desired state and the live capacity at
-/// every settle. Fuel bays live in `grid_fuel`, generator state in
+/// every settle. If desired Firm need exceeds capacity, the grid trips: `on`
+/// goes false and stays false until the owner switches it on. Fuel bays live in `grid_fuel`, generator state in
 /// `grid_generator`, and connect, disconnect and desired state in `grid_load`.
 /// Burn math lives in `fuel_math`. Every mutating path settles before it changes
-/// state. Power, bay capacity, fuel stats and every input are plain integers.
-/// Stored fuel quantity is fixed point at `fuel_math::scale` so burn stays exact.
+/// state. Power and bay capacity are plain integers. Fuel quantity and fuel
+/// stats are fixed point at `fuel_math::scale`, so a short settle still burns
+/// a fraction.
 /// See `docs/adr/0005-onchain-power-network.md`.
 module power::power_grid;
 
@@ -57,7 +59,7 @@ const EUnknownDrawKind: vector<u8> = b"Unknown draw kind";
 const EFuelStashed: vector<u8> = b"Power grid still holds stashed fuel of uninstalled bays";
 #[error(code = 15)]
 const EWouldOverload: vector<u8> =
-    b"Desired Firm power would exceed the online generators' output and turn every module off";
+    b"Desired Firm power would exceed the online generators' output and trip the grid";
 
 // === Constants ===
 
@@ -65,12 +67,14 @@ const VERSION: u64 = 1;
 const NAME: vector<u8> = b"power_grid";
 /// Cap on connected modules.
 const MAX_CONNECTED: u64 = 100;
+/// Cap on installed generators.
+const MAX_GENERATORS: u64 = 100;
 /// Cap on fuel bays fitted plus stashed on one grid. Uninstalling or refitting a
 /// bay keeps the total, so only a new bay or an arriving stash can hit it.
-const MAX_FUEL_BAYS: u64 = 32;
+const MAX_FUEL_BAYS: u64 = 100;
 /// Cap on one bay's capacity, plain units: `u64::MAX ÷ (SCALE × MAX_FUEL_BAYS)`, so
 /// the fuel of every bay at `SCALE` fits a u64.
-const MAX_FUEL_BAY_CAPACITY: u64 = 57_646_075_230_342;
+const MAX_FUEL_BAY_CAPACITY: u64 = 18_446_744_073_709;
 
 // === Structs ===
 
@@ -81,7 +85,7 @@ public struct PowerGrid has store {
     last_settled_ms: u64,
     /// Connected modules by component id.
     modules: VecMap<u64, ModuleState>,
-    /// Installed Generators by component id.
+    /// Installed Generators by component id. At most `MAX_GENERATORS`.
     generators: VecMap<u64, GeneratorState>,
     /// Installed fuel bays by component id. With `stashed`, at most `MAX_FUEL_BAYS`.
     bays: VecMap<u64, FuelBayState>,
@@ -171,10 +175,10 @@ public struct PoolRate has copy, drop {
 }
 
 /// Why a module or generator is or isn't running now. Checked in this order:
-/// `Off` (switched off), `GridOff` (Power Off), `NoFuel` (the pool it needs is
-/// empty: for a module, every online Generator's pool), `BaysOffline` (that
-/// pool is empty only because the bays holding its type are offline),
-/// `NoPower` (a module the grid can't carry), else `Online`.
+/// `Off` (switched off), `NoFuel` (the pool it needs is empty: for a module,
+/// every online Generator's pool), `BaysOffline` (that pool is empty only
+/// because the bays holding its type are offline), `GridOff` (Power Off or a
+/// trip), `NoPower` (an Elastic module the leftover can't carry), else `Online`.
 public enum PowerStatus has copy, drop, store {
     Online,
     Off,
@@ -182,6 +186,15 @@ public enum PowerStatus has copy, drop, store {
     NoPower,
     NoFuel,
     BaysOffline,
+}
+
+/// Running quantity-weighted sums of fuel stats, for blending bays.
+public struct FuelSums has copy, drop {
+    quantity: u128,
+    impulse: u128,
+    containment_burden: u128,
+    volatility: u128,
+    thermal_inefficiency: u128,
 }
 
 /// One fuel type's pool as `projected_pools` reads it: its fuel now, and when it
@@ -215,7 +228,7 @@ public struct ShutDown() has drop;
 
 /// The owner's overload pre-filter. Put after a grid operation in an action
 /// (`set_desired_state`, `set_generator`, ...), it aborts the whole transaction
-/// if the desired Firm load no longer fits, so nothing turns off.
+/// if the desired Firm load no longer fits, so the grid doesn't trip.
 public struct Fits() has drop;
 
 /// Minimum grid state an action can require. `None` skips a check.
@@ -284,6 +297,12 @@ public struct PowerToggled has copy, drop {
     on: bool,
 }
 
+/// An overload switched the grid off: desired Firm need exceeded capacity, from
+/// an owner action or a pool running dry. The owner switches it back on.
+public struct PowerTripped has copy, drop {
+    entity_id: ID,
+}
+
 /// A module's granted draw changed at a settle.
 public struct DrawChanged has copy, drop {
     entity_id: ID,
@@ -341,7 +360,7 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, operate_grid_permit());
     if (on) assert!(!grid.on, EAlreadyOn) else assert!(grid.on, EAlreadyOff);
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.on = on;
     event::emit(PowerToggled { entity_id, on });
     grid.regrant(entity_id);
@@ -360,7 +379,7 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
 public fun shut_down(entity: &mut Entity, req: &mut Request, clock: &Clock) {
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, shut_down_permit());
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.modules.length().do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx_mut(i);
         state.desired_online = false;
@@ -423,7 +442,7 @@ public fun operate_grid_requirement(): Requirement {
 public fun assert_power_grid(entity: &mut Entity, req: &mut Request, clock: &Clock) {
     let entity_id = entity.id();
     let (requirement, frame, grid) = take_grid(entity, req, power_grid_requirement_permit());
-    grid.settle(clock);
+    grid.settle(entity_id, clock);
     grid.regrant(entity_id);
     enforce_power_grid(&requirement, grid);
     frame.destroy_empty_frame();
@@ -555,8 +574,15 @@ public fun effective_capacity_mw(grid: &PowerGrid): u64 {
 public fun projected_pools(entity: &Entity, clock: &Clock): VecMap<u64, PoolView> {
     let grid = power_grid(entity);
     let now_ms = clock.timestamp_ms();
-    let (bays, capacity, draws) = grid.project(now_ms);
-    let (_, _, _, run_outs) = grid.step(bays, capacity, draws, now_ms, std::u64::max_value!());
+    let (bays, on, capacity, draws) = grid.project(now_ms);
+    let (_, _, _, _, run_outs) = grid.step(
+        bays,
+        on,
+        capacity,
+        draws,
+        now_ms,
+        std::u64::max_value!(),
+    );
     let mut types = vector[];
     bays.length().do!(|i| {
         let (_, bay) = bays.get_entry_by_idx(i);
@@ -582,7 +608,7 @@ public fun projected_fuel(entity: &Entity, clock: &Clock): u64 {
 /// Every installed bay now, with the burn since the last settle taken from the
 /// online ones, stepping through each pool's run-out.
 public fun projected_bays(entity: &Entity, clock: &Clock): VecMap<u64, FuelBayState> {
-    let (bays, _, _) = power_grid(entity).project(clock.timestamp_ms());
+    let (bays, _, _, _) = power_grid(entity).project(clock.timestamp_ms());
     bays
 }
 
@@ -603,7 +629,7 @@ public fun pool_fuel(grid: &PowerGrid, fuel_type: u64): Fuel {
 /// pool's run-out since the last settle.
 public fun projected_status(entity: &Entity, clock: &Clock): (u64, u64, vector<u64>) {
     let grid = power_grid(entity);
-    let (_, capacity, draws) = grid.project(clock.timestamp_ms());
+    let (_, _, capacity, draws) = grid.project(clock.timestamp_ms());
     let mut used = 0;
     let mut online = vector[];
     grid.modules.length().do!(|i| {
@@ -618,7 +644,7 @@ public fun projected_status(entity: &Entity, clock: &Clock): (u64, u64, vector<u
 public fun module_draw(entity: &Entity, module_id: u64, clock: &Clock): u64 {
     let grid = power_grid(entity);
     assert!(grid.modules.contains(&module_id), EModuleNotConnected);
-    let (_, _, draws) = grid.project(clock.timestamp_ms());
+    let (_, _, _, draws) = grid.project(clock.timestamp_ms());
     draws[grid.modules.get_idx(&module_id)]
 }
 
@@ -626,43 +652,45 @@ public fun module_draw(entity: &Entity, module_id: u64, clock: &Clock): u64 {
 public fun module_status(entity: &Entity, module_id: u64, clock: &Clock): PowerStatus {
     let grid = power_grid(entity);
     assert!(grid.modules.contains(&module_id), EModuleNotConnected);
-    let (bays, _, draws) = grid.project(clock.timestamp_ms());
+    let (bays, on, _, draws) = grid.project(clock.timestamp_ms());
     let fuel_short = grid.fuel_short(&bays);
     let idx = grid.modules.get_idx(&module_id);
-    grid.status_of(&grid.modules[&module_id], draws[idx], fuel_short)
+    status_of(&grid.modules[&module_id], on, draws[idx], fuel_short)
 }
 
 /// Every connected module's status now, by module id.
 public fun module_statuses(entity: &Entity, clock: &Clock): VecMap<u64, PowerStatus> {
     let grid = power_grid(entity);
-    let (bays, _, draws) = grid.project(clock.timestamp_ms());
+    let (bays, on, _, draws) = grid.project(clock.timestamp_ms());
     let fuel_short = grid.fuel_short(&bays);
     let mut statuses = vec_map::empty();
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx(i);
-        statuses.insert(*module_id, grid.status_of(state, draws[i], fuel_short));
+        statuses.insert(*module_id, status_of(state, on, draws[i], fuel_short));
     });
     statuses
 }
 
 /// Why Generator `generator_id` is or isn't supplying power now. A Generator
 /// whose pool is empty stays online and reads `NoFuel` or `BaysOffline`; it
-/// supplies again once fuel of its type reaches an online bay.
+/// supplies again once fuel of its type reaches an online bay and the grid is on.
 public fun generator_status(entity: &Entity, generator_id: u64, clock: &Clock): PowerStatus {
     let grid = power_grid(entity);
     assert!(grid.generators.contains(&generator_id), EComponentMissing);
     let state = &grid.generators[&generator_id];
     if (!state.online) return PowerStatus::Off;
-    if (!grid.on) return PowerStatus::GridOff;
-    let (bays, _, _) = grid.project(clock.timestamp_ms());
-    if (blend_bays(&bays, option::some(state.fuel_type)).quantity > 0) return PowerStatus::Online;
-    if (holds_offline(&bays, state.fuel_type)) PowerStatus::BaysOffline else PowerStatus::NoFuel
+    let (bays, on, _, _) = grid.project(clock.timestamp_ms());
+    if (blend_bays(&bays, option::some(state.fuel_type)).quantity == 0) {
+        return if (offline_types(&bays).contains(&state.fuel_type)) PowerStatus::BaysOffline
+        else PowerStatus::NoFuel
+    };
+    if (!on) PowerStatus::GridOff else PowerStatus::Online
 }
 
 /// Every connected module now, its draw projected through each pool's run-out.
 public fun projected_module_states(entity: &Entity, clock: &Clock): VecMap<u64, ModuleState> {
     let grid = power_grid(entity);
-    let (_, _, draws) = grid.project(clock.timestamp_ms());
+    let (_, _, _, draws) = grid.project(clock.timestamp_ms());
     let mut states = vec_map::empty();
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx(i);
@@ -691,6 +719,10 @@ public fun max_connected(): u64 {
     MAX_CONNECTED
 }
 
+public fun max_generators(): u64 {
+    MAX_GENERATORS
+}
+
 public fun max_fuel_bays(): u64 {
     MAX_FUEL_BAYS
 }
@@ -703,6 +735,8 @@ public fun component_id(): u64 {
     component::id_from_name(NAME)
 }
 
+/// Whether the grid is on as of the last settle. False after Power Off or a trip;
+/// `PowerToggled` and `PowerTripped` tell which.
 public fun on(grid: &PowerGrid): bool {
     grid.on
 }
@@ -717,7 +751,7 @@ public fun capacity_mw(grid: &PowerGrid): u64 {
 /// What a Generator sends out as of the last settle, plain MW: its rated output
 /// scaled by its pool's volatility, or 0 while offline or its pool is empty.
 public fun output_mw(grid: &PowerGrid, state: &GeneratorState): u64 {
-    output_of(&grid.bays, state)
+    output_from(&pools_of(&grid.bays), state)
 }
 
 public fun last_settled_ms(grid: &PowerGrid): u64 {
@@ -936,7 +970,7 @@ public fun max_amount(rule: &FuelRequirement): Option<u64> {
 }
 
 /// Firm MW the desired-online modules need. Above `capacity_mw` it
-/// overloads the grid and every power module goes off.
+/// trips the grid.
 public fun desired_firm_mw(grid: &PowerGrid): u64 {
     let mut total = 0u64;
     grid.modules.length().do!(|i| {
@@ -997,23 +1031,27 @@ public(package) fun grid_mut(entity: &mut Entity): &mut PowerGrid {
 }
 
 /// Burn the fuel used since the last settle from the online bays, stepping
-/// through each pool's run-out (see `project`). Stored grants stay as they
+/// through each pool's run-out (see `project`). Stores a trip a run-out caused,
+/// so fuel added after it can't bring power back. Stored grants stay as they
 /// were: the caller regrants once after its change, which emits `DrawChanged`
 /// for every net move, including a run-out's.
-public(package) fun settle(grid: &mut PowerGrid, clock: &Clock) {
+public(package) fun settle(grid: &mut PowerGrid, entity_id: ID, clock: &Clock) {
     let now_ms = clock.timestamp_ms();
-    let (bays, _, _) = grid.project(now_ms);
+    let (bays, on, _, _) = grid.project(now_ms);
     grid.bays = bays;
     grid.last_settled_ms = now_ms.max(grid.last_settled_ms);
+    if (grid.on && !on) grid.trip(entity_id);
 }
 
 /// Recompute every module's grant from desired state and effective capacity.
-/// Firm desired modules gate the grid: if their costs fit, each draws its
-/// `power_req`; if not, nothing draws. Desired Elastic modules take the
-/// leftover in connect order, each its `power_req` or whatever is left. Emits
+/// If the grid is on and desired Firm need exceeds capacity, trip it first:
+/// nothing draws until the owner switches it on. Otherwise Firm modules each
+/// draw their `power_req`, and desired Elastic modules take the leftover in
+/// connect order, each its `power_req` or whatever is left. Emits
 /// `DrawChanged` for each module whose grant moved. Walks the map by index, so
 /// it costs O(n).
 public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
+    if (grid.on && grid.desired_firm_mw() > grid.capacity_mw()) grid.trip(entity_id);
     let draws = grid.draws_at(grid.effective_capacity_mw());
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx_mut(i);
@@ -1274,6 +1312,12 @@ public(package) fun draw_kind_from_tag(tag: u32): DrawKind {
 
 // === Private Functions ===
 
+/// Switch the grid off for an overload and emit `PowerTripped`.
+fun trip(grid: &mut PowerGrid, entity_id: ID) {
+    grid.on = false;
+    event::emit(PowerTripped { entity_id });
+}
+
 /// Each module's grant at `capacity`, by index into `modules`. Desired Firm
 /// modules gate the grid: if their costs fit, each draws its `power_req`; if
 /// not, nothing draws. Desired Elastic modules then take the leftover in
@@ -1323,14 +1367,14 @@ fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
 
 /// A module's status given its draw now and `fuel_short` from `fuel_short`.
 fun status_of(
-    grid: &PowerGrid,
     state: &ModuleState,
+    on: bool,
     draw: u64,
     fuel_short: Option<PowerStatus>,
 ): PowerStatus {
     if (!state.desired_online) return PowerStatus::Off;
-    if (!grid.on) return PowerStatus::GridOff;
     if (fuel_short.is_some()) return fuel_short.destroy_some();
+    if (!on) return PowerStatus::GridOff;
     if (draw == 0) return PowerStatus::NoPower;
     PowerStatus::Online
 }
@@ -1340,6 +1384,8 @@ fun status_of(
 /// one of their types, else `NoFuel`. `None` when an online Generator's pool
 /// holds fuel, or no Generator is online.
 fun fuel_short(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): Option<PowerStatus> {
+    let pools = pools_of(bays);
+    let offline_held = offline_types(bays);
     let mut any_online = false;
     let mut supplied = false;
     let mut offline = false;
@@ -1347,8 +1393,8 @@ fun fuel_short(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): Option<Power
         let (_, state) = grid.generators.get_entry_by_idx(i);
         if (state.online) {
             any_online = true;
-            if (blend_bays(bays, option::some(state.fuel_type)).quantity > 0) supplied = true
-            else if (holds_offline(bays, state.fuel_type)) offline = true;
+            if (pools.contains(&state.fuel_type)) supplied = true
+            else if (offline_held.contains(&state.fuel_type)) offline = true;
         };
     });
     if (!any_online || supplied) option::none()
@@ -1356,56 +1402,59 @@ fun fuel_short(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): Option<Power
     else option::some(PowerStatus::NoFuel)
 }
 
-/// Whether an offline bay holds fuel of `fuel_type`.
-fun holds_offline(bays: &VecMap<u64, FuelBayState>, fuel_type: u64): bool {
-    let mut held = false;
+/// Fuel types held by an offline bay, each once. One pass over the bays.
+fun offline_types(bays: &VecMap<u64, FuelBayState>): vector<u64> {
+    let mut types = vector[];
     bays.length().do!(|i| {
         let (_, bay) = bays.get_entry_by_idx(i);
-        if (!bay.online && bay.fuel.quantity > 0 && bay.fuel.fuel_type == option::some(fuel_type)) {
-            held = true;
+        if (!bay.online && bay.fuel.quantity > 0) {
+            bay.fuel.fuel_type.do_ref!(|t| if (!types.contains(t)) types.push_back(*t));
         };
     });
-    held
+    types
 }
 
 fun fuel_left(grid: &PowerGrid, clock: &Clock): u64 {
-    let (bays, _, _) = grid.project(clock.timestamp_ms());
+    let (bays, _, _, _) = grid.project(clock.timestamp_ms());
     blend_bays(&bays, option::none()).quantity
 }
 
-/// The grid at `now_ms`: its bays, effective capacity and each module's draw
-/// (by index into `modules`). Starts from the last settle and steps through
-/// each pool's run-out: burn every pool up to the earliest run-out, recompute
-/// capacity and grants (Firm all or nothing), repeat until `now_ms`. Grants
-/// between steps are never stored, so a read matches a settle at any time.
-/// At most one step per pool in use.
-fun project(grid: &PowerGrid, now_ms: u64): (VecMap<u64, FuelBayState>, u64, vector<u64>) {
+/// The grid at `now_ms`: its bays, whether it is on, effective capacity and each
+/// module's draw (by index into `modules`). Starts from the last settle and
+/// steps through each pool's run-out: burn every pool up to the earliest
+/// run-out, recompute capacity, trip if desired Firm need no longer fits, and
+/// regrant; repeat until `now_ms`. Once tripped nothing burns. Grants between
+/// steps are never stored, so a read matches a settle at any time. At most one
+/// step per pool in use.
+fun project(grid: &PowerGrid, now_ms: u64): (VecMap<u64, FuelBayState>, bool, u64, vector<u64>) {
     let draws = vector::tabulate!(grid.modules.length(), |i| {
         let (_, state) = grid.modules.get_entry_by_idx(i);
         state.active_draw_at_last_settled
     });
     let capacity = grid.effective_capacity_of(&grid.bays);
-    let (bays, capacity, draws, _) = grid.step(
+    let (bays, on, capacity, draws, _) = grid.step(
         grid.bays,
+        grid.on,
         capacity,
         draws,
         grid.last_settled_ms,
         now_ms,
     );
-    (bays, capacity, draws)
+    (bays, on, capacity, draws)
 }
 
-/// Step `bays` from `from_ms` to `until_ms` at `capacity` and `draws`, through
-/// each pool's run-out (see `project`). Also returns when each pool that ran
-/// dry did, by fuel type.
+/// Step `bays` from `from_ms` to `until_ms` at `on`, `capacity` and `draws`,
+/// through each pool's run-out (see `project`). Also returns when each pool
+/// that ran dry did, by fuel type.
 fun step(
     grid: &PowerGrid,
     mut bays: VecMap<u64, FuelBayState>,
+    mut on: bool,
     mut capacity: u64,
     mut draws: vector<u64>,
     from_ms: u64,
     until_ms: u64,
-): (VecMap<u64, FuelBayState>, u64, vector<u64>, VecMap<u64, u64>) {
+): (VecMap<u64, FuelBayState>, bool, u64, vector<u64>, VecMap<u64, u64>) {
     let mut run_outs = vec_map::empty();
     let mut at = from_ms;
     while (until_ms > at) {
@@ -1413,7 +1462,7 @@ fun step(
         draws.do_ref!(|draw| used = used + *draw);
         let load = used.min(capacity);
         if (load == 0) break;
-        let rates = grid.pool_rates(&bays);
+        let rates = grid.pool_rates(&pools_of(&bays));
         let step = first_run_out(&rates, capacity, load, until_ms - at);
         at = at + step;
         rates.do_ref!(|rate| {
@@ -1422,20 +1471,24 @@ fun step(
             let burn = burn.min(rate.quantity as u128) as u64;
             take_from_online_bays(&mut bays, option::some(rate.fuel_type), burn);
         });
-        capacity = grid.effective_capacity_of(&bays);
+        capacity = grid.capacity_of(&bays);
+        if (grid.desired_firm_mw() > capacity) {
+            on = false;
+            capacity = 0;
+        };
         draws = grid.draws_at(capacity);
     };
-    (bays, capacity, draws, run_outs)
+    (bays, on, capacity, draws, run_outs)
 }
 
-/// Burn inputs of each pool that has a supplying Generator, given `bays`.
-fun pool_rates(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): vector<PoolRate> {
+/// Burn inputs of each pool that has a supplying Generator, given `pools`.
+fun pool_rates(grid: &PowerGrid, pools: &VecMap<u64, Fuel>): vector<PoolRate> {
     let mut rates = vector<PoolRate>[];
     grid.generators.length().do!(|i| {
         let (_, state) = grid.generators.get_entry_by_idx(i);
-        let output = output_of(bays, state);
+        let output = output_from(pools, state);
         if (output > 0) {
-            let pool = blend_bays(bays, option::some(state.fuel_type));
+            let pool = &pools[&state.fuel_type];
             let idx = rates.find_index!(|rate| rate.fuel_type == state.fuel_type);
             if (idx.is_none()) {
                 rates.push_back(PoolRate {
@@ -1489,12 +1542,14 @@ fun first_run_out(rates: &vector<PoolRate>, capacity: u64, load: u64, remaining:
     first
 }
 
-/// The grid's capacity with `bays`: the sum of each Generator's output.
+/// The grid's capacity with `bays`: the sum of each Generator's output. Blends
+/// the pools once, so it costs O(bays + generators).
 fun capacity_of(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): u64 {
+    let pools = pools_of(bays);
     let mut total = 0u64;
     grid.generators.length().do!(|i| {
         let (_, state) = grid.generators.get_entry_by_idx(i);
-        total = total.saturating_add(output_of(bays, state));
+        total = total.saturating_add(output_from(&pools, state));
     });
     total
 }
@@ -1504,12 +1559,11 @@ fun effective_capacity_of(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): u
     if (grid.on) grid.capacity_of(bays) else 0
 }
 
-/// A Generator's output with `bays`, plain MW: rated output scaled by its
-/// pool's volatility, or 0 while offline or its pool is empty.
-fun output_of(bays: &VecMap<u64, FuelBayState>, state: &GeneratorState): u64 {
-    if (!state.online) return 0;
-    let pool = blend_bays(bays, option::some(state.fuel_type));
-    if (pool.quantity == 0) return 0;
+/// A Generator's output with `pools` from `pools_of`, plain MW: rated output
+/// scaled by its pool's volatility, or 0 while offline or its pool is empty.
+fun output_from(pools: &VecMap<u64, Fuel>, state: &GeneratorState): u64 {
+    if (!state.online || !pools.contains(&state.fuel_type)) return 0;
+    let pool = &pools[&state.fuel_type];
     let share = fuel_math::volatility_share(pool.volatility, state.volatility_limit);
     fuel_math::generator_output(state.max_output_mw, share)
 }
@@ -1517,32 +1571,72 @@ fun output_of(bays: &VecMap<u64, FuelBayState>, state: &GeneratorState): u64 {
 /// Quantity-weighted blend of the online bays holding `fuel_type`, or of every
 /// online bay when `None`. The blend's own type is the filter.
 fun blend_bays(bays: &VecMap<u64, FuelBayState>, fuel_type: Option<u64>): Fuel {
-    let mut quantity = 0u128;
-    let mut impulse = 0u128;
-    let mut containment_burden = 0u128;
-    let mut volatility = 0u128;
-    let mut thermal_inefficiency = 0u128;
+    let mut sums = empty_sums();
     bays.length().do!(|i| {
         let (_, state) = bays.get_entry_by_idx(i);
-        if (feeds(state, &fuel_type)) {
-            let held = state.fuel.quantity as u128;
-            quantity = quantity + held;
-            impulse = impulse + held * (state.fuel.impulse as u128);
-            containment_burden =
-                containment_burden + held * (state.fuel.containment_burden as u128);
-            volatility = volatility + held * (state.fuel.volatility as u128);
-            thermal_inefficiency =
-                thermal_inefficiency + held * (state.fuel.thermal_inefficiency as u128);
+        if (feeds(state, &fuel_type)) add_fuel(&mut sums, &state.fuel);
+    });
+    sums_to_fuel(&sums, fuel_type)
+}
+
+/// Every pool with `bays`, by fuel type: the blend of its online bays, as
+/// `blend_bays` gives for that type. One pass over the bays. A type with no
+/// fuel in an online bay is left out.
+fun pools_of(bays: &VecMap<u64, FuelBayState>): VecMap<u64, Fuel> {
+    let mut types = vector<u64>[];
+    let mut sums = vector<FuelSums>[];
+    bays.length().do!(|i| {
+        let (_, state) = bays.get_entry_by_idx(i);
+        if (state.online && state.fuel.quantity > 0) {
+            state.fuel.fuel_type.do_ref!(|t| {
+                let idx = types.find_index!(|known| known == t);
+                if (idx.is_none()) {
+                    types.push_back(*t);
+                    sums.push_back(empty_sums());
+                };
+                let last = types.length() - 1;
+                add_fuel(&mut sums[idx.destroy_or!(last)], &state.fuel);
+            });
         };
     });
+    let mut pools = vec_map::empty();
+    types.length().do!(|i| pools.insert(types[i], sums_to_fuel(&sums[i], option::some(types[i]))));
+    pools
+}
+
+fun empty_sums(): FuelSums {
+    FuelSums {
+        quantity: 0,
+        impulse: 0,
+        containment_burden: 0,
+        volatility: 0,
+        thermal_inefficiency: 0,
+    }
+}
+
+/// Add `fuel` to `sums`, weighted by its quantity.
+fun add_fuel(sums: &mut FuelSums, fuel: &Fuel) {
+    let held = fuel.quantity as u128;
+    sums.quantity = sums.quantity + held;
+    sums.impulse = sums.impulse + held * (fuel.impulse as u128);
+    sums.containment_burden = sums.containment_burden + held * (fuel.containment_burden as u128);
+    sums.volatility = sums.volatility + held * (fuel.volatility as u128);
+    sums.thermal_inefficiency =
+        sums.thermal_inefficiency + held * (fuel.thermal_inefficiency as u128);
+}
+
+/// The blend `sums` add up to, typed `fuel_type`. Empty when it holds nothing.
+/// The quantity fits a u64 because `MAX_FUEL_BAY_CAPACITY` caps every bay.
+fun sums_to_fuel(sums: &FuelSums, fuel_type: Option<u64>): Fuel {
+    let quantity = sums.quantity;
     if (quantity == 0) return empty_fuel();
     Fuel {
         fuel_type,
         quantity: quantity as u64,
-        impulse: (impulse / quantity) as u64,
-        containment_burden: (containment_burden / quantity) as u64,
-        volatility: (volatility / quantity) as u64,
-        thermal_inefficiency: (thermal_inefficiency / quantity) as u64,
+        impulse: (sums.impulse / quantity) as u64,
+        containment_burden: (sums.containment_burden / quantity) as u64,
+        volatility: (sums.volatility / quantity) as u64,
+        thermal_inefficiency: (sums.thermal_inefficiency / quantity) as u64,
     }
 }
 
@@ -1637,4 +1731,10 @@ public fun toggled_fields(toggled: &PowerToggled): (ID, bool) {
 #[test_only]
 public fun draw_changed_fields(draw_changed: &DrawChanged): (ID, u64, u64) {
     (draw_changed.entity_id, draw_changed.module_id, draw_changed.active_draw)
+}
+
+/// `entity_id`.
+#[test_only]
+public fun tripped_fields(tripped: &PowerTripped): ID {
+    tripped.entity_id
 }

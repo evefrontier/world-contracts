@@ -122,9 +122,10 @@ fun power_off_reads_grid_off() {
     scenario.end();
 }
 
-/// A second Firm module that doesn't fit overloads the grid: both read `NoPower`.
+/// A second Firm module that doesn't fit trips the grid: both modules and the
+/// Generator read `GridOff`.
 #[test]
-fun overload_reads_no_power() {
+fun overload_reads_grid_off() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
@@ -134,12 +135,12 @@ fun overload_reads_no_power() {
     set_desired(&mut scenario, entity_id, MOD_B, true, &clock);
 
     assert!(
-        module_status(&mut scenario, entity_id, MOD_A, &clock) == power_grid::no_power_status(),
+        module_status(&mut scenario, entity_id, MOD_A, &clock) == power_grid::grid_off_status(),
     );
     assert!(
-        module_status(&mut scenario, entity_id, MOD_B, &clock) == power_grid::no_power_status(),
+        module_status(&mut scenario, entity_id, MOD_B, &clock) == power_grid::grid_off_status(),
     );
-    assert!(generator_status(&mut scenario, entity_id, &clock) == power_grid::online_status());
+    assert!(generator_status(&mut scenario, entity_id, &clock) == power_grid::grid_off_status());
 
     clock.destroy_for_testing();
     scenario.end();
@@ -190,6 +191,10 @@ fun fuel_only_offline_reads_bays_offline() {
         generator_status(&mut scenario, entity_id, &clock) == power_grid::bays_offline_status(),
     );
     set_fuel_bay(&mut scenario, entity_id, FUEL_B, true, &clock);
+    assert!(
+        module_status(&mut scenario, entity_id, MOD_A, &clock) == power_grid::grid_off_status(),
+    );
+    power(&mut scenario, entity_id, true, &clock);
     assert!(module_status(&mut scenario, entity_id, MOD_A, &clock) == power_grid::online_status());
 
     clock.destroy_for_testing();

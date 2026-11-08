@@ -298,6 +298,47 @@ fun install_stores_fuel_type_and_limits() {
     scenario.end();
 }
 
+#[test, expected_failure(abort_code = grid_generator::ETooManyGenerators)]
+fun install_past_max_generators_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    power_grid::max_generators().do!(|i| {
+        install_generator(
+            &mut scenario,
+            entity_id,
+            generator_id(i),
+            HYDROGEN,
+            vector[],
+            1,
+            1,
+            1,
+            &clock,
+        );
+    });
+
+    ts::next_tx(&mut scenario, admin());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let installed = power_grid::generators(power_grid::power_grid(&entity)).length();
+    ts::return_shared(entity);
+    assert!(installed == power_grid::max_generators());
+
+    install_generator(
+        &mut scenario,
+        entity_id,
+        generator_id(power_grid::max_generators()),
+        HYDROGEN,
+        vector[],
+        1,
+        1,
+        1,
+        &clock,
+    );
+
+    abort
+}
+
 #[test, expected_failure(abort_code = grid_generator::EZeroOutput)]
 fun install_zero_output_aborts() {
     let mut scenario = ts::begin(admin());

@@ -60,16 +60,23 @@ The owner sets each power module's **desired state**. It is always stored and
 never refused, even with no fuel. The grant is separate:
 
 - **Firm:** every desired-online Firm module draws `power_req`, or none do.
-  If they don't fit, every module that needs power goes offline. Generators and
-  bays stay online. There is no built-in shed order.
+  If they don't fit, the grid **trips**: `on` goes false and nothing draws or
+  burns. Generator, bay and module switches are unchanged. There is no
+  built-in shed order.
 - **Elastic:** takes what is left after Firm in connect order: the first ask
   gets its full `power_req`, the next gets what is left, and so on.
 
-Desired state survives an overload and Power Off, so modules come back by
-themselves once everything fits again.
+A trip happens on an owner action that no longer fits (`regrant`) or when a
+pool runs dry (the run-out step in `project`). It stays until the owner calls
+`set_power_grid(true)`; refuelling never resets it. There is no separate trip
+flag: a trip is `on = false`, and `PowerTripped` (vs `PowerToggled`) says why.
+Desired state survives a trip and Power Off, so Power On brings back every
+module set to run.
 
 Nothing is written when fuel runs out. Stored state can be out of date; every
-view projects it to the current time.
+view projects it to the current time, trip included. `settle` stores a trip a
+run-out caused before the action changes anything, so fuel added in the same
+action can't bring power back.
 
 ### End-to-end flow
 
@@ -234,7 +241,7 @@ type with `set_generator_fuel_type`.
   `take_stash` and `stash_load` are admin actions with
   `manage_stash_requirement()`. `migrate` moves a fitted bay with its fuel in
   one step. The grid can't be uninstalled while it holds a stash.
-- A grid holds at most `MAX_FUEL_BAYS` (32) bays, fitted plus stashed. A new
+- A grid holds at most `MAX_FUEL_BAYS` (100) bays, fitted plus stashed. A new
   bay or an arriving stash aborts past it; uninstalling or refitting keeps the
   total. Each bay's `capacity` is at most `u64::MAX ÷ (SCALE × MAX_FUEL_BAYS)`,
   so the fuel of every bay at `SCALE` fits a u64.

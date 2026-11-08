@@ -70,7 +70,7 @@ interface GridNow {
 describe('power grid fuel burn (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
 
-  it('reads modules offline once fuel runs out, then regrants them on refuel', async () => {
+  it('trips once fuel runs out, stays tripped on refuel, and regrants on Power On', async () => {
     const key = { id: 4800n, tenant: 'power-burn' }
     const entityId = deriveObjectId(config, key)
 
@@ -202,6 +202,30 @@ describe('power grid fuel burn (localnet)', () => {
     const refuelEntity = refuelTx.object(entityId)
     deposit(refuelTx, config, refuelEntity, refuelTx.object(capId), FUEL_AMOUNT)
     await expectSuccess(client, refuelTx)
+
+    const tripped = await readGrid(client, config, entityId)
+    expect(tripped.fuel).toBe(FUEL_AMOUNT * POWER_SCALE)
+    expect(tripped.capacity).toBe(0n)
+    expect(tripped.online).toEqual([])
+
+    const powerOnTx = new Transaction()
+    const powerOnEntity = powerOnTx.object(entityId)
+    const powerOnRequest = interact(
+      powerOnTx,
+      config,
+      powerOnEntity,
+      'set_power_grid',
+    )
+    setPowerGrid(
+      powerOnTx,
+      config,
+      powerOnEntity,
+      powerOnRequest,
+      powerOnTx.object(capId),
+      true,
+    )
+    completeRequest(powerOnTx, config, powerOnEntity, powerOnRequest)
+    await expectSuccess(client, powerOnTx)
 
     expectOnline(await readGrid(client, config, entityId))
   })

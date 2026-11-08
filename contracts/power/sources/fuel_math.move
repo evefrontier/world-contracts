@@ -17,8 +17,7 @@ public fun scale(): u64 {
 
 // TODO: the stand-ins below are a sharp bend; swap for the smooth curve once
 // its formula and precision are shared.
-
-/// Impulse a Generator can use from its pool: `min(pool impulse, impulse_limit)`, at `SCALE`.
+/// Usable impulse: the pool's impulse, capped at the Generator's impulse_limit. Fixed point at SCALE.
 public fun usable_impulse(pool_impulse: u64, impulse_limit: u64): u64 {
     pool_impulse.min(impulse_limit)
 }
