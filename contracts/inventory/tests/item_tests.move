@@ -8,6 +8,8 @@ use sui::{event, test_scenario as ts};
 
 const FUEL: u64 = 100;
 const VOL: u64 = 10;
+const LENS: u64 = 200;
+const LENS_VOL: u64 = 3;
 
 fun tenant(): string::String { string::utf8(b"test") }
 
@@ -45,9 +47,29 @@ fun burn_all_clears_bag() {
     let key = fuel_key();
 
     item::mint(&mut bag, key, 50, VOL);
+    item::mint(&mut bag, entity_key::new(LENS, tenant()), 2, LENS_VOL);
     assert!(item::balance(&bag, FUEL) == 50);
-    item::burn_all_and_destroy(bag, tenant());
-    assert!(event::events_by_type<item::ItemBurned>().length() == 1);
+    item::burn_all_and_destroy(bag, tenant(), source(), 7, 50 * VOL + 2 * LENS_VOL);
+
+    // One burn per type, each naming the inventory and counting `used` down to 0.
+    let burned = event::events_by_type<item::ItemBurned>();
+    assert!(burned.length() == 2);
+    let (
+        game_id,
+        quantity,
+        entity_id,
+        component_id,
+        balance_after,
+        used_after,
+    ) = item::burned_fields(
+        &burned[0],
+    );
+    assert!(game_id == key && quantity == 50);
+    assert!(entity_id == source() && component_id == 7);
+    assert!(balance_after == 0 && used_after == 2 * LENS_VOL);
+    let (game_id, quantity, _, _, balance_after, used_after) = item::burned_fields(&burned[1]);
+    assert!(game_id == entity_key::new(LENS, tenant()) && quantity == 2);
+    assert!(balance_after == 0 && used_after == 0);
     scenario.end();
 }
 
@@ -58,9 +80,9 @@ fun bag_deposit_merges_by_type() {
     let key = fuel_key();
 
     let item_a = withdraw_item(&mut bag, key, 30, scenario.ctx());
-    item::deposit(&mut bag, item_a, tenant());
+    item::deposit(&mut bag, item_a);
     let item_b = withdraw_item(&mut bag, key, 20, scenario.ctx());
-    item::deposit(&mut bag, item_b, tenant());
+    item::deposit(&mut bag, item_b);
     assert!(item::balance(&bag, FUEL) == 50);
 
     let out = item::withdraw(&mut bag, key, 15, source(), scenario.ctx());
@@ -68,7 +90,7 @@ fun bag_deposit_merges_by_type() {
     assert!(out.volume() == VOL);
     assert!(item::balance(&bag, FUEL) == 35);
 
-    item::destroy(out, key);
+    item::destroy(out);
     item::destroy_bag(bag);
     scenario.end();
 }
@@ -82,7 +104,7 @@ fun withdraw_records_fields() {
     assert!(fuel.type_id() == FUEL);
     assert!(fuel.quantity() == 50);
     assert!(fuel.volume() == VOL);
-    item::destroy(fuel, key);
+    item::destroy(fuel);
     item::destroy_bag(bag);
     scenario.end();
 }
@@ -123,7 +145,7 @@ fun split_and_merge() {
     item::merge(&mut a, b);
     assert!(a.quantity() == 100);
 
-    item::destroy(a, key);
+    item::destroy(a);
     item::destroy_bag(bag);
     scenario.end();
 }

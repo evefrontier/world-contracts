@@ -53,25 +53,61 @@ public struct ItemBag has store {
 }
 
 // === Events ===
+//
+// Every movement names the inventory it moved through, `(entity_id,
+// component_id)`, and the state it left behind: `balance_after` is the
+// inventory's balance of this type and `used_after` its total used volume,
+// both after the movement. The owning entity and component are only reachable
+// from `inventory::inventory`, so it emits these through the `emit_*` helpers
+// below rather than the bag operations emitting them.
 
+/// Game to chain: `game_item_to_chain_inventory` created this balance.
 public struct ItemMinted has copy, drop {
     game_id: EntityKey,
     quantity: u64,
+    entity_id: ID,
+    component_id: u64,
+    balance_after: u64,
+    used_after: u64,
 }
 
+/// Chain to game: `chain_item_to_game_inventory` removed this balance. Also
+/// emitted once per type by `uninstall`, after `InventoryUninstalled`, for the
+/// balances it destroys: each with `balance_after` 0 and `used_after` the
+/// volume still left, reaching 0 on the last.
 public struct ItemBurned has copy, drop {
     game_id: EntityKey,
     quantity: u64,
+    entity_id: ID,
+    component_id: u64,
+    balance_after: u64,
+    used_after: u64,
 }
 
+/// An in-transit `Item` landed in this inventory. `transit_id` is that `Item`'s
+/// id and pairs this event with the `ItemWithdrawn` that produced it.
 public struct ItemDeposited has copy, drop {
     game_id: EntityKey,
     quantity: u64,
+    entity_id: ID,
+    component_id: u64,
+    transit_id: ID,
+    balance_after: u64,
+    used_after: u64,
 }
 
+/// Left this inventory as an in-transit `Item`. `transit_id` is that `Item`'s
+/// id and pairs this event with the `ItemDeposited` that lands it: an `Item`
+/// has neither `store` nor `drop`, so every withdrawal is deposited in the same
+/// transaction, and the id is the only thing tying the two halves together.
 public struct ItemWithdrawn has copy, drop {
     game_id: EntityKey,
     quantity: u64,
+    entity_id: ID,
+    component_id: u64,
+    transit_id: ID,
+    balance_after: u64,
+    used_after: u64,
 }
 
 // === View Functions ===
@@ -120,7 +156,6 @@ public(package) fun mint(bag: &mut ItemBag, game_id: EntityKey, quantity: u64, v
     let type_id = entity_key::id(&game_id);
     assert!(quantity > 0, EZeroQuantity);
     add_balance(bag, type_id, quantity, volume);
-    event::emit(ItemMinted { game_id, quantity });
 }
 
 /// Burn `quantity` of `game_id` from `bag`, removing it from existence.
@@ -128,33 +163,39 @@ public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
     let type_id = entity_key::id(&game_id);
     assert!(quantity > 0, EZeroQuantity);
     subtract_balance(bag, type_id, quantity);
-    event::emit(ItemBurned { game_id, quantity });
 }
 
-/// Burn every balance in `bag` (one `ItemBurned` event per type), then destroy it.
-public(package) fun burn_all_and_destroy(bag: ItemBag, tenant: String) {
+/// Burn every balance in `bag` (one `ItemBurned` event per type), then destroy
+/// it. `bag` is the inventory at `(entity_id, component_id)` holding `used`
+/// volume; each event's `used_after` counts that down, reaching 0 on the last.
+public(package) fun burn_all_and_destroy(
+    bag: ItemBag,
+    tenant: String,
+    entity_id: ID,
+    component_id: u64,
+    mut used: u64,
+) {
     let ItemBag { mut balances } = bag;
     while (!balances.is_empty()) {
-        let (type_id, Balance { quantity, volume: _ }) = balances.pop_front();
-        event::emit(ItemBurned { game_id: entity_key::new(type_id, tenant), quantity });
+        let (type_id, Balance { quantity, volume }) = balances.pop_front();
+        used = used - quantity * volume;
+        event::emit(ItemBurned {
+            game_id: entity_key::new(type_id, tenant),
+            quantity,
+            entity_id,
+            component_id,
+            balance_after: 0,
+            used_after: used,
+        });
     };
     balances.destroy_empty();
 }
 
-/// Destroy an `Item`, removing its quantity from existence.
-public(package) fun destroy(item: Item, game_id: EntityKey) {
-    let Item { id, type_id, quantity, .. } = item;
-    assert!(entity_key::id(&game_id) == type_id, EWrongType);
-    event::emit(ItemBurned { game_id, quantity });
-    id.delete();
-}
-
 /// Deposit `item` into `bag`, merging into the existing balance for its type.
-public(package) fun deposit(bag: &mut ItemBag, item: Item, tenant: String) {
+public(package) fun deposit(bag: &mut ItemBag, item: Item) {
     let Item { id, type_id, quantity, volume, .. } = item;
     id.delete();
     add_balance(bag, type_id, quantity, volume);
-    event::emit(ItemDeposited { game_id: entity_key::new(type_id, tenant), quantity });
 }
 
 /// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item` with `volume`
@@ -170,7 +211,6 @@ public(package) fun withdraw(
     assert!(bag.balances.contains(type_id), EInsufficientQuantity);
     let volume = bag.balances[type_id].volume;
     subtract_balance(bag, type_id, quantity);
-    event::emit(ItemWithdrawn { game_id, quantity });
     Item { id: object::new(ctx), type_id, quantity, volume, source }
 }
 
@@ -197,6 +237,88 @@ public(package) fun merge(item: &mut Item, other: Item) {
     item.quantity = item.quantity + quantity;
 }
 
+/// Emit `ItemMinted` for a mint into the inventory at `(entity_id, component_id)`.
+public(package) fun emit_minted(
+    game_id: EntityKey,
+    quantity: u64,
+    entity_id: ID,
+    component_id: u64,
+    balance_after: u64,
+    used_after: u64,
+) {
+    event::emit(ItemMinted {
+        game_id,
+        quantity,
+        entity_id,
+        component_id,
+        balance_after,
+        used_after,
+    });
+}
+
+/// Emit `ItemBurned` for a burn from the inventory at `(entity_id, component_id)`.
+public(package) fun emit_burned(
+    game_id: EntityKey,
+    quantity: u64,
+    entity_id: ID,
+    component_id: u64,
+    balance_after: u64,
+    used_after: u64,
+) {
+    event::emit(ItemBurned {
+        game_id,
+        quantity,
+        entity_id,
+        component_id,
+        balance_after,
+        used_after,
+    });
+}
+
+/// Emit `ItemDeposited` for `transit_id` landing in the inventory at
+/// `(entity_id, component_id)`.
+public(package) fun emit_deposited(
+    game_id: EntityKey,
+    quantity: u64,
+    entity_id: ID,
+    component_id: u64,
+    transit_id: ID,
+    balance_after: u64,
+    used_after: u64,
+) {
+    event::emit(ItemDeposited {
+        game_id,
+        quantity,
+        entity_id,
+        component_id,
+        transit_id,
+        balance_after,
+        used_after,
+    });
+}
+
+/// Emit `ItemWithdrawn` for `transit_id` leaving the inventory at
+/// `(entity_id, component_id)`.
+public(package) fun emit_withdrawn(
+    game_id: EntityKey,
+    quantity: u64,
+    entity_id: ID,
+    component_id: u64,
+    transit_id: ID,
+    balance_after: u64,
+    used_after: u64,
+) {
+    event::emit(ItemWithdrawn {
+        game_id,
+        quantity,
+        entity_id,
+        component_id,
+        transit_id,
+        balance_after,
+        used_after,
+    });
+}
+
 // === Private Functions ===
 
 fun add_balance(bag: &mut ItemBag, type_id: u64, quantity: u64, volume: u64) {
@@ -218,4 +340,55 @@ fun subtract_balance(bag: &mut ItemBag, type_id: u64, quantity: u64) {
     if (empty) {
         bag.balances.remove(type_id);
     };
+}
+
+// === Test Functions ===
+
+/// Dispose of an in-transit `Item` without an event. Tests only: in production
+/// an `Item`'s one exit is `inventory::deposit`, and a burn is only legible once
+/// it names the inventory it left, which a bare `Item` cannot.
+#[test_only]
+public fun destroy(item: Item) {
+    let Item { id, .. } = item;
+    id.delete();
+}
+
+/// `(game_id, quantity, entity_id, component_id, balance_after, used_after)`.
+#[test_only]
+public fun minted_fields(e: &ItemMinted): (EntityKey, u64, ID, u64, u64, u64) {
+    (e.game_id, e.quantity, e.entity_id, e.component_id, e.balance_after, e.used_after)
+}
+
+/// `(game_id, quantity, entity_id, component_id, balance_after, used_after)`.
+#[test_only]
+public fun burned_fields(e: &ItemBurned): (EntityKey, u64, ID, u64, u64, u64) {
+    (e.game_id, e.quantity, e.entity_id, e.component_id, e.balance_after, e.used_after)
+}
+
+/// `(game_id, quantity, entity_id, component_id, transit_id, balance_after, used_after)`.
+#[test_only]
+public fun deposited_fields(e: &ItemDeposited): (EntityKey, u64, ID, u64, ID, u64, u64) {
+    (
+        e.game_id,
+        e.quantity,
+        e.entity_id,
+        e.component_id,
+        e.transit_id,
+        e.balance_after,
+        e.used_after,
+    )
+}
+
+/// `(game_id, quantity, entity_id, component_id, transit_id, balance_after, used_after)`.
+#[test_only]
+public fun withdrawn_fields(e: &ItemWithdrawn): (EntityKey, u64, ID, u64, ID, u64, u64) {
+    (
+        e.game_id,
+        e.quantity,
+        e.entity_id,
+        e.component_id,
+        e.transit_id,
+        e.balance_after,
+        e.used_after,
+    )
 }

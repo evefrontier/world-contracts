@@ -91,10 +91,19 @@ public struct InventoryUninstalled has copy, drop {
     used_before: u64,
 }
 
+/// The inventory at `component_id` moved from `from_entity_id` to
+/// `to_entity_id` with every balance intact: this closes the key
+/// `(from_entity_id, component_id)` and opens `(to_entity_id, component_id)`
+/// with the same balances. The new fields restate what `InventoryInstalled`
+/// would for the new key, and `used` is the checksum for the balances carried.
 public struct InventoryMigrated has copy, drop {
     from_entity_id: ID,
     to_entity_id: ID,
     component_id: u64,
+    inventory_type_id: u64,
+    name: Option<String>,
+    capacity: u64,
+    used: u64,
 }
 
 // === Public Functions ===
@@ -166,7 +175,7 @@ public fun uninstall(
     let entity_id = entity.id();
     let inventory = inv_component.unwrap(inventory_permit());
     event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });
-    burn_inventory(inventory, tenant);
+    burn_inventory(inventory, tenant, entity_id, component_id);
     req
 }
 
@@ -190,13 +199,18 @@ public fun migrate(
     );
     let name = inv_component.name();
     let inventory = inv_component.unwrap(inventory_permit());
-    let to_req = to.install(component_id, name, inventory, VERSION, inventory_permit(), ctx);
-    grid_load::migrate<Inventory>(from, to, component_id, inventory_permit(), clock);
-    event::emit(InventoryMigrated {
+    let migrated = InventoryMigrated {
         from_entity_id: from.id(),
         to_entity_id: to.id(),
         component_id,
-    });
+        inventory_type_id: inventory.type_id,
+        name,
+        capacity: inventory.capacity,
+        used: inventory.used,
+    };
+    let to_req = to.install(component_id, name, inventory, VERSION, inventory_permit(), ctx);
+    grid_load::migrate<Inventory>(from, to, component_id, inventory_permit(), clock);
+    event::emit(migrated);
     (from_req, to_req)
 }
 
@@ -209,11 +223,20 @@ public fun game_item_to_chain_inventory(
     quantity: u64,
     volume: u64, // TODO: volume should be stored in static data module in the future
 ) {
+    let entity_id = entity.id();
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, bridge_in_permit());
     let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.mint_item(key, quantity, volume);
+    item::emit_minted(
+        key,
+        quantity,
+        entity_id,
+        module_id,
+        inv.items.balance(type_id),
+        inv.used,
+    );
     frame.require(admin_service::sponsor_requirement());
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
@@ -227,11 +250,20 @@ public fun chain_item_to_game_inventory(
     type_id: u64,
     quantity: u64,
 ) {
+    let entity_id = entity.id();
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, bridge_out_permit());
     let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.burn_item(key, type_id, quantity);
+    item::emit_burned(
+        key,
+        quantity,
+        entity_id,
+        module_id,
+        inv.items.balance(type_id),
+        inv.used,
+    );
     frame.require(admin_service::sponsor_requirement());
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
@@ -241,14 +273,25 @@ public fun chain_item_to_game_inventory(
 /// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
 /// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
 public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
-    docking::assert_docked(entity.id(), option::some(item.source()), ctx);
+    let entity_id = entity.id();
+    docking::assert_docked(entity_id, option::some(item.source()), ctx);
+    let transit_id = object::id(&item);
     let type_id = item.type_id();
     let quantity = item.quantity();
-    let tenant = entity.key().tenant();
+    let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
     let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
-    inv.deposit_item(item, tenant);
+    inv.deposit_item(item);
+    item::emit_deposited(
+        key,
+        quantity,
+        entity_id,
+        module_id,
+        transit_id,
+        inv.items.balance(type_id),
+        inv.used,
+    );
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
 }
@@ -270,6 +313,15 @@ public fun withdraw(
     let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     let item = inv.withdraw_item(key, type_id, quantity, source, ctx);
+    item::emit_withdrawn(
+        key,
+        quantity,
+        source,
+        module_id,
+        object::id(&item),
+        inv.items.balance(type_id),
+        inv.used,
+    );
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
     item
@@ -423,11 +475,11 @@ fun burn_item(inv: &mut Inventory, game_id: entity_key::EntityKey, type_id: u64,
 }
 
 /// Deposit an item into an inventory, enforcing its volume capacity.
-fun deposit_item(inv: &mut Inventory, item: Item, tenant: String) {
+fun deposit_item(inv: &mut Inventory, item: Item) {
     let added = item.volume() * item.quantity();
     assert!(inv.used + added <= inv.capacity, EOverCapacity);
     inv.used = inv.used + added;
-    inv.items.deposit(item, tenant);
+    inv.items.deposit(item);
 }
 
 /// Withdraw a balance from an inventory as a fresh `Item`, freeing its volume.
@@ -445,9 +497,9 @@ fun withdraw_item(
     item
 }
 
-fun burn_inventory(inv: Inventory, tenant: String) {
-    let Inventory { items, type_id: _, capacity: _, used: _ } = inv;
-    item::burn_all_and_destroy(items, tenant);
+fun burn_inventory(inv: Inventory, tenant: String, entity_id: ID, component_id: u64) {
+    let Inventory { items, type_id: _, capacity: _, used } = inv;
+    item::burn_all_and_destroy(items, tenant, entity_id, component_id, used);
 }
 
 fun borrow_component(entity: &Entity, component_id: u64): &Component<Inventory> {
@@ -488,4 +540,19 @@ public fun installed_fields(e: &InventoryInstalled): (ID, u64, u64, Option<Strin
 #[test_only]
 public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64) {
     (e.entity_id, e.component_id, e.used_before)
+}
+
+/// `(from_entity_id, to_entity_id, component_id, inventory_type_id, name,
+/// capacity, used)`.
+#[test_only]
+public fun migrated_fields(e: &InventoryMigrated): (ID, ID, u64, u64, Option<String>, u64, u64) {
+    (
+        e.from_entity_id,
+        e.to_entity_id,
+        e.component_id,
+        e.inventory_type_id,
+        e.name,
+        e.capacity,
+        e.used,
+    )
 }
