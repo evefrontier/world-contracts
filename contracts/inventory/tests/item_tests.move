@@ -10,6 +10,9 @@ const FUEL: u64 = 100;
 const VOL: u64 = 10;
 const LENS: u64 = 200;
 const LENS_VOL: u64 = 3;
+const COMPONENT: u64 = 7;
+// Bag-level tests don't track inventory volume; large enough never to underflow.
+const USED: u64 = 1_000_000;
 
 fun tenant(): string::String { string::utf8(b"test") }
 
@@ -23,8 +26,8 @@ fun withdraw_item(
     quantity: u64,
     ctx: &mut TxContext,
 ): item::Item {
-    item::mint(bag, key, quantity, VOL);
-    item::withdraw(bag, key, quantity, source(), ctx)
+    item::mint(bag, key, quantity, VOL, source(), COMPONENT, USED);
+    item::withdraw(bag, key, quantity, source(), COMPONENT, USED, ctx)
 }
 
 #[test]
@@ -33,7 +36,7 @@ fun bag_mint_adds_balance() {
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
 
-    item::mint(&mut bag, key, 25, VOL);
+    item::mint(&mut bag, key, 25, VOL, source(), COMPONENT, USED);
     assert!(item::balance(&bag, FUEL) == 25);
 
     item::destroy_bag(bag);
@@ -46,10 +49,10 @@ fun burn_all_clears_bag() {
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
 
-    item::mint(&mut bag, key, 50, VOL);
-    item::mint(&mut bag, entity_key::new(LENS, tenant()), 2, LENS_VOL);
+    item::mint(&mut bag, key, 50, VOL, source(), COMPONENT, USED);
+    item::mint(&mut bag, entity_key::new(LENS, tenant()), 2, LENS_VOL, source(), COMPONENT, USED);
     assert!(item::balance(&bag, FUEL) == 50);
-    item::burn_all_and_destroy(bag, tenant(), source(), 7, 50 * VOL + 2 * LENS_VOL);
+    item::burn_all_and_destroy(bag, tenant(), source(), COMPONENT, 50 * VOL + 2 * LENS_VOL);
 
     let burned = event::events_by_type<item::ItemBurned>();
     assert!(burned.length() == 2);
@@ -64,7 +67,7 @@ fun burn_all_clears_bag() {
         &burned[0],
     );
     assert!(game_id == key && quantity == 50);
-    assert!(entity_id == source() && component_id == 7);
+    assert!(entity_id == source() && component_id == COMPONENT);
     assert!(balance_after == 0 && used_after == 2 * LENS_VOL);
     let (game_id, quantity, _, _, balance_after, used_after) = item::burned_fields(&burned[1]);
     assert!(game_id == entity_key::new(LENS, tenant()) && quantity == 2);
@@ -79,12 +82,12 @@ fun bag_deposit_merges_by_type() {
     let key = fuel_key();
 
     let item_a = withdraw_item(&mut bag, key, 30, scenario.ctx());
-    item::deposit(&mut bag, item_a);
+    item::deposit(&mut bag, item_a, tenant(), source(), COMPONENT, USED);
     let item_b = withdraw_item(&mut bag, key, 20, scenario.ctx());
-    item::deposit(&mut bag, item_b);
+    item::deposit(&mut bag, item_b, tenant(), source(), COMPONENT, USED);
     assert!(item::balance(&bag, FUEL) == 50);
 
-    let out = item::withdraw(&mut bag, key, 15, source(), scenario.ctx());
+    let out = item::withdraw(&mut bag, key, 15, source(), COMPONENT, USED, scenario.ctx());
     assert!(out.quantity() == 15);
     assert!(out.volume() == VOL);
     assert!(item::balance(&bag, FUEL) == 35);
@@ -113,8 +116,8 @@ fun withdraw_over_balance_aborts() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
-    item::mint(&mut bag, key, 10, VOL);
-    let _out = item::withdraw(&mut bag, key, 11, source(), scenario.ctx());
+    item::mint(&mut bag, key, 10, VOL, source(), COMPONENT, USED);
+    let _out = item::withdraw(&mut bag, key, 11, source(), COMPONENT, USED, scenario.ctx());
 
     abort
 }
@@ -124,8 +127,8 @@ fun mint_mismatched_volume_aborts() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
-    item::mint(&mut bag, key, 10, VOL);
-    item::mint(&mut bag, key, 10, VOL + 1);
+    item::mint(&mut bag, key, 10, VOL, source(), COMPONENT, USED);
+    item::mint(&mut bag, key, 10, VOL + 1, source(), COMPONENT, USED);
 
     abort
 }
@@ -167,9 +170,17 @@ fun merge_different_source_aborts() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
-    item::mint(&mut bag, key, 20, VOL);
-    let mut a = item::withdraw(&mut bag, key, 10, source(), scenario.ctx());
-    let b = item::withdraw(&mut bag, key, 10, object::id_from_address(@0x6), scenario.ctx());
+    item::mint(&mut bag, key, 20, VOL, source(), COMPONENT, USED);
+    let mut a = item::withdraw(&mut bag, key, 10, source(), COMPONENT, USED, scenario.ctx());
+    let b = item::withdraw(
+        &mut bag,
+        key,
+        10,
+        object::id_from_address(@0x6),
+        COMPONENT,
+        USED,
+        scenario.ctx(),
+    );
     item::merge(&mut a, b);
 
     abort
