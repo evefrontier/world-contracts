@@ -54,14 +54,11 @@ public struct ItemBag has store {
 
 // === Events ===
 //
-// Every movement names the inventory it moved through, `(entity_id,
-// component_id)`, and the state it left behind: `balance_after` is the
-// inventory's balance of this type and `used_after` its total used volume,
-// both after the movement. The owning entity and component are only reachable
-// from `inventory::inventory`, so it emits these through the `emit_*` helpers
-// below rather than the bag operations emitting them.
+// `(entity_id, component_id)` is the inventory moved through; `balance_after`
+// and `used_after` are its state after the movement. Emitted by
+// `inventory::inventory` via the `emit_*` helpers.
 
-/// Game to chain: `game_item_to_chain_inventory` created this balance.
+/// Game to chain bridge.
 public struct ItemMinted has copy, drop {
     game_id: EntityKey,
     quantity: u64,
@@ -71,10 +68,7 @@ public struct ItemMinted has copy, drop {
     used_after: u64,
 }
 
-/// Chain to game: `chain_item_to_game_inventory` removed this balance. Also
-/// emitted once per type by `uninstall`, after `InventoryUninstalled`, for the
-/// balances it destroys: each with `balance_after` 0 and `used_after` the
-/// volume still left, reaching 0 on the last.
+/// Chain to game bridge, or one per type on `uninstall`.
 public struct ItemBurned has copy, drop {
     game_id: EntityKey,
     quantity: u64,
@@ -84,8 +78,7 @@ public struct ItemBurned has copy, drop {
     used_after: u64,
 }
 
-/// An in-transit `Item` landed in this inventory. `transit_id` is that `Item`'s
-/// id and pairs this event with the `ItemWithdrawn` that produced it.
+/// `transit_id` matches the `ItemWithdrawn` that produced the `Item`.
 public struct ItemDeposited has copy, drop {
     game_id: EntityKey,
     quantity: u64,
@@ -96,10 +89,7 @@ public struct ItemDeposited has copy, drop {
     used_after: u64,
 }
 
-/// Left this inventory as an in-transit `Item`. `transit_id` is that `Item`'s
-/// id and pairs this event with the `ItemDeposited` that lands it: an `Item`
-/// has neither `store` nor `drop`, so every withdrawal is deposited in the same
-/// transaction, and the id is the only thing tying the two halves together.
+/// `transit_id` is the withdrawn `Item`'s id, matching its `ItemDeposited`.
 public struct ItemWithdrawn has copy, drop {
     game_id: EntityKey,
     quantity: u64,
@@ -165,9 +155,7 @@ public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
     subtract_balance(bag, type_id, quantity);
 }
 
-/// Burn every balance in `bag` (one `ItemBurned` event per type), then destroy
-/// it. `bag` is the inventory at `(entity_id, component_id)` holding `used`
-/// volume; each event's `used_after` counts that down, reaching 0 on the last.
+/// Burn every balance in `bag` (one `ItemBurned` event per type), then destroy it.
 public(package) fun burn_all_and_destroy(
     bag: ItemBag,
     tenant: String,
@@ -237,7 +225,6 @@ public(package) fun merge(item: &mut Item, other: Item) {
     item.quantity = item.quantity + quantity;
 }
 
-/// Emit `ItemMinted` for a mint into the inventory at `(entity_id, component_id)`.
 public(package) fun emit_minted(
     game_id: EntityKey,
     quantity: u64,
@@ -256,7 +243,6 @@ public(package) fun emit_minted(
     });
 }
 
-/// Emit `ItemBurned` for a burn from the inventory at `(entity_id, component_id)`.
 public(package) fun emit_burned(
     game_id: EntityKey,
     quantity: u64,
@@ -275,8 +261,6 @@ public(package) fun emit_burned(
     });
 }
 
-/// Emit `ItemDeposited` for `transit_id` landing in the inventory at
-/// `(entity_id, component_id)`.
 public(package) fun emit_deposited(
     game_id: EntityKey,
     quantity: u64,
@@ -297,8 +281,6 @@ public(package) fun emit_deposited(
     });
 }
 
-/// Emit `ItemWithdrawn` for `transit_id` leaving the inventory at
-/// `(entity_id, component_id)`.
 public(package) fun emit_withdrawn(
     game_id: EntityKey,
     quantity: u64,
@@ -344,9 +326,6 @@ fun subtract_balance(bag: &mut ItemBag, type_id: u64, quantity: u64) {
 
 // === Test Functions ===
 
-/// Dispose of an in-transit `Item` without an event. Tests only: in production
-/// an `Item`'s one exit is `inventory::deposit`, and a burn is only legible once
-/// it names the inventory it left, which a bare `Item` cannot.
 #[test_only]
 public fun destroy(item: Item) {
     let Item { id, .. } = item;

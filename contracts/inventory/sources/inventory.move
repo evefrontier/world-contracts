@@ -91,11 +91,8 @@ public struct InventoryUninstalled has copy, drop {
     used_before: u64,
 }
 
-/// The inventory at `component_id` moved from `from_entity_id` to
-/// `to_entity_id` with every balance intact: this closes the key
-/// `(from_entity_id, component_id)` and opens `(to_entity_id, component_id)`
-/// with the same balances. The new fields restate what `InventoryInstalled`
-/// would for the new key, and `used` is the checksum for the balances carried.
+/// The inventory at `component_id` moved, balances intact, from
+/// `from_entity_id` to `to_entity_id`.
 public struct InventoryMigrated has copy, drop {
     from_entity_id: ID,
     to_entity_id: ID,

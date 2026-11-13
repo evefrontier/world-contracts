@@ -561,8 +561,6 @@ fun owner_interaction_inventory() {
     configure_default_actions(&mut scenario, e_id, OWNER);
     power_inventory(&mut scenario, e_id, OWNER);
 
-    // Every movement names the inventory it moved through and the state it left
-    // behind. Each bridge is its own tx, so its row is read right after it.
     bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL); // used 200, bal 100
     let minted = event::events_by_type<item::ItemMinted>();
     assert!(minted.length() == 1);
@@ -605,7 +603,6 @@ fun owner_interaction_inventory() {
     assert!(inv(&e).used() == 100);
     assert!(inv(&e).items().balance(FUEL) == 50);
 
-    // The transit pair shares `transit_id` and replays to the two asserts above.
     let withdrawn = event::events_by_type<item::ItemWithdrawn>();
     assert!(withdrawn.length() == 1);
     let (
@@ -790,8 +787,7 @@ fun swap_moves_items_between_two_entities() {
     assert!(inv(&entity_b).items().balance(LENS) == 1);
     assert!(inv(&entity_b).items().balance(FUEL) == 0);
 
-    // Four rows, two entities, one transaction: `transit_id` is the only thing
-    // that says which withdrawal each deposit completes.
+    // `transit_id` pairs each withdrawal with its deposit.
     let withdrawn = event::events_by_type<item::ItemWithdrawn>();
     let deposited = event::events_by_type<item::ItemDeposited>();
     assert!(withdrawn.length() == 2 && deposited.length() == 2);
@@ -905,7 +901,6 @@ fun uninstall_burns_inventory() {
     assert!(entity_id == e_id && component_id == MODULE_ID);
     assert!(used_before == 200);
 
-    // Each burn names the inventory and counts it down to empty.
     let burned = event::events_by_type<item::ItemBurned>();
     assert!(burned.length() == 1);
     let (
@@ -1268,8 +1263,6 @@ fun migrate_moves_inventory_with_its_items() {
     migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
 
     assert!(event::events_by_type<item::ItemBurned>().is_empty());
-    // The migration row hands the key over with everything an install would
-    // have said for the new one.
     let migrated = event::events_by_type<inventory::InventoryMigrated>();
     assert!(migrated.length() == 1);
     let (

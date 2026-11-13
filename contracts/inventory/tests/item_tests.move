@@ -51,7 +51,6 @@ fun burn_all_clears_bag() {
     assert!(item::balance(&bag, FUEL) == 50);
     item::burn_all_and_destroy(bag, tenant(), source(), 7, 50 * VOL + 2 * LENS_VOL);
 
-    // One burn per type, each naming the inventory and counting `used` down to 0.
     let burned = event::events_by_type<item::ItemBurned>();
     assert!(burned.length() == 2);
     let (
