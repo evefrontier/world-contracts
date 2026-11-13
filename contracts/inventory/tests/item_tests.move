@@ -103,7 +103,7 @@ fun drain_empty_bag_emits_nothing() {
 #[test]
 fun full_batch_fits_the_event_size_limit() {
     // Sui's `max_event_emit_size`.
-    assert!(item::full_batch_bcs_size(inventory::inventory::destroyed_batch_size()) < 256_000);
+    assert!(item::full_batch_bcs_size(inventory::inventory::event_batch_size()) < 256_000);
 }
 
 #[test]
@@ -236,4 +236,103 @@ fun burn_over_balance_aborts() {
     item::burn(&mut bag, key, 11, source(), COMPONENT, &mut used);
 
     abort
+}
+
+#[test]
+fun batches_split_withdrawals_and_deposits_at_batch_size() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let mut used = 0;
+    let mut type_ids = vector[];
+    let mut quantities = vector[];
+    5u64.do!(|i| {
+        item::mint(
+            &mut bag,
+            entity_key::new(i + 1, tenant()),
+            10,
+            VOL,
+            source(),
+            COMPONENT,
+            &mut used,
+        );
+        type_ids.push_back(i + 1);
+        quantities.push_back(i + 1);
+    });
+
+    let items = item::withdraw_batch(
+        &mut bag,
+        type_ids,
+        quantities,
+        source(),
+        COMPONENT,
+        &mut used,
+        2,
+        scenario.ctx(),
+    );
+    assert!(items.length() == 5);
+    let withdrawn = event::events_by_type<item::ItemsWithdrawn>();
+    assert!(withdrawn.length() == 3);
+    let mut seen = 0;
+    withdrawn.length().do!(|b| {
+        let (
+            entity_id,
+            component_id,
+            batch_index,
+            batch_count,
+            entries,
+        ) = item::items_withdrawn_fields(
+            &withdrawn[b],
+        );
+        assert!(entity_id == source() && component_id == COMPONENT);
+        assert!(batch_index == b && batch_count == 3);
+        assert!(entries.length() == if (b < 2) 2 else 1);
+        entries.do_ref!(|entry| {
+            let (type_id, quantity, transit_id, balance_after, _) = item::moved_balance_fields(
+                entry,
+            );
+            assert!(type_id == seen + 1 && quantity == seen + 1);
+            assert!(transit_id == object::id(&items[seen]) && balance_after == 10 - quantity);
+            seen = seen + 1;
+        });
+    });
+    assert!(seen == 5);
+
+    item::deposit_batch(&mut bag, items, source(), COMPONENT, &mut used, 2);
+    let deposited = event::events_by_type<item::ItemsDeposited>();
+    assert!(deposited.length() == 3);
+    let (_, _, _, batch_count, entries) = item::items_deposited_fields(&deposited[2]);
+    assert!(batch_count == 3 && entries.length() == 1);
+    let (type_id, _, _, balance_after, used_after) = item::moved_balance_fields(&entries[0]);
+    assert!(type_id == 5 && balance_after == 10 && used_after == 50 * VOL);
+    assert!(used == 50 * VOL);
+
+    item::destroy_bag(bag);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = item::EInsufficientQuantity)]
+fun withdraw_batch_over_balance_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let mut used = 0;
+    item::mint(&mut bag, fuel_key(), 10, VOL, source(), COMPONENT, &mut used);
+    // Each entry fits alone; together they exceed the balance.
+    let _items = item::withdraw_batch(
+        &mut bag,
+        vector[FUEL, FUEL],
+        vector[6, 6],
+        source(),
+        COMPONENT,
+        &mut used,
+        2,
+        scenario.ctx(),
+    );
+
+    abort
+}
+
+#[test]
+fun full_moved_batch_fits_the_event_size_limit() {
+    let size = item::full_moved_batch_bcs_size(inventory::inventory::event_batch_size());
+    assert!(size < 256_000);
 }

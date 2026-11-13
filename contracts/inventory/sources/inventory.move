@@ -43,14 +43,19 @@ const EQuantityBelowMin: vector<u8> = b"Quantity below the required minimum";
 const EQuantityAboveMax: vector<u8> = b"Quantity above the allowed maximum";
 #[error(code = 6)]
 const EWrongTenant: vector<u8> = b"Inventory can only move between entities of the same tenant";
+#[error(code = 7)]
+const EBatchLengthMismatch: vector<u8> = b"type_ids and quantities must be the same length";
+#[error(code = 8)]
+const EEmptyBatch: vector<u8> = b"Batch must not be empty";
 
 // === Constants ===
 
 const VERSION: u64 = 1;
 
-/// Most balances per `ItemsDestroyed`. A full batch is ~24 KB of BCS, well
-/// under Sui's 256 KB per-event limit.
-const DESTROYED_BATCH_SIZE: u64 = 1000;
+/// Most entries per batched event (`ItemsDestroyed`, `ItemsWithdrawn`,
+/// `ItemsDeposited`). A full batch is at most ~64 KB of BCS, well under Sui's
+/// 256 KB per-event limit.
+const EVENT_BATCH_SIZE: u64 = 1000;
 
 // === Structs ===
 
@@ -180,9 +185,9 @@ public fun uninstall(
         component_id,
         used_before: used,
         balance_count,
-        batch_count: balance_count.div_ceil(DESTROYED_BATCH_SIZE),
+        batch_count: balance_count.div_ceil(EVENT_BATCH_SIZE),
     });
-    item::drain_and_destroy(items, entity_id, component_id, DESTROYED_BATCH_SIZE);
+    item::drain_and_destroy(items, entity_id, component_id, EVENT_BATCH_SIZE);
     req
 }
 
@@ -296,6 +301,65 @@ public fun withdraw(
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
     item
+}
+
+/// `deposit` for every `items` entry under one `Deposit` requirement, whose rule
+/// each entry must satisfy. Emits `ItemsDeposited` in batches of at most
+/// `EVENT_BATCH_SIZE`. Aborts if `items` is empty.
+public fun deposit_batch(
+    entity: &mut Entity,
+    req: &mut Request,
+    items: vector<Item>,
+    ctx: &mut TxContext,
+) {
+    assert!(!items.is_empty(), EEmptyBatch);
+    let entity_id = entity.id();
+    let mut added = 0;
+    items.do_ref!(|item| {
+        docking::assert_docked(entity_id, option::some(item.source()), ctx);
+        added = added + item.volume() * item.quantity();
+    });
+    let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
+    let module_id = module_id(&requirement);
+    items.do_ref!(|item| enforce_rule(&requirement, item.type_id(), item.quantity()));
+    assert!(inv.used + added <= inv.capacity, EOverCapacity);
+    inv.items.deposit_batch(items, entity_id, module_id, &mut inv.used, EVENT_BATCH_SIZE);
+    frame.require(online_requirement(entity, module_id));
+    req.enqueue(frame);
+}
+
+/// `withdraw` of `quantities[i]` of `type_ids[i]` for each `i` under one
+/// `Withdrawal` requirement, whose rule each entry must satisfy. Returns the
+/// `Item`s in input order and emits `ItemsWithdrawn` in batches of at most
+/// `EVENT_BATCH_SIZE`. Aborts if the vectors are empty or differ in length.
+public fun withdraw_batch(
+    entity: &mut Entity,
+    req: &mut Request,
+    type_ids: vector<u64>,
+    quantities: vector<u64>,
+    ctx: &mut TxContext,
+): vector<Item> {
+    assert!(type_ids.length() == quantities.length(), EBatchLengthMismatch);
+    assert!(!type_ids.is_empty(), EEmptyBatch);
+    let source = entity.id();
+    docking::assert_docked(source, option::none(), ctx);
+    let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
+    let module_id = module_id(&requirement);
+    type_ids.length().do!(|i| enforce_rule(&requirement, type_ids[i], quantities[i]));
+    let items = inv
+        .items
+        .withdraw_batch(
+            type_ids,
+            quantities,
+            source,
+            module_id,
+            &mut inv.used,
+            EVENT_BATCH_SIZE,
+            ctx,
+        );
+    frame.require(online_requirement(entity, module_id));
+    req.enqueue(frame);
+    items
 }
 
 /// Build a bridge-in requirement on component `component_id`.
@@ -517,7 +581,7 @@ public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64, u64, u64
 }
 
 #[test_only]
-public fun destroyed_batch_size(): u64 { DESTROYED_BATCH_SIZE }
+public fun event_batch_size(): u64 { EVENT_BATCH_SIZE }
 
 #[test_only]
 public fun migrated_fields(e: &InventoryMigrated): (ID, ID, u64, u64, u64, u64) {
