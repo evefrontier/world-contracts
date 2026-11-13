@@ -640,6 +640,46 @@ fun owner_interaction_inventory() {
     scenario.end();
 }
 
+/// Shared entity holding 10 FUEL, so its `used` is exactly `10 * VOL`.
+fun entity_with_ten_fuel(scenario: &mut ts::Scenario): ID {
+    setup(scenario);
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let e = build_entity_with_inventory(scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(scenario, e_id, OWNER);
+    power_inventory(scenario, e_id, OWNER);
+    bridge_in(scenario, e_id, OWNER, b"bridge_in", FUEL, 10, VOL);
+    e_id
+}
+
+// Over-balance must hit the balance check, not underflow `used`.
+#[test, expected_failure(abort_code = item::EInsufficientQuantity)]
+fun bridge_out_over_balance_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    bridge_out(&mut scenario, e_id, OWNER, b"bridge_out", FUEL, 11);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::EInsufficientQuantity)]
+fun withdraw_over_balance_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
+    let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 11);
+
+    abort
+}
+
 #[test, expected_failure(abort_code = access_cap::ENotOwner)]
 fun bridge_in_by_non_owner_aborts() {
     let mut scenario = ts::begin(ADMIN);

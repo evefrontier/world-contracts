@@ -242,7 +242,7 @@ public fun chain_item_to_game_inventory(
     let (requirement, mut frame, inv) = take(entity, req, bridge_out_permit());
     let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
-    inv.burn_item(key, type_id, quantity, entity_id, module_id);
+    inv.burn_item(key, quantity, entity_id, module_id);
     frame.require(admin_service::sponsor_requirement());
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
@@ -281,7 +281,7 @@ public fun withdraw(
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
-    let item = inv.withdraw_item(key, type_id, quantity, source, module_id, ctx);
+    let item = inv.withdraw_item(key, quantity, source, module_id, ctx);
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
     item
@@ -428,24 +428,19 @@ fun mint_item(
     entity_id: ID,
     component_id: u64,
 ) {
-    let added = volume * quantity;
-    assert!(inv.used + added <= inv.capacity, EOverCapacity);
-    inv.items.mint(game_id, quantity, volume, entity_id, component_id, inv.used);
-    inv.used = inv.used + added;
+    assert!(inv.used + volume * quantity <= inv.capacity, EOverCapacity);
+    inv.items.mint(game_id, quantity, volume, entity_id, component_id, &mut inv.used);
 }
 
 /// Burn a balance from an inventory, freeing its volume (chain-to-game bridge).
 fun burn_item(
     inv: &mut Inventory,
     game_id: entity_key::EntityKey,
-    type_id: u64,
     quantity: u64,
     entity_id: ID,
     component_id: u64,
 ) {
-    let volume = inv.items.volume_of(type_id);
-    inv.items.burn(game_id, quantity, entity_id, component_id, inv.used);
-    inv.used = inv.used - volume * quantity;
+    inv.items.burn(game_id, quantity, entity_id, component_id, &mut inv.used);
 }
 
 /// Deposit an item into an inventory, enforcing its volume capacity.
@@ -456,26 +451,20 @@ fun deposit_item(
     entity_id: ID,
     component_id: u64,
 ) {
-    let added = item.volume() * item.quantity();
-    assert!(inv.used + added <= inv.capacity, EOverCapacity);
-    inv.items.deposit(item, tenant, entity_id, component_id, inv.used);
-    inv.used = inv.used + added;
+    assert!(inv.used + item.volume() * item.quantity() <= inv.capacity, EOverCapacity);
+    inv.items.deposit(item, tenant, entity_id, component_id, &mut inv.used);
 }
 
 /// Withdraw a balance from an inventory as a fresh `Item`, freeing its volume.
 fun withdraw_item(
     inv: &mut Inventory,
     game_id: entity_key::EntityKey,
-    type_id: u64,
     quantity: u64,
     source: ID,
     component_id: u64,
     ctx: &mut TxContext,
 ): Item {
-    let volume = inv.items.volume_of(type_id);
-    let item = inv.items.withdraw(game_id, quantity, source, component_id, inv.used, ctx);
-    inv.used = inv.used - volume * quantity;
-    item
+    inv.items.withdraw(game_id, quantity, source, component_id, &mut inv.used, ctx)
 }
 
 fun burn_inventory(inv: Inventory, tenant: String, entity_id: ID, component_id: u64) {
@@ -511,19 +500,16 @@ fun withdrawal_permit(): Permit<Withdrawal> {
 
 // === Test Functions ===
 
-/// `(entity_id, component_id, inventory_type_id, name, capacity)`.
 #[test_only]
 public fun installed_fields(e: &InventoryInstalled): (ID, u64, u64, Option<String>, u64) {
     (e.entity_id, e.component_id, e.inventory_type_id, e.name, e.capacity)
 }
 
-/// `(entity_id, component_id, used_before)`.
 #[test_only]
 public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64) {
     (e.entity_id, e.component_id, e.used_before)
 }
 
-/// `(from_entity_id, to_entity_id, component_id, inventory_type_id, capacity, used)`.
 #[test_only]
 public fun migrated_fields(e: &InventoryMigrated): (ID, ID, u64, u64, u64, u64) {
     (e.from_entity_id, e.to_entity_id, e.component_id, e.inventory_type_id, e.capacity, e.used)
