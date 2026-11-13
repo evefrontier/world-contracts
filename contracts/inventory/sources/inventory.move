@@ -86,9 +86,9 @@ public struct ItemMinted has copy, drop {
 }
 
 /// Chain to game: `chain_item_to_game_inventory` removed this balance, which
-/// reappears in the game's own container. Only ever the bridge, so supply is
-/// conserved across the boundary on every row: teardown destroys balances
-/// outright and reports that as `InventoryUninstalled` instead.
+/// reappears in the game's own container. `uninstall` also emits one per type,
+/// after `InventoryUninstalled`, for balances it destroys rather than returns to
+/// the game: each with `balance_after` 0 and `used_after` the volume still left.
 public struct ItemBurned has copy, drop {
     entity_id: ID,
     component_id: u64,
@@ -138,12 +138,9 @@ public struct InventoryInstalled has copy, drop {
     capacity: u64,
 }
 
-/// `uninstall` dropped the whole inventory: every balance under this
-/// `(entity_id, component_id)` ceased to exist, and none of it returned to the
-/// game. This is the sole record of that — the balances are destroyed without a
-/// per-type event, so the epoch this closes is what says what died: everything
-/// the consumer was tracking under this key. `used_before` is the total
-/// destroyed, and the checksum against what it had tracked.
+/// Emitted when an inventory is uninstalled, ahead of the burns it accounts for.
+/// `used_before` is the volume destroyed; unlike a bridge-out, none of it
+/// returns to the game.
 public struct InventoryUninstalled has copy, drop {
     entity_id: ID,
     component_id: u64,
@@ -204,9 +201,9 @@ public fun install(
     req
 }
 
-/// Remove the storage component and disconnect it from the power grid. Aborts
-/// if it was never installed. Announces the teardown with a single
-/// `InventoryUninstalled`, then destroys the Inventory's balances.
+/// Remove the storage component and disconnect it from the power grid. Aborts if it was never
+/// installed. Emits `InventoryUninstalled`, then burns the Inventory's balances
+/// (emitting `ItemBurned` per type) so the game client is notified.
 public fun uninstall(
     entity: &mut Entity,
     component_id: u64,
@@ -224,6 +221,7 @@ public fun uninstall(
     // Reading the entity is free again now that `uninstall` released its borrow.
     let entity_id = entity.id();
     let inventory = inv_component.unwrap(inventory_permit());
+    event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });
     burn_inventory(inventory, entity_id, component_id);
     req
 }
@@ -536,18 +534,22 @@ fun withdraw_item(
     item
 }
 
-/// Announce the teardown, then drop the bag and every balance in it.
-/// One event for the whole inventory, not one per type: an inventory holds one
-/// balance per type with no bound on how many, and the fullest storage unit is
-/// the one most likely to be torn down — so neither the emit nor the drop scales
-/// with the number of types held. `used_before` carries the entire accounting,
-/// and the epoch `InventoryInstalled` opened is what scopes it: every balance a
-/// consumer tracked under this key is gone, with none of it credited back to the
-/// game.
+/// Burn every balance, one `ItemBurned` per type, counting `used_after` down to
+/// 0 on the last.
 fun burn_inventory(inv: Inventory, entity_id: ID, component_id: u64) {
-    let Inventory { items, type_id: _, capacity: _, used } = inv;
-    event::emit(InventoryUninstalled { entity_id, component_id, used_before: used });
-    item::destroy_bag(items);
+    let Inventory { items, type_id: _, capacity: _, mut used } = inv;
+    item::burn_all_and_destroy(items).do!(|burned| {
+        let (type_id, quantity, volume) = burned.drained_fields();
+        used = used - quantity * volume;
+        event::emit(ItemBurned {
+            entity_id,
+            component_id,
+            type_id,
+            quantity,
+            balance_after: 0,
+            used_after: used,
+        });
+    });
 }
 
 /// The component `take` borrowed, read off the requirement that targeted it.

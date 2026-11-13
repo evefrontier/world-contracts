@@ -57,6 +57,14 @@ public struct ItemBag has store {
     balances: LinkedTable<u64, Balance>,
 }
 
+/// One balance `burn_all_and_destroy` removed, handed back for the caller to
+/// announce: `quantity` of `type_id` at per-unit `volume`.
+public struct DrainedBalance has copy, drop {
+    type_id: u64,
+    quantity: u64,
+    volume: u64,
+}
+
 // === View Functions ===
 
 public fun type_id(item: &Item): u64 {
@@ -85,6 +93,11 @@ public fun volume_of(bag: &ItemBag, type_id: u64): u64 {
     if (bag.balances.contains(type_id)) bag.balances[type_id].volume else 0
 }
 
+/// `(type_id, quantity, volume)`.
+public fun drained_fields(drained: &DrainedBalance): (u64, u64, u64) {
+    (drained.type_id, drained.quantity, drained.volume)
+}
+
 // === Package Functions ===
 
 /// Create an empty balance store.
@@ -110,6 +123,19 @@ public(package) fun burn(bag: &mut ItemBag, game_id: EntityKey, quantity: u64) {
     let type_id = entity_key::id(&game_id);
     assert!(quantity > 0, EZeroQuantity);
     subtract_balance(bag, type_id, quantity);
+}
+
+/// Burn every balance in `bag`, then destroy it. Returns one entry per type
+/// burned, for the caller to announce.
+public(package) fun burn_all_and_destroy(bag: ItemBag): vector<DrainedBalance> {
+    let ItemBag { mut balances } = bag;
+    let mut drained = vector[];
+    while (!balances.is_empty()) {
+        let (type_id, Balance { quantity, volume }) = balances.pop_front();
+        drained.push_back(DrainedBalance { type_id, quantity, volume });
+    };
+    balances.destroy_empty();
+    drained
 }
 
 /// Deposit `item` into `bag`, merging into the existing balance for its type.

@@ -890,7 +890,7 @@ fun bridge_in_wrong_type_aborts() {
 }
 
 #[test]
-fun uninstall_reports_the_whole_inventory() {
+fun uninstall_burns_inventory() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
@@ -905,8 +905,7 @@ fun uninstall_reports_the_whole_inventory() {
     configure_default_actions(&mut scenario, e_id, OWNER);
     power_inventory(&mut scenario, e_id, OWNER);
 
-    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL); // used 200
-    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", LENS, 10, VOL); // used 220
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL);
 
     ts::next_tx(&mut scenario, ADMIN);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -914,19 +913,27 @@ fun uninstall_reports_the_whole_inventory() {
     uninstall_inventory(&mut scenario, &mut e, &acl, MODULE_ID);
     assert!(!e.has_component(MODULE_ID));
 
-    // One event for the whole inventory, carrying the entire accounting: both
-    // balances were destroyed, and 220 is the total the consumer checks against
-    // what it had tracked under this key.
+    // The marker carries the whole `used` total and arrives ahead of the burns.
     let torn_down = event::events_by_type<inventory::InventoryUninstalled>();
     assert!(torn_down.length() == 1);
     let (entity_id, component_id, used_before) = inventory::uninstalled_fields(&torn_down[0]);
     assert!(entity_id == e_id && component_id == MODULE_ID);
-    assert!(used_before == 220);
+    assert!(used_before == 200);
 
-    // Explicitly not per type. `ItemBurned` stays exclusively the bridge-out, so
-    // a consumer never has to ask whether a burn conserved supply or destroyed
-    // it — teardown is the other event entirely.
-    assert!(event::events_by_type<inventory::ItemBurned>().is_empty());
+    // Each burn names the inventory and counts it down to empty.
+    let burned = event::events_by_type<inventory::ItemBurned>();
+    assert!(burned.length() == 1);
+    let (
+        entity_id,
+        component_id,
+        type_id,
+        quantity,
+        balance_after,
+        used_after,
+    ) = inventory::burned_fields(&burned[0]);
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(type_id == FUEL && quantity == 100);
+    assert!(balance_after == 0 && used_after == 0);
 
     ts::return_shared(acl);
     ts::return_shared(e);

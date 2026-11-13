@@ -39,14 +39,17 @@ fun bag_mint_adds_balance() {
 }
 
 #[test]
-fun destroy_bag_drops_a_populated_bag() {
+fun burn_all_clears_bag() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
 
     item::mint(&mut bag, key, 50, VOL);
     assert!(item::balance(&bag, FUEL) == 50);
-    item::destroy_bag(bag);
+    let drained = item::burn_all_and_destroy(bag);
+    assert!(drained.length() == 1);
+    let (type_id, quantity, volume) = drained[0].drained_fields();
+    assert!(type_id == FUEL && quantity == 50 && volume == VOL);
     scenario.end();
 }
 
