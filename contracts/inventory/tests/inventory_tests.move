@@ -927,7 +927,7 @@ fun bridge_in_wrong_type_aborts() {
 }
 
 #[test]
-fun uninstall_burns_inventory() {
+fun uninstall_destroys_inventory() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
@@ -950,26 +950,28 @@ fun uninstall_burns_inventory() {
     uninstall_inventory(&mut scenario, &mut e, &acl, MODULE_ID);
     assert!(!e.has_component(MODULE_ID));
 
-    // The marker carries the whole `used` total and arrives ahead of the burns.
     let torn_down = event::events_by_type<inventory::InventoryUninstalled>();
     assert!(torn_down.length() == 1);
-    let (entity_id, component_id, used_before) = inventory::uninstalled_fields(&torn_down[0]);
-    assert!(entity_id == e_id && component_id == MODULE_ID);
-    assert!(used_before == 200);
-
-    let burned = event::events_by_type<item::ItemBurned>();
-    assert!(burned.length() == 1);
     let (
-        game_id,
-        quantity,
         entity_id,
         component_id,
-        balance_after,
-        used_after,
-    ) = item::burned_fields(&burned[0]);
-    assert!(game_id.id() == FUEL && quantity == 100);
+        used_before,
+        balance_count,
+        batch_count,
+    ) = inventory::uninstalled_fields(&torn_down[0]);
     assert!(entity_id == e_id && component_id == MODULE_ID);
-    assert!(balance_after == 0 && used_after == 0);
+    assert!(used_before == 200 && balance_count == 1 && batch_count == 1);
+
+    let destroyed = event::events_by_type<item::ItemsDestroyed>();
+    assert!(destroyed.length() == 1);
+    let (entity_id, component_id, batch_index, balances) = item::items_destroyed_fields(
+        &destroyed[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID && batch_index == 0);
+    assert!(balances.length() == 1);
+    let (type_id, quantity, volume) = item::destroyed_balance_fields(&balances[0]);
+    assert!(type_id == FUEL && quantity == 100 && volume == VOL);
+    assert!(event::events_by_type<item::ItemBurned>().is_empty());
 
     ts::return_shared(acl);
     ts::return_shared(e);
@@ -1018,7 +1020,9 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
 
     let torn_down = event::events_by_type<inventory::InventoryUninstalled>();
     assert!(torn_down.length() == 1);
-    let (torn_entity, torn_component, used_before) = inventory::uninstalled_fields(&torn_down[0]);
+    let (torn_entity, torn_component, used_before, _, _) = inventory::uninstalled_fields(
+        &torn_down[0],
+    );
     assert!(torn_entity == e_id && torn_component == MODULE_ID);
     assert!(used_before == 200);
 

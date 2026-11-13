@@ -8,8 +8,6 @@ use sui::{event, test_scenario as ts};
 
 const FUEL: u64 = 100;
 const VOL: u64 = 10;
-const LENS: u64 = 200;
-const LENS_VOL: u64 = 3;
 const COMPONENT: u64 = 7;
 
 fun tenant(): string::String { string::utf8(b"test") }
@@ -43,39 +41,69 @@ fun bag_mint_adds_balance() {
     scenario.end();
 }
 
-#[test]
-fun burn_all_clears_bag() {
+/// Mint `count` types (ids 1..=count, quantity = id) into a fresh bag, then
+/// drain it at `batch_size`. Returns the batches emitted.
+fun drain_types(count: u64, batch_size: u64): vector<item::ItemsDestroyed> {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
-    let key = fuel_key();
     let mut used = 0;
-
-    item::mint(&mut bag, key, 50, VOL, source(), COMPONENT, &mut used);
-    let lens = entity_key::new(LENS, tenant());
-    item::mint(&mut bag, lens, 2, LENS_VOL, source(), COMPONENT, &mut used);
-    assert!(item::balance(&bag, FUEL) == 50);
-    assert!(used == 50 * VOL + 2 * LENS_VOL);
-    item::burn_all_and_destroy(bag, tenant(), source(), COMPONENT, used);
-
-    let burned = event::events_by_type<item::ItemBurned>();
-    assert!(burned.length() == 2);
-    let (
-        game_id,
-        quantity,
-        entity_id,
-        component_id,
-        balance_after,
-        used_after,
-    ) = item::burned_fields(
-        &burned[0],
-    );
-    assert!(game_id == key && quantity == 50);
-    assert!(entity_id == source() && component_id == COMPONENT);
-    assert!(balance_after == 0 && used_after == 2 * LENS_VOL);
-    let (game_id, quantity, _, _, balance_after, used_after) = item::burned_fields(&burned[1]);
-    assert!(game_id == lens && quantity == 2);
-    assert!(balance_after == 0 && used_after == 0);
+    count.do!(|i| {
+        let key = entity_key::new(i + 1, tenant());
+        item::mint(&mut bag, key, i + 1, VOL, source(), COMPONENT, &mut used);
+    });
+    assert!(bag.balance_count() == count);
+    item::drain_and_destroy(bag, source(), COMPONENT, batch_size);
+    let batches = event::events_by_type<item::ItemsDestroyed>();
     scenario.end();
+    batches
+}
+
+/// Batch `batch_index` holds `len` balances, continuing the 1..=count sequence.
+fun assert_batch(batch: &item::ItemsDestroyed, batch_index: u64, len: u64, batch_size: u64) {
+    let (entity_id, component_id, index, balances) = item::items_destroyed_fields(batch);
+    assert!(entity_id == source() && component_id == COMPONENT);
+    assert!(index == batch_index && balances.length() == len);
+    len.do!(|i| {
+        let expected = batch_index * batch_size + i + 1;
+        let (type_id, quantity, volume) = item::destroyed_balance_fields(&balances[i]);
+        assert!(type_id == expected && quantity == expected && volume == VOL);
+    });
+}
+
+#[test]
+fun drain_lists_balances_in_batches() {
+    let batches = drain_types(5, 2);
+    assert!(batches.length() == 3);
+    assert_batch(&batches[0], 0, 2, 2);
+    assert_batch(&batches[1], 1, 2, 2);
+    assert_batch(&batches[2], 2, 1, 2);
+    assert!(event::events_by_type<item::ItemBurned>().is_empty());
+}
+
+#[test]
+fun drain_fills_batches_exactly() {
+    let batches = drain_types(4, 2);
+    assert!(batches.length() == 2);
+    assert_batch(&batches[0], 0, 2, 2);
+    assert_batch(&batches[1], 1, 2, 2);
+}
+
+#[test]
+fun drain_under_one_batch() {
+    let batches = drain_types(3, 1000);
+    assert!(batches.length() == 1);
+    assert_batch(&batches[0], 0, 3, 1000);
+}
+
+#[test]
+fun drain_empty_bag_emits_nothing() {
+    assert!(drain_types(0, 2).is_empty());
+}
+
+#[test]
+fun full_batch_fits_the_event_size_limit() {
+    // Sui's `max_event_emit_size`.
+    assert!(item::full_batch_bcs_size(inventory::inventory::destroyed_batch_size()) < 256_000);
 }
 
 #[test]
@@ -208,18 +236,4 @@ fun burn_over_balance_aborts() {
     item::burn(&mut bag, key, 11, source(), COMPONENT, &mut used);
 
     abort
-}
-
-#[test]
-fun burn_all_saturates_when_used_is_short() {
-    let mut scenario = ts::begin(@0xA);
-    let mut bag = item::new_bag(scenario.ctx());
-    let mut used = 0;
-    item::mint(&mut bag, fuel_key(), 50, VOL, source(), COMPONENT, &mut used);
-    item::burn_all_and_destroy(bag, tenant(), source(), COMPONENT, used - 1);
-
-    let burned = event::events_by_type<item::ItemBurned>();
-    let (_, quantity, _, _, balance_after, used_after) = item::burned_fields(&burned[0]);
-    assert!(quantity == 50 && balance_after == 0 && used_after == 0);
-    scenario.end();
 }

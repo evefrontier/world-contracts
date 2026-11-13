@@ -65,7 +65,7 @@ public struct ItemMinted has copy, drop {
     used_after: u64,
 }
 
-/// Chain to game bridge, or one per type on `uninstall`.
+/// Chain to game bridge.
 public struct ItemBurned has copy, drop {
     game_id: EntityKey,
     quantity: u64,
@@ -97,6 +97,22 @@ public struct ItemWithdrawn has copy, drop {
     used_after: u64,
 }
 
+/// One balance `uninstall` destroyed: `quantity` of `type_id` at per-unit `volume`.
+public struct DestroyedBalance has copy, drop {
+    type_id: u64,
+    quantity: u64,
+    volume: u64,
+}
+
+/// One batch of the balances `uninstall` destroyed. `batch_index` runs
+/// `0..batch_count` of the preceding `InventoryUninstalled`.
+public struct ItemsDestroyed has copy, drop {
+    entity_id: ID,
+    component_id: u64,
+    batch_index: u64,
+    balances: vector<DestroyedBalance>,
+}
+
 // === View Functions ===
 
 public fun type_id(item: &Item): u64 {
@@ -123,6 +139,11 @@ public fun balance(bag: &ItemBag, type_id: u64): u64 {
 /// Per-unit volume stored for `type_id` in `bag` (0 if absent).
 public fun volume_of(bag: &ItemBag, type_id: u64): u64 {
     if (bag.balances.contains(type_id)) bag.balances[type_id].volume else 0
+}
+
+/// Number of types held in `bag`.
+public fun balance_count(bag: &ItemBag): u64 {
+    bag.balances.length()
 }
 
 // === Package Functions ===
@@ -185,28 +206,24 @@ public(package) fun burn(
     });
 }
 
-/// Burn every balance in `bag` (one `ItemBurned` event per type), then destroy it.
-public(package) fun burn_all_and_destroy(
+/// Remove every balance from `bag`, listing them in `ItemsDestroyed` events of
+/// at most `batch_size` each, then destroy it.
+public(package) fun drain_and_destroy(
     bag: ItemBag,
-    tenant: String,
     entity_id: ID,
     component_id: u64,
-    mut used: u64,
+    batch_size: u64,
 ) {
     let ItemBag { mut balances } = bag;
+    let mut batch_index = 0;
     while (!balances.is_empty()) {
-        let (type_id, Balance { quantity, volume }) = balances.pop_front();
-        // Saturate so uninstall never aborts on `used` drift.
-        let freed = quantity * volume;
-        used = if (freed < used) used - freed else 0;
-        event::emit(ItemBurned {
-            game_id: entity_key::new(type_id, tenant),
-            quantity,
-            entity_id,
-            component_id,
-            balance_after: 0,
-            used_after: used,
-        });
+        let mut batch = vector[];
+        while (!balances.is_empty() && batch.length() < batch_size) {
+            let (type_id, Balance { quantity, volume }) = balances.pop_front();
+            batch.push_back(DestroyedBalance { type_id, quantity, volume });
+        };
+        event::emit(ItemsDestroyed { entity_id, component_id, batch_index, balances: batch });
+        batch_index = batch_index + 1;
     };
     balances.destroy_empty();
 }
@@ -356,4 +373,32 @@ public fun withdrawn_fields(e: &ItemWithdrawn): (EntityKey, u64, ID, u64, ID, u6
         e.balance_after,
         e.used_after,
     )
+}
+
+#[test_only]
+public fun items_destroyed_fields(e: &ItemsDestroyed): (ID, u64, u64, vector<DestroyedBalance>) {
+    (e.entity_id, e.component_id, e.batch_index, e.balances)
+}
+
+#[test_only]
+public fun destroyed_balance_fields(b: &DestroyedBalance): (u64, u64, u64) {
+    (b.type_id, b.quantity, b.volume)
+}
+
+/// BCS size of an `ItemsDestroyed` holding `batch_size` balances, every field at
+/// its widest.
+#[test_only]
+public fun full_batch_bcs_size(batch_size: u64): u64 {
+    let max = std::u64::max_value!();
+    let mut balances = vector[];
+    batch_size.do!(
+        |_| balances.push_back(DestroyedBalance { type_id: max, quantity: max, volume: max }),
+    );
+    let batch = ItemsDestroyed {
+        entity_id: object::id_from_address(@0x0),
+        component_id: max,
+        batch_index: max,
+        balances,
+    };
+    sui::bcs::to_bytes(&batch).length()
 }

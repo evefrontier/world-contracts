@@ -48,6 +48,10 @@ const EWrongTenant: vector<u8> = b"Inventory can only move between entities of t
 
 const VERSION: u64 = 1;
 
+/// Most balances per `ItemsDestroyed`. A full batch is ~24 KB of BCS, well
+/// under Sui's 256 KB per-event limit.
+const DESTROYED_BATCH_SIZE: u64 = 1000;
+
 // === Structs ===
 
 /// One balance area with its own volume cap; the component's inner state.
@@ -82,13 +86,15 @@ public struct InventoryInstalled has copy, drop {
     capacity: u64,
 }
 
-/// Emitted when an inventory is uninstalled, ahead of the burns it accounts for.
-/// `used_before` is the volume destroyed; unlike a bridge-out, none of it
-/// returns to the game.
+/// Emitted when an inventory is uninstalled, ahead of the `batch_count`
+/// `ItemsDestroyed` events listing its `balance_count` balances. `used_before`
+/// is the volume destroyed; unlike a bridge-out, none of it returns to the game.
 public struct InventoryUninstalled has copy, drop {
     entity_id: ID,
     component_id: u64,
     used_before: u64,
+    balance_count: u64,
+    batch_count: u64,
 }
 
 /// Inventory moved between entities with balances intact.
@@ -148,8 +154,8 @@ public fun install(
 }
 
 /// Remove the storage component and disconnect it from the power grid. Aborts if it was never
-/// installed. Emits `InventoryUninstalled`, then burns the Inventory's balances
-/// (emitting `ItemBurned` per type) so the game client is notified.
+/// installed. Emits `InventoryUninstalled`, then destroys the Inventory's
+/// balances in `ItemsDestroyed` batches so the game client is notified.
 public fun uninstall(
     entity: &mut Entity,
     component_id: u64,
@@ -158,7 +164,6 @@ public fun uninstall(
 ): Request {
     assert!(entity.has_component_with_type<Inventory>(component_id), EComponentMissing);
 
-    let tenant = entity.key().tenant();
     let (inv_component, req) = entity.uninstall<Inventory>(
         component_id,
         inventory_permit(),
@@ -166,9 +171,18 @@ public fun uninstall(
     );
     grid_load::disconnect<Inventory>(entity, component_id, inventory_permit(), clock);
     let entity_id = entity.id();
-    let inventory = inv_component.unwrap(inventory_permit());
-    event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });
-    burn_inventory(inventory, tenant, entity_id, component_id);
+    let Inventory { items, type_id: _, capacity: _, used } = inv_component.unwrap(
+        inventory_permit(),
+    );
+    let balance_count = items.balance_count();
+    event::emit(InventoryUninstalled {
+        entity_id,
+        component_id,
+        used_before: used,
+        balance_count,
+        batch_count: balance_count.div_ceil(DESTROYED_BATCH_SIZE),
+    });
+    item::drain_and_destroy(items, entity_id, component_id, DESTROYED_BATCH_SIZE);
     req
 }
 
@@ -464,11 +478,6 @@ fun withdraw_item(
     inv.items.withdraw(game_id, quantity, source, component_id, &mut inv.used, ctx)
 }
 
-fun burn_inventory(inv: Inventory, tenant: String, entity_id: ID, component_id: u64) {
-    let Inventory { items, type_id: _, capacity: _, used } = inv;
-    item::burn_all_and_destroy(items, tenant, entity_id, component_id, used);
-}
-
 fun borrow_component(entity: &Entity, component_id: u64): &Component<Inventory> {
     let c: &Component<Inventory> = entity.component_ref(component_id, inventory_permit());
     assert!(component::version(c) == VERSION, EWrongVersion);
@@ -503,9 +512,12 @@ public fun installed_fields(e: &InventoryInstalled): (ID, u64, u64, Option<Strin
 }
 
 #[test_only]
-public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64) {
-    (e.entity_id, e.component_id, e.used_before)
+public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64, u64, u64) {
+    (e.entity_id, e.component_id, e.used_before, e.balance_count, e.batch_count)
 }
+
+#[test_only]
+public fun destroyed_batch_size(): u64 { DESTROYED_BATCH_SIZE }
 
 #[test_only]
 public fun migrated_fields(e: &InventoryMigrated): (ID, ID, u64, u64, u64, u64) {
