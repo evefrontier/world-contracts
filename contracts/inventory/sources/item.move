@@ -14,6 +14,7 @@
 module inventory::item;
 
 use core::entity_key::{Self, EntityKey};
+use std::string::String;
 use sui::linked_table::{Self, LinkedTable};
 
 // === Errors ===
@@ -37,13 +38,16 @@ const ESourceMismatch: vector<u8> = b"Items withdrawn from different entities ca
 /// leave the Entity/Requirement system ungated. Lacking `store` and `drop` it
 /// also cannot outlive its transaction, which is what makes the `transit_id` on
 /// `ItemWithdrawn` / `ItemDeposited` an always-paired correlation key.
-/// `volume` is the per-unit volume (see module TODO).
+/// `volume` is the per-unit volume (see module TODO). `tenant` is the source
+/// entity's, carried so a deposit can refuse an `Item` from another tenant: a
+/// `type_id` is only meaningful tenant-scoped.
 public struct Item has key {
     id: UID,
     type_id: u64,
     quantity: u64,
     volume: u64,
     source: ID,
+    tenant: String,
 }
 
 /// One at-rest balance: quantity plus the per-unit volume shared by the type.
@@ -81,6 +85,10 @@ public fun volume(item: &Item): u64 {
 
 public fun source(item: &Item): ID {
     item.source
+}
+
+public fun tenant(item: &Item): String {
+    item.tenant
 }
 
 /// Current quantity of `type_id` in `bag` (0 if absent).
@@ -158,7 +166,7 @@ public(package) fun withdraw(
     assert!(bag.balances.contains(type_id), EInsufficientQuantity);
     let volume = bag.balances[type_id].volume;
     subtract_balance(bag, type_id, quantity);
-    Item { id: object::new(ctx), type_id, quantity, volume, source }
+    Item { id: object::new(ctx), type_id, quantity, volume, source, tenant: game_id.tenant() }
 }
 
 /// Split `quantity` off `item` into a new `Item` of the same type.
@@ -172,6 +180,7 @@ public(package) fun split(item: &mut Item, quantity: u64, ctx: &mut TxContext): 
         quantity,
         volume: item.volume,
         source: item.source,
+        tenant: item.tenant,
     }
 }
 

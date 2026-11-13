@@ -74,10 +74,15 @@ public struct Deposit(ItemRequirement) has drop;
 public struct Withdrawal(ItemRequirement) has drop;
 
 // === Events ===
+//
+// Every event names the inventory's entity and its `tenant`. An item `type_id`
+// is only meaningful tenant-scoped, so each row carries the tenant itself rather
+// than leaving consumers to join it in from entity creation.
 
 /// Game to chain: `game_item_to_chain_inventory` created this balance.
 public struct ItemMinted has copy, drop {
     entity_id: ID,
+    tenant: String,
     component_id: u64,
     type_id: u64,
     quantity: u64,
@@ -91,6 +96,7 @@ public struct ItemMinted has copy, drop {
 /// the game: each with `balance_after` 0 and `used_after` the volume still left.
 public struct ItemBurned has copy, drop {
     entity_id: ID,
+    tenant: String,
     component_id: u64,
     type_id: u64,
     quantity: u64,
@@ -104,6 +110,7 @@ public struct ItemBurned has copy, drop {
 /// shares nothing else.
 public struct ItemWithdrawn has copy, drop {
     entity_id: ID,
+    tenant: String,
     component_id: u64,
     transit_id: ID,
     type_id: u64,
@@ -116,6 +123,7 @@ public struct ItemWithdrawn has copy, drop {
 /// the `ItemWithdrawn` that produced it.
 public struct ItemDeposited has copy, drop {
     entity_id: ID,
+    tenant: String,
     component_id: u64,
     transit_id: ID,
     type_id: u64,
@@ -124,14 +132,16 @@ public struct ItemDeposited has copy, drop {
     used_after: u64,
 }
 
-/// An inventory now exists at `(entity_id, component_id)` and will hold
-/// balances until `InventoryUninstalled`. `component_id` is caller-chosen and
+/// An empty inventory now exists at `(entity_id, component_id)`, holding
+/// balances until `InventoryUninstalled` or an `InventoryMigrated` away from
+/// this entity closes the key. `component_id` is caller-chosen and
 /// reusable, so the pair is what makes that key sound: a reinstall is a
 /// different inventory, with a fresh bag and possibly a different capacity.
 /// `inventory_type_id` is the inventory's own kind (`Inventory.type_id`), named
 /// apart from the item `type_id` every other event carries.
 public struct InventoryInstalled has copy, drop {
     entity_id: ID,
+    tenant: String,
     component_id: u64,
     inventory_type_id: u64,
     name: Option<String>,
@@ -143,14 +153,27 @@ public struct InventoryInstalled has copy, drop {
 /// returns to the game.
 public struct InventoryUninstalled has copy, drop {
     entity_id: ID,
+    tenant: String,
     component_id: u64,
     used_before: u64,
 }
 
+/// The inventory at `component_id` moved from `from_entity_id` to
+/// `to_entity_id` with every balance intact: this closes the key
+/// `(from_entity_id, component_id)` and opens `(to_entity_id, component_id)`
+/// with the same balances, so a consumer carries its tracked state across
+/// rather than treating it as destroyed. The rest of the fields restate what
+/// `InventoryInstalled` would for the new key, and `used` is the checksum for the
+/// balances carried. Both entities share `tenant`; `migrate` enforces it.
 public struct InventoryMigrated has copy, drop {
     from_entity_id: ID,
     to_entity_id: ID,
+    tenant: String,
     component_id: u64,
+    inventory_type_id: u64,
+    name: Option<String>,
+    capacity: u64,
+    used: u64,
 }
 
 // === Public Functions ===
@@ -174,6 +197,7 @@ public fun install(
     ctx: &mut TxContext,
 ): Request {
     let entity_id = entity.id();
+    let tenant = entity.key().tenant();
     let inventory = Inventory { type_id, capacity, used: 0, items: item::new_bag(ctx) };
     let req = entity.install(
         component_id,
@@ -193,6 +217,7 @@ public fun install(
     grid_load::connect<Inventory>(entity, component_id, power, inventory_permit(), clock);
     event::emit(InventoryInstalled {
         entity_id,
+        tenant,
         component_id,
         inventory_type_id: type_id,
         name,
@@ -220,9 +245,15 @@ public fun uninstall(
     grid_load::disconnect<Inventory>(entity, component_id, inventory_permit(), clock);
     // Reading the entity is free again now that `uninstall` released its borrow.
     let entity_id = entity.id();
+    let tenant = entity.key().tenant();
     let inventory = inv_component.unwrap(inventory_permit());
-    event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });
-    burn_inventory(inventory, entity_id, component_id);
+    event::emit(InventoryUninstalled {
+        entity_id,
+        tenant,
+        component_id,
+        used_before: inventory.used(),
+    });
+    burn_inventory(inventory, entity_id, tenant, component_id);
     req
 }
 
@@ -246,13 +277,19 @@ public fun migrate(
     );
     let name = inv_component.name();
     let inventory = inv_component.unwrap(inventory_permit());
-    let to_req = to.install(component_id, name, inventory, VERSION, inventory_permit(), ctx);
-    grid_load::migrate<Inventory>(from, to, component_id, inventory_permit(), clock);
-    event::emit(InventoryMigrated {
+    let migrated = InventoryMigrated {
         from_entity_id: from.id(),
         to_entity_id: to.id(),
+        tenant: to.key().tenant(),
         component_id,
-    });
+        inventory_type_id: inventory.type_id,
+        name,
+        capacity: inventory.capacity,
+        used: inventory.used,
+    };
+    let to_req = to.install(component_id, name, inventory, VERSION, inventory_permit(), ctx);
+    grid_load::migrate<Inventory>(from, to, component_id, inventory_permit(), clock);
+    event::emit(migrated);
     (from_req, to_req)
 }
 
@@ -266,13 +303,15 @@ public fun game_item_to_chain_inventory(
     volume: u64, // TODO: volume should be stored in static data module in the future
 ) {
     let entity_id = entity.id();
-    let key = entity_key::new(type_id, entity.key().tenant());
+    let tenant = entity.key().tenant();
+    let key = entity_key::new(type_id, tenant);
     let (requirement, mut frame, inv) = take(entity, req, bridge_in_permit());
     let component_id = target_component_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.mint_item(key, quantity, volume);
     event::emit(ItemMinted {
         entity_id,
+        tenant,
         component_id,
         type_id,
         quantity,
@@ -293,13 +332,15 @@ public fun chain_item_to_game_inventory(
     quantity: u64,
 ) {
     let entity_id = entity.id();
-    let key = entity_key::new(type_id, entity.key().tenant());
+    let tenant = entity.key().tenant();
+    let key = entity_key::new(type_id, tenant);
     let (requirement, mut frame, inv) = take(entity, req, bridge_out_permit());
     let component_id = target_component_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     inv.burn_item(key, type_id, quantity);
     event::emit(ItemBurned {
         entity_id,
+        tenant,
         component_id,
         type_id,
         quantity,
@@ -312,10 +353,15 @@ public fun chain_item_to_game_inventory(
 }
 
 /// Deposit a standalone `Item` into the entity's Inventory.
-/// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
-/// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
+/// Aborts unless the entity is docked, and unless `item` was withdrawn from an
+/// entity of this entity's tenant: docking proves where the item came from, not
+/// that the two share a tenant (an attested docking checks no source at all).
+/// Pushes an `OnlineRequirement` for this inventory's grant. The caller satisfies
+/// it with `grid_load::assert_online`.
 public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
     let entity_id = entity.id();
+    let tenant = entity.key().tenant();
+    assert!(item.tenant() == tenant, EWrongTenant);
     docking::assert_docked(entity_id, option::some(item.source()), ctx);
     let transit_id = object::id(&item);
     let type_id = item.type_id();
@@ -326,6 +372,7 @@ public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut
     inv.deposit_item(item);
     event::emit(ItemDeposited {
         entity_id,
+        tenant,
         component_id,
         transit_id,
         type_id,
@@ -349,13 +396,15 @@ public fun withdraw(
 ): Item {
     let entity_id = entity.id();
     docking::assert_docked(entity_id, option::none(), ctx);
-    let key = entity_key::new(type_id, entity.key().tenant());
+    let tenant = entity.key().tenant();
+    let key = entity_key::new(type_id, tenant);
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let component_id = target_component_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
     let item = inv.withdraw_item(key, type_id, quantity, entity_id, ctx);
     event::emit(ItemWithdrawn {
         entity_id,
+        tenant,
         component_id,
         transit_id: object::id(&item),
         type_id,
@@ -536,13 +585,14 @@ fun withdraw_item(
 
 /// Burn every balance, one `ItemBurned` per type, counting `used_after` down to
 /// 0 on the last.
-fun burn_inventory(inv: Inventory, entity_id: ID, component_id: u64) {
+fun burn_inventory(inv: Inventory, entity_id: ID, tenant: String, component_id: u64) {
     let Inventory { items, type_id: _, capacity: _, mut used } = inv;
     item::burn_all_and_destroy(items).do!(|burned| {
         let (type_id, quantity, volume) = burned.drained_fields();
         used = used - quantity * volume;
         event::emit(ItemBurned {
             entity_id,
+            tenant,
             component_id,
             type_id,
             quantity,
@@ -599,6 +649,24 @@ public fun burned_fields(e: &ItemBurned): (ID, u64, u64, u64, u64, u64) {
     (e.entity_id, e.component_id, e.type_id, e.quantity, e.balance_after, e.used_after)
 }
 
+#[test_only]
+public fun minted_tenant(e: &ItemMinted): String { e.tenant }
+
+#[test_only]
+public fun burned_tenant(e: &ItemBurned): String { e.tenant }
+
+#[test_only]
+public fun withdrawn_tenant(e: &ItemWithdrawn): String { e.tenant }
+
+#[test_only]
+public fun deposited_tenant(e: &ItemDeposited): String { e.tenant }
+
+#[test_only]
+public fun installed_tenant(e: &InventoryInstalled): String { e.tenant }
+
+#[test_only]
+public fun uninstalled_tenant(e: &InventoryUninstalled): String { e.tenant }
+
 /// `(entity_id, component_id, transit_id, type_id, quantity, balance_after, used_after)`.
 #[test_only]
 public fun withdrawn_fields(e: &ItemWithdrawn): (ID, u64, ID, u64, u64, u64, u64) {
@@ -637,4 +705,22 @@ public fun installed_fields(e: &InventoryInstalled): (ID, u64, u64, Option<Strin
 #[test_only]
 public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64) {
     (e.entity_id, e.component_id, e.used_before)
+}
+
+/// `(from_entity_id, to_entity_id, tenant, component_id, inventory_type_id,
+/// name, capacity, used)`.
+#[test_only]
+public fun migrated_fields(
+    e: &InventoryMigrated,
+): (ID, ID, String, u64, u64, Option<String>, u64, u64) {
+    (
+        e.from_entity_id,
+        e.to_entity_id,
+        e.tenant,
+        e.component_id,
+        e.inventory_type_id,
+        e.name,
+        e.capacity,
+        e.used,
+    )
 }

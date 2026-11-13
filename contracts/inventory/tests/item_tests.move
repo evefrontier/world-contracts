@@ -185,3 +185,17 @@ fun mint_zero_quantity_aborts() {
 
     abort
 }
+
+#[test]
+fun withdraw_carries_the_tenant() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let mut out = withdraw_item(&mut bag, fuel_key(), 30, scenario.ctx());
+    assert!(out.tenant() == tenant());
+    let part = item::split(&mut out, 10, scenario.ctx());
+    assert!(part.tenant() == tenant());
+    item::destroy_for_testing(part);
+    item::destroy_for_testing(out);
+    item::destroy_bag(bag);
+    scenario.end();
+}

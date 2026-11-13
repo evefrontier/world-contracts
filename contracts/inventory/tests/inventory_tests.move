@@ -8,9 +8,9 @@ use core::{
     docking,
     entity::{Self, Entity},
     object_registry::ObjectRegistry,
-    request::Request,
+    request::{Self, Request},
     requirement::Requirement,
-    test_helpers::{claim, setup, take_acl, take_registry}
+    test_helpers::{claim, setup, take_acl, take_registry, tenant}
 };
 use inventory::{inventory, item::Item};
 use power::{grid_fuel, grid_generator, grid_load, power_grid};
@@ -485,6 +485,7 @@ fun install_reports_component_and_capacity() {
     let (entity_id, component_id, inventory_type_id, name, capacity) = inventory::installed_fields(
         &installed[0],
     );
+    assert!(inventory::installed_tenant(&installed[0]) == tenant());
     assert!(entity_id == e.id());
     assert!(component_id == MODULE_ID);
     assert!(inventory_type_id == TYPE_ID);
@@ -581,6 +582,7 @@ fun owner_interaction_inventory() {
     assert!(entity_id == e_id && component_id == MODULE_ID);
     assert!(type_id == FUEL && quantity == 100);
     assert!(balance_after == 100 && used_after == 200);
+    assert!(inventory::minted_tenant(&minted[0]) == tenant());
 
     bridge_out(&mut scenario, e_id, OWNER, b"bridge_out", FUEL, 50); // used 100, bal 50
     let burned = event::events_by_type<inventory::ItemBurned>();
@@ -598,6 +600,7 @@ fun owner_interaction_inventory() {
     assert!(entity_id == e_id && component_id == MODULE_ID);
     assert!(type_id == FUEL && quantity == 50);
     assert!(balance_after == 50 && used_after == 100);
+    assert!(inventory::burned_tenant(&burned[0]) == tenant());
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
@@ -630,6 +633,7 @@ fun owner_interaction_inventory() {
     assert!(out_transit == transit_id);
     assert!(type_id == FUEL && quantity == 20);
     assert!(balance_after == 30 && used_after == 60);
+    assert!(inventory::withdrawn_tenant(&withdrawn[0]) == tenant());
 
     let deposited = event::events_by_type<inventory::ItemDeposited>();
     assert!(deposited.length() == 1);
@@ -648,6 +652,7 @@ fun owner_interaction_inventory() {
     assert!(in_transit == transit_id);
     assert!(type_id == FUEL && quantity == 20);
     assert!(balance_after == 50 && used_after == 100);
+    assert!(inventory::deposited_tenant(&deposited[0]) == tenant());
 
     ts::return_to_sender(&scenario, cap);
     ts::return_shared(e);
@@ -919,6 +924,7 @@ fun uninstall_burns_inventory() {
     let (entity_id, component_id, used_before) = inventory::uninstalled_fields(&torn_down[0]);
     assert!(entity_id == e_id && component_id == MODULE_ID);
     assert!(used_before == 200);
+    assert!(inventory::uninstalled_tenant(&torn_down[0]) == tenant());
 
     // Each burn names the inventory and counts it down to empty.
     let burned = event::events_by_type<inventory::ItemBurned>();
@@ -934,6 +940,7 @@ fun uninstall_burns_inventory() {
     assert!(entity_id == e_id && component_id == MODULE_ID);
     assert!(type_id == FUEL && quantity == 100);
     assert!(balance_after == 0 && used_after == 0);
+    assert!(inventory::burned_tenant(&burned[0]) == tenant());
 
     ts::return_shared(acl);
     ts::return_shared(e);
@@ -1163,6 +1170,40 @@ fun deposit_at_an_entity_outside_the_docking_aborts() {
     abort
 }
 
+/// Docking proves where an `Item` came from, not that its source shares the
+/// destination's tenant, so `deposit` checks the tenant itself before anything
+/// else. The destination needs no inventory: the check fires first.
+#[test, expected_failure(abort_code = inventory::EWrongTenant)]
+fun deposit_from_another_tenant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    x.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    let z_id = share_grid_entity(&mut scenario, 2, b"OTHER");
+
+    // X is docked at Z, so the docking check alone would let the move through.
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let x_cap = ts::take_from_sender<AccessCap>(&scenario);
+    docking::dock_for_testing(x_id, z_id, character_id(), scenario.ctx());
+    let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
+    let mut req = request::new_for_testing(option::some(z_id), vector[]);
+    inventory::deposit(&mut z, &mut req, fuel, scenario.ctx());
+
+    abort
+}
+
 /// Installing the Inventory connects it to the grid. Uninstalling disconnects
 /// it and leaves the grid installed.
 #[test]
@@ -1283,6 +1324,25 @@ fun migrate_moves_inventory_with_its_items() {
     migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
 
     assert!(event::events_by_type<inventory::ItemBurned>().is_empty());
+    // Nothing was destroyed, so no teardown row; the migration row alone hands
+    // the key over, with everything an install would have said for the new one.
+    assert!(event::events_by_type<inventory::InventoryUninstalled>().is_empty());
+    let migrated = event::events_by_type<inventory::InventoryMigrated>();
+    assert!(migrated.length() == 1);
+    let (
+        from_entity,
+        to_entity,
+        moved_tenant,
+        component_id,
+        inventory_type_id,
+        name,
+        capacity,
+        used,
+    ) = inventory::migrated_fields(&migrated[0]);
+    assert!(from_entity == from_id && to_entity == to_id && component_id == MODULE_ID);
+    assert!(moved_tenant == tenant());
+    assert!(inventory_type_id == TYPE_ID && name == option::some(unit_name()));
+    assert!(capacity == 1000 && used == 100 * VOL);
     ts::next_tx(&mut scenario, ADMIN);
     let from = ts::take_shared_by_id<Entity>(&scenario, from_id);
     let to = ts::take_shared_by_id<Entity>(&scenario, to_id);
