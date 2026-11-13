@@ -1270,12 +1270,11 @@ fun migrate_moves_inventory_with_its_items() {
         to_entity,
         component_id,
         inventory_type_id,
-        name,
         capacity,
         used,
     ) = inventory::migrated_fields(&migrated[0]);
     assert!(from_entity == from_id && to_entity == to_id && component_id == MODULE_ID);
-    assert!(inventory_type_id == TYPE_ID && name == option::some(unit_name()));
+    assert!(inventory_type_id == TYPE_ID);
     assert!(capacity == 1000 && used == 100 * VOL);
     ts::next_tx(&mut scenario, ADMIN);
     let from = ts::take_shared_by_id<Entity>(&scenario, from_id);

@@ -98,7 +98,6 @@ public struct InventoryMigrated has copy, drop {
     to_entity_id: ID,
     component_id: u64,
     inventory_type_id: u64,
-    name: Option<String>,
     capacity: u64,
     used: u64,
 }
@@ -201,7 +200,6 @@ public fun migrate(
         to_entity_id: to.id(),
         component_id,
         inventory_type_id: inventory.type_id,
-        name,
         capacity: inventory.capacity,
         used: inventory.used,
     };
@@ -525,17 +523,8 @@ public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64) {
     (e.entity_id, e.component_id, e.used_before)
 }
 
-/// `(from_entity_id, to_entity_id, component_id, inventory_type_id, name,
-/// capacity, used)`.
+/// `(from_entity_id, to_entity_id, component_id, inventory_type_id, capacity, used)`.
 #[test_only]
-public fun migrated_fields(e: &InventoryMigrated): (ID, ID, u64, u64, Option<String>, u64, u64) {
-    (
-        e.from_entity_id,
-        e.to_entity_id,
-        e.component_id,
-        e.inventory_type_id,
-        e.name,
-        e.capacity,
-        e.used,
-    )
+public fun migrated_fields(e: &InventoryMigrated): (ID, ID, u64, u64, u64, u64) {
+    (e.from_entity_id, e.to_entity_id, e.component_id, e.inventory_type_id, e.capacity, e.used)
 }
