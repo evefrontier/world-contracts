@@ -440,7 +440,57 @@ public fun version(entity: &Entity): u64 {
     entity.version
 }
 
+/// Names of the actions the owner exposed, in insertion order.
+///
+/// With `admin_action_names`, this lets another package check an entity's whole
+/// action surface on-chain, e.g. to refuse to custody items in an Inventory that
+/// some other action can withdraw from. `interact` resolves a name in the admin
+/// map first, so check both.
+public fun owner_action_names(entity: &Entity): vector<String> {
+    action_names_in(entity, OwnerActionsKey())
+}
+
+/// Names of the actions an admin exposed, in insertion order. See `owner_action_names`.
+public fun admin_action_names(entity: &Entity): vector<String> {
+    action_names_in(entity, AdminActionsKey())
+}
+
+public fun has_owner_action(entity: &Entity, name: String): bool {
+    action_map(entity, OwnerActionsKey()).contains(&name)
+}
+
+public fun has_admin_action(entity: &Entity, name: String): bool {
+    action_map(entity, AdminActionsKey()).contains(&name)
+}
+
+/// The owner action `name`, read-only. Aborts with `EUnknownAction` if absent.
+/// Its requirements are stored in reverse declaration order; see `action::requirements`.
+public fun owner_action(entity: &Entity, name: String): &Action {
+    action_in(entity, OwnerActionsKey(), name)
+}
+
+/// The admin action `name`, read-only. Aborts with `EUnknownAction` if absent.
+public fun admin_action(entity: &Entity, name: String): &Action {
+    action_in(entity, AdminActionsKey(), name)
+}
+
 // === Private Functions ===
+
+fun action_map<K: copy + drop + store>(entity: &Entity, key: K): &VecMap<String, Action> {
+    df::borrow(&entity.id, key)
+}
+
+fun action_names_in<K: copy + drop + store>(entity: &Entity, key: K): vector<String> {
+    action_map(entity, key).keys()
+}
+
+fun action_in<K: copy + drop + store>(entity: &Entity, key: K, name: String): &Action {
+    let map = action_map(entity, key);
+    let idx = map.get_idx_opt(&name);
+    assert!(idx.is_some(), EUnknownAction);
+    let (_, action) = map.get_entry_by_idx(idx.destroy_some());
+    action
+}
 
 fun add_action<K: copy + drop + store>(entity: &mut Entity, key: K, name: String, action: Action) {
     assert!(entity.version == VERSION, EWrongVersion);

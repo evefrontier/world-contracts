@@ -28,6 +28,8 @@ public fun new(mut requirements: vector<Requirement>): Action {
 
 // === View Functions ===
 
+/// The requirements in storage order, which is the reverse of declaration order:
+/// the last element is the first requirement `interact` hands out.
 public fun requirements(action: &Action): &vector<Requirement> {
     &action.requirements
 }
