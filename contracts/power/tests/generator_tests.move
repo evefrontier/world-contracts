@@ -515,7 +515,6 @@ fun uninstall_online_generator_that_overloads_trips() {
     assert!(grid_scenario::draw(&mut scenario, entity_id, MOD_A, &clock) == 12);
 
     uninstall_generator(&mut scenario, entity_id, 0, &clock);
-    assert!(event::events_by_type<power_grid::PowerTripped>().length() == 1);
 
     ts::next_tx(&mut scenario, admin());
     let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);

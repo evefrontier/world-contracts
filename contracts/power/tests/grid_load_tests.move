@@ -533,6 +533,47 @@ fun refuel_leaves_grid_tripped() {
     scenario.end();
 }
 
+/// A run-out tripped the grid but nothing settled since. Power On settles first,
+/// so it sees the trip instead of aborting `EAlreadyOn`; with no fuel it trips again.
+#[test]
+fun power_on_after_unsettled_trip_does_not_abort() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+
+    clock.set_for_testing(DEPLETING_MS);
+    assert!(power_grid_on(&mut scenario, entity_id));
+    power(&mut scenario, entity_id, true, &clock);
+    assert!(!power_grid_on(&mut scenario, entity_id));
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+
+    deposit_fuel(&mut scenario, entity_id, 100, impulse(), burden(), &clock);
+    power(&mut scenario, entity_id, true, &clock);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Power Off after an unsettled trip aborts: settling shows the grid is already off.
+#[test, expected_failure(abort_code = power_grid::EAlreadyOff)]
+fun power_off_after_unsettled_trip_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+
+    clock.set_for_testing(DEPLETING_MS);
+    power(&mut scenario, entity_id, false, &clock);
+
+    abort
+}
+
 // === Consumer checks ===
 
 #[test]
@@ -696,7 +737,6 @@ fun switch_on_without_fuel_trips_and_reads_no_fuel() {
     install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
 
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
-    assert!(sui::event::events_by_type<power_grid::PowerTripped>().length() == 1);
 
     let (online, desired, _) = module_flags(&mut scenario, entity_id, MOD_A);
     assert!(!online && desired);

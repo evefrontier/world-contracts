@@ -297,12 +297,6 @@ public struct PowerToggled has copy, drop {
     on: bool,
 }
 
-/// An overload switched the grid off: desired Firm need exceeded capacity, from
-/// an owner action or a pool running dry. The owner switches it back on.
-public struct PowerTripped has copy, drop {
-    entity_id: ID,
-}
-
 /// A module's granted draw changed at a settle.
 public struct DrawChanged has copy, drop {
     entity_id: ID,
@@ -355,12 +349,13 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     req
 }
 
-/// Switch the grid on or off. Settles at the old state, then regrants.
+/// Switch the grid on or off. Settles at the old state first, so a trip since
+/// the last settle counts as off, then regrants.
 public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, clock: &Clock) {
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, operate_grid_permit());
+    grid.settle(clock);
     if (on) assert!(!grid.on, EAlreadyOn) else assert!(grid.on, EAlreadyOff);
-    grid.settle(entity_id, clock);
     grid.on = on;
     event::emit(PowerToggled { entity_id, on });
     grid.regrant(entity_id);
@@ -368,10 +363,10 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
     req.enqueue(frame);
 }
 
-/// Shut the Creation down when it loses its Shell: clear every module's desired
+/// Shut the Creation down when it loses its Shell/abandoned: clear every module's desired
 /// state, and take every generator and bay offline. `GridShutDown` stands for
-/// all of it: no `GeneratorToggled`, `FuelBayToggled` or `CapacityChanged`
-/// follows, and capacity is 0 after.
+/// all of it: no `GeneratorToggled` or `FuelBayToggled` follows, and capacity
+/// is 0 after.
 /// Unlike Power Off, nothing comes back by itself; the owner switches things on
 /// again. `on` is unchanged. The service calls it in the same transaction as the
 /// Layout edit that removes the Shell. The request needs a
@@ -379,7 +374,7 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
 public fun shut_down(entity: &mut Entity, req: &mut Request, clock: &Clock) {
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, shut_down_permit());
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.modules.length().do!(|i| {
         let (_, state) = grid.modules.get_entry_by_idx_mut(i);
         state.desired_online = false;
@@ -442,7 +437,7 @@ public fun operate_grid_requirement(): Requirement {
 public fun assert_power_grid(entity: &mut Entity, req: &mut Request, clock: &Clock) {
     let entity_id = entity.id();
     let (requirement, frame, grid) = take_grid(entity, req, power_grid_requirement_permit());
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.regrant(entity_id);
     enforce_power_grid(&requirement, grid);
     frame.destroy_empty_frame();
@@ -736,7 +731,7 @@ public fun component_id(): u64 {
 }
 
 /// Whether the grid is on as of the last settle. False after Power Off or a trip;
-/// `PowerToggled` and `PowerTripped` tell which.
+/// a `PowerToggled` in the same transaction means Power Off.
 public fun on(grid: &PowerGrid): bool {
     grid.on
 }
@@ -1035,12 +1030,12 @@ public(package) fun grid_mut(entity: &mut Entity): &mut PowerGrid {
 /// so fuel added after it can't bring power back. Stored grants stay as they
 /// were: the caller regrants once after its change, which emits `DrawChanged`
 /// for every net move, including a run-out's.
-public(package) fun settle(grid: &mut PowerGrid, entity_id: ID, clock: &Clock) {
+public(package) fun settle(grid: &mut PowerGrid, clock: &Clock) {
     let now_ms = clock.timestamp_ms();
     let (bays, on, _, _) = grid.project(now_ms);
     grid.bays = bays;
     grid.last_settled_ms = now_ms.max(grid.last_settled_ms);
-    if (grid.on && !on) grid.trip(entity_id);
+    if (!on) grid.on = false;
 }
 
 /// Recompute every module's grant from desired state and effective capacity.
@@ -1051,7 +1046,7 @@ public(package) fun settle(grid: &mut PowerGrid, entity_id: ID, clock: &Clock) {
 /// `DrawChanged` for each module whose grant moved. Walks the map by index, so
 /// it costs O(n).
 public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
-    if (grid.on && grid.desired_firm_mw() > grid.capacity_mw()) grid.trip(entity_id);
+    if (grid.desired_firm_mw() > grid.capacity_mw()) grid.on = false;
     let draws = grid.draws_at(grid.effective_capacity_mw());
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx_mut(i);
@@ -1311,12 +1306,6 @@ public(package) fun draw_kind_from_tag(tag: u32): DrawKind {
 }
 
 // === Private Functions ===
-
-/// Switch the grid off for an overload and emit `PowerTripped`.
-fun trip(grid: &mut PowerGrid, entity_id: ID) {
-    grid.on = false;
-    event::emit(PowerTripped { entity_id });
-}
 
 /// Each module's grant at `capacity`, by index into `modules`. Desired Firm
 /// modules gate the grid: if their costs fit, each draws its `power_req`; if
@@ -1731,10 +1720,4 @@ public fun toggled_fields(toggled: &PowerToggled): (ID, bool) {
 #[test_only]
 public fun draw_changed_fields(draw_changed: &DrawChanged): (ID, u64, u64) {
     (draw_changed.entity_id, draw_changed.module_id, draw_changed.active_draw)
-}
-
-/// `entity_id`.
-#[test_only]
-public fun tripped_fields(tripped: &PowerTripped): ID {
-    tripped.entity_id
 }

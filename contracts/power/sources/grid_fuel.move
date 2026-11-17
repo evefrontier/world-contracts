@@ -7,7 +7,7 @@
 module power::grid_fuel;
 
 use core::{access_cap, admin_service, entity::Entity, request::Request, requirement::Requirement};
-use power::{fuel_bay, grid_generator, power_grid::{Self, Fuel, PowerGrid}};
+use power::{fuel_bay, power_grid::{Self, Fuel, PowerGrid}};
 use std::string::String;
 use sui::{bcs, clock::Clock, event};
 
@@ -79,42 +79,6 @@ public struct FuelBayAttached has copy, drop {
 public struct FuelBayDetached has copy, drop {
     entity_id: ID,
     fuel_bay_id: u64,
-}
-
-/// An uninstalled bay's fuel was stashed on the grid, by `uninstall` or `stash_load`.
-public struct FuelStashed has copy, drop {
-    entity_id: ID,
-    fuel_bay_id: u64,
-    fuel_type: Option<u64>,
-    quantity: u64,
-    impulse: u64,
-    containment_burden: u64,
-    volatility: u64,
-    thermal_inefficiency: u64,
-}
-
-/// A refitted bay took its fuel back from the stash, or arrived with it.
-public struct FuelRestored has copy, drop {
-    entity_id: ID,
-    fuel_bay_id: u64,
-    fuel_type: Option<u64>,
-    quantity: u64,
-    impulse: u64,
-    containment_burden: u64,
-    volatility: u64,
-    thermal_inefficiency: u64,
-}
-
-/// The service took a bay's stash out of the grid as a `FuelLoad`.
-public struct FuelUnstashed has copy, drop {
-    entity_id: ID,
-    fuel_bay_id: u64,
-    fuel_type: Option<u64>,
-    quantity: u64,
-    impulse: u64,
-    containment_burden: u64,
-    volatility: u64,
-    thermal_inefficiency: u64,
 }
 
 /// A fuel load was destroyed; its fuel is gone.
@@ -234,7 +198,6 @@ public fun uninstall(
 ): Request {
     let (req, fuel) = detach(entity, fuel_bay_id, clock, ctx);
     power_grid::grid_mut(entity).stash_fuel(fuel_bay_id, fuel);
-    emit_stashed(entity.id(), fuel_bay_id, fuel);
     req
 }
 
@@ -279,16 +242,6 @@ public fun take_stash(entity: &mut Entity, req: &mut Request, fuel_bay_id: u64):
     let fuel = grid.take_stash(fuel_bay_id).destroy_or!(abort EStashMissing);
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
-    event::emit(FuelUnstashed {
-        entity_id,
-        fuel_bay_id,
-        fuel_type: fuel.fuel_type(),
-        quantity: fuel.quantity(),
-        impulse: fuel.impulse(),
-        containment_burden: fuel.containment_burden(),
-        volatility: fuel.volatility(),
-        thermal_inefficiency: fuel.thermal_inefficiency(),
-    });
     FuelLoad { tenant, entity_id, fuel_bay_id, fuel }
 }
 
@@ -298,7 +251,6 @@ public fun take_stash(entity: &mut Entity, req: &mut Request, fuel_bay_id: u64):
 public fun stash_load(entity: &mut Entity, req: &mut Request, load: FuelLoad) {
     let fuel_bay_id = load.fuel_bay_id;
     let fuel = unpack_for(entity, fuel_bay_id, load);
-    let entity_id = entity.id();
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,
         req,
@@ -313,7 +265,6 @@ public fun stash_load(entity: &mut Entity, req: &mut Request, load: FuelLoad) {
     grid.stash_fuel(fuel_bay_id, fuel);
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
-    emit_stashed(entity_id, fuel_bay_id, fuel);
 }
 
 /// Take `quantity` of fuel (at `SCALE`) from the pool of `fuel_type`, all or
@@ -335,13 +286,11 @@ public fun withdraw_fuel(
         power_grid::withdraw_fuel_permit(),
     );
     assert!(quantity > 0, EZeroFuel);
-    let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let held = grid.pool_fuel(fuel_type).quantity();
     assert!(held >= quantity, EFuelShort);
     grid.take_from_pool(fuel_type, quantity);
     grid.regrant(entity_id);
-    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     event::emit(FuelWithdrawn { entity_id, fuel_type, quantity, remaining: held - quantity });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
@@ -366,12 +315,10 @@ public fun siphon(
     );
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     assert!(quantity > 0, EZeroFuel);
-    let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     assert!(grid.bay_state(fuel_bay_id).fuel().quantity() >= quantity, EBayShort);
     let taken = grid.take_from_bay(fuel_bay_id, quantity);
     grid.regrant(entity_id);
-    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     event::emit(FuelSiphoned {
         entity_id,
         fuel_bay_id,
@@ -417,15 +364,13 @@ public fun set_fuel_bay(
         power_grid::operate_grid_permit(),
     );
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
-    let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let already_online = grid.bay_state(fuel_bay_id).bay_online();
     if (online) assert!(!already_online, EFuelBayAlreadyOnline)
     else assert!(already_online, EFuelBayAlreadyOffline);
     grid.set_bay_online(fuel_bay_id, online);
     event::emit(FuelBayToggled { entity_id, fuel_bay_id, online });
     grid.regrant(entity_id);
-    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     frame.require(access_cap::owner_requirement());
     req.enqueue(frame);
 }
@@ -459,8 +404,7 @@ public fun deposit_fuel(
     assert!(volatility > 0, EZeroVolatility);
     enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
-    let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let bay = grid.bay_state(fuel_bay_id);
     bay.fuel().fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
     let scaled = (amount as u128) * (power_grid::scale() as u128);
@@ -489,7 +433,6 @@ public fun deposit_fuel(
         resulting_thermal_inefficiency: fuel.thermal_inefficiency(),
     });
     grid.regrant(entity_id);
-    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     frame.require(access_cap::owner_requirement());
     frame.require(admin_service::sponsor_requirement());
     req.enqueue(frame);
@@ -571,22 +514,10 @@ fun connect(
     let restored = if (moved.is_some()) moved else stash;
     let fuel = restored.destroy_or!(power_grid::empty_fuel());
     assert_fits(capacity, fuel.quantity() as u128);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.connect_fuel_bay(fuel_bay_id, capacity, containment_rating, fuel);
     grid.regrant(entity_id);
     event::emit(FuelBayAttached { entity_id, fuel_bay_id, capacity, containment_rating });
-    if (restored.is_some()) {
-        event::emit(FuelRestored {
-            entity_id,
-            fuel_bay_id,
-            fuel_type: fuel.fuel_type(),
-            quantity: fuel.quantity(),
-            impulse: fuel.impulse(),
-            containment_burden: fuel.containment_burden(),
-            volatility: fuel.volatility(),
-            thermal_inefficiency: fuel.thermal_inefficiency(),
-        });
-    };
     req
 }
 
@@ -602,26 +533,11 @@ fun detach(
     let entity_id = entity.id();
     let req = fuel_bay::uninstall(entity, fuel_bay_id, ctx);
     let grid = power_grid::grid_mut(entity);
-    let before_mw = power_grid::capacity_mw(grid);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let fuel = grid.disconnect_fuel_bay(fuel_bay_id);
     grid.regrant(entity_id);
-    grid_generator::emit_if_capacity_changed(entity_id, grid, before_mw);
     event::emit(FuelBayDetached { entity_id, fuel_bay_id });
     (req, fuel)
-}
-
-fun emit_stashed(entity_id: ID, fuel_bay_id: u64, fuel: Fuel) {
-    event::emit(FuelStashed {
-        entity_id,
-        fuel_bay_id,
-        fuel_type: fuel.fuel_type(),
-        quantity: fuel.quantity(),
-        impulse: fuel.impulse(),
-        containment_burden: fuel.containment_burden(),
-        volatility: fuel.volatility(),
-        thermal_inefficiency: fuel.thermal_inefficiency(),
-    });
 }
 
 /// Abort unless the grid has room for one more fitted or stashed bay.
@@ -708,24 +624,6 @@ public fun fuel_bay_attached_fields(attached: &FuelBayAttached): (ID, u64, u64, 
 #[test_only]
 public fun fuel_bay_toggled_fields(toggled: &FuelBayToggled): (ID, u64, bool) {
     (toggled.entity_id, toggled.fuel_bay_id, toggled.online)
-}
-
-/// `(entity_id, fuel_bay_id, quantity, volatility)`.
-#[test_only]
-public fun fuel_stashed_fields(stashed: &FuelStashed): (ID, u64, u64, u64) {
-    (stashed.entity_id, stashed.fuel_bay_id, stashed.quantity, stashed.volatility)
-}
-
-/// `(entity_id, fuel_bay_id, quantity, volatility)`.
-#[test_only]
-public fun fuel_restored_fields(restored: &FuelRestored): (ID, u64, u64, u64) {
-    (restored.entity_id, restored.fuel_bay_id, restored.quantity, restored.volatility)
-}
-
-/// `(entity_id, fuel_bay_id, quantity, volatility)`.
-#[test_only]
-public fun fuel_unstashed_fields(taken: &FuelUnstashed): (ID, u64, u64, u64) {
-    (taken.entity_id, taken.fuel_bay_id, taken.quantity, taken.volatility)
 }
 
 /// `(entity_id, fuel_bay_id, quantity, volatility)`.

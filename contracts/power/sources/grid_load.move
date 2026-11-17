@@ -77,7 +77,7 @@ public fun connect<Module: store>(
     let grid = power_grid::grid_mut(entity);
     assert!(!grid.is_module_connected(module_id), EModuleAlreadyConnected);
     assert!(grid.modules().length() < power_grid::max_connected(), ETooManyConnected);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let line_loss = module_spec.spec_line_loss();
     let priority = module_spec.spec_priority();
     grid.connect_module(module_id, module_spec);
@@ -97,7 +97,7 @@ public fun disconnect<Module: store>(
     let entity_id = entity.id();
     let grid = power_grid::grid_mut(entity);
     grid.assert_module_connected(module_id);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.disconnect_module(module_id);
     grid.regrant(entity_id);
     event::emit(ModuleDisconnected { entity_id, module_id });
@@ -121,7 +121,7 @@ public fun migrate<Module: store>(
 
     let from_grid = power_grid::grid_mut(from);
     from_grid.assert_module_connected(module_id);
-    from_grid.settle(from_id, clock);
+    from_grid.settle(clock);
     let state = from_grid.module_state(module_id);
     from_grid.disconnect_module(module_id);
     from_grid.regrant(from_id);
@@ -130,7 +130,7 @@ public fun migrate<Module: store>(
     let to_grid = power_grid::grid_mut(to);
     assert!(!to_grid.is_module_connected(module_id), EModuleAlreadyConnected);
     assert!(to_grid.modules().length() < power_grid::max_connected(), ETooManyConnected);
-    to_grid.settle(to_id, clock);
+    to_grid.settle(clock);
     to_grid.reconnect_module(module_id, state);
     to_grid.regrant(to_id);
     event::emit(ModuleConnected {
@@ -156,7 +156,7 @@ public fun set_priority(
         power_grid::operate_grid_permit(),
     );
     grid.assert_module_connected(module_id);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.set_module_priority(module_id, priority);
     grid.regrant(entity_id);
     event::emit(PriorityChanged { entity_id, module_id, priority });
@@ -182,7 +182,7 @@ public fun set_desired_state(
         power_grid::operate_grid_permit(),
     );
     grid.assert_module_connected(module_id);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.set_module_desired_online(module_id, online);
     grid.regrant(entity_id);
     event::emit(DesiredStateChanged { entity_id, module_id, online });
@@ -200,7 +200,7 @@ public fun assert_online(entity: &mut Entity, req: &mut Request, clock: &Clock) 
         req,
         power_grid::online_permit(),
     );
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.regrant(entity_id);
     assert!(grid.online_fuel().quantity() > 0, EOutOfFuel);
     enforce_online(&requirement, grid);

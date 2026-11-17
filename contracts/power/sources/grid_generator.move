@@ -38,12 +38,6 @@ const ETooManyGenerators: vector<u8> = b"Power grid has reached its maximum inst
 
 // === Events ===
 
-/// The grid's `capacity_mw` changed.
-public struct CapacityChanged has copy, drop {
-    entity_id: ID,
-    capacity_mw: u64,
-}
-
 public struct GeneratorConnected has copy, drop {
     entity_id: ID,
     generator_id: u64,
@@ -104,7 +98,7 @@ public fun install(
         power_grid::generators(grid).length() < power_grid::max_generators(),
         ETooManyGenerators,
     );
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.connect_generator(
         component_id,
         fuel_type,
@@ -136,15 +130,11 @@ public fun uninstall(
     ctx: &mut TxContext,
 ): Request {
     assert!(power_grid::is_generator_connected(entity, generator_id), EGeneratorNotConnected);
-    let was_online = power_grid::generator_state(entity, generator_id).online();
     let entity_id = entity.id();
     let req = generator::uninstall(entity, generator_id, ctx);
     let grid = power_grid::grid_mut(entity);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     grid.disconnect_generator(generator_id);
-    if (was_online) {
-        event::emit(CapacityChanged { entity_id, capacity_mw: power_grid::capacity_mw(grid) });
-    };
     grid.regrant(entity_id);
     event::emit(GeneratorDisconnected { entity_id, generator_id });
     req
@@ -183,7 +173,6 @@ public fun migrate(
         grid.set_generator_online(generator_id, true);
         grid.regrant(entity_id);
         event::emit(GeneratorToggled { entity_id, generator_id, online: true });
-        event::emit(CapacityChanged { entity_id, capacity_mw: power_grid::capacity_mw(grid) });
     };
     (from_req, to_req)
 }
@@ -204,13 +193,12 @@ public fun set_generator(
         power_grid::operate_grid_permit(),
     );
     assert!(power_grid::generators(grid).contains(&generator_id), EGeneratorNotConnected);
-    grid.settle(entity_id, clock);
+    grid.settle(clock);
     let already_online = power_grid::generators(grid).get(&generator_id).online();
     if (online) assert!(!already_online, EGeneratorAlreadyOnline)
     else assert!(already_online, EGeneratorAlreadyOffline);
     grid.set_generator_online(generator_id, online);
     event::emit(GeneratorToggled { entity_id, generator_id, online });
-    event::emit(CapacityChanged { entity_id, capacity_mw: power_grid::capacity_mw(grid) });
     grid.regrant(entity_id);
     frame.require(access_cap::owner_requirement());
     req.enqueue(frame);
@@ -252,18 +240,6 @@ public fun assert_generator(entity: &mut Entity, req: &mut Request) {
     frame.destroy_empty_frame();
 }
 
-// === Package Functions ===
-
-/// Emit `CapacityChanged` if the grid's capacity is no longer `before_mw`.
-public(package) fun emit_if_capacity_changed(
-    entity_id: ID,
-    grid: &power_grid::PowerGrid,
-    before_mw: u64,
-) {
-    let capacity_mw = power_grid::capacity_mw(grid);
-    if (capacity_mw != before_mw) event::emit(CapacityChanged { entity_id, capacity_mw });
-}
-
 // === Private Functions ===
 
 /// Abort if a Generator is short of a `GeneratorRequirement`.
@@ -281,12 +257,6 @@ fun enforce_generator(requirement: &Requirement, grid: &power_grid::PowerGrid) {
 }
 
 // === Test Functions ===
-
-/// `(entity_id, capacity_mw)`.
-#[test_only]
-public fun capacity_changed_fields(capacity_changed: &CapacityChanged): (ID, u64) {
-    (capacity_changed.entity_id, capacity_changed.capacity_mw)
-}
 
 /// `(entity_id, generator_id, fuel_type, selectable_fuel_types, max_output_mw,
 /// impulse_limit, volatility_limit)`.

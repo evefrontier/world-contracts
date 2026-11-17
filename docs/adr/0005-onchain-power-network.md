@@ -68,8 +68,7 @@ gets its full `power_req`, the next gets what is left, and so on.
 
 A trip happens on an owner action that no longer fits (`regrant`) or when a
 pool runs dry (the run-out step in `project`). It stays until the owner calls
-`set_power_grid(true)`; refuelling never resets it. There is no separate trip
-flag: a trip is `on = false`, and `PowerTripped` (vs `PowerToggled`) says why.
+`set_power_grid(true)`; refuelling never resets it.
 Desired state survives a trip and Power Off, so Power On brings back every
 module set to run.
 

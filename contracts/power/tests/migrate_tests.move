@@ -218,17 +218,12 @@ fun migrate_fuel_moves_the_bays_exact_fuel() {
 
     migrate_fuel(&mut scenario, admin(), from, to, fuel_bay_id(), &clock);
 
-    // No stash on `from` in the events: the bay detaches there and arrives on
-    // `to` with its fuel.
-    assert!(event::events_by_type<grid_fuel::FuelStashed>().is_empty());
-    assert!(event::events_by_type<grid_fuel::FuelUnstashed>().is_empty());
+    // No stash on `from`: the bay detaches there and arrives on `to` with its fuel.
     let detached = event::events_by_type<grid_fuel::FuelBayDetached>();
     assert!(detached.length() == 1);
-    let restored = event::events_by_type<grid_fuel::FuelRestored>();
-    assert!(restored.length() == 1);
-    let (restored_entity, restored_bay, quantity, _) = restored[0].fuel_restored_fields();
-    assert!(restored_entity == to && restored_bay == fuel_bay_id());
-    assert!(quantity == starting_fuel());
+    assert!(with_entity!(&mut scenario, from, |e| {
+        power_grid::stashed_fuel(e, fuel_bay_id()).is_none()
+    }));
 
     let moved = bay_fuel(&mut scenario, to, fuel_bay_id());
     assert!(moved.quantity() == starting_fuel());

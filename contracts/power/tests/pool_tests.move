@@ -31,7 +31,7 @@ use power::{
         volatility,
         volatility_limit
     },
-    power_grid::{Self, DrawChanged, Fuel, PoolView, PowerStatus, PowerTripped}
+    power_grid::{Self, DrawChanged, Fuel, PoolView, PowerStatus}
 };
 use sui::{clock::{Self, Clock}, event, test_scenario as ts, vec_map::VecMap};
 
@@ -273,7 +273,6 @@ fun run_out_overloads_at_that_moment() {
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     let changed = event::events_by_type<DrawChanged>();
     assert!(changed.length() == 1);
-    assert!(event::events_by_type<PowerTripped>().length() == 1);
     assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == own_left);
     let other = bay_fuel(&mut scenario, entity_id, FUEL_B);
     assert!(other.quantity() == 0 && other.fuel_type().is_none());

@@ -4,16 +4,7 @@ module power::fuel_bay_tests;
 use core::{entity::Entity, test_helpers::setup};
 use power::{
     fuel_math,
-    grid_fuel::{
-        Self,
-        FuelRestored,
-        FuelUnstashed,
-        FuelStashed,
-        FuelAdded,
-        FuelBayAttached,
-        FuelBayToggled,
-        FuelLoadDestroyed
-    },
+    grid_fuel::{Self, FuelAdded, FuelBayAttached, FuelBayToggled, FuelLoadDestroyed},
     grid_scenario::{
         Self,
         admin,
@@ -201,12 +192,6 @@ fun uninstall_stashes_the_bays_exact_fuel() {
 
     uninstall_fuel(&mut scenario, entity_id, FUEL_B, &clock);
 
-    let stashed = event::events_by_type<FuelStashed>();
-    let (stashed_entity, stashed_bay, quantity, stashed_volatility) = stashed[
-        0,
-    ].fuel_stashed_fields();
-    assert!(stashed_entity == entity_id && stashed_bay == FUEL_B);
-    assert!(quantity == 70_000 && stashed_volatility == 6_000);
     let fuel = stashed_fuel(&mut scenario, entity_id, FUEL_B).destroy_some();
     assert!(fuel.quantity() == 70_000 && fuel.impulse() == 250_000);
     assert!(fuel.containment_burden() == 40_000 && fuel.volatility() == 6_000);
@@ -251,9 +236,6 @@ fun reinstall_takes_back_its_stash_offline() {
 
     install_fuel(&mut scenario, entity_id, fuel_bay_id(), fuel_capacity(), &clock);
 
-    let restored = event::events_by_type<FuelRestored>();
-    let (_, restored_bay, restored_quantity, _) = restored[0].fuel_restored_fields();
-    assert!(restored_bay == fuel_bay_id() && restored_quantity == starting_fuel());
     assert!(stashed_fuel(&mut scenario, entity_id, fuel_bay_id()).is_none());
     let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
     assert!(fuel.quantity() == starting_fuel());
@@ -409,13 +391,8 @@ fun move_stash_carries_fuel_to_another_grid() {
 
     move_stash(&mut scenario, admin(), from, to, fuel_bay_id());
 
-    let taken = event::events_by_type<FuelUnstashed>();
-    let (taken_entity, taken_bay, taken_quantity, _) = taken[0].fuel_unstashed_fields();
-    assert!(taken_entity == from && taken_bay == fuel_bay_id());
-    assert!(taken_quantity == starting_fuel());
-    let stashed = event::events_by_type<FuelStashed>();
-    let (stashed_entity, _, stashed_quantity, _) = stashed[0].fuel_stashed_fields();
-    assert!(stashed_entity == to && stashed_quantity == starting_fuel());
+    let moved = stashed_fuel(&mut scenario, to, fuel_bay_id()).destroy_some();
+    assert!(moved.quantity() == starting_fuel());
     assert!(stashed_fuel(&mut scenario, from, fuel_bay_id()).is_none());
     install_fuel(&mut scenario, to, fuel_bay_id(), fuel_capacity(), &clock);
     let fuel = bay_fuel(&mut scenario, to, fuel_bay_id());
@@ -579,19 +556,20 @@ fun set_fuel_bay_toggles_online() {
     scenario.end();
 }
 
-/// Taking the only fuelled bay offline drops capacity to 0 and says so.
+/// Taking the only fuelled bay offline drops capacity to 0.
 #[test]
-fun set_fuel_bay_emits_capacity_changed() {
+fun set_fuel_bay_offline_drops_capacity() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = loaded(&mut scenario, &clock);
+    let (_, before, _, _) = projected(&mut scenario, entity_id, &clock);
+    assert!(before > 0);
 
     set_fuel_bay(&mut scenario, entity_id, fuel_bay_id(), false, &clock);
 
-    let changed = event::events_by_type<power::grid_generator::CapacityChanged>();
-    let (_, capacity_mw) = changed[changed.length() - 1].capacity_changed_fields();
-    assert!(capacity_mw == 0);
+    let (_, capacity, _, _) = projected(&mut scenario, entity_id, &clock);
+    assert!(capacity == 0);
 
     clock.destroy_for_testing();
     scenario.end();
