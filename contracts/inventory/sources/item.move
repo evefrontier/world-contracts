@@ -53,9 +53,7 @@ public struct ItemBag has store {
 }
 
 // === Events ===
-//
-// `(entity_id, component_id)` is the inventory moved through; `balance_after`
-// and `used_after` are its state after the movement.
+// `balance_after` and `used_after` are the inventory's state after the movement.
 
 /// Game to chain bridge.
 public struct ItemMinted has copy, drop {
@@ -198,8 +196,7 @@ public(package) fun burn_all_and_destroy(
     let ItemBag { mut balances } = bag;
     while (!balances.is_empty()) {
         let (type_id, Balance { quantity, volume }) = balances.pop_front();
-        // Saturate: `used_after` is informational, and uninstall must never
-        // abort on drift between `used` and the bag's balances.
+        // Saturate so uninstall never aborts on `used` drift.
         let freed = quantity * volume;
         used = if (freed < used) used - freed else 0;
         event::emit(ItemBurned {
@@ -239,8 +236,7 @@ public(package) fun deposit(
     });
 }
 
-/// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item`. `source` is
-/// the owning entity.
+/// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item`.
 public(package) fun withdraw(
     bag: &mut ItemBag,
     game_id: EntityKey,

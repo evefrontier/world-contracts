@@ -91,8 +91,7 @@ public struct InventoryUninstalled has copy, drop {
     used_before: u64,
 }
 
-/// The inventory at `component_id` moved, balances intact, from
-/// `from_entity_id` to `to_entity_id`.
+/// Inventory moved between entities with balances intact.
 public struct InventoryMigrated has copy, drop {
     from_entity_id: ID,
     to_entity_id: ID,

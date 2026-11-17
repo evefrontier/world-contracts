@@ -124,8 +124,7 @@ fun withdraw_over_balance_aborts() {
     let key = fuel_key();
     let mut used = 0;
     item::mint(&mut bag, key, 10, VOL, source(), COMPONENT, &mut used);
-    // `used` is exactly 10 * VOL: computing `used_after` before the balance
-    // check would abort with an arithmetic underflow instead.
+    // Must hit the balance check, not underflow `used`.
     let _out = item::withdraw(&mut bag, key, 11, source(), COMPONENT, &mut used, scenario.ctx());
 
     abort
