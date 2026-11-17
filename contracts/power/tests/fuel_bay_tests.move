@@ -1282,3 +1282,52 @@ fun idle_grid_burns_nothing() {
     clock.destroy_for_testing();
     scenario.end();
 }
+
+// === Access ===
+
+/// Only the owner can switch a fuel bay.
+#[test, expected_failure(abort_code = core::request::ERequestNotComplete)]
+fun set_fuel_bay_by_non_owner_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+
+    grid_scenario::as_stranger!(
+        &mut scenario,
+        entity_id,
+        grid_scenario::operate_action_name(),
+        |entity, req| grid_fuel::set_fuel_bay(entity, req, fuel_bay_id(), false, &clock),
+    );
+
+    abort
+}
+
+/// Only the owner can load fuel into their bays.
+#[test, expected_failure(abort_code = core::request::ERequestNotComplete)]
+fun deposit_by_non_owner_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+
+    grid_scenario::as_stranger!(
+        &mut scenario,
+        entity_id,
+        grid_scenario::deposit_action_name(),
+        |entity, req| grid_fuel::deposit_fuel(
+            entity,
+            req,
+            fuel_bay_id(),
+            fuel_type(),
+            100,
+            impulse(),
+            burden(),
+            volatility(),
+            thermal(),
+            &clock,
+        ),
+    );
+
+    abort
+}

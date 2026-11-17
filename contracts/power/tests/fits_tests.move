@@ -3,6 +3,7 @@ module power::fits_tests;
 
 use core::{entity::Entity, test_helpers::setup};
 use power::{
+    grid_fuel,
     grid_generator,
     grid_load,
     grid_scenario::{
@@ -166,6 +167,30 @@ fun generator_offline_that_overloads_aborts() {
         &mut scenario,
         entity_id,
         |entity, req| grid_generator::set_generator(entity, req, generator_id(1), false, &clock),
+    );
+
+    abort
+}
+
+/// Switching the only fuel bay offline under a 70 MW load would leave 0 MW: it aborts.
+#[test, expected_failure(abort_code = power_grid::EWouldOverload)]
+fun fuel_bay_offline_that_overloads_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = overview(&mut scenario, vector[100], &clock);
+    fitted_on(&mut scenario, entity_id, A, &clock);
+
+    grid_scenario::fitted!(
+        &mut scenario,
+        entity_id,
+        |entity, req| grid_fuel::set_fuel_bay(
+            entity,
+            req,
+            grid_scenario::fuel_bay_id(),
+            false,
+            &clock,
+        ),
     );
 
     abort

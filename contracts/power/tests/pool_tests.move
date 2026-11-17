@@ -4,6 +4,7 @@ module power::pool_tests;
 use core::{entity::Entity, test_helpers::setup};
 use power::{
     grid_scenario::{
+        Self,
         admin,
         bay_fuel,
         catch_up,
@@ -38,6 +39,8 @@ const MOD_A: u64 = 401;
 /// Second bay, holding `OTHER_TYPE`.
 const FUEL_B: u64 = 9_002;
 const OTHER_TYPE: u64 = 8;
+/// Third bay, holding the default type beside the default bay.
+const FUEL_C: u64 = 9_003;
 /// 15 MW each.
 const OUTPUT: u64 = 15;
 /// Impulse limit 100, above both test fuels.
@@ -477,6 +480,177 @@ fun one_supplying_pool_keeps_modules_online() {
     clock.set_for_testing(10_000);
     assert!(module_status(&mut scenario, entity_id, &clock) == power_grid::online_status());
     assert!(generator_status(&mut scenario, entity_id, 1, &clock) == power_grid::no_fuel_status());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === Generator limits ===
+
+/// Fuel above the Generator's impulse limit is wasted: impulse 90 against a
+/// limit of 45 burns as if it were 45, so 10 MW takes 2_223 a second instead
+/// of the 1_112 it would at a limit above 90.
+#[test]
+fun impulse_above_limit_burns_faster() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[OTHER_IMPULSE], &clock);
+    power_up(&mut scenario, entity_id, 1, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+
+    clock.set_for_testing(1_000);
+    let left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    assert!(left == starting_fuel() - 2_223);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === Several bays and types ===
+
+/// Two bays of the default type and one `OTHER_TYPE` bay; one Generator per
+/// type, 20 MW split 10/10. The default Generator's 1_112 a second comes off
+/// its two bays 2:1 (742 and 370, the remainder off the larger); the other
+/// Generator burns only its own bay.
+#[test]
+fun one_type_burns_its_bays_in_proportion_beside_another_type() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_C, fuel_capacity(), &clock);
+    deposit_typed(
+        &mut scenario,
+        entity_id,
+        FUEL_C,
+        fuel_type(),
+        grid_scenario::starting_units() / 2,
+        grid_scenario::impulse(),
+        thermal(),
+        &clock,
+    );
+    set_fuel_bay(&mut scenario, entity_id, FUEL_C, true, &clock);
+    install_other_generator(&mut scenario, entity_id, &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, fuel_capacity(), &clock);
+    deposit_typed(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        OTHER_TYPE,
+        OTHER_UNITS,
+        OTHER_IMPULSE,
+        thermal(),
+        &clock,
+    );
+    set_fuel_bay(&mut scenario, entity_id, FUEL_B, true, &clock);
+    power_up(&mut scenario, entity_id, 2, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(20), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+
+    clock.set_for_testing(1_000);
+    let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    let half_left = projected_bay_amount(&mut scenario, entity_id, FUEL_C, &clock);
+    let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
+    assert!(own_left == starting_fuel() - 742);
+    assert!(half_left == starting_fuel() / 2 - 370);
+    assert!(other_left == OTHER_UNITS * power_grid::scale() - 2_223);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === Emergency Generator ===
+
+/// An Emergency Generator that may burn either type, set to `OTHER_TYPE` and
+/// fed by `FUEL_B` holding `other_units`. The default bay holds the other type.
+/// Grid on, the Generator online, `MOD_A` drawing 10 MW.
+fun emergency_on_other(scenario: &mut ts::Scenario, other_units: u64, clock: &Clock): ID {
+    let entity_id = setup_entity(scenario, vector[], vector[], clock);
+    install_generator(
+        scenario,
+        entity_id,
+        generator_id(0),
+        OTHER_TYPE,
+        vector[OTHER_TYPE, fuel_type()],
+        OUTPUT,
+        IMPULSE_LIMIT,
+        volatility_limit(),
+        clock,
+    );
+    install_fuel(scenario, entity_id, FUEL_B, fuel_capacity(), clock);
+    deposit_typed(
+        scenario,
+        entity_id,
+        FUEL_B,
+        OTHER_TYPE,
+        other_units,
+        OTHER_IMPULSE,
+        thermal(),
+        clock,
+    );
+    set_fuel_bay(scenario, entity_id, FUEL_B, true, clock);
+    power_up(scenario, entity_id, 1, clock);
+    install_module(scenario, entity_id, MOD_A, firm_power(10), clock);
+    set_desired(scenario, entity_id, MOD_A, true, clock);
+    entity_id
+}
+
+/// Owner switches Generator 0 offline, sets it to `fuel_type`, brings it back
+/// and switches the grid on.
+fun switch_emergency_to(scenario: &mut ts::Scenario, entity_id: ID, fuel_type: u64, clock: &Clock) {
+    grid_scenario::set_generator(scenario, entity_id, 0, false, clock);
+    grid_scenario::set_generator_fuel_type(scenario, entity_id, generator_id(0), fuel_type);
+    grid_scenario::set_generator(scenario, entity_id, 0, true, clock);
+    grid_scenario::power(scenario, entity_id, true, clock);
+}
+
+/// Its 1-unit pool runs dry at 4.5 s. It never switches to the full default
+/// pool by itself: nothing draws and the default bay keeps its fuel until the
+/// owner sets the other type.
+#[test]
+fun emergency_stops_when_its_type_runs_dry() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = emergency_on_other(&mut scenario, 1, &clock);
+
+    clock.set_for_testing(10_000);
+    assert!(capacity(&mut scenario, entity_id, &clock) == 0);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
+    let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    assert!(own_left == starting_fuel());
+    ts::next_tx(&mut scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let state = power_grid::generator_state(&entity, generator_id(0));
+    assert!(state.online() && state.generator_fuel_type() == OTHER_TYPE);
+    ts::return_shared(entity);
+
+    switch_emergency_to(&mut scenario, entity_id, fuel_type(), &clock);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 10);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// After the owner sets it to the default type, power follows the default pool:
+/// it burns 1_112 a second there and the `OTHER_TYPE` bay keeps its fuel.
+#[test]
+fun emergency_set_to_another_type_burns_that_pool() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = emergency_on_other(&mut scenario, OTHER_UNITS, &clock);
+
+    switch_emergency_to(&mut scenario, entity_id, fuel_type(), &clock);
+
+    clock.set_for_testing(1_000);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 10);
+    let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
+    let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
+    assert!(own_left == starting_fuel() - 1_112);
+    assert!(other_left == OTHER_UNITS * power_grid::scale());
 
     clock.destroy_for_testing();
     scenario.end();

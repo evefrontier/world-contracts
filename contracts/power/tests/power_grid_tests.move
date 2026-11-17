@@ -398,3 +398,24 @@ fun check_aborts_when_used_above() {
 
     abort
 }
+
+// === Access ===
+
+/// Only the owner can switch the main switch: a player with no cap leaves the
+/// owner requirement unmet.
+#[test, expected_failure(abort_code = core::request::ERequestNotComplete)]
+fun power_on_by_non_owner_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+
+    grid_scenario::as_stranger!(
+        &mut scenario,
+        entity_id,
+        grid_scenario::operate_action_name(),
+        |entity, req| power_grid::set_power_grid(entity, req, true, &clock),
+    );
+
+    abort
+}

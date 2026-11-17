@@ -22,6 +22,7 @@ use sui::{clock::Clock, test_scenario as ts};
 
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
+const STRANGER: address = @0xC;
 const GENERATOR_BASE: u64 = 101;
 /// Base burn rate of every Generator, 1 unit per second.
 /// Component id of the fuel bay every `setup_entity` grid gets.
@@ -59,6 +60,15 @@ public struct Consumer has store {}
 public fun admin(): address { ADMIN }
 
 public fun owner(): address { OWNER }
+
+/// A player who holds no cap for the test entity.
+public fun stranger(): address { STRANGER }
+
+/// Name of the owner's grid action `setup_entity` exposes.
+public fun operate_action_name(): vector<u8> { OPERATE }
+
+/// Name of the owner's deposit action `setup_entity` exposes.
+public fun deposit_action_name(): vector<u8> { DEPOSIT_FUEL }
 
 /// Component id of the `index`-th Generator from `setup_entity`.
 public fun generator_id(index: u64): u64 { GENERATOR_BASE + index }
@@ -275,6 +285,23 @@ public macro fun as_owner(
     entity.verify_owner(&mut req, &cap);
     entity.complete_request(req);
     ts::return_to_sender(scenario, cap);
+    ts::return_shared(entity);
+}
+
+/// STRANGER runs action `$name` with `$handler` but holds no cap to sign it, so
+/// the request is left with the owner requirement unmet.
+public macro fun as_stranger(
+    $scenario: &mut ts::Scenario,
+    $entity_id: ID,
+    $name: vector<u8>,
+    $handler: |&mut Entity, &mut Request|,
+) {
+    let scenario = $scenario;
+    ts::next_tx(scenario, stranger());
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, $entity_id);
+    let mut req = entity.interact(string::utf8($name), scenario.ctx());
+    $handler(&mut entity, &mut req);
+    entity.complete_request(req);
     ts::return_shared(entity);
 }
 

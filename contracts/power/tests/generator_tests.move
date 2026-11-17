@@ -32,6 +32,7 @@ const CRUDE: u64 = 2;
 const EMERGENCY_OUTPUT: u64 = 20;
 const EMERGENCY_IMPULSE_LIMIT: u64 = 500_000;
 const EMERGENCY_VOLATILITY_LIMIT: u64 = 20_000;
+const MOD_A: u64 = 401;
 
 /// Grid with Generators A (`OUTPUT_A`) and B (`OUTPUT_B`), off.
 fun two_generators(scenario: &mut ts::Scenario, clock: &Clock): ID {
@@ -452,4 +453,78 @@ fun set_fuel_type_while_online_aborts() {
     set_generator_fuel_type(&mut scenario, entity_id, EMERGENCY, CRUDE);
 
     abort
+}
+
+// === Access ===
+
+/// Only the owner can switch a Generator.
+#[test, expected_failure(abort_code = core::request::ERequestNotComplete)]
+fun set_generator_by_non_owner_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_generators(&mut scenario, &clock);
+
+    grid_scenario::as_stranger!(
+        &mut scenario,
+        entity_id,
+        grid_scenario::operate_action_name(),
+        |entity, req| grid_generator::set_generator(entity, req, generator_id(0), true, &clock),
+    );
+
+    abort
+}
+
+/// Only the owner can set which fuel an Emergency Generator burns.
+#[test, expected_failure(abort_code = core::request::ERequestNotComplete)]
+fun set_fuel_type_by_non_owner_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = with_emergency(&mut scenario, &clock);
+
+    grid_scenario::as_stranger!(
+        &mut scenario,
+        entity_id,
+        grid_scenario::operate_action_name(),
+        |entity, req| grid_generator::set_generator_fuel_type(entity, req, EMERGENCY, CRUDE),
+    );
+
+    abort
+}
+
+// === Removal under load ===
+
+/// A 12 MW Firm load runs on 10 + 5 MW. Removing the 10 MW Generator leaves 5 MW,
+/// so the grid trips: nothing draws and the module stays set to run.
+#[test]
+fun uninstall_online_generator_that_overloads_trips() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_generators(&mut scenario, &clock);
+    grid_scenario::power_up(&mut scenario, entity_id, 2, &clock);
+    grid_scenario::install_module(
+        &mut scenario,
+        entity_id,
+        MOD_A,
+        grid_scenario::firm_power(12),
+        &clock,
+    );
+    grid_scenario::set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    assert!(grid_scenario::draw(&mut scenario, entity_id, MOD_A, &clock) == 12);
+
+    uninstall_generator(&mut scenario, entity_id, 0, &clock);
+    assert!(event::events_by_type<power_grid::PowerTripped>().length() == 1);
+
+    ts::next_tx(&mut scenario, admin());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let grid = power_grid::power_grid(&entity);
+    assert!(!grid.on());
+    assert!(grid.module_state(MOD_A).desired_online());
+    assert!(grid.module_state(MOD_A).active_draw_at_last_settled() == 0);
+    ts::return_shared(entity);
+
+    clock.destroy_for_testing();
+    scenario.end();
 }

@@ -51,6 +51,8 @@ const IMPULSE_LIMIT: u64 = 1_000_000;
 const DRAW: u64 = 10;
 /// Long enough at 10 MW that the whole tank burns, in ms.
 const DEPLETING_MS: u64 = 10_000_000_000_000;
+/// A fuel type no bay holds.
+const OTHER_TYPE: u64 = 8;
 
 /// Grid on, one online Generator of `OUTPUT`, fuel full. Modules are installed by the test.
 fun powered(scenario: &mut ts::Scenario, clock: &Clock): ID {
@@ -638,4 +640,112 @@ fun elastic_run_out_does_not_trip() {
 
     clock.destroy_for_testing();
     scenario.end();
+}
+
+// === Power Off and Power On ===
+
+/// A module switched off while power is off stays off after Power On; the
+/// others set to run come back.
+#[test]
+fun module_switched_off_during_power_off_stays_off() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(5), &clock);
+    install_module(&mut scenario, entity_id, MOD_B, firm_power(5), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    set_desired(&mut scenario, entity_id, MOD_B, true, &clock);
+
+    power(&mut scenario, entity_id, false, &clock);
+    set_desired(&mut scenario, entity_id, MOD_B, false, &clock);
+    power(&mut scenario, entity_id, true, &clock);
+
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 5);
+    assert!(draw(&mut scenario, entity_id, MOD_B, &clock) == 0);
+    let (_, desired_b, _) = module_flags(&mut scenario, entity_id, MOD_B);
+    assert!(!desired_b);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === No fuel ===
+
+/// The only Generator burns a type no bay holds. Switching a Firm module on is
+/// accepted and stored, but it doesn't fit the 0 MW limit: the grid trips and
+/// the module reads `NoFuel`.
+#[test]
+fun switch_on_without_fuel_trips_and_reads_no_fuel() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    grid_scenario::install_generator(
+        &mut scenario,
+        entity_id,
+        grid_scenario::generator_id(0),
+        OTHER_TYPE,
+        vector[],
+        OUTPUT,
+        IMPULSE_LIMIT,
+        grid_scenario::volatility_limit(),
+        &clock,
+    );
+    power_up(&mut scenario, entity_id, 1, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    assert!(sui::event::events_by_type<power_grid::PowerTripped>().length() == 1);
+
+    let (online, desired, _) = module_flags(&mut scenario, entity_id, MOD_A);
+    assert!(!online && desired);
+    assert!(!power_grid_on(&mut scenario, entity_id));
+    ts::next_tx(&mut scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    assert!(power_grid::module_status(&entity, MOD_A, &clock) == power_grid::no_fuel_status());
+    ts::return_shared(entity);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === Access ===
+
+/// Only the owner can set a module's desired state.
+#[test, expected_failure(abort_code = core::request::ERequestNotComplete)]
+fun desired_state_by_non_owner_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+
+    grid_scenario::as_stranger!(
+        &mut scenario,
+        entity_id,
+        grid_scenario::operate_action_name(),
+        |entity, req| grid_load::set_desired_state(entity, req, MOD_A, true, &clock),
+    );
+
+    abort
+}
+
+/// Only the owner can move a module's priority.
+#[test, expected_failure(abort_code = core::request::ERequestNotComplete)]
+fun set_priority_by_non_owner_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+
+    grid_scenario::as_stranger!(
+        &mut scenario,
+        entity_id,
+        grid_scenario::operate_action_name(),
+        |entity, req| grid_load::set_priority(entity, req, MOD_A, 3, &clock),
+    );
+
+    abort
 }
