@@ -68,6 +68,7 @@ const UPGRADE_CAP_TYPE = '0x2::package::UpgradeCap'
 const SHARED_OBJECT_KEYS: Record<string, string> = {
   'object_registry::ObjectRegistry': 'objectRegistry',
   'admin_service::AdminACL': 'adminAcl',
+  'registry::KillmailRegistry': 'killmailRegistry',
 }
 
 function isCreated(c: ObjectChange): c is CreatedChange {

@@ -20,6 +20,8 @@ export {
   adminAcl,
   EVE_CURRENCY,
   eveCurrency,
+  KILLMAIL_REGISTRY,
+  killmailRegistry,
   OBJECT_REGISTRY,
   objectRegistry,
   requireSharedObject,
@@ -105,7 +107,9 @@ export {
 export {
   createKillmail,
   type KillmailArgs,
-  killmailId,
+  killmailObjectId,
+  LOSS_TYPE_SHIP,
+  LOSS_TYPE_STRUCTURE,
   type LossType,
 } from './packages/killmail.js'
 export {

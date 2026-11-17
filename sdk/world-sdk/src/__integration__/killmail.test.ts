@@ -5,15 +5,15 @@ import { describe, expect, it } from 'vitest'
 import { createWorldClient } from '../client.js'
 import { loadWorldConfig } from '../config/load.js'
 import { createCharacter } from '../packages/character.js'
-import { deriveObjectId } from '../packages/core.js'
+import { addSponsors } from '../packages/core.js'
 import {
   createKillmail,
-  killmailId,
+  killmailObjectId,
   LOSS_TYPE_SHIP,
 } from '../packages/killmail.js'
 import { expectSuccess } from './helpers.js'
 
-// Integration: exercises the createCharacter binding against a running localnet.
+// Integration: exercises the createKillmail binding against a running localnet.
 const MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
 )
@@ -33,8 +33,10 @@ describe('createKillmail (localnet)', () => {
     const key = { id: 7n, tenant: 'integration' }
     const reporterId = 5n
 
-    // The reporter must already exist on-chain as a character (identity installed).
+    // The reporter must already exist on-chain as a character (identity installed),
+    // and create_killmail requires the sender to be a sponsor.
     const setupTx = new Transaction()
+    addSponsors(setupTx, config, [ADMIN])
     createCharacter(setupTx, config, {
       inGameId: reporterId,
       tenant: key.tenant,
@@ -55,7 +57,6 @@ describe('createKillmail (localnet)', () => {
       killTime: new Date(),
     })
 
-    // Admin-gated create; character is owned by PLAYER.
     tx.setSender(ADMIN)
     const res = await client.simulateTransaction({
       transaction: tx,
@@ -70,8 +71,6 @@ describe('createKillmail (localnet)', () => {
     const created = res.Transaction.effects.changedObjects
       .filter((o) => o.idOperation === 'Created')
       .map((o) => o.objectId)
-    expect(created).toContain(
-      deriveObjectId(config, { id: killmailId(key.id), tenant: key.tenant }),
-    )
+    expect(created).toContain(killmailObjectId(config, key))
   })
 })

@@ -1,17 +1,13 @@
 import { bcs } from '@mysten/sui/bcs'
 import type { Transaction } from '@mysten/sui/transactions'
-import { blake2b } from '@noble/hashes/blake2'
+import { deriveObjectID } from '@mysten/sui/utils'
 import { mvrName } from '../config/env.js'
+import { adminAcl, killmailRegistry } from '../config/shared-objects.js'
 import type { WorldConfig } from '../config/types.js'
-import {
-  completeRequest,
-  deriveObjectId,
-  entityNew,
-  shareEntity,
-  verifyAdmin,
-} from './core.js'
+import { deriveObjectId, type EntityKeyInput } from './core.js'
 
 const KILLMAIL_PACKAGE = 'killmail'
+const CORE_PACKAGE = 'core'
 
 /** Must match `record::loss_type_from_u8` in Move (the game's proto LossType). */
 export const LOSS_TYPE_SHIP = 1 as const
@@ -30,66 +26,72 @@ export interface KillmailArgs {
   killTime: Date
 }
 
-const KILLMAIL_ID_SUFFIX = new TextEncoder().encode('killmail')
+/** Must match `core::entity_key::EntityKey` in Move. */
+const EntityKey = bcs.struct('EntityKey', {
+  id: bcs.u64(),
+  tenant: bcs.string(),
+})
 
 /**
- * Entity id for a killmail: first 8 bytes (LE) of `blake2b256(bcs(u64 inGameId) ++ "killmail")`.
- * Namespaces killmail ids so they can't collide with other entities' game ids.
+ * Deterministic object ID for a killmail, mirroring `killmail::registry::derive_id`
+ * (a `derived_object` over `EntityKey{id, tenant}` on the `KillmailRegistry`).
+ * Offline: needs the core package id, which only local/CI carry in `packageOverrides`.
  */
-export function killmailId(inGameId: bigint): bigint {
-  const idBytes = bcs.u64().serialize(inGameId).toBytes()
-  const input = new Uint8Array(idBytes.length + KILLMAIL_ID_SUFFIX.length)
-  input.set(idBytes)
-  input.set(KILLMAIL_ID_SUFFIX, idBytes.length)
-  const digest = blake2b(input, { dkLen: 32 })
-  const view = new DataView(digest.buffer, digest.byteOffset, digest.byteLength)
-  return view.getBigUint64(0, true)
+export function killmailObjectId(
+  config: WorldConfig,
+  key: EntityKeyInput,
+): string {
+  const coreId = config.packageOverrides?.[CORE_PACKAGE]
+  if (!coreId) {
+    throw new Error(
+      `cannot derive killmail object id for env "${config.env}" offline: no core package id (only local/CI supply packageOverrides)`,
+    )
+  }
+  const bytes = EntityKey.serialize(key).toBytes()
+  const typeTag = `${coreId}::entity_key::EntityKey`
+  return deriveObjectID(killmailRegistry(config).id, typeTag, bytes)
 }
 
-/**
- * Converts a Date to milliseconds
- * @param killTime
- * @returns Date as milliseconds (u64)
- */
-function convertDateToMilliseconds(killTime: Date): bigint {
+/** Unix seconds for `killTime`; Move stores `kill_timestamp` in seconds. */
+function toUnixSeconds(killTime: Date): bigint {
   return BigInt(Math.floor(killTime.getTime() / 1000))
 }
+
 /**
- * Append the full killmail-creation flow to `tx`: claim the entity, install the
- * killmail module, and share it. Each lifecycle step is admin-gated, so the
- * transaction must be signed by a whitelisted admin.
+ * Append `record::create_killmail` to `tx`: creates the killmail as a shared object
+ * at its `KillmailRegistry`-derived id. The sender must be a sponsor on `AdminACL`,
+ * and the reporter must be an existing character in the same tenant.
  */
 export function createKillmail(
   tx: Transaction,
   config: WorldConfig,
   args: KillmailArgs,
 ): void {
-  const [killmail, claimReq] = entityNew(tx, config, {
-    inGameId: killmailId(args.inGameId),
-    tenant: args.tenant,
-  })
+  const registry = killmailRegistry(config)
+  const acl = adminAcl(config)
 
-  verifyAdmin(tx, config, claimReq)
-  completeRequest(tx, config, killmail, claimReq)
-
-  const reporter = tx.object(
-    deriveObjectId(config, { id: args.reporterId, tenant: args.tenant }),
-  )
-
-  const installReq = tx.moveCall({
-    target: `${mvrName(config.env, KILLMAIL_PACKAGE)}::record::install`,
+  tx.moveCall({
+    target: `${mvrName(config.env, KILLMAIL_PACKAGE)}::record::create_killmail`,
     arguments: [
-      killmail,
-      reporter,
+      tx.sharedObjectRef({
+        objectId: registry.id,
+        initialSharedVersion: registry.initialSharedVersion ?? 0,
+        mutable: true,
+      }),
+      tx.object(
+        deriveObjectId(config, { id: args.reporterId, tenant: args.tenant }),
+      ),
+      tx.sharedObjectRef({
+        objectId: acl.id,
+        initialSharedVersion: acl.initialSharedVersion ?? 0,
+        mutable: false,
+      }),
+      tx.pure.u64(args.inGameId),
       tx.pure.u64(args.killerId),
       tx.pure.u64(args.victimId),
-      tx.pure.u64(convertDateToMilliseconds(args.killTime)),
+      tx.pure.u64(toUnixSeconds(args.killTime)),
       tx.pure.u8(args.lossType),
       tx.pure.u64(args.solarSystemId),
     ],
   })
-  verifyAdmin(tx, config, installReq)
-  completeRequest(tx, config, killmail, installReq)
-
-  shareEntity(tx, config, killmail)
 }
