@@ -440,17 +440,12 @@ public fun version(entity: &Entity): u64 {
     entity.version
 }
 
-/// Names of the actions the owner exposed, in insertion order.
-///
-/// With `admin_action_names`, this lets another package check an entity's whole
-/// action surface on-chain, e.g. to refuse to custody items in an Inventory that
-/// some other action can withdraw from. `interact` resolves a name in the admin
-/// map first, so check both.
+/// Owner action names in insertion order. `interact` checks admin actions first.
 public fun owner_action_names(entity: &Entity): vector<String> {
     action_names_in(entity, OwnerActionsKey())
 }
 
-/// Names of the actions an admin exposed, in insertion order. See `owner_action_names`.
+/// Admin action names in insertion order.
 public fun admin_action_names(entity: &Entity): vector<String> {
     action_names_in(entity, AdminActionsKey())
 }
@@ -463,13 +458,12 @@ public fun has_admin_action(entity: &Entity, name: String): bool {
     action_map(entity, AdminActionsKey()).contains(&name)
 }
 
-/// The owner action `name`, read-only. Aborts with `EUnknownAction` if absent.
-/// Its requirements are stored in reverse declaration order; see `action::requirements`.
+/// The owner action `name`; aborts if absent.
 public fun owner_action(entity: &Entity, name: String): &Action {
     action_in(entity, OwnerActionsKey(), name)
 }
 
-/// The admin action `name`, read-only. Aborts with `EUnknownAction` if absent.
+/// The admin action `name`; aborts if absent.
 public fun admin_action(entity: &Entity, name: String): &Action {
     action_in(entity, AdminActionsKey(), name)
 }

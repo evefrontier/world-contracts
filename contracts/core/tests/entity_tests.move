@@ -675,9 +675,7 @@ fun interact_unknown_action_aborts() {
 
 // === Action views ===
 
-/// Claim an entity owned by @0xB with admin action `repair` (admin-gated), then
-/// have the owner expose `deposit` (open), `withdraw` (owner + admin, to show the
-/// stored order), and its own `repair`. Returns the shared entity's id.
+/// Shared entity owned by @0xB: admin action `repair`; owner actions `deposit`, `withdraw`, `repair`.
 fun entity_with_actions(scenario: &mut ts::Scenario): ID {
     ts::next_tx(scenario, @0xA);
     let mut registry = take_registry(scenario);
@@ -753,7 +751,6 @@ fun action_view_exposes_requirements() {
 
     ts::next_tx(&mut scenario, @0xC);
     let e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
-    // Stored reversed: the last element is the first requirement handed out.
     let withdraw = e.owner_action(string::utf8(b"withdraw")).requirements();
     assert!(withdraw.length() == 2);
     assert!(requirement::is<admin_service::Admin>(&withdraw[0]));
@@ -821,7 +818,6 @@ fun admin_action_unknown_aborts() {
     setup(&mut scenario);
     let e_id = entity_with_actions(&mut scenario);
 
-    // `deposit` is an owner action, so the admin map has no entry for it.
     ts::next_tx(&mut scenario, @0xC);
     let e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
     e.admin_action(string::utf8(b"deposit"));
