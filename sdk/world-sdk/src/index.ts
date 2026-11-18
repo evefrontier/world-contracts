@@ -38,7 +38,6 @@ export { componentIdFromName } from './packages/component-id.js'
 export {
   addAdmins,
   addSponsors,
-  attestDocking,
   borrowAccess,
   type CapObjectRef,
   callerRequirement,
@@ -48,6 +47,7 @@ export {
   deriveObjectId,
   disableAction,
   disableAdminAction,
+  dock,
   type EntityKeyInput,
   type EntityNewArgs,
   enableAction,
@@ -60,9 +60,9 @@ export {
   returnAccess,
   revokeAccess,
   shareEntity,
+  undock,
   verifyAdmin,
   verifyCaller,
-  verifyDocking,
   verifyOwner,
   verifySponsor,
 } from './packages/core.js'
@@ -170,8 +170,6 @@ export {
   uninstallPowerGrid,
 } from './packages/power.js'
 export {
-  type DockingArgs,
-  dockingProof,
   encodeProof,
   type ProofMessageArgs,
   proofKind,

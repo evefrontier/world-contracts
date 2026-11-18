@@ -5,7 +5,6 @@ use core::{
     access_cap::{Self, AccessCap},
     action,
     admin_service::{Self, AdminACL},
-    docking,
     entity::{Self, Entity},
     object_registry::ObjectRegistry,
     request::Request,
@@ -32,10 +31,6 @@ const GENERATOR_ID: u64 = 0x71;
 const FUEL_BAY_ID: u64 = 0x72;
 
 fun unit_name(): String { string::utf8(b"SU-01") }
-
-fun ship_id(): ID { object::id_from_address(@0x5) }
-
-fun character_id(): ID { object::id_from_address(@0x8) }
 
 /// Enable an action gated by the target's owner plus `item_req`. The owner
 /// signs with their `AccessCap` (enable is owner-gated); the same cap also
@@ -294,6 +289,38 @@ fun bridge_out(
     ts::return_to_sender(scenario, cap);
     ts::return_shared(acl);
     ts::return_shared(e);
+}
+
+/// Admin docks the shared `chaser_id` at the shared `target_id` (both sides), in its own tx.
+fun dock_at(scenario: &mut ts::Scenario, target_id: ID, chaser_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut target = ts::take_shared_by_id<Entity>(scenario, target_id);
+    let mut chaser = ts::take_shared_by_id<Entity>(scenario, chaser_id);
+    let acl = take_acl(scenario);
+    let (mut target_req, mut chaser_req) = target.dock(&mut chaser, scenario.ctx());
+    admin_service::verify_admin(&mut target_req, &acl, scenario.ctx());
+    admin_service::verify_admin(&mut chaser_req, &acl, scenario.ctx());
+    target.complete_request(target_req);
+    chaser.complete_request(chaser_req);
+    ts::return_shared(acl);
+    ts::return_shared(chaser);
+    ts::return_shared(target);
+}
+
+/// Admin undocks the shared `chaser_id` from the shared `target_id` (both sides), in its own tx.
+fun undock_from(scenario: &mut ts::Scenario, target_id: ID, chaser_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut target = ts::take_shared_by_id<Entity>(scenario, target_id);
+    let mut chaser = ts::take_shared_by_id<Entity>(scenario, chaser_id);
+    let acl = take_acl(scenario);
+    let (mut target_req, mut chaser_req) = target.undock(&mut chaser);
+    admin_service::verify_admin(&mut target_req, &acl, scenario.ctx());
+    admin_service::verify_admin(&mut chaser_req, &acl, scenario.ctx());
+    target.complete_request(target_req);
+    chaser.complete_request(chaser_req);
+    ts::return_shared(acl);
+    ts::return_shared(chaser);
+    ts::return_shared(target);
 }
 
 fun deposit(
@@ -567,7 +594,6 @@ fun owner_interaction_inventory() {
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
     let item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 20); // used 60, bal 30
     assert!(item.quantity() == 20);
     deposit(&mut scenario, &mut e, &cap, b"deposit", item); // used 100, bal 50
@@ -702,9 +728,11 @@ fun swap_moves_items_between_two_entities() {
     // Admin bridges a FUEL onto entity_b. The call needs the entity cap and an admin.
     bridge_in(&mut scenario, entity_b_id, player_b, b"bridge_in", FUEL, 1, VOL);
 
-    // B's ship (entity_b) docks at entity_a and swaps in one tx.
+    // B's ship (entity_b) docks at entity_a. Docking records both sides, so entity_a
+    // accepts FUEL from entity_b and entity_b accepts the LENS from entity_a.
+    dock_at(&mut scenario, entity_a_id, entity_b_id);
+
     ts::next_tx(&mut scenario, player_b);
-    docking::dock_for_testing(entity_b_id, entity_a_id, character_id(), scenario.ctx());
     let mut entity_b = ts::take_shared_by_id<Entity>(&scenario, entity_b_id);
     let cap_b = ts::take_from_sender<AccessCap>(&scenario);
     let fuel = withdraw(&mut scenario, &mut entity_b, &cap_b, b"withdraw", FUEL, 1);
@@ -907,29 +935,61 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = docking::ENoDocking)]
-fun withdraw_without_docking_aborts() {
+/// Moving items between two inventories on one entity needs no docking: the
+/// item's source is the entity it is deposited into.
+#[test]
+fun move_between_two_inventories_without_docking() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
     ts::next_tx(&mut scenario, ADMIN);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let mut e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    install_inventory(
+        &mut scenario,
+        &mut e,
+        &acl,
+        MODULE_ID_2,
+        TYPE_ID,
+        option::some(string::utf8(b"SU-02")),
+        500,
+    );
     let e_id = e.id();
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
     configure_default_actions(&mut scenario, e_id, OWNER);
+    let any = option::none();
+    owner_enable(
+        &mut scenario,
+        e_id,
+        OWNER,
+        b"deposit_2",
+        action::new(vector[
+            access_cap::owner_requirement(),
+            inventory::deposit_requirement(MODULE_ID_2, any, any, any),
+        ]),
+    );
     power_inventory(&mut scenario, e_id, OWNER);
-    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    run_operate_grid!(&mut scenario, e_id, OWNER, |entity, req, clock| {
+        grid_load::set_desired_state(entity, req, MODULE_ID_2, true, clock);
+    });
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 10, VOL);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
+    assert!(e.docked_entities().is_empty());
+    let fuel = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 4);
+    deposit(&mut scenario, &mut e, &cap, b"deposit_2", fuel);
 
-    abort
+    assert!(inv(&e).items().balance(FUEL) == 6);
+    assert!(inventory::inventory(&e, MODULE_ID_2).items().balance(FUEL) == 4);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
 }
 
 #[test, expected_failure(abort_code = grid_load::ENoGrant)]
@@ -953,77 +1013,13 @@ fun withdraw_without_power_aborts() {
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
     let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
 
     abort
 }
 
-#[test]
-fun attested_docking_allows_withdraw_and_deposit() {
-    let mut scenario = ts::begin(ADMIN);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, ADMIN, 1000);
-    let e_id = e.id();
-    e.share();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
-    configure_default_actions(&mut scenario, e_id, ADMIN);
-    power_inventory(&mut scenario, e_id, ADMIN);
-    bridge_in(&mut scenario, e_id, ADMIN, b"bridge_in", FUEL, 1, VOL);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let acl = take_acl(&scenario);
-    docking::attest(&acl, scenario.ctx());
-    ts::return_shared(acl);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
-    deposit(&mut scenario, &mut e, &cap, b"deposit", item);
-    assert!(inv(&e).items().balance(FUEL) == 1);
-    ts::return_to_sender(&scenario, cap);
-    ts::return_shared(e);
-
-    scenario.end();
-}
-
-#[test, expected_failure(abort_code = docking::ENotDocked)]
-fun withdraw_with_docking_of_another_pair_aborts() {
-    let mut scenario = ts::begin(ADMIN);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
-    let e_id = e.id();
-    e.share();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
-    configure_default_actions(&mut scenario, e_id, OWNER);
-    power_inventory(&mut scenario, e_id, OWNER);
-    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 1, VOL);
-
-    ts::next_tx(&mut scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    let cap = ts::take_from_sender<AccessCap>(&scenario);
-    docking::dock_for_testing(
-        ship_id(),
-        object::id_from_address(@0x6),
-        character_id(),
-        scenario.ctx(),
-    );
-    let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
-
-    abort
-}
-
-#[test, expected_failure(abort_code = docking::ENotDocked)]
-fun deposit_at_an_entity_outside_the_docking_aborts() {
+#[test, expected_failure(abort_code = entity::ENotDocked)]
+fun deposit_at_another_entity_with_nothing_docked_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
@@ -1043,17 +1039,129 @@ fun deposit_at_an_entity_outside_the_docking_aborts() {
     power_inventory(&mut scenario, x_id, OWNER);
     bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
 
-    // X is docked at Y; Z is not part of the transaction's docking.
     ts::next_tx(&mut scenario, OWNER);
     let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
     let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
     let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
     let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
-    docking::dock_for_testing(x_id, ship_id(), character_id(), scenario.ctx());
     let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
     deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
 
     abort
+}
+
+/// X was docked at Z, then undocked, so Z no longer accepts items from X.
+#[test, expected_failure(abort_code = entity::ENotDocked)]
+fun deposit_at_another_entity_after_undock_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let z_id = z.id();
+    x.share();
+    z.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    dock_at(&mut scenario, z_id, x_id);
+    undock_from(&mut scenario, z_id, x_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
+    deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
+
+    abort
+}
+
+/// Z has something docked, but not X, so an item withdrawn from X can't be deposited at Z.
+#[test, expected_failure(abort_code = entity::EWrongSource)]
+fun deposit_from_an_undocked_source_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let z_id = z.id();
+    let ship = claim(&mut registry, &acl, 3, scenario.ctx());
+    let ship_id = ship.id();
+    x.share();
+    z.share();
+    ship.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    dock_at(&mut scenario, z_id, ship_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
+    deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
+
+    abort
+}
+
+/// Z has X docked, so an item withdrawn from X can be deposited at Z.
+#[test]
+fun deposit_from_a_docked_source() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let z_id = z.id();
+    x.share();
+    z.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    power_inventory(&mut scenario, z_id, PLAYER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    dock_at(&mut scenario, z_id, x_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
+    deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
+
+    assert!(inv(&x).items().balance(FUEL) == 0);
+    assert!(inv(&z).items().balance(FUEL) == 1);
+
+    ts::return_to_address(OWNER, x_cap);
+    ts::return_to_address(PLAYER, z_cap);
+    ts::return_shared(x);
+    ts::return_shared(z);
+    scenario.end();
 }
 
 /// Installing the Inventory connects it to the grid. Uninstalling disconnects

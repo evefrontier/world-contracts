@@ -7,7 +7,6 @@ import {
   enableAdminAction,
   interact,
   ownerRequirement,
-  verifyDocking,
   verifyOwner,
 } from '../packages/core.js'
 import {
@@ -21,8 +20,6 @@ import {
 } from '../packages/inventory.js'
 import { bringInventoryOnline } from './bring-online.js'
 import {
-  DOCKED_SHIP,
-  dockedProof,
   expectSuccess,
   loadLocalnetWorld,
   mintAccessCap,
@@ -99,11 +96,6 @@ describe('inventory owner round-trip (localnet)', () => {
     })
     completeRequest(runTx, config, e, bridgeRequest)
 
-    verifyDocking(
-      runTx,
-      config,
-      await dockedProof(config, DOCKED_SHIP, entityId),
-    )
     const withdrawRequest = interact(runTx, config, e, 'withdraw')
     verifyOwner(runTx, config, e, withdrawRequest, c)
     const item = withdraw(runTx, config, e, withdrawRequest, {

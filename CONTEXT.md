@@ -48,8 +48,8 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   deterministically from the `ObjectRegistry`. A single Entity type plays one of two **roles**,
   not a fixed sub-type:
   - **Structure** (Creation) — a spatial Entity (gate, storage unit, turret, ship). Components
-    define behavior. Location is not stored on the Entity; relationships between Structures are
-    proven per transaction (see **Proof**).
+    define behavior. Location is not stored on the Entity. Docking is stored on entity as a dynamic field; other relationships between Structures are proven per transaction
+    (see **Proof**).
   - **Principal** — an Entity that represents an account-like actor and **owns AccessCaps**
     (a Character or a Tribe). See **Keychain**.
 - **Component** — typed state installed on an Entity
@@ -99,8 +99,7 @@ These five are the load-bearing nouns of v1. All live in [`contracts/core/source
   on-chain object per `EntityKey` ([`object_registry.move`](contracts/core/sources/object_registry.move)).
 - **Proof** — server-signed bytes: a signed proof (server, sender, kind, deadline) plus a
   use-case payload. `core::proof` checks the signed proof; the module that owns the payload type
-  decodes it (e.g. `core::docking::verify` for `Docking`), keeping the result in the transaction
-  scratchpad so components can check it during the same transaction.
+  decodes it, keeping the result in the transaction scratchpad so components can check it during the same transaction.
   
 ## Installed components
 

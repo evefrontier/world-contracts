@@ -17,7 +17,6 @@ import { loadWorldConfig } from '../config/load.js'
 import type { WorldConfig } from '../config/types.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
-import { dockingProof } from '../packages/proof.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
@@ -190,30 +189,4 @@ export function requirePackage(config: WorldConfig, pkg: string): string {
   const id = config.packageOverrides?.[pkg]
   if (!id) throw new Error(`localnet config must supply the ${pkg} package id`)
   return id
-}
-
-/** Stand-in character id for docking proofs. */
-export const PILOT_CHARACTER = '0x8'
-
-/** Stand-in ship id for docking proofs. */
-export const DOCKED_SHIP = '0x5'
-
-/** A docking proof of `ship` at `target`, signed by the admin key, issued to `sender` for ten minutes. */
-export function dockedProof(
-  config: WorldConfig,
-  ship: string,
-  target: string,
-  sender: string = signer,
-): Promise<Uint8Array> {
-  return dockingProof(
-    config,
-    {
-      ship,
-      target,
-      character: PILOT_CHARACTER,
-      sender,
-      deadlineMs: BigInt(Date.now() + 10 * 60 * 1000),
-    },
-    keypair,
-  )
 }
