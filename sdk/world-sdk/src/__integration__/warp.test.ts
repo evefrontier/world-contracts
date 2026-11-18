@@ -36,6 +36,7 @@ const UNITS = 100n
 // The overview's warp: 0.5 units/s for 20 s.
 const WARP_COST = 10n * POWER_SCALE
 
+// TODO : WILL BE REMOVED ONCE THIS IS MOVED OFF-CHAIN
 describe('warp fuel (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
 
