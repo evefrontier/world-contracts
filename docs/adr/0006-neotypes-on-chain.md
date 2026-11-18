@@ -1,0 +1,266 @@
+# 6. Neo Types On-Chain
+
+- **Status:** Proposed
+- **Relates to:** [0002-modular-architecture](0002-modular-architecture.md),
+[0003-onchain-inventory-design](0003-onchain-inventory-design.md),
+[0005-onchain-power-network](0005-onchain-power-network.md)
+
+## Motivation
+
+In the game, an item's qualities come from what it was made of. Each stack of a
+NeoType carries its own property values (density, hardness, fuel impulse, ...),
+so two stacks of the same type can differ. One exact set of values is a
+**variant**. Stacks of the same variant join; stacks of different variants never
+do. Materials are measured in kg to 4 decimals; countable items in whole units.
+
+Today the chain knows only `type_id` and a whole-unit quantity. Stacks merge by
+type, volume is per type, and fuel values reach the power grid as free arguments
+from the service. Putting variants on chain enables builders to:
+
+- Read an item's properties in their own contracts: sort, filter or price storage
+by quality.
+- Move fuel between an inventory and a fuel bay on chain, with the grid reading
+the fuel's values from the item itself.
+- Rely on the game's stacking rule on chain: different variants stay apart.
+
+The game sets every variant's values (crafting, loot, default variant); the chain
+stores and checks them, never invents one.
+
+## Summary
+
+Each variant gets one **frozen** `Variant` **record** holding all its property values,
+at an address derived from `(tenant, type_id, variant_id)`. `variant_id` is the
+game's variant ID; the game gives every distinct set of values its own ID.
+
+- **Stacks and items** store only the `VariantKey` and a quantity. An inventory has
+one stack per key, so identical variants join and different ones don't.
+- **Quantity** is a plain `u64` in base units: 1 item, or 0.0001 kg. The record's
+`QuantityKind` says which; arithmetic never branches on it.
+- **Volume** is per base unit, read from the record.
+- **A value change** gets a new variant ID in the game, so a new record. Old stacks keep their key
+and stay valid.
+- **Any contract** reads properties by passing `&Variant`. Fuel deposits read the
+four fuel properties from it.
+
+```mermaid
+flowchart LR
+    R[(VariantRegistry)] -.derives.-> V1[Variant: Crude, variant A, frozen]
+    R -.derives.-> V2[Variant: Crude, variant B, frozen]
+    subgraph SSU[Storage unit Inventory]
+      S1[stack key A: 12.5 kg]
+      S2[stack key B: 3 kg]
+    end
+    subgraph Ship[Ship Inventory]
+      S3[stack key A: 40 kg]
+    end
+    V1 --- S1
+    V1 --- S3
+    V2 --- S2
+    S1 -->|withdraw| I[Item key A: 2.5 kg]
+    I -->|deposit_fuel_item + &Variant A| Bay[Fuel bay]
+```
+
+### End-to-end flow
+
+1. **Game to chain (admin flow).** A player deposits an item into an on-chain
+
+   Inventory. The service pulls the item's properties from the game, registers a
+      `Variant` record if the chain doesn't have one yet, then mints the stack.
+2. **Chain moves (builder flow).** A builder contract moves items between
+
+   Inventories (or into a fuel bay). The service listens to the item events and
+      reports each move to the game with the variant's properties.
+
+```mermaid
+sequenceDiagram
+    actor Player
+    participant Game
+    participant Service
+    participant Var as VariantRegistry
+    participant InvA as Inventory A
+    participant Ext as Builder contract
+    participant InvB as Inventory B
+
+    Note over Player,InvA: 1. Game to chain (admin flow)
+    Player->>Game: deposit item into Inventory A
+    Game->>Service: item operation (type, variant_id, version, quantity)
+    Service->>Game: GetProperties(item)
+    Game-->>Service: kind, properties
+    opt no record for (tenant, type, variant_id, version)
+        Service->>Var: register(type, variant_id, version, kind, unit_volume, values)
+        Note over Var: new frozen Variant
+    end
+    Service->>InvA: game_item_to_chain_inventory(&Variant, quantity)
+    Note over InvA: joins the stack with the same key
+
+    Note over Player,InvB: 2. Chain moves (builder flow)
+    Player->>Ext: interact
+    Ext->>InvA: withdraw(key, quantity) -> Item
+    Ext->>InvB: deposit(Item)
+    InvB-->>Service: ItemWithdrawn, ItemDeposited (variant_id, version)
+    Service->>Var: read Variant(key)
+    Service->>Game: report move: type, variant_id, version, quantity, properties
+```
+
+Registration is its own admin transaction: `register` creates the record and
+freezes it at once. The bridge-in that follows passes the frozen record; a variant
+already on chain skips registration. The game learns of chain moves only from
+events, which carry the variant key; the service reads the record and reports
+the properties with the move. Bridge-out (`chain_item_to_game_inventory`) is
+reported the same way.
+
+## Scope
+
+**In scope:**
+
+- One frozen `Variant` record per variant that crosses to the chain, with all its
+properties.
+- Inventory stacks and `Item`s keyed by variant; quantity in base units; volume
+from the record.
+- Variant versions: a value change is a new frozen record; old stacks keep theirs.
+- Items with no properties (plain types) as a record with `variant_id = 0` and no
+values.
+- Fuel deposits (service and on-chain `Item`) reading fuel values from a record.
+
+**Out of scope:**
+
+- Property names, images: off chain (static data, API).
+- Recipes, material processing, blending outside a fuel bay.
+- Singletons (assembled, unstacked items): not bridged; repackage first.
+
+## On-chain design
+
+### Data model
+
+#### `Variant`
+
+```move
+public struct VariantKey has copy, drop, store {
+    tenant: String,
+    type_id: u64,
+    variant_id: u64,            // game variantID; 0 = no properties
+    version: u64,               // starts at 1; bumped when the values change
+}
+
+public enum QuantityKind has copy, drop, store {
+    Units,                      // base unit = 1 item
+    Mass,                       // base unit = 0.0001 kg
+}
+
+public struct Value has copy, drop, store {
+    magnitude: u64,             // at 1e9
+    negative: bool,             // a few physical properties go below zero
+}
+
+public struct Variant has key {
+    id: UID,                    // derived from VariantRegistry + key
+    key: VariantKey,
+    kind: QuantityKind,
+    unit_volume: u64,           // nano-m³ per base unit
+    values: VecMap<u32, Value>, // property_id -> value, ascending by id
+}
+
+public struct VariantRegistry has key { id: UID }
+```
+
+`register` takes the property IDs strictly ascending and aborts otherwise, so
+every reader sees one order. It is admin-gated (`AdminACL` admins): only the game
+service registers variants, and the chain trusts it to pair a
+`(variant_id, version)` with its real values. A second `register` for the same key
+aborts, so the first registration stands.
+
+A rebalance or migration that changes a variant's values keeps its `variant_id`
+and registers the next `version`. New stacks from the game use the new version;
+stacks already on chain keep the old one. There is no "latest version" pointer on
+chain, so every read stays on a frozen record.
+
+#### `Item` and `ItemBag`
+
+```move
+public struct Item has key {
+    id: UID,
+    key: VariantKey,
+    quantity: u64,              // base units
+    unit_volume: u64,
+    source: ID,
+}
+
+public struct Balance has drop, store { quantity: u64, unit_volume: u64 }
+
+public struct ItemBag has store { balances: LinkedTable<VariantKey, Balance> }
+```
+
+`merge` asserts equal keys. `Inventory.capacity` and `used` are in nano-m³;
+a stack's volume is `unit_volume × quantity`.
+
+#### Fuel
+
+`deposit_fuel` takes `&Variant` and an amount instead of the four fuel values.
+`deposit_fuel_item` takes an `Item` and its `&Variant`, checks the keys match, and
+destroys the item. Both read the fuel properties by fixed ID and convert to the
+grid's `SCALE` (1e4):
+
+```move
+const IMPULSE: u32 = 208;
+const THERMAL_INEFFICIENCY: u32 = 209;
+const CONTAINMENT_BURDEN: u32 = 210;
+const VOLATILITY: u32 = 211;
+```
+
+The fuel type is `key.type_id`. A `Mass` base unit equals the grid's `SCALE`, so
+amounts pass straight through. Zero impulse, a missing fuel property or `Units`
+kind aborts.
+
+### Client & PTB discovery
+
+- `variant::derive_id(registry, key)`: the record's object ID, so clients and the
+service find a record without an index.
+- `variant::value(v, property_id)`, `value_u64`, `property_ids`, `kind`,
+`decimals`, `unit_volume`.
+- `inventory::balance_of(entity, component_id, key)`; `item::key`, `quantity`.
+- `VariantRegistered { key, id, kind }` for indexers; item movement events carry
+`variant_id` and `version`.
+
+Builders gate on properties in their own requirement handlers: take `&Variant`,  
+check `item.key == variant.key`, then check any property. Core `ItemRequirement`  
+stays type and quantity only.
+
+## Alternatives Considered
+
+1. **One object per stack, ID derived from** `(type_id, variant_id)`**.** A global ID
+
+   allows only one stack of a variant on the whole chain, and a derived address
+       can't be reclaimed after the stack empties.
+2. **Typed fields for on-chain properties, the rest as JSON bytes.** Move can't
+
+   parse JSON, so contracts can't read it; it costs storage on every stack. Typed
+       fields differ per item kind and need many `Option`s or a type parameter.
+3. **All values copied onto every stack and item.** No extra argument to read,
+
+   but the same values are stored many times.
+4. **Key by a hash of the values, computed on chain.** The chain could check that
+
+   a key matches its values, but keys grow to 32 bytes and the game would need a
+      hash-to-variant map for items coming back. The game already guarantees one ID
+      per set of values, and the bridge already trusts the game service.
+5. **A quantity enum (**`Units(u64) | Mass(u64)`**) on each stack.** Mirrors the API
+
+   but makes every add, split and merge match on the kind. Base units with the
+       kind on the record keep one arithmetic path.
+6. **Fuel property mapping in an admin config object.** Changeable without an
+
+   upgrade, but every deposit reads one more shared object for IDs that are fixed
+       in static data.
+
+## Consequences
+
+- New shared object: `VariantRegistry`. One frozen `Variant` per variant version
+that ever crosses; never deleted.
+- Bridge-in, `deposit_fuel` and property reads take a `&Variant` argument. Frozen
+inputs need no consensus.
+- Stack keys grow from a `u64` to a `VariantKey` (tenant, type, variant, version).
+- The game API must carry `variant_id` and `version`, and the game must bump the
+version whenever it changes a variant's values.
+- Stacks of an old version stay on it until moved; v1 and v2 never merge.
+- The `power` package depends on `inventory`.
+- Struct layouts change; ships as a fresh publish at the world reset.
