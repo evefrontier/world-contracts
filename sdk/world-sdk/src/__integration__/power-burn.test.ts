@@ -18,7 +18,7 @@ import { installInventory } from '../packages/inventory.js'
 import {
   depositFuel,
   depositFuelRequirement,
-  installFuel,
+  installFuelBay,
   installGenerator,
   installPowerGrid,
   moduleDraw,
@@ -27,6 +27,7 @@ import {
   projectedFuel,
   projectedStatus,
   setDesiredState,
+  setFuelBay,
   setGenerator,
   setPowerGrid,
 } from '../packages/power.js'
@@ -44,15 +45,15 @@ const GENERIC_ID = 0x84n
 const ITEM = 88834n
 
 // 20 MW generator. 10 MW inventory + 5 MW thruster, both firm, so both fit.
-const OUTPUT = 20n * POWER_SCALE
-const INVENTORY_DRAW = 10n * POWER_SCALE
-const GENERIC_DRAW = 5n * POWER_SCALE
+const OUTPUT = 20n
+const INVENTORY_DRAW = 10n
+const GENERIC_DRAW = 5n
 const USED = INVENTORY_DRAW + GENERIC_DRAW
-const CONT_REDUCTION = 10n * POWER_SCALE
-// Impulse 0 burns the base rate: 1 fuel unit per second. 25 units lasts ~25s.
-const BASE_FUEL_RATE = POWER_SCALE
-const FUEL_AMOUNT = 25n * POWER_SCALE
-const FUEL_CAPACITY = 1_000n * POWER_SCALE
+// Impulse 15 (at POWER_SCALE) and no burden: 15 MW burns 1 fuel unit per second,
+// so 25 units last ~25s.
+const FUEL_IMPULSE = 150_000n
+const FUEL_AMOUNT = 25n
+const FUEL_CAPACITY = 1_000n
 
 const OUT_OF_FUEL_WAIT_MS = 70_000
 const POLL_MS = 2_000
@@ -69,7 +70,7 @@ interface GridNow {
 describe('power grid fuel burn (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
 
-  it('reads modules offline once fuel runs out, then regrants them on refuel', async () => {
+  it('trips once fuel runs out, stays tripped on refuel, and regrants on Power On', async () => {
     const key = { id: 4800n, tenant: 'power-burn' }
     const entityId = deriveObjectId(config, key)
 
@@ -85,10 +86,11 @@ describe('power grid fuel burn (localnet)', () => {
       componentId: GENERATOR_ID,
       name: 'generator',
       maxOutputMw: OUTPUT,
-      containmentReduction: CONT_REDUCTION,
-      baseFuelRate: BASE_FUEL_RATE,
+      fuelType: ITEM,
+      impulseLimit: 100n * POWER_SCALE,
+      volatilityLimit: 1n,
     })
-    installFuel(createTx, config, creation, {
+    installFuelBay(createTx, config, creation, {
       componentId: FUEL_ID,
       name: 'fuel bay',
       capacity: FUEL_CAPACITY,
@@ -124,6 +126,9 @@ describe('power grid fuel burn (localnet)', () => {
     enableAdminAction(enableTx, config, enabled, 'set_generator', [
       operateGridRequirement(enableTx, config),
     ])
+    enableAdminAction(enableTx, config, enabled, 'set_fuel_bay', [
+      operateGridRequirement(enableTx, config),
+    ])
     enableAdminAction(enableTx, config, enabled, 'set_desired_state', [
       operateGridRequirement(enableTx, config),
     ])
@@ -132,13 +137,24 @@ describe('power grid fuel burn (localnet)', () => {
     ])
     await expectSuccess(client, enableTx)
 
-    // Fuel in, grid on, generator on, then desired-online. That last step
-    // grants both modules and starts the burn.
+    // Fuel in, bay online, grid on, generator on, then desired-online. That
+    // last step grants both modules and starts the burn.
     const onlineTx = new Transaction()
     addSponsors(onlineTx, config, [signer])
     const onlineEntity = onlineTx.object(entityId)
     const ownerCap = onlineTx.object(capId)
     deposit(onlineTx, config, onlineEntity, ownerCap, FUEL_AMOUNT)
+    const bayRequest = interact(onlineTx, config, onlineEntity, 'set_fuel_bay')
+    setFuelBay(
+      onlineTx,
+      config,
+      onlineEntity,
+      bayRequest,
+      ownerCap,
+      FUEL_ID,
+      true,
+    )
+    completeRequest(onlineTx, config, onlineEntity, bayRequest)
     const powerRequest = interact(
       onlineTx,
       config,
@@ -187,6 +203,30 @@ describe('power grid fuel burn (localnet)', () => {
     deposit(refuelTx, config, refuelEntity, refuelTx.object(capId), FUEL_AMOUNT)
     await expectSuccess(client, refuelTx)
 
+    const tripped = await readGrid(client, config, entityId)
+    expect(tripped.fuel).toBe(FUEL_AMOUNT * POWER_SCALE)
+    expect(tripped.capacity).toBe(0n)
+    expect(tripped.online).toEqual([])
+
+    const powerOnTx = new Transaction()
+    const powerOnEntity = powerOnTx.object(entityId)
+    const powerOnRequest = interact(
+      powerOnTx,
+      config,
+      powerOnEntity,
+      'set_power_grid',
+    )
+    setPowerGrid(
+      powerOnTx,
+      config,
+      powerOnEntity,
+      powerOnRequest,
+      powerOnTx.object(capId),
+      true,
+    )
+    completeRequest(powerOnTx, config, powerOnEntity, powerOnRequest)
+    await expectSuccess(client, powerOnTx)
+
     expectOnline(await readGrid(client, config, entityId))
   })
 })
@@ -200,10 +240,12 @@ function deposit(
 ): void {
   const request = interact(tx, config, entity, 'deposit_fuel')
   depositFuel(tx, config, entity, request, ownerCap, {
+    fuelBayId: FUEL_ID,
     fuelType: ITEM,
     amount,
-    impulse: 0n,
+    impulse: FUEL_IMPULSE,
     containmentBurden: 0n,
+    volatility: 1n * POWER_SCALE,
   })
   completeRequest(tx, config, entity, request)
 }
@@ -222,7 +264,7 @@ function setDesiredOnline(
 
 function expectOnline(now: GridNow): void {
   expect(now.fuel).toBeGreaterThan(0n)
-  expect(now.fuel).toBeLessThanOrEqual(FUEL_AMOUNT)
+  expect(now.fuel).toBeLessThanOrEqual(FUEL_AMOUNT * POWER_SCALE)
   expect(now.capacity).toBe(OUTPUT)
   expect(now.used).toBe(USED)
   expect(now.online).toEqual([INVENTORY_ID, GENERIC_ID])
