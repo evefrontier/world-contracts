@@ -79,7 +79,7 @@ fun grid_flags(scenario: &mut ts::Scenario, entity_id: ID): (bool, u64, u64) {
     ts::next_tx(scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let grid = power_grid::power_grid(&entity);
-    let on = grid.on();
+    let on = grid.on_at_last_settled();
     let fuel = grid.online_fuel().quantity();
     let capacity = grid.capacity_mw();
     ts::return_shared(entity);
@@ -145,7 +145,7 @@ fun install_grid_after_claim() {
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
     assert!(entity.has_component(power_grid::component_id()));
-    assert!(!power_grid::power_grid(&entity).on());
+    assert!(!power_grid::power_grid(&entity).on_at_last_settled());
     entity.share();
     ts::return_shared(acl);
     ts::return_shared(registry);

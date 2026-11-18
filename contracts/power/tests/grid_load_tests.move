@@ -638,7 +638,7 @@ fun online_check_aborts_after_fuel_runs_out() {
 fun power_grid_on(scenario: &mut ts::Scenario, entity_id: ID): bool {
     ts::next_tx(scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
-    let on = power_grid::power_grid(&entity).on();
+    let on = power_grid::power_grid(&entity).on_at_last_settled();
     ts::return_shared(entity);
     on
 }

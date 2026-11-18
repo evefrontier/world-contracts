@@ -55,7 +55,7 @@ fun flags(scenario: &mut ts::Scenario, entity_id: ID): (bool, bool, bool, bool, 
     ts::next_tx(scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let grid = power_grid::power_grid(&entity);
-    let on = grid.on();
+    let on = grid.on_at_last_settled();
     let generator_online = power_grid::generator_state(&entity, generator_id(0)).online();
     let bay_online = power_grid::fuel_bay_state(&entity, fuel_bay_id()).bay_online();
     let mod_desired = grid.module_state(MOD_A).desired_online();

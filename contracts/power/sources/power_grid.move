@@ -80,7 +80,9 @@ const MAX_FUEL_BAY_CAPACITY: u64 = 18_446_744_073_709;
 
 /// Fuel bays, capacity, connected modules and installed generators.
 public struct PowerGrid has store {
-    on: bool,
+    /// Power On/Off as of `last_settled_ms`, not live: a trip since then shows only
+    /// after the next settle. See `projected_on` for now.
+    on_at_last_settled: bool,
     /// Timestamp the bays' fuel was last settled at.
     last_settled_ms: u64,
     /// Connected modules by component id.
@@ -310,7 +312,7 @@ public struct DrawChanged has copy, drop {
 public fun install(entity: &mut Entity, clock: &Clock, ctx: &mut TxContext): Request {
     let entity_id = entity.id();
     let grid = PowerGrid {
-        on: false,
+        on_at_last_settled: false,
         last_settled_ms: clock.timestamp_ms(),
         modules: vec_map::empty(),
         generators: vec_map::empty(),
@@ -355,8 +357,9 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, operate_grid_permit());
     grid.settle(clock);
-    if (on) assert!(!grid.on, EAlreadyOn) else assert!(grid.on, EAlreadyOff);
-    grid.on = on;
+    if (on) assert!(!grid.on_at_last_settled, EAlreadyOn)
+    else assert!(grid.on_at_last_settled, EAlreadyOff);
+    grid.on_at_last_settled = on;
     event::emit(PowerToggled { entity_id, on });
     grid.regrant(entity_id);
     frame.require(access_cap::owner_requirement());
@@ -560,7 +563,7 @@ public fun stashed_fuel(entity: &Entity, fuel_bay_id: u64): Option<Fuel> {
 
 /// Capacity available to grants, as of the last settle: 0 while off.
 public fun effective_capacity_mw(grid: &PowerGrid): u64 {
-    if (grid.on) grid.capacity_mw() else 0
+    if (grid.on_at_last_settled) grid.capacity_mw() else 0
 }
 
 /// Every pool now, by fuel type: the types held in online bays and those
@@ -633,6 +636,29 @@ public fun projected_status(entity: &Entity, clock: &Clock): (u64, u64, vector<u
         if (state.desired_online && draws[i] > 0) online.push_back(*module_id);
     });
     (capacity, used, online)
+}
+
+/// Whether the grid is on now, with any trip since the last settle applied.
+public fun projected_on(entity: &Entity, clock: &Clock): bool {
+    let (_, on, _, _) = power_grid(entity).project(clock.timestamp_ms());
+    on
+}
+
+/// Power limit now, plain MW: `capacity_mw` with the burn since the last settle
+/// applied, so 0 once every supplying pool runs dry. Ignores On/Off.
+public fun projected_capacity_mw(entity: &Entity, clock: &Clock): u64 {
+    let grid = power_grid(entity);
+    let (bays, _, _, _) = grid.project(clock.timestamp_ms());
+    grid.capacity_of(&bays)
+}
+
+/// What Generator `generator_id` sends out now, plain MW: `output_mw` with the
+/// burn since the last settle applied, so 0 once its pool runs dry.
+public fun projected_output_mw(entity: &Entity, generator_id: u64, clock: &Clock): u64 {
+    let grid = power_grid(entity);
+    assert!(grid.generators.contains(&generator_id), EComponentMissing);
+    let (bays, _, _, _) = grid.project(clock.timestamp_ms());
+    output_from(&pools_of(&bays), &grid.generators[&generator_id])
 }
 
 /// A connected module's live draw now.
@@ -731,20 +757,22 @@ public fun component_id(): u64 {
 }
 
 /// Whether the grid is on as of the last settle. False after Power Off or a trip;
-/// a `PowerToggled` in the same transaction means Power Off.
-public fun on(grid: &PowerGrid): bool {
-    grid.on
+/// a `PowerToggled` in the same transaction means Power Off. See
+/// `projected_on` for now.
+public fun on_at_last_settled(grid: &PowerGrid): bool {
+    grid.on_at_last_settled
 }
 
-/// Power limit as of the last settle: the sum of `output_mw` over the
-/// Generators, plain MW. Derived, not stored. `effective_capacity_mw` is what
-/// grants use.
+/// Power limit as of the last settle, not live: the sum of `output_mw` over the
+/// Generators, plain MW. `effective_capacity_mw` is what grants use. See
+/// `projected_capacity_mw` for now.
 public fun capacity_mw(grid: &PowerGrid): u64 {
     grid.capacity_of(&grid.bays)
 }
 
 /// What a Generator sends out as of the last settle, plain MW: its rated output
-/// scaled by its pool's volatility, or 0 while offline or its pool is empty.
+/// scaled by its pool's volatility, or 0 while offline or its pool is empty. See
+/// `projected_output_mw` for now.
 public fun output_mw(grid: &PowerGrid, state: &GeneratorState): u64 {
     output_from(&pools_of(&grid.bays), state)
 }
@@ -1035,7 +1063,7 @@ public(package) fun settle(grid: &mut PowerGrid, clock: &Clock) {
     let (bays, on, _, _) = grid.project(now_ms);
     grid.bays = bays;
     grid.last_settled_ms = now_ms.max(grid.last_settled_ms);
-    if (!on) grid.on = false;
+    if (!on) grid.on_at_last_settled = false;
 }
 
 /// Recompute every module's grant from desired state and effective capacity.
@@ -1046,7 +1074,7 @@ public(package) fun settle(grid: &mut PowerGrid, clock: &Clock) {
 /// `DrawChanged` for each module whose grant moved. Walks the map by index, so
 /// it costs O(n).
 public(package) fun regrant(grid: &mut PowerGrid, entity_id: ID) {
-    if (grid.desired_firm_mw() > grid.capacity_mw()) grid.on = false;
+    if (grid.desired_firm_mw() > grid.capacity_mw()) grid.on_at_last_settled = false;
     let draws = grid.draws_at(grid.effective_capacity_mw());
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx_mut(i);
@@ -1343,7 +1371,7 @@ fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
     let fuel_impulse = encoded.peel_option_u64();
     let capacity_mw = encoded.peel_u64();
     let used_mw = encoded.peel_option_u64();
-    assert!(grid.on == on, EGridState);
+    assert!(grid.on_at_last_settled == on, EGridState);
     let fuel = grid.online_fuel();
     fuel_quantity.do!(|min_fuel| {
         let min_scaled = (min_fuel as u128) * (fuel_math::scale() as u128);
@@ -1423,7 +1451,7 @@ fun project(grid: &PowerGrid, now_ms: u64): (VecMap<u64, FuelBayState>, bool, u6
     let capacity = grid.effective_capacity_of(&grid.bays);
     let (bays, on, capacity, draws, _) = grid.step(
         grid.bays,
-        grid.on,
+        grid.on_at_last_settled,
         capacity,
         draws,
         grid.last_settled_ms,
@@ -1545,7 +1573,7 @@ fun capacity_of(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): u64 {
 
 /// `capacity_of` while the grid is on, else 0.
 fun effective_capacity_of(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): u64 {
-    if (grid.on) grid.capacity_of(bays) else 0
+    if (grid.on_at_last_settled) grid.capacity_of(bays) else 0
 }
 
 /// A Generator's output with `pools` from `pools_of`, plain MW: rated output

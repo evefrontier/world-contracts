@@ -519,7 +519,7 @@ fun uninstall_online_generator_that_overloads_trips() {
     ts::next_tx(&mut scenario, admin());
     let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
     let grid = power_grid::power_grid(&entity);
-    assert!(!grid.on());
+    assert!(!grid.on_at_last_settled());
     assert!(grid.module_state(MOD_A).desired_online());
     assert!(grid.module_state(MOD_A).active_draw_at_last_settled() == 0);
     ts::return_shared(entity);

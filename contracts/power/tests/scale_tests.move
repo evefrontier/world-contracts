@@ -65,7 +65,7 @@ fun full_grid_settle_through_both_run_outs() {
     ts::next_tx(&mut scenario, owner());
     let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
     assert!(power_grid::projected_fuel(&entity, &clock) == 0);
-    assert!(power_grid::power_grid(&entity).on());
+    assert!(power_grid::power_grid(&entity).on_at_last_settled());
     ts::return_shared(entity);
 
     clock.destroy_for_testing();

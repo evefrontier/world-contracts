@@ -243,3 +243,86 @@ fun module_statuses_lists_every_module() {
     clock.destroy_for_testing();
     scenario.end();
 }
+
+// === Projected reads ===
+
+/// `(projected_on, projected_capacity_mw, projected_output_mw)` and the stored
+/// `(on_at_last_settled, capacity_mw, output_mw)` at `clock`.
+fun now_and_settled(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    clock: &Clock,
+): (bool, u64, u64, bool, u64, u64) {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let grid = power_grid::power_grid(&entity);
+    let state = grid.generators()[&generator_id(0)];
+    let on = power_grid::projected_on(&entity, clock);
+    let capacity = power_grid::projected_capacity_mw(&entity, clock);
+    let output = power_grid::projected_output_mw(&entity, generator_id(0), clock);
+    let settled_on = grid.on_at_last_settled();
+    let settled_capacity = grid.capacity_mw();
+    let settled_output = grid.output_mw(&state);
+    ts::return_shared(entity);
+    (on, capacity, output, settled_on, settled_capacity, settled_output)
+}
+
+/// Before a run-out the projected reads match the stored ones.
+#[test]
+fun projected_reads_match_settled_before_run_out() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = running(&mut scenario, &clock);
+
+    let (on, capacity, output, settled_on, settled_capacity, settled_output) = now_and_settled(
+        &mut scenario,
+        entity_id,
+        &clock,
+    );
+    assert!(on && settled_on);
+    assert!(capacity == OUTPUT && settled_capacity == OUTPUT);
+    assert!(output == OUTPUT && settled_output == OUTPUT);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// After the only pool runs dry with no settle, the stored reads are stale while
+/// the projected ones show the trip and zero output.
+#[test]
+fun projected_reads_see_run_out_before_settle() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = running(&mut scenario, &clock);
+
+    clock.set_for_testing(DEPLETING_MS);
+
+    let (on, capacity, output, settled_on, settled_capacity, settled_output) = now_and_settled(
+        &mut scenario,
+        entity_id,
+        &clock,
+    );
+    assert!(!on && settled_on);
+    assert!(capacity == 0 && settled_capacity == OUTPUT);
+    assert!(output == 0 && settled_output == OUTPUT);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// `projected_output_mw` of a Generator not installed aborts.
+#[test, expected_failure(abort_code = power_grid::EComponentMissing)]
+fun projected_output_of_missing_generator_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = running(&mut scenario, &clock);
+
+    ts::next_tx(&mut scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    power_grid::projected_output_mw(&entity, generator_id(9), &clock);
+
+    abort
+}
