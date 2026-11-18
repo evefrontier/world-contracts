@@ -29,10 +29,13 @@ import {
 import {
   type InstallFuelBayArgs,
   type InstallGeneratorArgs,
+  installFuelBayWithLoad,
   installGenerator,
   installPowerGrid,
   migrateFuelBay,
   migrateGenerator,
+  takeStash,
+  uninstallFuelBay,
   uninstallGenerator,
   uninstallPowerGrid,
 } from './power.js'
@@ -41,7 +44,9 @@ import {
  * How modules move between creations. External services use path 1.
  * - Path 1, `reinstall` (default): uninstall each module and install it fresh
  *   on the target from the given install args. Modules arrive offline, a fuel
- *   bay carries its exact fuel, an inventory's items are burned.
+ *   bay carries its exact fuel, an inventory's items are burned. A fuel bay
+ *   needs the `take_stash` admin action on the source, and aborts if its fuel
+ *   exceeds the new capacity.
  * - Path 2, `migrate` (optional): move each module with its state intact.
  */
 export type MovePath = 'reinstall' | 'migrate'
@@ -120,9 +125,16 @@ function reinstallModule(
       uninstallGenerator(tx, config, from, id)
       installGenerator(tx, config, to, module)
       break
-    // A bay must carry its fuel, and only migrate moves the stash with it.
+    // Uninstall stashes the bay's fuel; the new bay takes it with the given args.
     case 'fuelBay':
-      migrateFuelBay(tx, config, from, to, id)
+      uninstallFuelBay(tx, config, from, id)
+      installFuelBayWithLoad(
+        tx,
+        config,
+        to,
+        module,
+        takeStash(tx, config, from, id),
+      )
       break
   }
 }

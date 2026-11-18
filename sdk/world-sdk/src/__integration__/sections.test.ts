@@ -29,6 +29,7 @@ import {
   installFuelBay,
   installGenerator,
   installPowerGrid,
+  manageStashRequirement,
   POWER_SCALE,
   parseProjectedBays,
   projectedBays,
@@ -95,13 +96,26 @@ describe('sections (localnet)', () => {
       [0x84n, 30n],
     ])
 
+    // A bay too small for its fuel cannot be reinstalled.
+    const smallTx = new Transaction()
+    detachSection(
+      smallTx,
+      config,
+      smallTx.object(sourceId),
+      targetKey,
+      withBayCapacity(leaving, 10n),
+      'reinstall',
+    )
+    await expectAbort(client, smallTx, signer, /EFuelOverCapacity/)
+
+    // Reinstall installs the bay from the given args, not the old ones.
     const detachTx = new Transaction()
     detachSection(
       detachTx,
       config,
       detachTx.object(sourceId),
       targetKey,
-      leaving,
+      withBayCapacity(leaving, 5_000_000n),
       'reinstall',
     )
     await expectSuccess(client, detachTx)
@@ -116,6 +130,9 @@ describe('sections (localnet)', () => {
     // Each bay kept exactly its own fuel.
     expect(await readBayFuel(client, config, sourceId, 0x81n)).toBe(100_000n)
     expect(await readBayFuel(client, config, targetId, 0x84n)).toBe(300_000n)
+    expect(await readBayCapacity(client, config, targetId, 0x84n)).toBe(
+      5_000_000n,
+    )
     expect(await readGenericData(client, config, targetId, 0x82n)).toEqual(DATA)
 
     // The source's last section cannot leave.
@@ -215,7 +232,18 @@ function generator(componentId: bigint): SectionModule {
   }
 }
 
-/** Build an unshared creation with a grid, its modules, and a Layout. */
+/** `section` with every fuel bay set to `capacity`. */
+function withBayCapacity(section: SectionSpec, capacity: bigint): SectionSpec {
+  return {
+    ...section,
+    modules: section.modules.map((m) =>
+      m.kind === 'fuelBay' ? { ...m, capacity } : m,
+    ),
+  }
+}
+
+/** Build an unshared creation with a grid, its modules, a Layout, and the
+ * `take_stash` admin action a fuel bay reinstall needs. */
 function deploy(
   tx: Transaction,
   config: WorldConfig,
@@ -226,6 +254,9 @@ function deploy(
   verifyAdmin(tx, config, request)
   completeRequest(tx, config, entity, request)
   installPowerGrid(tx, config, entity)
+  enableAdminAction(tx, config, entity, 'take_stash', [
+    manageStashRequirement(tx, config),
+  ])
   for (const module of sections.flatMap((s) => s.modules)) {
     switch (module.kind) {
       case 'generic':
@@ -328,18 +359,36 @@ async function readSectionModules(
   return bcs.vector(bcs.u64()).parse(bytes).map(BigInt)
 }
 
+async function readBay(
+  client: World['client'],
+  config: WorldConfig,
+  entityId: string,
+  fuelBayId: bigint,
+) {
+  const bytes = await view(client, (tx) =>
+    projectedBays(tx, config, tx.object(entityId)),
+  )
+  const bay = parseProjectedBays(bytes).find((b) => b.fuelBayId === fuelBayId)
+  if (!bay) throw new Error(`fuel bay ${fuelBayId} not installed`)
+  return bay
+}
+
 async function readBayFuel(
   client: World['client'],
   config: WorldConfig,
   entityId: string,
   fuelBayId: bigint,
 ): Promise<bigint> {
-  const bytes = await view(client, (tx) =>
-    projectedBays(tx, config, tx.object(entityId)),
-  )
-  const bay = parseProjectedBays(bytes).find((b) => b.fuelBayId === fuelBayId)
-  if (!bay) throw new Error(`fuel bay ${fuelBayId} not installed`)
-  return bay.quantity
+  return (await readBay(client, config, entityId, fuelBayId)).quantity
+}
+
+async function readBayCapacity(
+  client: World['client'],
+  config: WorldConfig,
+  entityId: string,
+  fuelBayId: bigint,
+): Promise<bigint> {
+  return (await readBay(client, config, entityId, fuelBayId)).capacity
 }
 
 async function readGenericData(
