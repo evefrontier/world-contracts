@@ -303,8 +303,9 @@ public fun withdraw(
     item
 }
 
-/// `deposit` for every `items` entry under one `Deposit` requirement, whose rule
-/// each entry must satisfy. Emits `ItemsDeposited` in batches of at most
+/// `deposit` for every `items` entry under one `Deposit` requirement. Every
+/// entry must be the rule's type, and its quantity bounds apply to the batch's
+/// total, so one requirement never admits more than one `deposit` could. Emits `ItemsDeposited` in batches of at most
 /// `EVENT_BATCH_SIZE`. Aborts if `items` is empty.
 public fun deposit_batch(
     entity: &mut Entity,
@@ -315,13 +316,17 @@ public fun deposit_batch(
     assert!(!items.is_empty(), EEmptyBatch);
     let entity_id = entity.id();
     let mut added = 0;
+    let mut total = 0;
+    let mut type_ids = vector[];
     items.do_ref!(|item| {
         docking::assert_docked(entity_id, option::some(item.source()), ctx);
         added = added + item.volume() * item.quantity();
+        total = total + item.quantity();
+        type_ids.push_back(item.type_id());
     });
     let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
     let module_id = module_id(&requirement);
-    items.do_ref!(|item| enforce_rule(&requirement, item.type_id(), item.quantity()));
+    enforce_batch_rule(&requirement, &type_ids, total);
     assert!(inv.used + added <= inv.capacity, EOverCapacity);
     inv.items.deposit_batch(items, entity_id, module_id, &mut inv.used, EVENT_BATCH_SIZE);
     frame.require(online_requirement(entity, module_id));
@@ -329,7 +334,9 @@ public fun deposit_batch(
 }
 
 /// `withdraw` of `quantities[i]` of `type_ids[i]` for each `i` under one
-/// `Withdrawal` requirement, whose rule each entry must satisfy. Returns the
+/// `Withdrawal` requirement. Every entry must be the rule's type, and its
+/// quantity bounds apply to the batch's total, so one requirement never
+/// releases more than one `withdraw` could. Returns the
 /// `Item`s in input order and emits `ItemsWithdrawn` in batches of at most
 /// `EVENT_BATCH_SIZE`. Aborts if the vectors are empty or differ in length.
 public fun withdraw_batch(
@@ -345,7 +352,9 @@ public fun withdraw_batch(
     docking::assert_docked(source, option::none(), ctx);
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let module_id = module_id(&requirement);
-    type_ids.length().do!(|i| enforce_rule(&requirement, type_ids[i], quantities[i]));
+    let mut total = 0;
+    quantities.do_ref!(|q| total = total + *q);
+    enforce_batch_rule(&requirement, &type_ids, total);
     let items = inv
         .items
         .withdraw_batch(
@@ -485,13 +494,19 @@ fun rule(
 /// Decode the `ItemRequirement` config and assert the operation satisfies it.
 /// Mirrors field order: type_id, min, max.
 fun enforce_rule(requirement: &Requirement, type_id: u64, quantity: u64) {
+    enforce_batch_rule(requirement, &vector[type_id], quantity)
+}
+
+/// The rule for everything one requirement moves: each of `type_ids` must be the
+/// allowed type, and `total` quantity must be within the bounds.
+fun enforce_batch_rule(requirement: &Requirement, type_ids: &vector<u64>, total: u64) {
     let mut b = bcs::new(requirement.data());
     let allowed_type = b.peel_option_u64();
     let min_quantity = b.peel_option_u64();
     let max_quantity = b.peel_option_u64();
-    allowed_type.do!(|t| assert!(type_id == t, EItemTypeNotAllowed));
-    min_quantity.do!(|m| assert!(quantity >= m, EQuantityBelowMin));
-    max_quantity.do!(|m| assert!(quantity <= m, EQuantityAboveMax));
+    allowed_type.do!(|t| type_ids.do_ref!(|type_id| assert!(*type_id == t, EItemTypeNotAllowed)));
+    min_quantity.do!(|m| assert!(total >= m, EQuantityBelowMin));
+    max_quantity.do!(|m| assert!(total <= m, EQuantityAboveMax));
 }
 
 /// Mint a balance into an inventory, enforcing its volume capacity.

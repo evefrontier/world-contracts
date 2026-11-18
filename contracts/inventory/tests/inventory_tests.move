@@ -1519,7 +1519,7 @@ fun withdraw_batch_empty_aborts() {
     abort
 }
 
-/// The action's rule applies to every entry, not just the first.
+/// An entry over the action's max aborts the batch.
 #[test, expected_failure(abort_code = inventory::EQuantityAboveMax)]
 fun withdraw_batch_entry_over_rule_max_aborts() {
     let mut scenario = ts::begin(ADMIN);
@@ -1548,6 +1548,190 @@ fun withdraw_batch_entry_over_rule_max_aborts() {
 }
 
 /// Capacity is checked against the batch's total volume.
+/// One requirement's max bounds the batch's total, even when every entry fits.
+#[test, expected_failure(abort_code = inventory::EQuantityAboveMax)]
+fun withdraw_batch_total_over_rule_max_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let small = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::none(),
+        option::none(),
+        option::some(3),
+    );
+    enable(&mut e, b"withdraw_small", small, &cap, scenario.ctx());
+    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
+    let _items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw_small",
+        vector[FUEL, FUEL],
+        vector[2, 2],
+    );
+
+    abort
+}
+
+#[test]
+fun withdraw_batch_total_at_rule_max_succeeds() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let small = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::none(),
+        option::some(4),
+        option::some(4),
+    );
+    enable(&mut e, b"withdraw_four", small, &cap, scenario.ctx());
+    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
+    // Each entry is below the min of 4; only the total has to meet it.
+    let items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw_four",
+        vector[FUEL, FUEL],
+        vector[2, 2],
+    );
+    assert!(inv(&e).items().balance(FUEL) == 6);
+    deposit_batch(&mut scenario, &mut e, &cap, b"deposit", items);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = inventory::EItemTypeNotAllowed)]
+fun withdraw_batch_entry_wrong_type_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", LENS, 5, VOL);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let fuel_only = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::some(FUEL),
+        option::none(),
+        option::none(),
+    );
+    enable(&mut e, b"withdraw_fuel", fuel_only, &cap, scenario.ctx());
+    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
+    let _items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw_fuel",
+        vector[FUEL, LENS],
+        vector[1, 1],
+    );
+
+    abort
+}
+
+/// One requirement's max bounds the batch's total, even when every item fits.
+#[test, expected_failure(abort_code = inventory::EQuantityAboveMax)]
+fun deposit_batch_total_over_rule_max_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let small = inventory::deposit_requirement(
+        MODULE_ID,
+        option::none(),
+        option::none(),
+        option::some(3),
+    );
+    enable(&mut e, b"deposit_small", small, &cap, scenario.ctx());
+    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
+    let items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw",
+        vector[FUEL, FUEL],
+        vector[2, 2],
+    );
+    deposit_batch(&mut scenario, &mut e, &cap, b"deposit_small", items);
+
+    abort
+}
+
+/// A one-FUEL-for-one-LENS swap cannot pay out several LENS through one batch.
+#[test, expected_failure(abort_code = inventory::EQuantityAboveMax)]
+fun swap_batch_withdraw_cannot_exceed_payment() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let entity_a = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let entity_a_id = entity_a.id();
+    let entity_b = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let entity_b_id = entity_b.id();
+    entity_a.share();
+    entity_b.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    configure_default_actions(&mut scenario, entity_a_id, OWNER);
+    configure_default_actions(&mut scenario, entity_b_id, PLAYER);
+    power_inventory(&mut scenario, entity_a_id, OWNER);
+    power_inventory(&mut scenario, entity_b_id, PLAYER);
+    bridge_in(&mut scenario, entity_a_id, OWNER, b"bridge_in", LENS, 3, VOL);
+    owner_enable(
+        &mut scenario,
+        entity_a_id,
+        OWNER,
+        b"swap",
+        action::new(vector[
+            inventory::deposit_requirement(
+                MODULE_ID,
+                option::some(FUEL),
+                option::some(1),
+                option::some(1),
+            ),
+            inventory::withdraw_requirement(
+                MODULE_ID,
+                option::some(LENS),
+                option::some(1),
+                option::some(1),
+            ),
+        ]),
+    );
+    bridge_in(&mut scenario, entity_b_id, PLAYER, b"bridge_in", FUEL, 1, VOL);
+
+    ts::next_tx(&mut scenario, PLAYER);
+    docking::dock_for_testing(entity_b_id, entity_a_id, character_id(), scenario.ctx());
+    let mut entity_b = ts::take_shared_by_id<Entity>(&scenario, entity_b_id);
+    let cap_b = ts::take_from_sender<AccessCap>(&scenario);
+    let fuel = withdraw(&mut scenario, &mut entity_b, &cap_b, b"withdraw", FUEL, 1);
+
+    let mut entity_a = ts::take_shared_by_id<Entity>(&scenario, entity_a_id);
+    let mut req = entity_a.interact(string::utf8(b"swap"), scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    inventory::deposit(&mut entity_a, &mut req, fuel, scenario.ctx());
+    grid_load::assert_online(&mut entity_a, &mut req, &clock);
+    let _lens = inventory::withdraw_batch(
+        &mut entity_a,
+        &mut req,
+        vector[LENS, LENS, LENS],
+        vector[1, 1, 1],
+        scenario.ctx(),
+    );
+
+    abort
+}
+
 #[test, expected_failure(abort_code = inventory::EOverCapacity)]
 fun deposit_batch_over_capacity_aborts() {
     let mut scenario = ts::begin(ADMIN);
