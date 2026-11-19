@@ -440,7 +440,52 @@ public fun version(entity: &Entity): u64 {
     entity.version
 }
 
+/// Owner action names in insertion order. A name also used by an admin action
+/// is unreachable via `interact`; prefix owner action names to keep them distinct.
+public fun owner_action_names(entity: &Entity): vector<String> {
+    action_names_in(entity, OwnerActionsKey())
+}
+
+/// Admin action names in insertion order.
+public fun admin_action_names(entity: &Entity): vector<String> {
+    action_names_in(entity, AdminActionsKey())
+}
+
+public fun has_owner_action(entity: &Entity, name: String): bool {
+    action_map(entity, OwnerActionsKey()).contains(&name)
+}
+
+public fun has_admin_action(entity: &Entity, name: String): bool {
+    action_map(entity, AdminActionsKey()).contains(&name)
+}
+
+/// The owner action `name`; aborts if absent.
+public fun owner_action(entity: &Entity, name: String): &Action {
+    action_in(entity, OwnerActionsKey(), name)
+}
+
+/// The admin action `name`; aborts if absent.
+public fun admin_action(entity: &Entity, name: String): &Action {
+    action_in(entity, AdminActionsKey(), name)
+}
+
 // === Private Functions ===
+
+fun action_map<K: copy + drop + store>(entity: &Entity, key: K): &VecMap<String, Action> {
+    df::borrow(&entity.id, key)
+}
+
+fun action_names_in<K: copy + drop + store>(entity: &Entity, key: K): vector<String> {
+    action_map(entity, key).keys()
+}
+
+fun action_in<K: copy + drop + store>(entity: &Entity, key: K, name: String): &Action {
+    let map = action_map(entity, key);
+    assert!(map.contains(&name), EUnknownAction);
+    // `map.get(&name)` would tie the returned ref to the local `name`; go by index.
+    let (_, action) = map.get_entry_by_idx(map.get_idx(&name));
+    action
+}
 
 fun add_action<K: copy + drop + store>(entity: &mut Entity, key: K, name: String, action: Action) {
     assert!(entity.version == VERSION, EWrongVersion);
