@@ -36,9 +36,11 @@ values.
 
 - **Stacks and items** store only the `VariantKey` and a quantity. An inventory has
 one stack per key, so identical variants join and different ones don't.
-- **Quantity** is a plain `u64` in base units: 1 item, or 0.0001 kg. The record's
-`QuantityKind` says which; arithmetic never branches on it.
-- **Volume** is per base unit, read from the record.
+- **Quantity** is a plain `u64` in base units: a count of items, or a stack's total
+mass in 0.0001 kg steps (12.5 kg is 125000). The record's `QuantityKind` says
+which; arithmetic never branches on it.
+- **Volume** comes from the variant: the record holds m³ per kg (1/density) or
+per item, and a stack's volume is that times its kg or item count.
 - **A value change** moves stock to a new variant ID in the game, so a new frozen
 record. Old stacks keep their key and values.
 - **Any contract** reads properties by passing `&Variant`. Fuel deposits read the
@@ -159,7 +161,7 @@ public struct Variant has key {
     id: UID,                    // derived from VariantRegistry + key
     key: VariantKey,
     kind: QuantityKind,
-    unit_volume: u64,           // at 1e9
+    unit_volume: u64,           // m³ per kg (Mass) or per item (Units), at 1e9
     values: VecMap<u32, Value>, // property_id, value, ascending by id
 }
 
