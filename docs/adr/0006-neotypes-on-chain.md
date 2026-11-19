@@ -28,18 +28,19 @@ stores and checks them, never invents one.
 
 ## Summary
 
-Each variant version gets one **frozen** `Variant` **record** holding all its property
-values, at an address derived from `(tenant, type_id, variant_id, version)`.
-`variant_id` is the game's variant ID; `version` starts at 1 and is bumped when the
-game changes that variant's values.
+Each variant gets one **frozen** `Variant` **record** holding all its property
+values, at an address derived from `(tenant, type_id, variant_id)`. `variant_id` is
+the game's variant ID, and it names one fixed set of values for good: the game
+resolves `(type_id, sha256(properties))` to one ID and never rewrites a variant's
+values.
 
 - **Stacks and items** store only the `VariantKey` and a quantity. An inventory has
 one stack per key, so identical variants join and different ones don't.
 - **Quantity** is a plain `u64` in base units: 1 item, or 0.0001 kg. The record's
 `QuantityKind` says which; arithmetic never branches on it.
 - **Volume** is per base unit, read from the record.
-- **A value change** bumps the version, so a new frozen record. Old stacks keep
-their version and values; v1 and v2 of one variant are separate stacks.
+- **A value change** moves stock to a new variant ID in the game, so a new frozen
+record. Old stacks keep their key and values.
 - **Any contract** reads properties by passing `&Variant`. Fuel deposits read the
 four fuel properties from it.
 
@@ -66,11 +67,11 @@ flowchart LR
 1. **Game to chain (admin flow).** A player deposits an item into an on-chain
 
    Inventory. The service pulls the item's properties from the game, registers a
-    `Variant` record if the chain doesn't have one yet, then mints the stack.
+     `Variant` record if the chain doesn't have one yet, then mints the stack.
 2. **Chain moves (builder flow).** A builder contract moves items between
 
    Inventories (or into a fuel bay). The service listens to the item events and
-    reports each move to the game with the variant's properties.
+     reports each move to the game with the variant's properties.
 
 ```mermaid
 sequenceDiagram
@@ -84,11 +85,11 @@ sequenceDiagram
 
     Note over Player,InvA: 1. Game to chain (admin flow)
     Player->>Game: deposit item into Inventory A
-    Game->>Service: item operation (type, variant_id, version, quantity)
+    Game->>Service: item operation (type, variant_id, quantity)
     Service->>Game: GetProperties(item)
     Game-->>Service: kind, properties
-    opt no record for (tenant, type, variant_id, version)
-        Service->>Var: register(type, variant_id, version, kind, unit_volume, values)
+    opt no record for (tenant, type, variant_id)
+        Service->>Var: register(type, variant_id, kind, unit_volume, values)
         Note over Var: new frozen Variant
     end
     Service->>InvA: game_item_to_chain_inventory(&Variant, quantity)
@@ -98,9 +99,9 @@ sequenceDiagram
     Player->>Ext: interact
     Ext->>InvA: withdraw(key, quantity) -> Item
     Ext->>InvB: deposit(Item)
-    InvB-->>Service: ItemWithdrawn, ItemDeposited (variant_id, version)
+    InvB-->>Service: ItemWithdrawn, ItemDeposited (variant_id)
     Service->>Var: read Variant(key)
-    Service->>Game: report move: type, variant_id, version, quantity, properties
+    Service->>Game: report move: type, variant_id, quantity, properties
 ```
 
 Registration is its own admin transaction: `register` creates the record and
@@ -108,7 +109,9 @@ freezes it at once. The bridge-in that follows passes the frozen record; a varia
 already on chain skips registration. The game learns of chain moves only from
 events, which carry the variant key; the service reads the record and reports
 the properties with the move. Bridge-out (`chain_item_to_game_inventory`) is
-reported the same way.
+reported the same way. The game resolves an item coming back by its `variant_id`,
+never by re-hashing the reported values: values rounded to 1e9 would hash to a
+different variant than the original floats.
 
 ## Scope
 
@@ -118,7 +121,7 @@ reported the same way.
 properties.
 - Inventory stacks and `Item`s keyed by variant; quantity in base units; volume
 from the record.
-- Variant versions: a value change is a new frozen record; old stacks keep theirs.
+- Value changes: a new variant ID is a new frozen record; old stacks keep theirs.
 - Items with no properties (plain types) as a record with `variant_id = 0` and no
 values.
 - Fuel deposits (service and on-chain `Item`) reading fuel values from a record.
@@ -139,8 +142,7 @@ values.
 public struct VariantKey has copy, drop, store {
     tenant: String,
     type_id: u64,
-    variant_id: u64,            // game variantID; 0 = no properties
-    version: u64,               // starts at 1; bumped when the values change
+    variant_id: u64,            // game variantID; 0 = no variant
 }
 
 public enum QuantityKind has copy, drop, store {
@@ -149,7 +151,7 @@ public enum QuantityKind has copy, drop, store {
 }
 
 public struct Value has copy, drop, store {
-    magnitude: u64,             // at 1e9
+    magnitude: u128,            // at 1e9: |units| × 1e9 + |nanos|
     negative: bool,             // a few physical properties go below zero
 }
 
@@ -166,14 +168,15 @@ public struct VariantRegistry has key { id: UID }
 
 `register` takes the property IDs strictly ascending and aborts otherwise, so
 every reader sees one order. It is admin-gated (`AdminACL` admins): only the game
-service registers variants, and the chain trusts it to pair a
-`(variant_id, version)` with its real values. A second `register` for the same key
-aborts, so the first registration stands.
+service registers variants, and the chain trusts it to pair a `variant_id` with
+its real values. A second `register` for the same key aborts, so the first
+registration stands.
 
-A rebalance or migration that changes a variant's values keeps its `variant_id`
-and registers the next `version`. New stacks from the game use the new version;
-stacks already on chain keep the old one. There is no "latest version" pointer on
-chain, so every read stays on a frozen record.
+A rebalance or migration that conforms stock to new ranges moves the game's items
+to a new `variant_id`; new stacks bridge in under that ID. Variants already on
+chain are pinned in the game and marked **deprecated**: the game mints no new
+stock of them, and chain stock bridged back is taken as it is. The chain needs no
+change; the old record stays frozen and its stacks keep working.
 
 #### `Item` and `ItemBag`
 
@@ -190,8 +193,6 @@ public struct Balance has drop, store { quantity: u64, unit_volume: u64 }
 
 public struct ItemBag has store { balances: LinkedTable<VariantKey, Balance> }
 ```
-
-
 
 #### Packages
 
@@ -233,7 +234,7 @@ service find a record without an index.
 `decimals`, `unit_volume`.
 - `inventory::balance_of(entity, component_id, key)`; `item::key`, `quantity`.
 - `VariantRegistered { key, id, kind }` for indexers; item movement events carry
-`variant_id` and `version`; `FuelItemDeposited` for items burned into a bay.
+`variant_id`; `FuelItemDeposited` for items burned into a bay.
 
 Builders gate on properties in their own requirement handler, declared just
 before the deposit in the action. The handler takes the `Item` and its
@@ -246,38 +247,43 @@ let a different item through. Core `ItemRequirement` stays type and quantity onl
 1. **One object per stack, ID derived from** `(type_id, variant_id)`**.** A global ID
 
    allows only one stack of a variant on the whole chain, and a derived address
-    can't be reclaimed after the stack empties.
+     can't be reclaimed after the stack empties.
 2. **Typed fields for on-chain properties, the rest as JSON bytes.** Move can't
 
    parse JSON, so contracts can't read it; it costs storage on every stack. Typed
-    fields differ per item kind and need many `Option`s or a type parameter.
+     fields differ per item kind and need many `Option`s or a type parameter.
 3. **All values copied onto every stack and item.** No extra argument to read,
 
    but the same values are stored many times.
 4. **Key by a hash of the values, computed on chain.** The chain could check that
 
    a key matches its values, but keys grow to 32 bytes and the game would need a
-    hash-to-variant map for items coming back. The game already guarantees one ID
-    per set of values, and the bridge already trusts the game service.
+     hash-to-variant map for items coming back. The game already guarantees one ID
+     per set of values, and the bridge already trusts the game service.
 5. **A quantity enum (**`Units(u64) | Mass(u64)`**) on each stack.** Mirrors the API
 
    but makes every add, split and merge match on the kind. Base units with the
-    kind on the record keep one arithmetic path.
+     kind on the record keep one arithmetic path.
 6. **Fuel property mapping in an admin config object.** Changeable without an
 
    upgrade, but every deposit reads one more shared object for IDs that are fixed
-    in static data.
+     in static data.
 
 ## Consequences
 
-- New shared object: `VariantRegistry`. One frozen `Variant` per variant version
-that ever crosses; never deleted.
-- Bridge-in, `deposit_fuel` and property reads take a `&Variant` argument. Frozen
-inputs need no consensus.
-- Stack keys grow from a `u64` to a `VariantKey` (tenant, type, variant, version).
-- The game API must carry `variant_id` and `version`, and the game must bump the
-version whenever it changes a variant's values.
-- Stacks of an old version stay on it until moved; v1 and v2 never merge.
+- New shared object: `VariantRegistry`. One frozen `Variant` per variant that ever
+crosses; never deleted.
+- Bridge-in, `deposit_fuel` and property reads take a `&Variant` argument. 
+- Stack keys grow from a `u64` to a `VariantKey` (tenant, type, variant).
+- Requirements on the game:
+  - The API carries `variant_id`.
+  - Every variant registered on chain is kept from the orphan sweep for good
+  (as `Variant_PinForChain` does for the interim bridge); otherwise a bridge-out
+  would name a variant the game no longer has.
+  - A migrated variant that is pinned for the chain is marked deprecated, not
+  rewritten.
+- Stacks of a deprecated variant stay on it until bridged out; they never merge
+with the replacement variant.
 - New `variant` package under `power` and `inventory`; the item-to-fuel path
 lives in `inventory`, and `power` admits it through an admin-registered source
 type.
