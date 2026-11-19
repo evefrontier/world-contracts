@@ -7,6 +7,7 @@ use core::{
     admin_service,
     entity,
     request,
+    requirement,
     test_helpers::{setup, take_registry, take_acl, claim, create_entity, tenant}
 };
 use std::string;
@@ -668,6 +669,158 @@ fun interact_unknown_action_aborts() {
 
     let req = e.interact(string::utf8(b"missing"), ctx);
     e.complete_request(req);
+
+    abort
+}
+
+// === Action views ===
+
+/// Shared entity owned by @0xB: admin action `repair`; owner actions `deposit`, `withdraw`, `repair`.
+fun entity_with_actions(scenario: &mut ts::Scenario): ID {
+    ts::next_tx(scenario, @0xA);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let mut req = e.mint_access(@0xB, false, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let mut req = e.enable_admin_action(
+        string::utf8(b"repair"),
+        action::new(vector[admin_service::admin_requirement()]),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    let e_id = e.id();
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    ts::next_tx(scenario, @0xB);
+    let mut e = ts::take_shared_by_id<entity::Entity>(scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let owner_actions = vector[
+        string::utf8(b"deposit"),
+        string::utf8(b"withdraw"),
+        string::utf8(b"repair"),
+    ];
+    owner_actions.do!(|name| {
+        let requirements = if (name == string::utf8(b"withdraw")) {
+            vector[access_cap::owner_requirement(), admin_service::admin_requirement()]
+        } else {
+            vector[]
+        };
+        let mut req = e.enable_action(name, action::new(requirements), scenario.ctx());
+        e.verify_owner(&mut req, &cap);
+        e.complete_request(req);
+    });
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(e);
+    e_id
+}
+
+#[test]
+fun action_names_list_each_map_in_insertion_order() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let e_id = entity_with_actions(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xC);
+    let e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    assert!(
+        e.owner_action_names() == vector[
+            string::utf8(b"deposit"),
+            string::utf8(b"withdraw"),
+            string::utf8(b"repair"),
+        ],
+    );
+    assert!(e.admin_action_names() == vector[string::utf8(b"repair")]);
+    assert!(e.has_owner_action(string::utf8(b"deposit")));
+    assert!(!e.has_admin_action(string::utf8(b"deposit")));
+    assert!(e.has_admin_action(string::utf8(b"repair")));
+    assert!(!e.has_owner_action(string::utf8(b"steal")));
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test]
+fun action_view_exposes_requirements() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let e_id = entity_with_actions(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xC);
+    let e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let withdraw = e.owner_action(string::utf8(b"withdraw")).requirements();
+    assert!(withdraw.length() == 2);
+    assert!(requirement::is<admin_service::Admin>(&withdraw[0]));
+    assert!(requirement::is<access_cap::Owner>(&withdraw[1]));
+    assert!(e.owner_action(string::utf8(b"repair")).requirements().is_empty());
+    let repair = e.admin_action(string::utf8(b"repair")).requirements();
+    assert!(repair.length() == 1);
+    assert!(requirement::is<admin_service::Admin>(&repair[0]));
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test]
+fun action_names_drop_disabled_actions() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let e_id = entity_with_actions(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xB);
+    let mut e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let mut req = e.disable_action(string::utf8(b"withdraw"), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    e.complete_request(req);
+    assert!(e.owner_action_names() == vector[string::utf8(b"deposit"), string::utf8(b"repair")]);
+    assert!(!e.has_owner_action(string::utf8(b"withdraw")));
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test]
+fun fresh_entity_has_no_actions() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xA);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = claim(&mut registry, &acl, 1, scenario.ctx());
+    assert!(e.owner_action_names().is_empty());
+    assert!(e.admin_action_names().is_empty());
+    entity::share(e);
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = entity::EUnknownAction)]
+fun owner_action_unknown_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let e_id = entity_with_actions(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xC);
+    let e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    e.owner_action(string::utf8(b"steal"));
+
+    abort
+}
+
+#[test, expected_failure(abort_code = entity::EUnknownAction)]
+fun admin_action_unknown_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let e_id = entity_with_actions(&mut scenario);
+
+    ts::next_tx(&mut scenario, @0xC);
+    let e = ts::take_shared_by_id<entity::Entity>(&scenario, e_id);
+    e.admin_action(string::utf8(b"deposit"));
 
     abort
 }
