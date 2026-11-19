@@ -33,6 +33,7 @@ import {
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
+  seatShell,
   signer,
 } from './helpers.js'
 
@@ -92,6 +93,7 @@ describe('power grid powers an inventory (localnet)', () => {
       componentId: FUEL_ID,
       capacity: 1000n,
     })
+    seatShell(installTx, config, installEntity)
     await expectSuccess(client, installTx)
 
     const capId = await mintAccessCap(client, config, {

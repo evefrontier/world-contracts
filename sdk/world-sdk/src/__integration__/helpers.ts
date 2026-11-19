@@ -4,7 +4,7 @@ import 'dotenv/config'
 import { bcs } from '@mysten/sui/bcs'
 import type { Signer } from '@mysten/sui/cryptography'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
-import { Transaction } from '@mysten/sui/transactions'
+import { Transaction, type TransactionArgument } from '@mysten/sui/transactions'
 import { expect } from 'vitest'
 import {
   createWorldClient,
@@ -15,8 +15,10 @@ import {
 } from '../client.js'
 import { loadWorldConfig } from '../config/load.js'
 import type { WorldConfig } from '../config/types.js'
+import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
+import { installLayout, setShell } from '../packages/layout.js'
 import { dockingProof } from '../packages/proof.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
@@ -216,4 +218,18 @@ export function dockedProof(
     },
     keypair,
   )
+}
+
+/** Power grid component id; the grid stands in as the Command Module in tests. */
+export const GRID_ID = componentIdFromName('power_grid')
+export const SHELL_ID = '0x5e11'
+
+/** Install a Layout with the grid as Command Module and seat a Shell, so power can switch on. Admin-gated. */
+export function seatShell(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): void {
+  installLayout(tx, config, entity, [{ sectionId: 1n, moduleIds: [GRID_ID] }])
+  setShell(tx, config, entity, SHELL_ID, GRID_ID)
 }

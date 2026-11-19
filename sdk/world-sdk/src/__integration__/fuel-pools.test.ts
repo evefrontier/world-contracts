@@ -31,6 +31,7 @@ import {
   expectSuccess,
   loadLocalnetWorld,
   mintAccessCap,
+  seatShell,
   signer,
 } from './helpers.js'
 
@@ -65,6 +66,7 @@ describe('fuel pools (localnet)', () => {
     verifyAdmin(createTx, config, claim)
     completeRequest(createTx, config, creation, claim)
     installPowerGrid(createTx, config, creation)
+    seatShell(createTx, config, creation)
     for (const componentId of [HYDROGEN_BAY, CRUDE_BAY]) {
       installFuelBay(createTx, config, creation, {
         componentId,

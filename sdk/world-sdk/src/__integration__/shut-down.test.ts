@@ -12,6 +12,7 @@ import {
   verifyAdmin,
 } from '../packages/core.js'
 import { installGenericModule } from '../packages/generic-module.js'
+import { clearShell, setShell } from '../packages/layout.js'
 import {
   depositFuel,
   depositFuelRequirement,
@@ -32,9 +33,13 @@ import {
   shutDownRequirement,
 } from '../packages/power.js'
 import {
+  expectAbort,
   expectSuccess,
+  GRID_ID,
   loadLocalnetWorld,
   mintAccessCap,
+  SHELL_ID,
+  seatShell,
   signer,
 } from './helpers.js'
 
@@ -58,6 +63,7 @@ describe('shut down (localnet)', () => {
     verifyAdmin(createTx, config, claim)
     completeRequest(createTx, config, creation, claim)
     installPowerGrid(createTx, config, creation)
+    seatShell(createTx, config, creation)
     installGenerator(createTx, config, creation, {
       componentId: GENERATOR_ID,
       maxOutputMw: 15n,
@@ -136,12 +142,34 @@ describe('shut down (localnet)', () => {
     await powerCycle(entityId, capId)
     expect(await readDraw(entityId)).toBe(DRAW)
 
-    // Shut down (the service, when the Shell leaves): a power cycle brings nothing back.
+    // The Shell leaves: the service clears it and shuts down in one transaction.
     const shutTx = new Transaction()
-    shutDown(shutTx, config, shutTx.object(entityId))
+    const shutEntity = shutTx.object(entityId)
+    clearShell(shutTx, config, shutEntity)
+    shutDown(shutTx, config, shutEntity)
     await expectSuccess(client, shutTx)
     expect(await readDraw(entityId)).toBe(0n)
     expect(await readStatus(entityId)).toBe('off')
+
+    // No Shell: nothing switches on.
+    const noShellTx = new Transaction()
+    const noShellEntity = noShellTx.object(entityId)
+    owner(noShellTx, noShellEntity, 'set_power_grid', (request) =>
+      setPowerGrid(
+        noShellTx,
+        config,
+        noShellEntity,
+        request,
+        noShellTx.object(capId),
+        true,
+      ),
+    )
+    await expectAbort(client, noShellTx, signer, /ENoShell/)
+
+    // A new Shell boards: power cycles, but nothing comes back by itself.
+    const seatTx = new Transaction()
+    setShell(seatTx, config, seatTx.object(entityId), SHELL_ID, GRID_ID)
+    await expectSuccess(client, seatTx)
     await powerCycle(entityId, capId)
     expect(await readDraw(entityId)).toBe(0n)
   })

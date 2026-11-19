@@ -35,6 +35,7 @@ import {
   expectSuccess,
   loadLocalnetWorld,
   mintAccessCap,
+  seatShell,
   signer,
 } from './helpers.js'
 
@@ -82,6 +83,7 @@ describe('power grid fuel burn (localnet)', () => {
     verifyAdmin(createTx, config, claim)
     completeRequest(createTx, config, creation, claim)
     installPowerGrid(createTx, config, creation)
+    seatShell(createTx, config, creation)
     installGenerator(createTx, config, creation, {
       componentId: GENERATOR_ID,
       name: 'generator',
