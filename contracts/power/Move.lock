@@ -22,11 +22,17 @@ use_environment = "dev"
 manifest_digest = "D57897BC535122CD3CB949AFE1637D27C48ECACE7AA4A38C0E6217E4903C5510"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
-[pinned.dev.power]
-source = { root = true }
+[pinned.dev.creation]
+source = { local = "../creation" }
 use_environment = "dev"
 manifest_digest = "C9F5662B88EC27D4EDC3A17419B2DD98AA33F04F755FC7BC996546A84D83EA2F"
 deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.dev.power]
+source = { root = true }
+use_environment = "dev"
+manifest_digest = "36FC0269A8511131311D4A02590C02B14D71E2F54798060020D5E86BE6F5F4CD"
+deps = { core = "core", creation = "creation", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.test.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "2a0becb2fcc6989e492981104af67f62f2c9511a" }

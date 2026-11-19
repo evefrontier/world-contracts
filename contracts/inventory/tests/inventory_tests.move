@@ -12,6 +12,7 @@ use core::{
     requirement::Requirement,
     test_helpers::{claim, setup, take_acl, take_registry}
 };
+use creation::layout;
 use inventory::{inventory, item::{Self, Item}};
 use power::{grid_fuel, grid_generator, grid_load, power_grid};
 use std::string::{Self, String};
@@ -30,6 +31,10 @@ const TYPE_ID: u64 = 1;
 const DRAW: u64 = 1;
 const GENERATOR_ID: u64 = 0x71;
 const FUEL_BAY_ID: u64 = 0x72;
+const COMMAND_MODULE_ID: u64 = 0x73;
+
+/// Stand-in Command Module the Shell sits in.
+public struct CommandModule has store {}
 
 fun unit_name(): String { string::utf8(b"SU-01") }
 
@@ -83,7 +88,8 @@ fun build_entity_with_inventory(
     e
 }
 
-/// Install the power grid on `e` if it is not there yet. Admin-only.
+/// Install the power grid on `e` if it is not there yet, with a Shell aboard so
+/// it can be switched on. Admin-only.
 fun install_grid(scenario: &mut ts::Scenario, e: &mut Entity, acl: &AdminACL) {
     if (e.has_component(power_grid::component_id())) return;
     let clock = clock::create_for_testing(scenario.ctx());
@@ -91,6 +97,17 @@ fun install_grid(scenario: &mut ts::Scenario, e: &mut Entity, acl: &AdminACL) {
     admin_service::verify_admin(&mut req, acl, scenario.ctx());
     e.complete_request(req);
     clock.destroy_for_testing();
+    let mut req = e.install(
+        COMMAND_MODULE_ID,
+        option::none(),
+        CommandModule {},
+        1,
+        internal::permit<CommandModule>(),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, acl, scenario.ctx());
+    e.complete_request(req);
+    layout::install_with_shell_for_testing(e, acl, COMMAND_MODULE_ID, scenario.ctx());
 }
 
 /// Install the grid if needed, then the Inventory under `component_id`, connected

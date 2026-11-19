@@ -178,7 +178,7 @@ public fun migrate(
 }
 
 /// Bring a Generator online or offline. Settles before capacity changes,
-/// because burn depends on which Generators run.
+/// because burn depends on which Generators run. Online needs a Shell aboard.
 public fun set_generator(
     entity: &mut Entity,
     req: &mut Request,
@@ -186,6 +186,7 @@ public fun set_generator(
     online: bool,
     clock: &Clock,
 ) {
+    if (online) power_grid::assert_shell(entity);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,
