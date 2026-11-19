@@ -440,7 +440,8 @@ public fun version(entity: &Entity): u64 {
     entity.version
 }
 
-/// Owner action names in insertion order. `interact` checks admin actions first.
+/// Owner action names in insertion order. A name also used by an admin action
+/// is unreachable via `interact`; prefix owner action names to keep them distinct.
 public fun owner_action_names(entity: &Entity): vector<String> {
     action_names_in(entity, OwnerActionsKey())
 }
@@ -480,9 +481,9 @@ fun action_names_in<K: copy + drop + store>(entity: &Entity, key: K): vector<Str
 
 fun action_in<K: copy + drop + store>(entity: &Entity, key: K, name: String): &Action {
     let map = action_map(entity, key);
-    let idx = map.get_idx_opt(&name);
-    assert!(idx.is_some(), EUnknownAction);
-    let (_, action) = map.get_entry_by_idx(idx.destroy_some());
+    assert!(map.contains(&name), EUnknownAction);
+    // `map.get(&name)` would tie the returned ref to the local `name`; go by index.
+    let (_, action) = map.get_entry_by_idx(map.get_idx(&name));
     action
 }
 
