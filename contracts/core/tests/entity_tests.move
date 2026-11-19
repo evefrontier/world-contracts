@@ -859,10 +859,10 @@ fun dock_records_both_sides() {
     assert!(ship.docked_entities().contains(&station.id()));
 
     // Each side accepts the other as a transfer source, and itself.
-    station.assert_docked(option::some(ship.id()));
-    ship.assert_docked(option::some(station.id()));
+    station.assert_docked(ship.id());
+    ship.assert_docked(station.id());
     let station_id = station.id();
-    station.assert_docked(option::some(station_id));
+    station.assert_docked(station_id);
 
     station.share();
     ship.share();
@@ -944,9 +944,9 @@ fun multiple_docked_entities_each_pass_as_source() {
     assert!(docked.contains(&ship_c.id()));
 
     // Every docked entity is accepted as a transfer source.
-    station.assert_docked(option::some(ship_a.id()));
-    station.assert_docked(option::some(ship_b.id()));
-    station.assert_docked(option::some(ship_c.id()));
+    station.assert_docked(ship_a.id());
+    station.assert_docked(ship_b.id());
+    station.assert_docked(ship_c.id());
 
     station.share();
     ship_a.share();
@@ -973,7 +973,7 @@ fun multiple_docked_entities_reject_undocked_source() {
     dock_as_admin(&mut station, &mut ship_b, &acl, scenario.ctx());
 
     // Two entities are docked, but not this one.
-    station.assert_docked(option::some(ship_c.id()));
+    station.assert_docked(ship_c.id());
 
     abort
 }
@@ -1015,8 +1015,9 @@ fun assert_docked_with_nothing_docked_aborts() {
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
-    e.assert_docked(option::none());
+    let station = claim(&mut registry, &acl, 1, scenario.ctx());
+    let ship = claim(&mut registry, &acl, 2, scenario.ctx());
+    station.assert_docked(ship.id());
 
     abort
 }
@@ -1029,9 +1030,9 @@ fun assert_docked_with_self_source() {
     ts::next_tx(&mut scenario, @0xA);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
+    let e = claim(&mut registry, &acl, 1, scenario.ctx());
     let self_id = e.id();
-    e.assert_docked(option::some(self_id));
+    e.assert_docked(self_id);
 
     e.share();
     ts::return_shared(acl);
@@ -1052,7 +1053,7 @@ fun assert_docked_after_last_undock_aborts() {
     dock_as_admin(&mut station, &mut ship, &acl, scenario.ctx());
     undock_as_admin(&mut station, &mut ship, &acl, scenario.ctx());
 
-    station.assert_docked(option::none());
+    station.assert_docked(ship.id());
 
     abort
 }
@@ -1071,7 +1072,7 @@ fun assert_docked_with_undocked_source_aborts() {
     dock_as_admin(&mut station, &mut ship, &acl, scenario.ctx());
 
     // Something is docked, but not the source.
-    station.assert_docked(option::some(other_ship.id()));
+    station.assert_docked(other_ship.id());
 
     abort
 }

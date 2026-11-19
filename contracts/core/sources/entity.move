@@ -60,7 +60,7 @@ const ECapEntityMismatch: vector<u8> = b"AccessCap belongs to a different entity
 #[error(code = 14)]
 const ENotDocked: vector<u8> = b"Entity has no docked entities";
 #[error(code = 15)]
-const EWrongSource: vector<u8> = b"Source is neither this entity nor docked at it";
+const EWrongSource: vector<u8> = b"Source is neither this entity nor docked with it";
 #[error(code = 16)]
 const ESelfDock: vector<u8> = b"Entity cannot be docked to itself";
 
@@ -79,7 +79,7 @@ public struct OwnerActionsKey() has copy, drop, store;
 /// Actions an admin manages with `enable_admin_action` and `disable_admin_action`.
 public struct AdminActionsKey() has copy, drop, store;
 
-/// Entities docked with this one in the same stack, managed with `dock` and `undock`.
+/// Entities docked with this one, managed with `dock` and `undock`.
 public struct DockedEntitiesKey() has copy, drop, store;
 
 public struct Entity has key {
@@ -421,14 +421,14 @@ public fun complete_request(entity: &mut Entity, req: Request) {
     entity.unlock();
 }
 
-/// Pass immediately when `source` (the other side of a transfer) is `entity` itself.
-/// Otherwise abort unless `entity` has at least one docked entity, and, when `source`
-/// is set, unless `source` is docked at it.
-public fun assert_docked(entity: &mut Entity, source: Option<ID>) {
-    if (source == option::some(entity.id.to_inner())) return;
-    let docked: &VecSet<ID> = df::borrow(&entity.id, DockedEntitiesKey());
+/// Abort unless an item from `source` may be deposited into `destination`: either
+/// `source` is `destination` itself, or `source` is docked with `destination`.
+public fun assert_docked(destination: &Entity, source: ID) {
+    let destination_id = destination.id.to_inner();
+    if (source == destination_id) return;
+    let docked: &VecSet<ID> = df::borrow(&destination.id, DockedEntitiesKey());
     assert!(!docked.is_empty(), ENotDocked);
-    source.do!(|s| assert!(docked.contains(&s), EWrongSource));
+    assert!(docked.contains(&source), EWrongSource);
 }
 
 /// Record the docking of two entities, the chaser and the target, on both sides.
