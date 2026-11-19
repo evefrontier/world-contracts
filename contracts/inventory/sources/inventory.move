@@ -239,8 +239,8 @@ public fun chain_item_to_game_inventory(
 /// Deposit a standalone `Item` into the entity's Inventory.
 /// Aborts unless the item comes from this entity or from a docked entity. Pushes an `OnlineRequirement` for this inventory's grant. The caller
 /// satisfies it with `grid_load::assert_online`.
-public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
-    entity.assert_docked(option::some(item.source()), ctx);
+public fun deposit(entity: &mut Entity, req: &mut Request, item: Item) {
+    entity.assert_docked(option::some(item.source()));
     let type_id = item.type_id();
     let quantity = item.quantity();
     let tenant = entity.key().tenant();

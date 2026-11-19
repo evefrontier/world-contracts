@@ -297,7 +297,7 @@ fun dock_at(scenario: &mut ts::Scenario, target_id: ID, chaser_id: ID) {
     let mut target = ts::take_shared_by_id<Entity>(scenario, target_id);
     let mut chaser = ts::take_shared_by_id<Entity>(scenario, chaser_id);
     let acl = take_acl(scenario);
-    let (mut target_req, mut chaser_req) = target.dock(&mut chaser, scenario.ctx());
+    let (mut target_req, mut chaser_req) = target.dock(&mut chaser);
     admin_service::verify_admin(&mut target_req, &acl, scenario.ctx());
     admin_service::verify_admin(&mut chaser_req, &acl, scenario.ctx());
     target.complete_request(target_req);

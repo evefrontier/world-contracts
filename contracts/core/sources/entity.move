@@ -79,6 +79,9 @@ public struct OwnerActionsKey() has copy, drop, store;
 /// Actions an admin manages with `enable_admin_action` and `disable_admin_action`.
 public struct AdminActionsKey() has copy, drop, store;
 
+/// Entities docked with this one in the same stack, managed with `dock` and `undock`.
+public struct DockedEntitiesKey() has copy, drop, store;
+
 public struct Entity has key {
     id: UID,
     version: u64,
@@ -87,8 +90,6 @@ public struct Entity has key {
     access_cap_id: Option<ID>,
     /// Ids of the installed components. Must be empty on `delete`.
     component_ids: VecSet<u64>,
-    // Entities that this entity has docked with.
-    docked_entities: VecSet<ID>,
 }
 
 /// Proof that delete started via `request_delete`.
@@ -126,10 +127,10 @@ public fun new(registry: &mut ObjectRegistry, id: u64, tenant: String): (Entity,
         key,
         access_cap_id: option::none(),
         component_ids: vec_set::empty(),
-        docked_entities: vec_set::empty(),
     };
     df::add(&mut entity.id, OwnerActionsKey(), vec_map::empty<String, Action>());
     df::add(&mut entity.id, AdminActionsKey(), vec_map::empty<String, Action>());
+    df::add(&mut entity.id, DockedEntitiesKey(), vec_set::empty<ID>());
 
     event::emit(EntityCreated { entity_id: entity.id.to_inner(), key });
     entity.lock();
@@ -405,8 +406,8 @@ public fun delete(mut entity: Entity, req: Request, ticket: DeleteTicket) {
 
     let _: VecMap<String, Action> = df::remove(&mut entity.id, OwnerActionsKey());
     let _: VecMap<String, Action> = df::remove(&mut entity.id, AdminActionsKey());
-    let Entity { id, version: _, key, access_cap_id: _, component_ids: _, docked_entities: _ } =
-        entity;
+    let _: VecSet<ID> = df::remove(&mut entity.id, DockedEntitiesKey());
+    let Entity { id, version: _, key, access_cap_id: _, component_ids: _ } = entity;
     event::emit(EntityDeleted { entity_id: id.to_inner(), key });
     id.delete();
 }
@@ -423,25 +424,26 @@ public fun complete_request(entity: &mut Entity, req: Request) {
 /// Pass immediately when `source` (the other side of a transfer) is `entity` itself.
 /// Otherwise abort unless `entity` has at least one docked entity, and, when `source`
 /// is set, unless `source` is docked at it.
-public fun assert_docked(entity: &mut Entity, source: Option<ID>, _ctx: &mut TxContext) {
+public fun assert_docked(entity: &mut Entity, source: Option<ID>) {
     if (source == option::some(entity.id.to_inner())) return;
-    assert!(!entity.docked_entities.is_empty(), ENotDocked);
-    source.do!(|s| assert!(entity.docked_entities.contains(&s), EWrongSource));
+    let docked: &VecSet<ID> = df::borrow(&entity.id, DockedEntitiesKey());
+    assert!(!docked.is_empty(), ENotDocked);
+    source.do!(|s| assert!(docked.contains(&s), EWrongSource));
 }
 
 /// Record the docking of two entities, the chaser and the target, on both sides.
 /// Locks both and returns `(target request, chaser request)`, each admin-gated: the
 /// caller must `admin_service::verify_admin` then `complete_request` on each entity.
-public fun dock(
-    target: &mut Entity,
-    chaser: &mut Entity,
-    _ctx: &mut TxContext,
-): (Request, Request) {
+public fun dock(target: &mut Entity, chaser: &mut Entity): (Request, Request) {
     assert!(chaser.version == VERSION, EWrongVersion);
     assert!(target.version == VERSION, EWrongVersion);
     assert!(chaser.id.to_inner() != target.id.to_inner(), ESelfDock);
-    target.docked_entities.insert(chaser.id.to_inner());
-    chaser.docked_entities.insert(target.id.to_inner());
+    let target_id = target.id.to_inner();
+    let chaser_id = chaser.id.to_inner();
+    let target_docked: &mut VecSet<ID> = df::borrow_mut(&mut target.id, DockedEntitiesKey());
+    target_docked.insert(chaser_id);
+    let chaser_docked: &mut VecSet<ID> = df::borrow_mut(&mut chaser.id, DockedEntitiesKey());
+    chaser_docked.insert(target_id);
     target.lock();
     chaser.lock();
     (
@@ -461,10 +463,14 @@ public fun dock(
 public fun undock(target: &mut Entity, chaser: &mut Entity): (Request, Request) {
     assert!(target.version == VERSION, EWrongVersion);
     assert!(chaser.version == VERSION, EWrongVersion);
-    assert!(target.docked_entities.contains(&chaser.id.to_inner()), EWrongSource);
+    let target_id = target.id.to_inner();
+    let chaser_id = chaser.id.to_inner();
+    let target_docked: &mut VecSet<ID> = df::borrow_mut(&mut target.id, DockedEntitiesKey());
+    assert!(target_docked.contains(&chaser_id), EWrongSource);
 
-    target.docked_entities.remove(&chaser.id.to_inner());
-    chaser.docked_entities.remove(&target.id.to_inner());
+    target_docked.remove(&chaser_id);
+    let chaser_docked: &mut VecSet<ID> = df::borrow_mut(&mut chaser.id, DockedEntitiesKey());
+    chaser_docked.remove(&target_id);
     target.lock();
     chaser.lock();
     (
@@ -498,7 +504,7 @@ public fun component_ids(entity: &Entity): vector<u64> {
 }
 
 public fun docked_entities(entity: &Entity): VecSet<ID> {
-    entity.docked_entities
+    *df::borrow(&entity.id, DockedEntitiesKey())
 }
 
 public fun has_component(entity: &Entity, component_id: u64): bool {

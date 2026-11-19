@@ -821,7 +821,7 @@ fun dock_as_admin(
     acl: &admin_service::AdminACL,
     ctx: &mut TxContext,
 ) {
-    let (mut target_req, mut chaser_req) = target.dock(chaser, ctx);
+    let (mut target_req, mut chaser_req) = target.dock(chaser);
     admin_service::verify_admin(&mut target_req, acl, ctx);
     admin_service::verify_admin(&mut chaser_req, acl, ctx);
     target.complete_request(target_req);
@@ -859,10 +859,10 @@ fun dock_records_both_sides() {
     assert!(ship.docked_entities().contains(&station.id()));
 
     // Each side accepts the other as a transfer source, and itself.
-    station.assert_docked(option::some(ship.id()), scenario.ctx());
-    ship.assert_docked(option::some(station.id()), scenario.ctx());
+    station.assert_docked(option::some(ship.id()));
+    ship.assert_docked(option::some(station.id()));
     let station_id = station.id();
-    station.assert_docked(option::some(station_id), scenario.ctx());
+    station.assert_docked(option::some(station_id));
 
     station.share();
     ship.share();
@@ -884,12 +884,12 @@ fun dock_locks_target_until_its_request_completes() {
     let mut ship_a = claim(&mut registry, &acl, 2, scenario.ctx());
     let mut ship_b = claim(&mut registry, &acl, 3, scenario.ctx());
 
-    let (_target_req, mut chaser_req) = station.dock(&mut ship_a, scenario.ctx());
+    let (_target_req, mut chaser_req) = station.dock(&mut ship_a);
     admin_service::verify_admin(&mut chaser_req, &acl, scenario.ctx());
     ship_a.complete_request(chaser_req);
 
     // The station's request is still open, so it is still locked.
-    let (_station_req, _ship_b_req) = station.dock(&mut ship_b, scenario.ctx());
+    let (_station_req, _ship_b_req) = station.dock(&mut ship_b);
 
     abort
 }
@@ -944,9 +944,9 @@ fun multiple_docked_entities_each_pass_as_source() {
     assert!(docked.contains(&ship_c.id()));
 
     // Every docked entity is accepted as a transfer source.
-    station.assert_docked(option::some(ship_a.id()), scenario.ctx());
-    station.assert_docked(option::some(ship_b.id()), scenario.ctx());
-    station.assert_docked(option::some(ship_c.id()), scenario.ctx());
+    station.assert_docked(option::some(ship_a.id()));
+    station.assert_docked(option::some(ship_b.id()));
+    station.assert_docked(option::some(ship_c.id()));
 
     station.share();
     ship_a.share();
@@ -973,7 +973,7 @@ fun multiple_docked_entities_reject_undocked_source() {
     dock_as_admin(&mut station, &mut ship_b, &acl, scenario.ctx());
 
     // Two entities are docked, but not this one.
-    station.assert_docked(option::some(ship_c.id()), scenario.ctx());
+    station.assert_docked(option::some(ship_c.id()));
 
     abort
 }
@@ -1016,7 +1016,7 @@ fun assert_docked_with_nothing_docked_aborts() {
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
-    e.assert_docked(option::none(), scenario.ctx());
+    e.assert_docked(option::none());
 
     abort
 }
@@ -1031,7 +1031,7 @@ fun assert_docked_with_self_source() {
     let acl = take_acl(&scenario);
     let mut e = claim(&mut registry, &acl, 1, scenario.ctx());
     let self_id = e.id();
-    e.assert_docked(option::some(self_id), scenario.ctx());
+    e.assert_docked(option::some(self_id));
 
     e.share();
     ts::return_shared(acl);
@@ -1052,7 +1052,7 @@ fun assert_docked_after_last_undock_aborts() {
     dock_as_admin(&mut station, &mut ship, &acl, scenario.ctx());
     undock_as_admin(&mut station, &mut ship, &acl, scenario.ctx());
 
-    station.assert_docked(option::none(), scenario.ctx());
+    station.assert_docked(option::none());
 
     abort
 }
@@ -1071,7 +1071,7 @@ fun assert_docked_with_undocked_source_aborts() {
     dock_as_admin(&mut station, &mut ship, &acl, scenario.ctx());
 
     // Something is docked, but not the source.
-    station.assert_docked(option::some(other_ship.id()), scenario.ctx());
+    station.assert_docked(option::some(other_ship.id()));
 
     abort
 }
@@ -1087,7 +1087,7 @@ fun dock_by_non_admin_aborts() {
     let mut station = ts::take_shared_by_id<entity::Entity>(&scenario, station_id);
     let mut ship = ts::take_shared_by_id<entity::Entity>(&scenario, ship_id);
     let acl = take_acl(&scenario);
-    let (mut req, _chaser_req) = station.dock(&mut ship, scenario.ctx());
+    let (mut req, _chaser_req) = station.dock(&mut ship);
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
 
     abort
