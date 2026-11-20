@@ -224,6 +224,10 @@ public struct WithdrawFuel() has drop;
 /// `grid_fuel::siphon`. The frame then requires the admin.
 public struct Siphon() has drop;
 
+/// Marker for the service loading fuel into a bay with
+/// `grid_fuel::admin_deposit_fuel`, without the owner. The frame then requires the admin.
+public struct AdminDepositFuel() has drop;
+
 /// Marker for the service shutting a Creation down with `shut_down`. The frame
 /// then requires the admin.
 public struct ShutDown() has drop;
@@ -424,6 +428,11 @@ public fun withdraw_fuel_requirement(): Requirement {
 /// Requirement satisfied by `grid_fuel::siphon`; one per call.
 public fun siphon_requirement(): Requirement {
     requirement::from_config(option::some(component_id()), Siphon())
+}
+
+/// Requirement satisfied by `grid_fuel::admin_deposit_fuel`; one per call.
+public fun admin_deposit_fuel_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), AdminDepositFuel())
 }
 
 public fun manage_stash_requirement(): Requirement {
@@ -1188,6 +1197,10 @@ public(package) fun withdraw_fuel_permit(): Permit<WithdrawFuel> {
 
 public(package) fun siphon_permit(): Permit<Siphon> {
     internal::permit<Siphon>()
+}
+
+public(package) fun admin_deposit_fuel_permit(): Permit<AdminDepositFuel> {
+    internal::permit<AdminDepositFuel>()
 }
 
 public(package) fun stash_fuel(grid: &mut PowerGrid, fuel_bay_id: u64, fuel: Fuel) {

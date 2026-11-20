@@ -8,6 +8,7 @@ use power::{
     grid_scenario::{
         Self,
         admin,
+        admin_deposit,
         bay_fuel,
         burden,
         catch_up,
@@ -18,6 +19,7 @@ use power::{
         deposit_typed,
         draw,
         destroy_stash,
+        enable_admin_deposit,
         enable_manage_stash,
         enable_owner_in_handler,
         firm_power,
@@ -1051,6 +1053,132 @@ fun deposit_above_max_amount_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = gated_deposit(&mut scenario, &clock);
     gated(&mut scenario, entity_id, fuel_type(), 2_000, 600_000, 100_000, &clock);
+
+    abort
+}
+
+// === Admin deposit ===
+
+#[test]
+fun admin_deposit_loads_fuel_without_owner() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    enable_admin_deposit(&mut scenario, entity_id);
+
+    admin_deposit(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_bay_id(),
+        fuel_type(),
+        7,
+        impulse(),
+        &clock,
+    );
+
+    let added = event::events_by_type<FuelAdded>();
+    assert!(added.length() == 1);
+    let (_, bay, added_type, amount, resulting, _, _, _, _) = added[0].fuel_added_fields();
+    assert!(bay == fuel_bay_id() && added_type == fuel_type() && amount == 7);
+    assert!(resulting == starting_fuel() + 7 * power_grid::scale());
+    assert!(settled_fuel(&mut scenario, entity_id) == resulting);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The owner's `FuelRequirement` caps deposits at 1_000 units; the admin path ignores it.
+#[test]
+fun admin_deposit_skips_owner_fuel_requirement() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = gated_deposit(&mut scenario, &clock);
+    enable_admin_deposit(&mut scenario, entity_id);
+
+    admin_deposit(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_bay_id(),
+        fuel_type(),
+        2_000,
+        impulse(),
+        &clock,
+    );
+    assert!(
+        settled_fuel(&mut scenario, entity_id) == starting_fuel() + 2_000 * power_grid::scale(),
+    );
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = core::admin_service::EUnauthorizedAdmin)]
+fun admin_deposit_by_non_admin_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    enable_admin_deposit(&mut scenario, entity_id);
+
+    admin_deposit(
+        &mut scenario,
+        owner(),
+        entity_id,
+        fuel_bay_id(),
+        fuel_type(),
+        7,
+        impulse(),
+        &clock,
+    );
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EZeroFuel)]
+fun admin_deposit_zero_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    enable_admin_deposit(&mut scenario, entity_id);
+
+    admin_deposit(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_bay_id(),
+        fuel_type(),
+        0,
+        impulse(),
+        &clock,
+    );
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EFuelOverCapacity)]
+fun admin_deposit_over_capacity_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    enable_admin_deposit(&mut scenario, entity_id);
+    let room = fuel_capacity() - starting_units();
+
+    admin_deposit(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_bay_id(),
+        fuel_type(),
+        room + 1,
+        impulse(),
+        &clock,
+    );
 
     abort
 }
