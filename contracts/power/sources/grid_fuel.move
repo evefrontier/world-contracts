@@ -401,42 +401,60 @@ public fun deposit_fuel(
         req,
         power_grid::deposit_fuel_permit(),
     );
-    assert!(amount > 0, EZeroFuel);
-    assert!(impulse > 0, EZeroImpulse);
-    assert!(volatility > 0, EZeroVolatility);
+    assert_fuel_stats(amount, impulse, volatility);
     enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
-    assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
-    grid.settle(clock);
-    let bay = grid.bay_state(fuel_bay_id);
-    bay.fuel().fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
-    let scaled = (amount as u128) * (power_grid::scale() as u128);
-    assert_fits(bay.capacity(), (bay.fuel().quantity() as u128) + scaled);
-    grid.blend_into_bay(
-        fuel_bay_id,
-        power_grid::new_fuel(
-            fuel_type,
-            scaled as u64,
-            impulse,
-            containment_burden,
-            volatility,
-            thermal_inefficiency,
-        ),
-    );
-    let fuel = grid.bay_state(fuel_bay_id).fuel();
-    event::emit(FuelAdded {
+    blend_deposit(
+        grid,
         entity_id,
         fuel_bay_id,
         fuel_type,
         amount,
-        resulting_amount: fuel.quantity(),
-        resulting_impulse: fuel.impulse(),
-        resulting_containment_burden: fuel.containment_burden(),
-        resulting_volatility: fuel.volatility(),
-        resulting_thermal_inefficiency: fuel.thermal_inefficiency(),
-    });
-    grid.regrant(entity_id);
+        impulse,
+        containment_burden,
+        volatility,
+        thermal_inefficiency,
+        clock,
+    );
     frame.require(access_cap::owner_requirement());
     frame.require(admin_service::sponsor_requirement());
+    req.enqueue(frame);
+}
+
+/// Load fuel into one bay like `deposit_fuel`, without the owner and without
+/// the owner's `FuelRequirement`. The request needs an
+/// `admin_deposit_fuel_requirement`, and the frame then requires the admin.
+public fun admin_deposit_fuel(
+    entity: &mut Entity,
+    req: &mut Request,
+    fuel_bay_id: u64,
+    fuel_type: u64,
+    amount: u64,
+    impulse: u64,
+    containment_burden: u64,
+    volatility: u64,
+    thermal_inefficiency: u64,
+    clock: &Clock,
+) {
+    let entity_id = entity.id();
+    let (_requirement, mut frame, grid) = power_grid::take_grid(
+        entity,
+        req,
+        power_grid::admin_deposit_fuel_permit(),
+    );
+    assert_fuel_stats(amount, impulse, volatility);
+    blend_deposit(
+        grid,
+        entity_id,
+        fuel_bay_id,
+        fuel_type,
+        amount,
+        impulse,
+        containment_burden,
+        volatility,
+        thermal_inefficiency,
+        clock,
+    );
+    frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
 }
 
@@ -549,6 +567,57 @@ fun assert_room_for_bay(grid: &PowerGrid) {
 }
 
 /// Abort unless `quantity` (at `SCALE`) fits a bay of `capacity` plain units.
+fun assert_fuel_stats(amount: u64, impulse: u64, volatility: u64) {
+    assert!(amount > 0, EZeroFuel);
+    assert!(impulse > 0, EZeroImpulse);
+    assert!(volatility > 0, EZeroVolatility);
+}
+
+/// Settle, then blend `amount` (plain) into bay `fuel_bay_id` and emit `FuelAdded`.
+fun blend_deposit(
+    grid: &mut PowerGrid,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    fuel_type: u64,
+    amount: u64,
+    impulse: u64,
+    containment_burden: u64,
+    volatility: u64,
+    thermal_inefficiency: u64,
+    clock: &Clock,
+) {
+    assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
+    grid.settle(clock);
+    let bay = grid.bay_state(fuel_bay_id);
+    bay.fuel().fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
+    let scaled = (amount as u128) * (power_grid::scale() as u128);
+    assert_fits(bay.capacity(), (bay.fuel().quantity() as u128) + scaled);
+    grid.blend_into_bay(
+        fuel_bay_id,
+        power_grid::new_fuel(
+            fuel_type,
+            scaled as u64,
+            impulse,
+            containment_burden,
+            volatility,
+            thermal_inefficiency,
+        ),
+    );
+    let fuel = grid.bay_state(fuel_bay_id).fuel();
+    event::emit(FuelAdded {
+        entity_id,
+        fuel_bay_id,
+        fuel_type,
+        amount,
+        resulting_amount: fuel.quantity(),
+        resulting_impulse: fuel.impulse(),
+        resulting_containment_burden: fuel.containment_burden(),
+        resulting_volatility: fuel.volatility(),
+        resulting_thermal_inefficiency: fuel.thermal_inefficiency(),
+    });
+    grid.regrant(entity_id);
+}
+
 fun assert_fits(capacity: u64, quantity: u128) {
     let room = (capacity as u128) * (power_grid::scale() as u128);
     assert!(quantity <= room, EFuelOverCapacity);

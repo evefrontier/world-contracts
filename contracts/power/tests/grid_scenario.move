@@ -54,6 +54,7 @@ const TAKE_STASH: vector<u8> = b"take_stash";
 const STASH_LOAD: vector<u8> = b"stash_load";
 const WITHDRAW_FUEL: vector<u8> = b"withdraw_fuel";
 const SIPHON: vector<u8> = b"siphon";
+const ADMIN_DEPOSIT_FUEL: vector<u8> = b"admin_deposit_fuel";
 const SHUT_DOWN: vector<u8> = b"shut_down";
 const FITTED: vector<u8> = b"operate_fitted";
 
@@ -817,6 +818,55 @@ public fun siphon(
     let acl = take_acl(scenario);
     let mut req = entity.interact(string::utf8(SIPHON), scenario.ctx());
     grid_fuel::siphon(&mut entity, &mut req, fuel_bay_id, quantity, clock);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// ADMIN exposes the `admin_deposit_fuel` admin action on `entity_id`.
+public fun enable_admin_deposit(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(
+        &mut entity,
+        &acl,
+        ADMIN_DEPOSIT_FUEL,
+        power_grid::admin_deposit_fuel_requirement(),
+        scenario.ctx(),
+    );
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` loads `amount` of `fuel_type` into bay `fuel_bay_id` through the
+/// admin deposit action, with the default burden, volatility and thermal.
+public fun admin_deposit(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    fuel_type: u64,
+    amount: u64,
+    impulse: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(ADMIN_DEPOSIT_FUEL), scenario.ctx());
+    grid_fuel::admin_deposit_fuel(
+        &mut entity,
+        &mut req,
+        fuel_bay_id,
+        fuel_type,
+        amount,
+        impulse,
+        BURDEN,
+        VOLATILITY,
+        THERMAL,
+        clock,
+    );
     close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);
