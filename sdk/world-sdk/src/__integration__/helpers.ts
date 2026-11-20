@@ -4,7 +4,7 @@ import 'dotenv/config'
 import { bcs } from '@mysten/sui/bcs'
 import type { Signer } from '@mysten/sui/cryptography'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
-import { Transaction } from '@mysten/sui/transactions'
+import { Transaction, type TransactionArgument } from '@mysten/sui/transactions'
 import { expect } from 'vitest'
 import {
   createWorldClient,
@@ -15,6 +15,7 @@ import {
 } from '../client.js'
 import { loadWorldConfig } from '../config/load.js'
 import type { WorldConfig } from '../config/types.js'
+import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
 

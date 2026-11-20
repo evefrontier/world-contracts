@@ -20,7 +20,13 @@ import {
   setGenerator,
   setPowerGrid,
 } from '../packages/power.js'
-import { expectSponsored, expectSuccess, keypair, signer } from './helpers.js'
+import {
+  expectSponsored,
+  expectSuccess,
+  keypair,
+  seatShell,
+  signer,
+} from './helpers.js'
 
 const GENERATOR_ID = 0x71n
 const FUEL_BAY_ID = 0x72n
@@ -47,6 +53,7 @@ export async function installInventoryPower(
     componentId: FUEL_BAY_ID,
     capacity: 1_000n,
   })
+  seatShell(installTx, config, entity)
   await expectSuccess(client, installTx)
 
   const enableTx = new Transaction()

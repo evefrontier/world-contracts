@@ -52,14 +52,20 @@ use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
+[pinned.testnet.creation]
+source = { local = "../creation" }
+use_environment = "testnet"
+manifest_digest = "D59946E78C59818FEAB3920FB1CFE46E6601B41BBE737CC3E0BBE15760D89BCB"
+deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
+
 [pinned.testnet.inventory]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "BDB8EB404D00C30352AB875FC5C20B3552BEB33364D0762BAFDC05128A10C436"
-deps = { core = "core", power = "power", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "8C2298B0BD9BD19B13EDD7DCEA931B5D14070ACD5F9B3AFFE75335CCD8747B32"
+deps = { core = "core", creation = "creation", power = "power", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.power]
 source = { local = "../power" }
 use_environment = "testnet"
-manifest_digest = "D59946E78C59818FEAB3920FB1CFE46E6601B41BBE737CC3E0BBE15760D89BCB"
-deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "943D7AC2657F8A150D2E97E859B7791C78AD19CF1DE77290CC0B915D862A90E0"
+deps = { core = "core", creation = "creation", std = "MoveStdlib", sui = "Sui" }

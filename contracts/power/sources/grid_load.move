@@ -103,9 +103,10 @@ public fun disconnect<Module: store>(
     event::emit(ModuleDisconnected { entity_id, module_id });
 }
 
-/// Move a module's grid connection from `from` to `to`, keeping its spec and
-/// desired state. Called from the module's own migrate, after it uninstalled
-/// the module from `from` and installed it on `to`. Both grids regrant.
+/// Move a module's grid connection from `from` to `to`, keeping its spec. Its
+/// desired state carries over only if `to` has a Shell aboard. Called from the
+/// module's own migrate, after it uninstalled the module from `from` and
+/// installed it on `to`. Both grids regrant.
 public fun migrate<Module: store>(
     from: &mut Entity,
     to: &mut Entity,
@@ -118,6 +119,7 @@ public fun migrate<Module: store>(
     assert!(to.has_component_with_type<Module>(module_id), EModuleMissing);
     let from_id = from.id();
     let to_id = to.id();
+    let to_has_shell = power_grid::has_shell(to);
 
     let from_grid = power_grid::grid_mut(from);
     from_grid.assert_module_connected(module_id);
@@ -132,6 +134,7 @@ public fun migrate<Module: store>(
     assert!(to_grid.modules().length() < power_grid::max_connected(), ETooManyConnected);
     to_grid.settle(clock);
     to_grid.reconnect_module(module_id, state);
+    if (!to_has_shell) to_grid.set_module_desired_online(module_id, false);
     to_grid.regrant(to_id);
     event::emit(ModuleConnected {
         entity_id: to_id,
@@ -164,10 +167,9 @@ public fun set_priority(
     req.enqueue(frame);
 }
 
-/// Set a connected module's desired state. Always accepted, even without
-/// power. The grid regrants, and the module draws only if the grid can carry it.
-/// A Creation that loses its Shell is shut down by the service
-/// with `power_grid::shut_down`, so `power` keeps no dependency on `creation`.
+/// Set a connected module's desired state. Accepted without power, but needs
+/// a Shell aboard. The grid regrants, and the module draws only if the grid can
+/// carry it.
 public fun set_desired_state(
     entity: &mut Entity,
     req: &mut Request,
@@ -175,6 +177,7 @@ public fun set_desired_state(
     online: bool,
     clock: &Clock,
 ) {
+    power_grid::assert_shell(entity);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,
@@ -191,9 +194,10 @@ public fun set_desired_state(
 }
 
 /// Abort unless the module in the next `OnlineRequirement` holds a grant of the
-/// required draw kind and size. Settles first, so a grid that ran out of fuel since
-/// the last touch fails here.
+/// required draw kind and size, with a Shell aboard. Settles first, so a grid that
+/// ran out of fuel since the last touch fails here.
 public fun assert_online(entity: &mut Entity, req: &mut Request, clock: &Clock) {
+    power_grid::assert_shell(entity);
     let entity_id = entity.id();
     let (requirement, frame, grid) = power_grid::take_grid(
         entity,

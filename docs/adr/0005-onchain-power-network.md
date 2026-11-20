@@ -103,8 +103,10 @@ sequenceDiagram
     Admin->>Grid: siphon(bay, quantity)
     Note over Grid: FuelSiphoned carries the stack's values
 
-    Service->>Grid: shut_down (shell lost)
-    Note over Grid: clears every desired state
+    Service->>Grid: clear_shell + revoke_access + shut_down (shell lost)
+    Note over Grid: clears every desired state, stops the burn
+    Owner-xGrid: set_power_grid(on)
+    Note over Grid: aborts ENoShell until a Shell is seated
 ```
 
 A consuming action checks a grant with `online_requirement`. The grid settles,
@@ -130,6 +132,7 @@ pools with proportional burn.
 - Power modules (Firm, Elastic).
 - Warp (and later jump) fuel as one all-or-nothing withdrawal from one pool.
 - Power On/Off, and a service shutdown for a Creation that loses its shell.
+- No owner operations without a Shell aboard.
 - A removed bay keeps its fuel until it is reinstalled.
 - An owner pre-filter requirement that rejects a switch-on that would overload.
 - Lazy settlement and projected views.
