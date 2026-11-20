@@ -41,9 +41,9 @@ according to digital physics.
     }
     ```
 
-   `kind` binds a signature to one payload type. It includes the package address, so a signature
-   can't be reused across kinds or deployments. `core::proof::verify<K>` checks the message and
-   signature and returns the payload; it takes a `Permit<K>`, so only `K`'s module can open it.
+    `kind` binds a signature to one payload type. It includes the package address, so a signature
+    can't be reused across kinds or deployments. `core::proof::verify<K>` checks the message and
+    signature and returns the payload; it takes a `Permit<K>`, so only `K`'s module can open it.
 
 2. **Each use case is a module that owns its payload, decoder and check.** A gate's
    `GateDistance { source_gate, dest_gate, distance }` would live with gates, with no change to
