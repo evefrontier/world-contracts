@@ -1,14 +1,13 @@
 import { Transaction, type TransactionArgument } from '@mysten/sui/transactions'
-import { normalizeSuiAddress } from '@mysten/sui/utils'
 import { beforeAll, describe, expect, it } from 'vitest'
 import {
   addSponsors,
   completeRequest,
   deriveObjectId,
+  dock,
   enableAction,
   interact,
   ownerRequirement,
-  verifyDocking,
   verifyOwner,
 } from '../packages/core.js'
 import {
@@ -22,7 +21,6 @@ import {
 } from '../packages/inventory.js'
 import { bringInventoryOnline } from './bring-online.js'
 import {
-  dockedProof,
   expectAbort,
   expectSponsored,
   expectSuccess,
@@ -34,7 +32,7 @@ import {
 } from './helpers.js'
 
 // A merchant (admin) runs a trading post with a public FUEL -> LENS swap.
-// PLAYER_A owns two ships: one docked at the trading post, one docked at another structure.
+// PLAYER_A owns two ships: one docked at the trading post, the other not.
 const MODULE_ID = 0x51n
 const FUEL = 88834n
 const LENS = 55n
@@ -42,8 +40,6 @@ const VOL = 2n
 const TRADING_POST_TYPE = 1n
 const SHIP_TYPE = 2n
 const TENANT = 'inventory-t3'
-// Stand-in dock for the other ship. Only the id matters to the proof.
-const OTHER_DOCK = normalizeSuiAddress('0xe15e')
 
 describe('ship docks at a trading post and swaps cargo (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
@@ -277,50 +273,45 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     completeRequest(tx, config, ship, depositRequest)
   }
 
-  const dock = async (tx: Transaction, ship: string, target: string) => {
-    verifyDocking(
-      tx,
-      config,
-      await dockedProof(config, ship, target, pilotAddr),
-    )
+  /** Admin docks `chaser` at `target`, on both entities. Docking persists on the entities. */
+  const adminDock = async (target: string, chaser: string) => {
+    const tx = new Transaction()
+    dock(tx, config, tx.object(target), tx.object(chaser))
+    await expectSuccess(client, tx)
   }
 
+  // Docking is entity state, not a per-transaction proof, so these tests run in
+  // order and each builds on the docking left by the one before.
+
   it('rejects a swap with no docking', async () => {
-    // withdraw and deposit check the docking inline, so the first unload aborts.
+    // The ship can unload, but nothing is docked at the post, so the fuel deposit aborts.
     const tx = new Transaction()
-    depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
-    await expectAbort(client, tx, pilotAddr, /ENoDocking/)
-  })
-
-  it('rejects a ship docked at the other dock', async () => {
-    const tx = new Transaction()
-    await dock(tx, shipId, OTHER_DOCK)
     depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
     await expectAbort(client, tx, pilotAddr, /ENotDocked/)
   })
 
-  it('rejects a second docking proof in one transaction', async () => {
-    // One docking per transaction: the other ship's proof can't be mixed with the docked ship's.
+  it('rejects a ship docked somewhere else', async () => {
+    // The ship is docked with the other ship, but nothing is docked at the trading post.
+    await adminDock(otherShipId, shipId)
     const tx = new Transaction()
-    await dock(tx, otherShipId, OTHER_DOCK)
-    await dock(tx, shipId, tradingPostId)
-    depositLens(tx, swap(tx, unload(tx, otherShipId, otherShipCapId)))
-    await expectAbort(client, tx, pilotAddr, /EAlreadyDocked/)
+    depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
+    await expectAbort(client, tx, pilotAddr, /ENotDocked/)
   })
 
-  it('rejects cargo from a ship that is not the docked one', async () => {
-    // The other ship is not part of the docking, so its unload aborts.
+  it('rejects cargo from a ship that is not docked at the trading post', async () => {
+    // Dock the ship at the trading post; both sides record it, so fuel and the lens can each move.
+    await adminDock(tradingPostId, shipId)
+    // The other ship can unload, but it isn't docked at the trading post.
     const tx = new Transaction()
-    await dock(tx, shipId, tradingPostId)
     depositLens(tx, swap(tx, unload(tx, otherShipId, otherShipCapId)))
-    await expectAbort(client, tx, pilotAddr, /ENotDocked/)
+    await expectAbort(client, tx, pilotAddr, /EWrongSource/)
   })
 
   it("swaps fuel from the pilot's docked ship for the merchant's lens", async () => {
-    // One docking proof covers every withdraw and deposit: ship to trading post to ship.
+    // The ship is docked at the trading post (previous test), recorded on both, which covers
+    // every withdraw and deposit: ship to trading post to ship.
     // The pilot holds no merchant cap; the public swap needs none.
     const tx = new Transaction()
-    await dock(tx, shipId, tradingPostId)
     depositLens(tx, swap(tx, unload(tx, shipId, shipCapId)))
     await expectSuccess(client, tx, pilot)
 

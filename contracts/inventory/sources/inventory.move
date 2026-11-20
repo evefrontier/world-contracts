@@ -16,7 +16,6 @@ module inventory::inventory;
 use core::{
     admin_service,
     component::{Self, Component},
-    docking,
     entity::Entity,
     entity_key,
     request::{Request, Frame},
@@ -246,11 +245,11 @@ public fun chain_item_to_game_inventory(
 }
 
 /// Deposit a standalone `Item` into the entity's Inventory.
-/// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
-/// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
-public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
+/// Aborts unless the item comes from this entity or from a docked entity. Pushes an `OnlineRequirement` for this inventory's grant. The caller
+/// satisfies it with `grid_load::assert_online`.
+public fun deposit(entity: &mut Entity, req: &mut Request, item: Item) {
     let entity_id = entity.id();
-    docking::assert_docked(entity_id, option::some(item.source()), ctx);
+    entity.assert_docked(item.source());
     let type_id = item.type_id();
     let quantity = item.quantity();
     let tenant = entity.key().tenant();
@@ -263,7 +262,8 @@ public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut
 }
 
 /// Withdraw `quantity` of `type_id` from the entity's Inventory as a fresh `Item`.
-/// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
+/// No docking check: the `Item` can only leave the transaction through `deposit`,
+/// which checks its source. Pushes an `OnlineRequirement` for this
 /// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
 public fun withdraw(
     entity: &mut Entity,
@@ -273,7 +273,6 @@ public fun withdraw(
     ctx: &mut TxContext,
 ): Item {
     let source = entity.id();
-    docking::assert_docked(source, option::none(), ctx);
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let module_id = module_id(&requirement);

@@ -257,34 +257,40 @@ export function verifyCaller(
 }
 
 /**
- * Verify docking proof `proofBytes`. The signer must be an admin on `AdminACL`.
- * The docking is kept in the transaction scratchpad and checked inline by
- * `withdraw` and `deposit`, so call this once per transaction, before them.
+ * Dock `chaser` at `target`, recorded on both entities. Signer must be an admin.
+ * `deposit` checks the receiving entity's docked set inline.
  */
-export function verifyDocking(
+export function dock(
   tx: Transaction,
   config: WorldConfig,
-  proofBytes: Uint8Array,
+  target: TransactionArgument,
+  chaser: TransactionArgument,
 ): void {
-  tx.moveCall({
-    target: `${mvrName(config.env, CORE_PACKAGE)}::docking::verify`,
-    arguments: [
-      sharedRef(tx, adminAcl(config), false),
-      tx.pure.vector('u8', Array.from(proofBytes)),
-      tx.object.clock(),
-    ],
+  const [targetRequest, chaserRequest] = tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::dock`,
+    arguments: [target, chaser],
   })
+  verifyAdmin(tx, config, targetRequest)
+  verifyAdmin(tx, config, chaserRequest)
+  completeRequest(tx, config, target, targetRequest)
+  completeRequest(tx, config, chaser, chaserRequest)
 }
 
-/**
- * Attest this transaction's docking without a proof (stopgap mode): the sender
- * is an admin, or the gas sponsor is allowlisted. Use in place of `verifyDocking`.
- */
-export function attestDocking(tx: Transaction, config: WorldConfig): void {
-  tx.moveCall({
-    target: `${mvrName(config.env, CORE_PACKAGE)}::docking::attest`,
-    arguments: [sharedRef(tx, adminAcl(config), false)],
+/** Undock `chaser` from `target`, on both entities. Signer must be an admin. */
+export function undock(
+  tx: Transaction,
+  config: WorldConfig,
+  target: TransactionArgument,
+  chaser: TransactionArgument,
+): void {
+  const [targetRequest, chaserRequest] = tx.moveCall({
+    target: `${mvrName(config.env, CORE_PACKAGE)}::entity::undock`,
+    arguments: [target, chaser],
   })
+  verifyAdmin(tx, config, targetRequest)
+  verifyAdmin(tx, config, chaserRequest)
+  completeRequest(tx, config, target, targetRequest)
+  completeRequest(tx, config, chaser, chaserRequest)
 }
 
 /** Open an interaction with a registered action, returning the `Request` to satisfy. */
