@@ -103,9 +103,10 @@ public fun disconnect<Module: store>(
     event::emit(ModuleDisconnected { entity_id, module_id });
 }
 
-/// Move a module's grid connection from `from` to `to`, keeping its spec and
-/// desired state. Called from the module's own migrate, after it uninstalled
-/// the module from `from` and installed it on `to`. Both grids regrant.
+/// Move a module's grid connection from `from` to `to`, keeping its spec. Its
+/// desired state carries over only if `to` has a Shell aboard. Called from the
+/// module's own migrate, after it uninstalled the module from `from` and
+/// installed it on `to`. Both grids regrant.
 public fun migrate<Module: store>(
     from: &mut Entity,
     to: &mut Entity,
@@ -118,6 +119,7 @@ public fun migrate<Module: store>(
     assert!(to.has_component_with_type<Module>(module_id), EModuleMissing);
     let from_id = from.id();
     let to_id = to.id();
+    let to_has_shell = power_grid::has_shell(to);
 
     let from_grid = power_grid::grid_mut(from);
     from_grid.assert_module_connected(module_id);
@@ -132,6 +134,7 @@ public fun migrate<Module: store>(
     assert!(to_grid.modules().length() < power_grid::max_connected(), ETooManyConnected);
     to_grid.settle(clock);
     to_grid.reconnect_module(module_id, state);
+    if (!to_has_shell) to_grid.set_module_desired_online(module_id, false);
     to_grid.regrant(to_id);
     event::emit(ModuleConnected {
         entity_id: to_id,

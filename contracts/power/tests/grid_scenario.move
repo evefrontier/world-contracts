@@ -1039,6 +1039,27 @@ public fun setup_empty_grid(scenario: &mut ts::Scenario, game_id: u64, clock: &C
     entity_id
 }
 
+/// `setup_empty_grid` with a Command Module and a Shell aboard.
+public fun setup_empty_grid_with_shell(
+    scenario: &mut ts::Scenario,
+    game_id: u64,
+    clock: &Clock,
+): ID {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let mut entity = claim(&mut registry, &acl, game_id, scenario.ctx());
+    let mut req = power_grid::install(&mut entity, clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    seat_command_module(&mut entity, &acl, scenario.ctx());
+    let entity_id = entity.id();
+    entity.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    entity_id
+}
+
 /// `setup_empty_grid` under another `tenant`.
 public fun setup_empty_grid_in_tenant(
     scenario: &mut ts::Scenario,

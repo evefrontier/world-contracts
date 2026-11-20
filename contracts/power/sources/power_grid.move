@@ -1046,12 +1046,14 @@ public(package) fun take_grid<T: drop>(
     (requirement, frame, grid)
 }
 
+/// Whether the Creation has a Layout with a Shell aboard.
+public(package) fun has_shell(entity: &Entity): bool {
+    entity.has_component_with_type<Layout>(layout::component_id()) && layout::has_shell(entity)
+}
+
 /// Abort with `ENoShell` unless the Creation has a Layout with a Shell aboard.
 public(package) fun assert_shell(entity: &Entity) {
-    assert!(
-        entity.has_component_with_type<Layout>(layout::component_id()) && layout::has_shell(entity),
-        ENoShell,
-    );
+    assert!(has_shell(entity), ENoShell);
 }
 
 /// Mutable grid for install and uninstall hooks. The entity must be locked.

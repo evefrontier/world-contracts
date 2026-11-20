@@ -26,6 +26,7 @@ use power::{
         settled_fuel,
         setup_empty_grid,
         setup_empty_grid_in_tenant,
+        setup_empty_grid_with_shell,
         setup_entity,
         starting_fuel,
         thermal,
@@ -83,7 +84,7 @@ fun migrate_module_keeps_spec_and_desired_state() {
     install_module(&mut scenario, from, MOD_A, firm_power(DRAW), &clock);
     set_desired(&mut scenario, from, MOD_A, true, &clock);
     assert!(stored_draw(&mut scenario, from, MOD_A) == DRAW);
-    let to = setup_empty_grid(&mut scenario, 2, &clock);
+    let to = setup_empty_grid_with_shell(&mut scenario, 2, &clock);
 
     migrate_module(&mut scenario, admin(), from, to, MOD_A, true, &clock);
 
@@ -99,6 +100,28 @@ fun migrate_module_keeps_spec_and_desired_state() {
     assert!(state.active_draw_at_last_settled() == 0);
     ts::return_shared(from_e);
     ts::return_shared(to_e);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A module moved into a Creation with no Shell lands with its desired state off.
+#[test]
+fun migrate_module_to_creation_without_shell_clears_desired_state() {
+    let mut scenario = ts::begin(admin());
+    let clock = clock::create_for_testing(scenario.ctx());
+    core::test_helpers::setup(&mut scenario);
+    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+    power_up(&mut scenario, from, 1, &clock);
+    install_module(&mut scenario, from, MOD_A, firm_power(DRAW), &clock);
+    set_desired(&mut scenario, from, MOD_A, true, &clock);
+    let to = setup_empty_grid(&mut scenario, 2, &clock);
+
+    migrate_module(&mut scenario, admin(), from, to, MOD_A, true, &clock);
+
+    let state = with_entity!(&mut scenario, to, |e| power_grid::power_grid(e).module_state(MOD_A));
+    assert!(!state.desired_online());
+    assert!(state.power_req() == DRAW);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -146,7 +169,7 @@ fun migrate_generator_moves_its_output_and_online_state() {
         &clock,
     );
     power_up(&mut scenario, from, 2, &clock);
-    let to = setup_empty_grid(&mut scenario, 2, &clock);
+    let to = setup_empty_grid_with_shell(&mut scenario, 2, &clock);
 
     migrate_generator(&mut scenario, admin(), from, to, generator_id(0), &clock);
 
@@ -172,6 +195,29 @@ fun migrate_generator_moves_its_output_and_online_state() {
     assert!(state.impulse_limit() == IMPULSE_LIMIT);
     assert!(state.volatility_limit() == volatility_limit());
     assert!(state.generator_fuel_type() == fuel_type());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A Generator moved into a Creation with no Shell lands offline.
+#[test]
+fun migrate_generator_to_creation_without_shell_lands_offline() {
+    let mut scenario = ts::begin(admin());
+    let clock = clock::create_for_testing(scenario.ctx());
+    core::test_helpers::setup(&mut scenario);
+    let from = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
+    power_up(&mut scenario, from, 1, &clock);
+    let to = setup_empty_grid(&mut scenario, 2, &clock);
+
+    migrate_generator(&mut scenario, admin(), from, to, generator_id(0), &clock);
+
+    let state = with_entity!(
+        &mut scenario,
+        to,
+        |e| power_grid::generator_state(e, generator_id(0)),
+    );
+    assert!(!state.online());
 
     clock.destroy_for_testing();
     scenario.end();

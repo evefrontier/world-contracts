@@ -140,8 +140,9 @@ public fun uninstall(
     req
 }
 
-/// Move Generator `generator_id` from `from` to `to`, keeping its stats and
-/// online state, so its output leaves `from`'s capacity and joins `to`'s.
+/// Move Generator `generator_id` from `from` to `to`, keeping its stats, so its
+/// output leaves `from`'s capacity and joins `to`'s. It stays online only if `to`
+/// has a Shell aboard.
 /// Admin-gated: returns `from`'s request, then `to`'s.
 public fun migrate(
     from: &mut Entity,
@@ -167,7 +168,7 @@ public fun migrate(
         clock,
         ctx,
     );
-    if (state.online()) {
+    if (state.online() && power_grid::has_shell(to)) {
         let entity_id = to.id();
         let grid = power_grid::grid_mut(to);
         grid.set_generator_online(generator_id, true);
