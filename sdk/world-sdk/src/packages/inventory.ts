@@ -269,7 +269,10 @@ export function chainItemToGame(
   assertOnline(tx, config, entity, request)
 }
 
-/** Deposit a standalone `Item`. Aborts unless docked. Then checks the inventory's grant. */
+/**
+ * Deposit a standalone `Item`. Aborts unless the item came from this entity or one
+ * docked at it. Then checks the inventory's grant.
+ */
 export function deposit(
   tx: Transaction,
   config: WorldConfig,
@@ -284,7 +287,10 @@ export function deposit(
   assertOnline(tx, config, entity, request)
 }
 
-/** Withdraw a balance as a fresh `Item`. Aborts unless docked. Then checks the inventory's grant. */
+/**
+ * Withdraw a balance as a fresh `Item`. No docking check: `deposit` checks the item's
+ * source. Then checks the inventory's grant.
+ */
 export function withdraw(
   tx: Transaction,
   config: WorldConfig,

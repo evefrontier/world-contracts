@@ -18,8 +18,6 @@ import type { WorldConfig } from '../config/types.js'
 import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
-import { installLayout, setShell } from '../packages/layout.js'
-import { dockingProof } from '../packages/proof.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
@@ -192,44 +190,4 @@ export function requirePackage(config: WorldConfig, pkg: string): string {
   const id = config.packageOverrides?.[pkg]
   if (!id) throw new Error(`localnet config must supply the ${pkg} package id`)
   return id
-}
-
-/** Stand-in character id for docking proofs. */
-export const PILOT_CHARACTER = '0x8'
-
-/** Stand-in ship id for docking proofs. */
-export const DOCKED_SHIP = '0x5'
-
-/** A docking proof of `ship` at `target`, signed by the admin key, issued to `sender` for ten minutes. */
-export function dockedProof(
-  config: WorldConfig,
-  ship: string,
-  target: string,
-  sender: string = signer,
-): Promise<Uint8Array> {
-  return dockingProof(
-    config,
-    {
-      ship,
-      target,
-      character: PILOT_CHARACTER,
-      sender,
-      deadlineMs: BigInt(Date.now() + 10 * 60 * 1000),
-    },
-    keypair,
-  )
-}
-
-/** Power grid component id; the grid stands in as the Command Module in tests. */
-export const GRID_ID = componentIdFromName('power_grid')
-export const SHELL_ID = '0x5e11'
-
-/** Install a Layout with the grid as Command Module and seat a Shell, so power can switch on. Admin-gated. */
-export function seatShell(
-  tx: Transaction,
-  config: WorldConfig,
-  entity: TransactionArgument,
-): void {
-  installLayout(tx, config, entity, [{ sectionId: 1n, moduleIds: [GRID_ID] }])
-  setShell(tx, config, entity, SHELL_ID, GRID_ID)
 }
