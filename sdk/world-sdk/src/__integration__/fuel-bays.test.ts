@@ -40,6 +40,7 @@ import {
   expectSuccess,
   loadLocalnetWorld,
   mintAccessCap,
+  seatShell,
   signer,
 } from './helpers.js'
 
@@ -85,6 +86,7 @@ describe('fuel bays (localnet)', () => {
     verifyAdmin(createTx, config, claim)
     completeRequest(createTx, config, creation, claim)
     installPowerGrid(createTx, config, creation)
+    seatShell(createTx, config, creation)
     installGenerator(createTx, config, creation, {
       componentId: GENERATOR_ID,
       maxOutputMw: OUTPUT,

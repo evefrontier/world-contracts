@@ -10,7 +10,6 @@ import {
   interact,
   ownerRequirement,
   returnAccess,
-  verifyDocking,
   verifyOwner,
 } from '../packages/core.js'
 import {
@@ -24,8 +23,6 @@ import {
 } from '../packages/inventory.js'
 import { installInventoryPower, powerInventoryOn } from './bring-online.js'
 import {
-  DOCKED_SHIP,
-  dockedProof,
   expectSuccess,
   getObjectRef,
   loadLocalnetWorld,
@@ -155,7 +152,6 @@ describe('inventory owner-access via Character', () => {
       })
       completeRequest(runTx, config, su, bridgeRequest)
 
-      verifyDocking(runTx, config, await dockedProof(config, DOCKED_SHIP, suId))
       const withdrawRequest = interact(runTx, config, su, 'withdraw')
       verifyOwner(runTx, config, su, withdrawRequest, suCap)
       const item = withdraw(runTx, config, su, withdrawRequest, {

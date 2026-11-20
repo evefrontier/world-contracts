@@ -16,7 +16,6 @@ module inventory::inventory;
 use core::{
     admin_service,
     component::{Self, Component},
-    docking,
     entity::Entity,
     entity_key,
     request::{Request, Frame},
@@ -43,10 +42,19 @@ const EQuantityBelowMin: vector<u8> = b"Quantity below the required minimum";
 const EQuantityAboveMax: vector<u8> = b"Quantity above the allowed maximum";
 #[error(code = 6)]
 const EWrongTenant: vector<u8> = b"Inventory can only move between entities of the same tenant";
+#[error(code = 7)]
+const EBatchLengthMismatch: vector<u8> = b"type_ids and quantities must be the same length";
+#[error(code = 8)]
+const EEmptyBatch: vector<u8> = b"Batch must not be empty";
 
 // === Constants ===
 
 const VERSION: u64 = 1;
+
+/// Most entries per batched event (`ItemsDestroyed`, `ItemsWithdrawn`,
+/// `ItemsDeposited`). A full batch is at most ~64 KB of BCS, well under Sui's
+/// 256 KB per-event limit.
+const EVENT_BATCH_SIZE: u64 = 1000;
 
 // === Structs ===
 
@@ -82,13 +90,15 @@ public struct InventoryInstalled has copy, drop {
     capacity: u64,
 }
 
-/// Emitted when an inventory is uninstalled, ahead of the burns it accounts for.
-/// `used_before` is the volume destroyed; unlike a bridge-out, none of it
-/// returns to the game.
+/// Emitted when an inventory is uninstalled, ahead of the `batch_count`
+/// `ItemsDestroyed` events listing its `balance_count` balances. `used_before`
+/// is the volume destroyed; unlike a bridge-out, none of it returns to the game.
 public struct InventoryUninstalled has copy, drop {
     entity_id: ID,
     component_id: u64,
     used_before: u64,
+    balance_count: u64,
+    batch_count: u64,
 }
 
 /// Inventory moved between entities with balances intact.
@@ -148,8 +158,8 @@ public fun install(
 }
 
 /// Remove the storage component and disconnect it from the power grid. Aborts if it was never
-/// installed. Emits `InventoryUninstalled`, then burns the Inventory's balances
-/// (emitting `ItemBurned` per type) so the game client is notified.
+/// installed. Emits `InventoryUninstalled`, then destroys the Inventory's
+/// balances in `ItemsDestroyed` batches so the game client is notified.
 public fun uninstall(
     entity: &mut Entity,
     component_id: u64,
@@ -158,7 +168,6 @@ public fun uninstall(
 ): Request {
     assert!(entity.has_component_with_type<Inventory>(component_id), EComponentMissing);
 
-    let tenant = entity.key().tenant();
     let (inv_component, req) = entity.uninstall<Inventory>(
         component_id,
         inventory_permit(),
@@ -166,9 +175,18 @@ public fun uninstall(
     );
     grid_load::disconnect<Inventory>(entity, component_id, inventory_permit(), clock);
     let entity_id = entity.id();
-    let inventory = inv_component.unwrap(inventory_permit());
-    event::emit(InventoryUninstalled { entity_id, component_id, used_before: inventory.used() });
-    burn_inventory(inventory, tenant, entity_id, component_id);
+    let Inventory { items, type_id: _, capacity: _, used } = inv_component.unwrap(
+        inventory_permit(),
+    );
+    let balance_count = items.balance_count();
+    event::emit(InventoryUninstalled {
+        entity_id,
+        component_id,
+        used_before: used,
+        balance_count,
+        batch_count: balance_count.div_ceil(EVENT_BATCH_SIZE),
+    });
+    item::drain_and_destroy(items, entity_id, component_id, EVENT_BATCH_SIZE);
     req
 }
 
@@ -246,11 +264,11 @@ public fun chain_item_to_game_inventory(
 }
 
 /// Deposit a standalone `Item` into the entity's Inventory.
-/// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
-/// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
-public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut TxContext) {
+/// Aborts unless the item comes from this entity or from a docked entity. Pushes an `OnlineRequirement` for this inventory's grant. The caller
+/// satisfies it with `grid_load::assert_online`.
+public fun deposit(entity: &mut Entity, req: &mut Request, item: Item) {
     let entity_id = entity.id();
-    docking::assert_docked(entity_id, option::some(item.source()), ctx);
+    entity.assert_docked(item.source());
     let type_id = item.type_id();
     let quantity = item.quantity();
     let tenant = entity.key().tenant();
@@ -263,7 +281,8 @@ public fun deposit(entity: &mut Entity, req: &mut Request, item: Item, ctx: &mut
 }
 
 /// Withdraw `quantity` of `type_id` from the entity's Inventory as a fresh `Item`.
-/// Aborts unless the entity is docked. Pushes an `OnlineRequirement` for this
+/// No docking check: the `Item` can only leave the transaction through `deposit`,
+/// which checks its source. Pushes an `OnlineRequirement` for this
 /// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
 public fun withdraw(
     entity: &mut Entity,
@@ -273,7 +292,6 @@ public fun withdraw(
     ctx: &mut TxContext,
 ): Item {
     let source = entity.id();
-    docking::assert_docked(source, option::none(), ctx);
     let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let module_id = module_id(&requirement);
@@ -282,6 +300,68 @@ public fun withdraw(
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
     item
+}
+
+/// `deposit` for every `items` entry under one `Deposit` requirement. Every
+/// entry must be the rule's type, and its quantity bounds apply to the batch's
+/// total, so one requirement never admits more than one `deposit` could. Emits `ItemsDeposited` in batches of at most
+/// `EVENT_BATCH_SIZE`. Aborts if `items` is empty.
+public fun deposit_batch(entity: &mut Entity, req: &mut Request, items: vector<Item>) {
+    assert!(!items.is_empty(), EEmptyBatch);
+    let entity_id = entity.id();
+    let mut added = 0;
+    let mut total = 0;
+    let mut type_ids = vector[];
+    items.do_ref!(|item| {
+        entity.assert_docked(item.source());
+        added = added + item.volume() * item.quantity();
+        total = total + item.quantity();
+        type_ids.push_back(item.type_id());
+    });
+    let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
+    let module_id = module_id(&requirement);
+    enforce_batch_rule(&requirement, &type_ids, total);
+    assert!(inv.used + added <= inv.capacity, EOverCapacity);
+    inv.items.deposit_batch(items, entity_id, module_id, &mut inv.used, EVENT_BATCH_SIZE);
+    frame.require(online_requirement(entity, module_id));
+    req.enqueue(frame);
+}
+
+/// `withdraw` of `quantities[i]` of `type_ids[i]` for each `i` under one
+/// `Withdrawal` requirement. Every entry must be the rule's type, and its
+/// quantity bounds apply to the batch's total, so one requirement never
+/// releases more than one `withdraw` could. Returns the
+/// `Item`s in input order and emits `ItemsWithdrawn` in batches of at most
+/// `EVENT_BATCH_SIZE`. Aborts if the vectors are empty or differ in length.
+public fun withdraw_batch(
+    entity: &mut Entity,
+    req: &mut Request,
+    type_ids: vector<u64>,
+    quantities: vector<u64>,
+    ctx: &mut TxContext,
+): vector<Item> {
+    assert!(type_ids.length() == quantities.length(), EBatchLengthMismatch);
+    assert!(!type_ids.is_empty(), EEmptyBatch);
+    let source = entity.id();
+    let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
+    let module_id = module_id(&requirement);
+    let mut total = 0;
+    quantities.do_ref!(|q| total = total + *q);
+    enforce_batch_rule(&requirement, &type_ids, total);
+    let items = inv
+        .items
+        .withdraw_batch(
+            type_ids,
+            quantities,
+            source,
+            module_id,
+            &mut inv.used,
+            EVENT_BATCH_SIZE,
+            ctx,
+        );
+    frame.require(online_requirement(entity, module_id));
+    req.enqueue(frame);
+    items
 }
 
 /// Build a bridge-in requirement on component `component_id`.
@@ -407,13 +487,19 @@ fun rule(
 /// Decode the `ItemRequirement` config and assert the operation satisfies it.
 /// Mirrors field order: type_id, min, max.
 fun enforce_rule(requirement: &Requirement, type_id: u64, quantity: u64) {
+    enforce_batch_rule(requirement, &vector[type_id], quantity)
+}
+
+/// The rule for everything one requirement moves: each of `type_ids` must be the
+/// allowed type, and `total` quantity must be within the bounds.
+fun enforce_batch_rule(requirement: &Requirement, type_ids: &vector<u64>, total: u64) {
     let mut b = bcs::new(requirement.data());
     let allowed_type = b.peel_option_u64();
     let min_quantity = b.peel_option_u64();
     let max_quantity = b.peel_option_u64();
-    allowed_type.do!(|t| assert!(type_id == t, EItemTypeNotAllowed));
-    min_quantity.do!(|m| assert!(quantity >= m, EQuantityBelowMin));
-    max_quantity.do!(|m| assert!(quantity <= m, EQuantityAboveMax));
+    allowed_type.do!(|t| type_ids.do_ref!(|type_id| assert!(*type_id == t, EItemTypeNotAllowed)));
+    min_quantity.do!(|m| assert!(total >= m, EQuantityBelowMin));
+    max_quantity.do!(|m| assert!(total <= m, EQuantityAboveMax));
 }
 
 /// Mint a balance into an inventory, enforcing its volume capacity.
@@ -464,11 +550,6 @@ fun withdraw_item(
     inv.items.withdraw(game_id, quantity, source, component_id, &mut inv.used, ctx)
 }
 
-fun burn_inventory(inv: Inventory, tenant: String, entity_id: ID, component_id: u64) {
-    let Inventory { items, type_id: _, capacity: _, used } = inv;
-    item::burn_all_and_destroy(items, tenant, entity_id, component_id, used);
-}
-
 fun borrow_component(entity: &Entity, component_id: u64): &Component<Inventory> {
     let c: &Component<Inventory> = entity.component_ref(component_id, inventory_permit());
     assert!(component::version(c) == VERSION, EWrongVersion);
@@ -503,9 +584,12 @@ public fun installed_fields(e: &InventoryInstalled): (ID, u64, u64, Option<Strin
 }
 
 #[test_only]
-public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64) {
-    (e.entity_id, e.component_id, e.used_before)
+public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64, u64, u64) {
+    (e.entity_id, e.component_id, e.used_before, e.balance_count, e.batch_count)
 }
+
+#[test_only]
+public fun event_batch_size(): u64 { EVENT_BATCH_SIZE }
 
 #[test_only]
 public fun migrated_fields(e: &InventoryMigrated): (ID, ID, u64, u64, u64, u64) {

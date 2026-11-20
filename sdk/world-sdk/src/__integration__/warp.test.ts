@@ -28,6 +28,7 @@ import {
   expectSuccess,
   loadLocalnetWorld,
   mintAccessCap,
+  seatShell,
   signer,
 } from './helpers.js'
 
@@ -52,6 +53,7 @@ describe('warp fuel (localnet)', () => {
     verifyAdmin(createTx, config, claim)
     completeRequest(createTx, config, creation, claim)
     installPowerGrid(createTx, config, creation)
+    seatShell(createTx, config, creation)
     installFuelBay(createTx, config, creation, {
       componentId: BAY_ID,
       capacity: 1_000n,

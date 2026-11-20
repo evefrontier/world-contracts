@@ -2,6 +2,7 @@ import { Transaction } from '@mysten/sui/transactions'
 import { signAndExecute } from '../src/client.js'
 import { componentIdFromName } from '../src/packages/component-id.js'
 import { deriveObjectId, enableAdminAction } from '../src/packages/core.js'
+import { installLayout, setShell } from '../src/packages/layout.js'
 import {
   depositFuelRequirement,
   installFuelBay,
@@ -11,10 +12,13 @@ import {
 import { loadScriptContext } from './context.js'
 import { loadSeedFiles } from './seed-files.js'
 
-// Give every seeded storage unit a generator and a fuel bay. The inventory
-// already connected to the grid when the storage unit was created.
+// Give every seeded storage unit a generator, a fuel bay, and a Shell (power
+// needs one to switch anything). The inventory already connected to the grid
+// when the storage unit was created. The grid stands in as the Command Module.
 const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
+const GRID_ID = componentIdFromName('power_grid')
+const SHELL_ID = '0x5e11'
 const OUTPUT = 15n
 // Fuel type 7, impulse limit 100 and volatility limit 0.0001 (at POWER_SCALE):
 // any type-7 fuel with volatility gives full output.
@@ -55,6 +59,8 @@ for (const [alias, unit] of entries) {
     componentId: FUEL_ID,
     capacity: FUEL_CAPACITY,
   })
+  installLayout(tx, config, entity, [{ sectionId: 1n, moduleIds: [GRID_ID] }])
+  setShell(tx, config, entity, SHELL_ID, GRID_ID)
   enableAdminAction(tx, config, entity, 'set_power_grid', [
     operateGridRequirement(tx, config),
   ])

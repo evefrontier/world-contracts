@@ -4,7 +4,7 @@ import 'dotenv/config'
 import { bcs } from '@mysten/sui/bcs'
 import type { Signer } from '@mysten/sui/cryptography'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
-import { Transaction } from '@mysten/sui/transactions'
+import { Transaction, type TransactionArgument } from '@mysten/sui/transactions'
 import { expect } from 'vitest'
 import {
   createWorldClient,
@@ -15,9 +15,10 @@ import {
 } from '../client.js'
 import { loadWorldConfig } from '../config/load.js'
 import type { WorldConfig } from '../config/types.js'
+import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
-import { dockingProof } from '../packages/proof.js'
+import { installLayout, setShell } from '../packages/layout.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
@@ -30,6 +31,20 @@ if (!privateKey) {
 
 export const keypair = Ed25519Keypair.fromSecretKey(privateKey)
 export const signer = keypair.toSuiAddress()
+
+export const GRID_ID = componentIdFromName('power_grid')
+/** Same placeholder the Move tests seat: `object::id_from_address(@0x5E11)`. */
+export const SHELL_ID = '0x5e11'
+
+/** Seat a Shell in the power grid so the grid can switch things on. */
+export function seatShell(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): void {
+  installLayout(tx, config, entity, [{ sectionId: 1n, moduleIds: [GRID_ID] }])
+  setShell(tx, config, entity, SHELL_ID, GRID_ID)
+}
 
 export function loadLocalnetWorld(): {
   config: WorldConfig
@@ -190,30 +205,4 @@ export function requirePackage(config: WorldConfig, pkg: string): string {
   const id = config.packageOverrides?.[pkg]
   if (!id) throw new Error(`localnet config must supply the ${pkg} package id`)
   return id
-}
-
-/** Stand-in character id for docking proofs. */
-export const PILOT_CHARACTER = '0x8'
-
-/** Stand-in ship id for docking proofs. */
-export const DOCKED_SHIP = '0x5'
-
-/** A docking proof of `ship` at `target`, signed by the admin key, issued to `sender` for ten minutes. */
-export function dockedProof(
-  config: WorldConfig,
-  ship: string,
-  target: string,
-  sender: string = signer,
-): Promise<Uint8Array> {
-  return dockingProof(
-    config,
-    {
-      ship,
-      target,
-      character: PILOT_CHARACTER,
-      sender,
-      deadlineMs: BigInt(Date.now() + 10 * 60 * 1000),
-    },
-    keypair,
-  )
 }

@@ -11,6 +11,7 @@ use core::{
     requirement::Requirement,
     test_helpers::{claim, take_acl, take_registry}
 };
+use creation::layout;
 use power::{
     grid_fuel::{Self, FuelLoad},
     grid_generator,
@@ -43,6 +44,8 @@ const FUEL_TYPE: u64 = 7;
 const THERMAL: u64 = 20_000;
 /// Bay containment rating 10, below `BURDEN`: deposits are not checked against it.
 const CONTAINMENT_RATING: u64 = 100_000;
+/// Component id of the Command Module every `setup_entity` Creation gets.
+const COMMAND_MODULE_ID: u64 = 8_001;
 
 const OPERATE: vector<u8> = b"operate_grid";
 const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
@@ -51,6 +54,7 @@ const TAKE_STASH: vector<u8> = b"take_stash";
 const STASH_LOAD: vector<u8> = b"stash_load";
 const WITHDRAW_FUEL: vector<u8> = b"withdraw_fuel";
 const SIPHON: vector<u8> = b"siphon";
+const ADMIN_DEPOSIT_FUEL: vector<u8> = b"admin_deposit_fuel";
 const SHUT_DOWN: vector<u8> = b"shut_down";
 const FITTED: vector<u8> = b"operate_fitted";
 
@@ -151,6 +155,7 @@ public fun setup_entity(
     );
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
+    seat_command_module(&mut entity, &acl, scenario.ctx());
     let mut req = entity.mint_access(OWNER, false, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
@@ -170,6 +175,42 @@ public fun setup_entity(
     enable_owner_in_handler(scenario, entity_id, OPERATE, power_grid::operate_grid_requirement());
     set_fuel_bay(scenario, entity_id, FUEL_BAY_ID, true, clock);
     entity_id
+}
+
+/// Install a `Consumer` as the Command Module, off the grid, and a Layout with a
+/// Shell seated in it.
+public fun seat_command_module(entity: &mut Entity, acl: &AdminACL, ctx: &mut TxContext) {
+    let mut req = entity.install(
+        COMMAND_MODULE_ID,
+        option::none(),
+        Consumer {},
+        1,
+        std::internal::permit<Consumer>(),
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, acl, ctx);
+    entity.complete_request(req);
+    layout::install_with_shell_for_testing(entity, acl, COMMAND_MODULE_ID, ctx);
+}
+
+/// ADMIN clears the Shell, leaving the Creation without one.
+public fun clear_shell(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    layout::clear_shell_for_testing(&mut entity, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// ADMIN seats a Shell back in the Command Module.
+public fun seat_shell(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    layout::set_shell_for_testing(&mut entity, &acl, COMMAND_MODULE_ID, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
 }
 
 /// Install a `Consumer` under `module_id` with `spec`, connecting it to the grid.
@@ -782,6 +823,55 @@ public fun siphon(
     ts::return_shared(entity);
 }
 
+/// ADMIN exposes the `admin_deposit_fuel` admin action on `entity_id`.
+public fun enable_admin_deposit(scenario: &mut ts::Scenario, entity_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    enable_admin(
+        &mut entity,
+        &acl,
+        ADMIN_DEPOSIT_FUEL,
+        power_grid::admin_deposit_fuel_requirement(),
+        scenario.ctx(),
+    );
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` loads `amount` of `fuel_type` into bay `fuel_bay_id` through the
+/// admin deposit action, with the default burden, volatility and thermal.
+public fun admin_deposit(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    fuel_type: u64,
+    amount: u64,
+    impulse: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(ADMIN_DEPOSIT_FUEL), scenario.ctx());
+    grid_fuel::admin_deposit_fuel(
+        &mut entity,
+        &mut req,
+        fuel_bay_id,
+        fuel_type,
+        amount,
+        impulse,
+        BURDEN,
+        VOLATILITY,
+        THERMAL,
+        clock,
+    );
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
 /// Load `amount` of fuel with the given stats and `volatility()` into the
 /// default bay, through the default (unrestricted) deposit action.
 public fun deposit_fuel(
@@ -992,6 +1082,27 @@ public fun setup_empty_grid(scenario: &mut ts::Scenario, game_id: u64, clock: &C
     let mut req = power_grid::install(&mut entity, clock, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
+    let entity_id = entity.id();
+    entity.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    entity_id
+}
+
+/// `setup_empty_grid` with a Command Module and a Shell aboard.
+public fun setup_empty_grid_with_shell(
+    scenario: &mut ts::Scenario,
+    game_id: u64,
+    clock: &Clock,
+): ID {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let mut entity = claim(&mut registry, &acl, game_id, scenario.ctx());
+    let mut req = power_grid::install(&mut entity, clock, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    entity.complete_request(req);
+    seat_command_module(&mut entity, &acl, scenario.ctx());
     let entity_id = entity.id();
     entity.share();
     ts::return_shared(acl);

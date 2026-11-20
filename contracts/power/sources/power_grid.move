@@ -21,6 +21,7 @@ use core::{
     request::{Request, Frame},
     requirement::{Self, Requirement}
 };
+use creation::layout::{Self, Layout};
 use power::{fuel_math, generator};
 use std::{internal::Permit, string::{Self, String}};
 use sui::{bcs, clock::Clock, event, vec_map::{Self, VecMap}};
@@ -60,6 +61,8 @@ const EFuelStashed: vector<u8> = b"Power grid still holds stashed fuel of uninst
 #[error(code = 15)]
 const EWouldOverload: vector<u8> =
     b"Desired Firm power would exceed the online generators' output and trip the grid";
+#[error(code = 16)]
+const ENoShell: vector<u8> = b"Creation has no Shell, so nothing can be switched or run";
 
 // === Constants ===
 
@@ -224,6 +227,10 @@ public struct WithdrawFuel() has drop;
 /// `grid_fuel::siphon`. The frame then requires the admin.
 public struct Siphon() has drop;
 
+/// Marker for the service loading fuel into a bay with
+/// `grid_fuel::admin_deposit_fuel`, without the owner. The frame then requires the admin.
+public struct AdminDepositFuel() has drop;
+
 /// Marker for the service shutting a Creation down with `shut_down`. The frame
 /// then requires the admin.
 public struct ShutDown() has drop;
@@ -352,8 +359,9 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
 }
 
 /// Switch the grid on or off. Settles at the old state first, so a trip since
-/// the last settle counts as off, then regrants.
+/// the last settle counts as off, then regrants. Needs a Shell aboard.
 public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, clock: &Clock) {
+    assert_shell(entity);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, operate_grid_permit());
     grid.settle(clock);
@@ -366,14 +374,14 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
     req.enqueue(frame);
 }
 
-/// Shut the Creation down when it loses its Shell/abandoned: clear every module's desired
-/// state, and take every generator and bay offline. `GridShutDown` stands for
-/// all of it: no `GeneratorToggled` or `FuelBayToggled` follows, and capacity
-/// is 0 after.
-/// Unlike Power Off, nothing comes back by itself; the owner switches things on
-/// again. `on` is unchanged. The service calls it in the same transaction as the
-/// Layout edit that removes the Shell. The request needs a
-/// `shut_down_requirement`, and the frame then requires the admin.
+/// Shut the Creation down when it loses its Shell: clear every module's desired
+/// state, and take every generator and bay offline, so fuel stops burning and
+/// the next Shell finds everything off. `GridShutDown` stands for all of it: no
+/// `GeneratorToggled` or `FuelBayToggled` follows, and capacity is 0 after.
+/// `on` is unchanged. The service calls it in the same transaction as the
+/// Layout edit that removes the Shell. Nothing can be switched again until a
+/// Shell is aboard. The request needs a `shut_down_requirement`, and the frame
+/// then requires the admin.
 public fun shut_down(entity: &mut Entity, req: &mut Request, clock: &Clock) {
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, shut_down_permit());
@@ -424,6 +432,11 @@ public fun withdraw_fuel_requirement(): Requirement {
 /// Requirement satisfied by `grid_fuel::siphon`; one per call.
 public fun siphon_requirement(): Requirement {
     requirement::from_config(option::some(component_id()), Siphon())
+}
+
+/// Requirement satisfied by `grid_fuel::admin_deposit_fuel`; one per call.
+public fun admin_deposit_fuel_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), AdminDepositFuel())
 }
 
 public fun manage_stash_requirement(): Requirement {
@@ -1042,6 +1055,16 @@ public(package) fun take_grid<T: drop>(
     (requirement, frame, grid)
 }
 
+/// Whether the Creation has a Layout with a Shell aboard.
+public(package) fun has_shell(entity: &Entity): bool {
+    entity.has_component_with_type<Layout>(layout::component_id()) && layout::has_shell(entity)
+}
+
+/// Abort with `ENoShell` unless the Creation has a Layout with a Shell aboard.
+public(package) fun assert_shell(entity: &Entity) {
+    assert!(has_shell(entity), ENoShell);
+}
+
 /// Mutable grid for install and uninstall hooks. The entity must be locked.
 public(package) fun grid_mut(entity: &mut Entity): &mut PowerGrid {
     assert!(entity.has_component_with_type<PowerGrid>(component_id()), EComponentMissing);
@@ -1188,6 +1211,10 @@ public(package) fun withdraw_fuel_permit(): Permit<WithdrawFuel> {
 
 public(package) fun siphon_permit(): Permit<Siphon> {
     internal::permit<Siphon>()
+}
+
+public(package) fun admin_deposit_fuel_permit(): Permit<AdminDepositFuel> {
+    internal::permit<AdminDepositFuel>()
 }
 
 public(package) fun stash_fuel(grid: &mut PowerGrid, fuel_bay_id: u64, fuel: Fuel) {
