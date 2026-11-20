@@ -62,7 +62,7 @@ const EFuelStashed: vector<u8> = b"Power grid still holds stashed fuel of uninst
 const EWouldOverload: vector<u8> =
     b"Desired Firm power would exceed the online generators' output and trip the grid";
 #[error(code = 16)]
-const ENoShell: vector<u8> = b"Creation has no Shell, so nothing can be switched on or run";
+const ENoShell: vector<u8> = b"Creation has no Shell, so nothing can be switched or run";
 
 // === Constants ===
 
@@ -355,9 +355,9 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
 }
 
 /// Switch the grid on or off. Settles at the old state first, so a trip since
-/// the last settle counts as off, then regrants. On needs a Shell aboard.
+/// the last settle counts as off, then regrants. Needs a Shell aboard.
 public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, clock: &Clock) {
-    if (on) assert_shell(entity);
+    assert_shell(entity);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, operate_grid_permit());
     grid.settle(clock);
@@ -375,7 +375,7 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
 /// the next Shell finds everything off. `GridShutDown` stands for all of it: no
 /// `GeneratorToggled` or `FuelBayToggled` follows, and capacity is 0 after.
 /// `on` is unchanged. The service calls it in the same transaction as the
-/// Layout edit that removes the Shell. Nothing can be switched on again until a
+/// Layout edit that removes the Shell. Nothing can be switched again until a
 /// Shell is aboard. The request needs a `shut_down_requirement`, and the frame
 /// then requires the admin.
 public fun shut_down(entity: &mut Entity, req: &mut Request, clock: &Clock) {

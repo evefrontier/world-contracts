@@ -164,9 +164,9 @@ public fun set_priority(
     req.enqueue(frame);
 }
 
-/// Set a connected module's desired state. Accepted without power, but online
-/// needs a Shell aboard. The grid regrants, and the module draws only if the
-/// grid can carry it.
+/// Set a connected module's desired state. Accepted without power, but needs
+/// a Shell aboard. The grid regrants, and the module draws only if the grid can
+/// carry it.
 public fun set_desired_state(
     entity: &mut Entity,
     req: &mut Request,
@@ -174,7 +174,7 @@ public fun set_desired_state(
     online: bool,
     clock: &Clock,
 ) {
-    if (online) power_grid::assert_shell(entity);
+    power_grid::assert_shell(entity);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,

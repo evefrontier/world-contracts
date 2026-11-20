@@ -132,7 +132,7 @@ pools with proportional burn.
 - Power modules (Firm, Elastic).
 - Warp (and later jump) fuel as one all-or-nothing withdrawal from one pool.
 - Power On/Off, and a service shutdown for a Creation that loses its shell.
-- No switch-on and no online check without a Shell aboard.
+- No owner operations without a Shell aboard.
 - A removed bay keeps its fuel until it is reinstalled.
 - An owner pre-filter requirement that rejects a switch-on that would overload.
 - Lazy settlement and projected views.

@@ -1,4 +1,4 @@
-/// Switching anything on, and the online check, need a Shell aboard.
+/// Switching anything on or off, and the online check, need a Shell aboard.
 #[test_only]
 module power::shell_tests;
 
@@ -39,6 +39,13 @@ fun running(scenario: &mut ts::Scenario, clock: &Clock): ID {
     power_up(scenario, entity_id, 1, clock);
     install_module(scenario, entity_id, MOD_A, firm_power(DRAW), clock);
     set_desired(scenario, entity_id, MOD_A, true, clock);
+    entity_id
+}
+
+/// Running, then the Shell leaves.
+fun running_without_shell(scenario: &mut ts::Scenario, clock: &Clock): ID {
+    let entity_id = running(scenario, clock);
+    clear_shell(scenario, entity_id);
     entity_id
 }
 
@@ -107,23 +114,57 @@ fun module_online_without_shell_aborts() {
     abort
 }
 
-/// Switching off needs no Shell.
-#[test]
-fun switch_off_without_shell() {
+// === Switching off ===
+
+#[test, expected_failure(abort_code = power_grid::ENoShell)]
+fun power_off_without_shell_aborts() {
     let mut scenario = ts::begin(@0xA);
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = running(&mut scenario, &clock);
-    clear_shell(&mut scenario, entity_id);
+    let entity_id = running_without_shell(&mut scenario, &clock);
 
-    set_desired(&mut scenario, entity_id, MOD_A, false, &clock);
-    set_generator(&mut scenario, entity_id, 0, false, &clock);
-    set_fuel_bay(&mut scenario, entity_id, fuel_bay_id(), false, &clock);
     power(&mut scenario, entity_id, false, &clock);
 
-    clock.destroy_for_testing();
-    scenario.end();
+    abort
 }
+
+#[test, expected_failure(abort_code = power_grid::ENoShell)]
+fun generator_offline_without_shell_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = running_without_shell(&mut scenario, &clock);
+
+    set_generator(&mut scenario, entity_id, 0, false, &clock);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = power_grid::ENoShell)]
+fun fuel_bay_offline_without_shell_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = running_without_shell(&mut scenario, &clock);
+
+    set_fuel_bay(&mut scenario, entity_id, fuel_bay_id(), false, &clock);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = power_grid::ENoShell)]
+fun module_offline_without_shell_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = running_without_shell(&mut scenario, &clock);
+
+    set_desired(&mut scenario, entity_id, MOD_A, false, &clock);
+
+    abort
+}
+
+// === Reseating ===
 
 /// A new Shell lets things be switched on again.
 #[test]

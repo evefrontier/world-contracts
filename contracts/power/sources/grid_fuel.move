@@ -350,7 +350,7 @@ public fun destroy_fuel_load(load: FuelLoad) {
 
 /// Bring a fuel bay online or offline. An offline bay keeps its fuel and feeds
 /// nothing. Settles first, because burn depends on which bays feed the grid.
-/// Online needs a Shell aboard.
+/// Needs a Shell aboard.
 public fun set_fuel_bay(
     entity: &mut Entity,
     req: &mut Request,
@@ -358,7 +358,7 @@ public fun set_fuel_bay(
     online: bool,
     clock: &Clock,
 ) {
-    if (online) power_grid::assert_shell(entity);
+    power_grid::assert_shell(entity);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,
