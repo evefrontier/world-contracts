@@ -18,6 +18,7 @@ import type { WorldConfig } from '../config/types.js'
 import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
+import { installLayout, setShell } from '../packages/layout.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
@@ -30,6 +31,20 @@ if (!privateKey) {
 
 export const keypair = Ed25519Keypair.fromSecretKey(privateKey)
 export const signer = keypair.toSuiAddress()
+
+export const GRID_ID = componentIdFromName('power_grid')
+/** Same placeholder the Move tests seat: `object::id_from_address(@0x5E11)`. */
+export const SHELL_ID = '0x5e11'
+
+/** Seat a Shell in the power grid so the grid can switch things on. */
+export function seatShell(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): void {
+  installLayout(tx, config, entity, [{ sectionId: 1n, moduleIds: [GRID_ID] }])
+  setShell(tx, config, entity, SHELL_ID, GRID_ID)
+}
 
 export function loadLocalnetWorld(): {
   config: WorldConfig
