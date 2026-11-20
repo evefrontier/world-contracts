@@ -306,19 +306,14 @@ public fun withdraw(
 /// entry must be the rule's type, and its quantity bounds apply to the batch's
 /// total, so one requirement never admits more than one `deposit` could. Emits `ItemsDeposited` in batches of at most
 /// `EVENT_BATCH_SIZE`. Aborts if `items` is empty.
-public fun deposit_batch(
-    entity: &mut Entity,
-    req: &mut Request,
-    items: vector<Item>,
-    ctx: &mut TxContext,
-) {
+public fun deposit_batch(entity: &mut Entity, req: &mut Request, items: vector<Item>) {
     assert!(!items.is_empty(), EEmptyBatch);
     let entity_id = entity.id();
     let mut added = 0;
     let mut total = 0;
     let mut type_ids = vector[];
     items.do_ref!(|item| {
-        docking::assert_docked(entity_id, option::some(item.source()), ctx);
+        entity.assert_docked(item.source());
         added = added + item.volume() * item.quantity();
         total = total + item.quantity();
         type_ids.push_back(item.type_id());
@@ -348,7 +343,6 @@ public fun withdraw_batch(
     assert!(type_ids.length() == quantities.length(), EBatchLengthMismatch);
     assert!(!type_ids.is_empty(), EEmptyBatch);
     let source = entity.id();
-    docking::assert_docked(source, option::none(), ctx);
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let module_id = module_id(&requirement);
     let mut total = 0;
