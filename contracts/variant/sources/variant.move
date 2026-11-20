@@ -1,13 +1,17 @@
 /// NeoType variants on chain.
 ///
 /// A `Variant` holds one variant's property values. The game service registers it once
-/// (admin only) at an object derived from its `VariantKey`, and it is frozen at once: a
-/// variant's values never change. Stacks and items store only the key; contracts read the
-/// values by passing `&Variant`.
+/// at an object derived from its `VariantKey`, and it is frozen at once: a variant's
+/// values never change. Stacks and items store only the key; contracts read the values
+/// by passing `&Variant`.
+///
+/// Registration follows the request pattern: `register` returns the record with an
+/// admin-gated `Request` (issued via `request::new_for`); the transaction satisfies it,
+/// then `complete_registration` freezes the record.
 module variant::variant;
 
-use core::admin_service::AdminACL;
-use std::string::String;
+use core::{admin_service, request::{Self, Request}};
+use std::{internal::Permit, string::String};
 use sui::{derived_object, event, vec_map::{Self, VecMap}};
 
 // === Errors ===
@@ -15,27 +19,25 @@ use sui::{derived_object, event, vec_map::{Self, VecMap}};
 #[error(code = 0)]
 const EWrongVersion: vector<u8> = b"Variant registry version does not match the package version";
 #[error(code = 1)]
-const EUnauthorizedAdmin: vector<u8> = b"Signer is not an admin";
-#[error(code = 2)]
 const ETenantEmpty: vector<u8> = b"Tenant must be non-empty";
-#[error(code = 3)]
+#[error(code = 2)]
 const ETypeIdZero: vector<u8> = b"Type ID must be non-zero";
-#[error(code = 4)]
+#[error(code = 3)]
 const EVariantAlreadyRegistered: vector<u8> = b"A variant with this key is already registered";
-#[error(code = 5)]
+#[error(code = 4)]
 const EZeroUnitVolume: vector<u8> = b"Unit volume must be non-zero";
-#[error(code = 6)]
+#[error(code = 5)]
 const EPropertyLengthMismatch: vector<u8> =
     b"Property IDs, magnitudes and signs must have the same length";
-#[error(code = 7)]
+#[error(code = 6)]
 const EPropertyIdsNotAscending: vector<u8> = b"Property IDs must be strictly ascending";
-#[error(code = 8)]
+#[error(code = 7)]
 const EValuesWithoutVariant: vector<u8> = b"A record with variant ID 0 holds no values";
-#[error(code = 9)]
+#[error(code = 8)]
 const ENegativeZero: vector<u8> = b"Zero must not be marked negative";
-#[error(code = 10)]
+#[error(code = 9)]
 const ENegativeValue: vector<u8> = b"Property value is negative";
-#[error(code = 11)]
+#[error(code = 10)]
 const EValueTooLarge: vector<u8> = b"Property value does not fit in u64";
 
 // === Constants ===
@@ -47,6 +49,9 @@ const UNITS_DECIMALS: u8 = 0;
 const MASS_DECIMALS: u8 = 4;
 
 // === Structs ===
+
+/// Issuer of registration requests.
+public struct Register() has drop;
 
 /// Identity of one variant. Stacks and items carry this, not the values.
 public struct VariantKey has copy, drop, store {
@@ -181,11 +186,12 @@ public fun derive_id(registry: &VariantRegistry, key: VariantKey): address {
 
 // === Admin Functions ===
 
-/// Register a variant's values and freeze the record. `property_ids` must be strictly
-/// ascending; `magnitudes` and `negatives` line up with them.
+/// Start registering a variant. Returns the record and an admin-gated `Request`: the
+/// transaction must satisfy it (`admin_service::verify_admin`), then call
+/// `complete_registration`. `property_ids` must be strictly ascending; `magnitudes` and
+/// `negatives` line up with them.
 public fun register(
     registry: &mut VariantRegistry,
-    acl: &AdminACL,
     tenant: String,
     type_id: u64,
     variant_id: u64,
@@ -194,10 +200,8 @@ public fun register(
     property_ids: vector<u32>,
     magnitudes: vector<u128>,
     negatives: vector<bool>,
-    ctx: &mut TxContext,
-) {
+): (Variant, Request) {
     assert!(registry.version == VERSION, EWrongVersion);
-    assert!(acl.is_admin(ctx.sender()), EUnauthorizedAdmin);
     let key = new_key(tenant, type_id, variant_id);
     assert!(!registry.exists(key), EVariantAlreadyRegistered);
     assert!(unit_volume > 0, EZeroUnitVolume);
@@ -220,8 +224,26 @@ public fun register(
         unit_volume,
         values: vec_map::from_keys_values(property_ids, values),
     };
-    event::emit(VariantRegistered { key, id: variant.id.to_inner(), kind });
+    let request = request::new_for(register_permit(), vector[admin_service::admin_requirement()]);
+    (variant, request)
+}
+
+/// Finish a registration once its request is satisfied: freeze the record.
+public fun complete_registration(variant: Variant, request: Request) {
+    request.complete_for(register_permit());
+    event::emit(VariantRegistered {
+        key: variant.key,
+        id: variant.id.to_inner(),
+        kind: variant.kind(),
+    });
     transfer::freeze_object(variant);
+}
+
+// === Private Functions ===
+
+/// Only this module defines `Register`, so only it can issue and complete registrations.
+fun register_permit(): Permit<Register> {
+    internal::permit<Register>()
 }
 
 // === Test Functions ===
