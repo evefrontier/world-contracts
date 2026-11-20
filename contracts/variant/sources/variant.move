@@ -46,7 +46,7 @@ const VERSION: u64 = 1;
 /// Property values are fixed-point at 1e9 (the proto's nanos).
 const VALUE_SCALE: u128 = 1_000_000_000;
 const UNITS_DECIMALS: u8 = 0;
-const MASS_DECIMALS: u8 = 4;
+const MASS_DECIMALS: u8 = 9;
 
 // === Structs ===
 
@@ -63,7 +63,7 @@ public struct VariantKey has copy, drop, store {
 /// How a type is counted. Display only: quantity arithmetic never branches on it.
 public enum QuantityKind has copy, drop, store {
     Units, // base unit = 1 item
-    Mass, // base unit = 0.0001 kg
+    Mass, // base unit = 1e-9 kg (the proto's nanos)
 }
 
 /// A signed property value.
@@ -76,7 +76,7 @@ public struct Value has copy, drop, store {
 public struct Variant has key {
     id: UID, // derived from VariantRegistry + key
     key: VariantKey,
-    // The `QuantityKind` as its decimals (0 or 4): freezing an object with an enum field
+    // The `QuantityKind` as its decimals (0 or 9): freezing an object with an enum field
     // crashes the Move compiler (sui 1.78-1.83), so `kind()` derives the enum from this.
     decimals: u8,
     unit_volume: u64, // m³ per kg (Mass) or per item (Units), at 1e9
@@ -115,7 +115,7 @@ public fun new_key(tenant: String, type_id: u64, variant_id: u64): VariantKey {
 /// Counted in whole items.
 public fun units(): QuantityKind { QuantityKind::Units }
 
-/// Counted by mass in 0.0001 kg.
+/// Counted by mass in 1e-9 kg.
 public fun mass(): QuantityKind { QuantityKind::Mass }
 
 // === View Functions ===
@@ -127,7 +127,7 @@ public fun kind(variant: &Variant): QuantityKind {
     if (variant.decimals == MASS_DECIMALS) QuantityKind::Mass else QuantityKind::Units
 }
 
-/// Display decimals of a quantity: 0 for `Units`, 4 for `Mass`.
+/// Display decimals of a quantity: 0 for `Units`, 9 for `Mass`.
 public fun decimals(variant: &Variant): u8 { variant.decimals }
 
 public fun unit_volume(variant: &Variant): u64 { variant.unit_volume }

@@ -116,7 +116,7 @@ fun register_freezes_record_at_derived_address() {
 
     assert!(record.key() == key);
     assert!(record.kind() == variant::mass());
-    assert!(record.decimals() == 4);
+    assert!(record.decimals() == 9);
     assert!(record.unit_volume() == UNIT_VOLUME);
     assert!(record.property_ids() == vector[LEAP_THRUST, IMPULSE]);
 

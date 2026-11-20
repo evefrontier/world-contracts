@@ -37,8 +37,9 @@ values.
 - **Stacks and items** store only the `VariantKey` and a quantity. An inventory has
 one stack per key, so identical variants join and different ones don't.
 - **Quantity** is a plain `u64` in base units: a count of items, or a stack's total
-mass in 0.0001 kg steps (12.5 kg is 125000). The record's `QuantityKind` says
-which; arithmetic never branches on it.
+mass at 1e9, the proto's nanos (12.5 kg is 12,500,000,000). The game keeps 4
+decimals; 1e9 matches the proto with no conversion and leaves room. The record's
+`QuantityKind` says which; arithmetic never branches on it.
 - **Volume** comes from the variant: the record holds m³ per kg (1/density) or
 per item, and a stack's volume is that times its kg or item count.
 - **A value change** moves stock to a new variant ID in the game, so a new frozen
@@ -149,7 +150,7 @@ public struct VariantKey has copy, drop, store {
 
 public enum QuantityKind has copy, drop, store {
     Units,                      // base unit = 1 item
-    Mass,                       // base unit = 0.0001 kg
+    Mass,                       // base unit = 1e-9 kg
 }
 
 public struct Value has copy, drop, store {
@@ -218,9 +219,8 @@ const CONTAINMENT_BURDEN: u32 = 210;
 const VOLATILITY: u32 = 211;
 ```
 
-The fuel type is `key.type_id`. A `Mass` base unit equals the grid's `SCALE`, so
-amounts pass straight through. Zero impulse, a missing fuel property or `Units`
-kind aborts.
+The fuel type is `key.type_id`. Amounts go from 1e9 to the grid's `SCALE` by
+dividing by 10⁵. Zero impulse, a missing fuel property or `Units` kind aborts.
 
 A bay keeps only the fuel type and four blended stats at `SCALE`, not a variant.
 A siphon emits those values (as `FuelSiphoned` does today); the service asks the
