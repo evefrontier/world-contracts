@@ -43,7 +43,7 @@ const HYDROGEN_BAY = 0xf1n
 const CRUDE_BAY = 0xf2n
 const EMERGENCY = 0xf3n
 const UNITS = 100n
-const SIPHONED = 40n * POWER_SCALE
+const SIPHONED_KG = 40n
 
 const FUEL = {
   impulse: 90n * POWER_SCALE,
@@ -180,10 +180,16 @@ describe('fuel pools (localnet)', () => {
 
     // The admin siphons part of the Crude bay, then more than is left.
     const siphonTx = new Transaction()
-    siphon(siphonTx, config, siphonTx.object(entityId), CRUDE_BAY, SIPHONED)
+    siphon(
+      siphonTx,
+      config,
+      siphonTx.object(entityId),
+      CRUDE_BAY,
+      SIPHONED_KG * MASS_UNIT,
+    )
     await expectSuccess(client, siphonTx)
     const after = await readPools(entityId)
-    expect(after.get(CRUDE)?.quantity).toBe(UNITS * POWER_SCALE - SIPHONED)
+    expect(after.get(CRUDE)?.quantity).toBe((UNITS - SIPHONED_KG) * POWER_SCALE)
     expect(after.get(HYDROGEN)?.quantity).toBe(UNITS * POWER_SCALE)
 
     const shortTx = new Transaction()
@@ -192,7 +198,7 @@ describe('fuel pools (localnet)', () => {
       config,
       shortTx.object(entityId),
       CRUDE_BAY,
-      UNITS * POWER_SCALE,
+      UNITS * MASS_UNIT,
     )
     await expectAbort(client, shortTx, signer, /EBayShort/)
   })

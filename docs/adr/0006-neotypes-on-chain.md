@@ -226,7 +226,8 @@ amounts on that step is decided in the inventory PR. Zero impulse, a missing fue
 property or `Units` kind aborts.
 
 A bay keeps only the fuel type and four blended stats at `SCALE`, not a variant.
-A siphon emits those values (as `FuelSiphoned` does today); the service asks the
+A siphon emits those values with the tenant and the quantity in base units
+(`FuelSiphoned`); the service asks the
 game which variant that fuel is, registers it if new, and mints the stack. The
 chain never rebuilds the original variant: blending and the drop from 1e9 to 1e4
 precision make that the game's call.
