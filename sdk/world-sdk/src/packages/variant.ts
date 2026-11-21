@@ -43,7 +43,10 @@ export interface PropertyValue {
 export interface RegisterVariantArgs {
   key: VariantKeyInput
   kind: QuantityKind
-  /** m³ per kg (`mass`) or per item (`units`), at `VALUE_SCALE`. */
+  /**
+   * m³ per kg (`mass`, i.e. 1 / the variant's density) or per item (`units`), at
+   * `VALUE_SCALE`. Must be non-zero.
+   */
   unitVolume: bigint
   /** Any order; sorted ascending by `propertyId` here. */
   values: PropertyValue[]

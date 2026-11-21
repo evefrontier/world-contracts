@@ -17,7 +17,6 @@ use core::{
     admin_service,
     component::{Self, Component},
     entity::Entity,
-    entity_key,
     request::{Request, Frame},
     requirement::{Self, Requirement}
 };
@@ -25,6 +24,7 @@ use inventory::item::{Self, Item, ItemBag};
 use power::{grid_load, power_grid::{Self, DrawKind}};
 use std::{internal::Permit, string::String};
 use sui::{bcs, clock::Clock, event};
+use variant::variant::{Variant, VariantKey};
 
 // === Errors ===
 
@@ -43,7 +43,7 @@ const EQuantityAboveMax: vector<u8> = b"Quantity above the allowed maximum";
 #[error(code = 6)]
 const EWrongTenant: vector<u8> = b"Inventory can only move between entities of the same tenant";
 #[error(code = 7)]
-const EBatchLengthMismatch: vector<u8> = b"type_ids and quantities must be the same length";
+const EBatchLengthMismatch: vector<u8> = b"keys and quantities must be the same length";
 #[error(code = 8)]
 const EEmptyBatch: vector<u8> = b"Batch must not be empty";
 
@@ -224,79 +224,92 @@ public fun migrate(
     (from_req, to_req)
 }
 
-/// Game to chain bridge: mint `quantity` of `type_id` into the entity's Inventory.
-/// Pushes a sponsor requirement. The owner can sign. The gas sponsor must be on `AdminACL`.
+/// Game to chain bridge: mint `quantity` (base units of `variant`) into the
+/// entity's Inventory. The variant must be in the entity's tenant. Pushes a
+/// sponsor requirement. The owner can sign. The gas sponsor must be on `AdminACL`.
 public fun game_item_to_chain_inventory(
     entity: &mut Entity,
     req: &mut Request,
-    type_id: u64,
+    variant: &Variant,
     quantity: u64,
-    volume: u64, // TODO: volume should be stored in static data module in the future
 ) {
     let entity_id = entity.id();
-    let key = entity_key::new(type_id, entity.key().tenant());
+    let key = variant.key();
+    assert_tenant(entity, key);
     let (requirement, mut frame, inv) = take(entity, req, bridge_in_permit());
     let module_id = module_id(&requirement);
-    enforce_rule(&requirement, type_id, quantity);
-    inv.mint_item(key, quantity, volume, entity_id, module_id);
+    enforce_rule(&requirement, key.type_id(), quantity);
+    inv
+        .items
+        .mint(
+            key,
+            quantity,
+            variant.unit_volume(),
+            variant.decimals(),
+            entity_id,
+            module_id,
+            &mut inv.used,
+        );
+    assert!(inv.used <= inv.capacity, EOverCapacity);
     frame.require(admin_service::sponsor_requirement());
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
 }
 
-/// Chain to game bridge: burn `quantity` of `type_id` from the entity's Inventory.
+/// Chain to game bridge: burn `quantity` of `key` from the entity's Inventory.
 /// Pushes a sponsor requirement. The owner can sign. The gas sponsor must be on `AdminACL`.
 public fun chain_item_to_game_inventory(
     entity: &mut Entity,
     req: &mut Request,
-    type_id: u64,
+    key: VariantKey,
     quantity: u64,
 ) {
     let entity_id = entity.id();
-    let key = entity_key::new(type_id, entity.key().tenant());
+    assert_tenant(entity, key);
     let (requirement, mut frame, inv) = take(entity, req, bridge_out_permit());
     let module_id = module_id(&requirement);
-    enforce_rule(&requirement, type_id, quantity);
-    inv.burn_item(key, quantity, entity_id, module_id);
+    enforce_rule(&requirement, key.type_id(), quantity);
+    inv.items.burn(key, quantity, entity_id, module_id, &mut inv.used);
     frame.require(admin_service::sponsor_requirement());
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
 }
 
-/// Deposit a standalone `Item` into the entity's Inventory.
-/// Aborts unless the item comes from this entity or from a docked entity. Pushes an `OnlineRequirement` for this inventory's grant. The caller
-/// satisfies it with `grid_load::assert_online`.
+/// Deposit a standalone `Item` into the entity's Inventory, joining the stack of
+/// its variant. Aborts unless the item comes from this entity or from a docked
+/// entity, and is in this entity's tenant. Pushes an `OnlineRequirement` for
+/// this inventory's grant. The caller satisfies it with `grid_load::assert_online`.
 public fun deposit(entity: &mut Entity, req: &mut Request, item: Item) {
     let entity_id = entity.id();
     entity.assert_docked(item.source());
-    let type_id = item.type_id();
+    assert_tenant(entity, item.key());
+    let type_id = item.key().type_id();
     let quantity = item.quantity();
-    let tenant = entity.key().tenant();
     let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
     let module_id = module_id(&requirement);
     enforce_rule(&requirement, type_id, quantity);
-    inv.deposit_item(item, tenant, entity_id, module_id);
+    inv.items.deposit(item, entity_id, module_id, &mut inv.used);
+    assert!(inv.used <= inv.capacity, EOverCapacity);
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
 }
 
-/// Withdraw `quantity` of `type_id` from the entity's Inventory as a fresh `Item`.
+/// Withdraw `quantity` of `key` from the entity's Inventory as a fresh `Item`.
 /// No docking check: the `Item` can only leave the transaction through `deposit`,
 /// which checks its source. Pushes an `OnlineRequirement` for this
 /// inventory's grant. The caller satisfies it with `grid_load::assert_online`.
 public fun withdraw(
     entity: &mut Entity,
     req: &mut Request,
-    type_id: u64,
+    key: VariantKey,
     quantity: u64,
     ctx: &mut TxContext,
 ): Item {
     let source = entity.id();
-    let key = entity_key::new(type_id, entity.key().tenant());
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let module_id = module_id(&requirement);
-    enforce_rule(&requirement, type_id, quantity);
-    let item = inv.withdraw_item(key, quantity, source, module_id, ctx);
+    enforce_rule(&requirement, key.type_id(), quantity);
+    let item = inv.items.withdraw(key, quantity, source, module_id, &mut inv.used, ctx);
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
     item
@@ -309,25 +322,24 @@ public fun withdraw(
 public fun deposit_batch(entity: &mut Entity, req: &mut Request, items: vector<Item>) {
     assert!(!items.is_empty(), EEmptyBatch);
     let entity_id = entity.id();
-    let mut added = 0;
     let mut total = 0;
     let mut type_ids = vector[];
     items.do_ref!(|item| {
         entity.assert_docked(item.source());
-        added = added + item.volume() * item.quantity();
+        assert_tenant(entity, item.key());
         total = total + item.quantity();
-        type_ids.push_back(item.type_id());
+        type_ids.push_back(item.key().type_id());
     });
     let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
     let module_id = module_id(&requirement);
     enforce_batch_rule(&requirement, &type_ids, total);
-    assert!(inv.used + added <= inv.capacity, EOverCapacity);
     inv.items.deposit_batch(items, entity_id, module_id, &mut inv.used, EVENT_BATCH_SIZE);
+    assert!(inv.used <= inv.capacity, EOverCapacity);
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
 }
 
-/// `withdraw` of `quantities[i]` of `type_ids[i]` for each `i` under one
+/// `withdraw` of `quantities[i]` of `keys[i]` for each `i` under one
 /// `Withdrawal` requirement. Every entry must be the rule's type, and its
 /// quantity bounds apply to the batch's total, so one requirement never
 /// releases more than one `withdraw` could. Returns the
@@ -336,22 +348,23 @@ public fun deposit_batch(entity: &mut Entity, req: &mut Request, items: vector<I
 public fun withdraw_batch(
     entity: &mut Entity,
     req: &mut Request,
-    type_ids: vector<u64>,
+    keys: vector<VariantKey>,
     quantities: vector<u64>,
     ctx: &mut TxContext,
 ): vector<Item> {
-    assert!(type_ids.length() == quantities.length(), EBatchLengthMismatch);
-    assert!(!type_ids.is_empty(), EEmptyBatch);
+    assert!(keys.length() == quantities.length(), EBatchLengthMismatch);
+    assert!(!keys.is_empty(), EEmptyBatch);
     let source = entity.id();
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let module_id = module_id(&requirement);
     let mut total = 0;
     quantities.do_ref!(|q| total = total + *q);
+    let type_ids = keys.map_ref!(|key| key.type_id());
     enforce_batch_rule(&requirement, &type_ids, total);
     let items = inv
         .items
         .withdraw_batch(
-            type_ids,
+            keys,
             quantities,
             source,
             module_id,
@@ -439,10 +452,10 @@ public fun items(inv: &Inventory): &ItemBag {
     &inv.items
 }
 
-/// Current balance of `type_id` in the entity's Inventory. Read-only; for
-/// clients querying state.
-public fun balance_of(entity: &Entity, component_id: u64, type_id: u64): u64 {
-    inventory(entity, component_id).items.balance(type_id)
+/// Current balance of `key` in the entity's Inventory, in base units. Read-only;
+/// for clients querying state.
+public fun balance_of(entity: &Entity, component_id: u64, key: VariantKey): u64 {
+    inventory(entity, component_id).items.balance(key)
 }
 
 // === Private Functions ===
@@ -502,52 +515,9 @@ fun enforce_batch_rule(requirement: &Requirement, type_ids: &vector<u64>, total:
     max_quantity.do!(|m| assert!(total <= m, EQuantityAboveMax));
 }
 
-/// Mint a balance into an inventory, enforcing its volume capacity.
-fun mint_item(
-    inv: &mut Inventory,
-    game_id: entity_key::EntityKey,
-    quantity: u64,
-    volume: u64,
-    entity_id: ID,
-    component_id: u64,
-) {
-    assert!(inv.used + volume * quantity <= inv.capacity, EOverCapacity);
-    inv.items.mint(game_id, quantity, volume, entity_id, component_id, &mut inv.used);
-}
-
-/// Burn a balance from an inventory, freeing its volume (chain-to-game bridge).
-fun burn_item(
-    inv: &mut Inventory,
-    game_id: entity_key::EntityKey,
-    quantity: u64,
-    entity_id: ID,
-    component_id: u64,
-) {
-    inv.items.burn(game_id, quantity, entity_id, component_id, &mut inv.used);
-}
-
-/// Deposit an item into an inventory, enforcing its volume capacity.
-fun deposit_item(
-    inv: &mut Inventory,
-    item: Item,
-    tenant: String,
-    entity_id: ID,
-    component_id: u64,
-) {
-    assert!(inv.used + item.volume() * item.quantity() <= inv.capacity, EOverCapacity);
-    inv.items.deposit(item, tenant, entity_id, component_id, &mut inv.used);
-}
-
-/// Withdraw a balance from an inventory as a fresh `Item`, freeing its volume.
-fun withdraw_item(
-    inv: &mut Inventory,
-    game_id: entity_key::EntityKey,
-    quantity: u64,
-    source: ID,
-    component_id: u64,
-    ctx: &mut TxContext,
-): Item {
-    inv.items.withdraw(game_id, quantity, source, component_id, &mut inv.used, ctx)
+/// Abort unless `key` is in the entity's tenant.
+fun assert_tenant(entity: &Entity, key: VariantKey) {
+    assert!(key.tenant() == entity.key().tenant(), EWrongTenant);
 }
 
 fun borrow_component(entity: &Entity, component_id: u64): &Component<Inventory> {
