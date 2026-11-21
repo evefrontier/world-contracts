@@ -119,19 +119,43 @@ public fun inner<T: store>(c: &Component<T>): &T { &c.inner }       // everythin
 
 `Request` and `Frame` have **no abilities** — they cannot be stored, copied, or dropped, so a
 tx that starts an action must finish it. Constructors are `public(package)`; only `core::entity`
-mints/consumes a `Request`.
+mints/consumes an entity `Request`. Other modules use `new_for<T>` / `complete_for<T>` (below).
 
 ```move
-public struct Request { entity_id: Option<ID>, requires: vector<Requirement> }
+public struct Request {
+    entity_id: Option<ID>,
+    authorized_id: Option<ID>,
+    issuer: Option<TypeName>, // set by `new_for<T>`; `none` for entity requests
+    requires: vector<Requirement>,
+}
 public(package) fun new(...): Request { ... }
 public(package) fun complete(request: Request) {
-    let Request { requires, .. } = request;
+    let Request { issuer, requires, .. } = request;
+    assert!(issuer.is_none(), EWrongIssuer);
     assert!(requires.length() == 0, ERequestNotComplete);
 }
 ```
 
 A `Request` completes only when **every** requirement is satisfied. Requirements are stored
 reversed so `pop_back` yields declaration order.
+
+**Non-entity operations.** A module gating its own object that is not an `Entity` (e.g. a
+frozen record) issues a request tagged with its own witness and completes it the same way.
+Entities reject tagged requests, and a tagged request completes only under its issuer:
+
+```move
+public struct Register() has drop;
+
+public fun register(...): (Variant, Request) {
+    // ... build the record ...
+    (variant, request::new_for(internal::permit<Register>(), vector[admin_service::admin_requirement()]))
+}
+
+public fun complete_registration(variant: Variant, request: Request) {
+    request.complete_for(internal::permit<Register>());
+    transfer::freeze_object(variant);
+}
+```
 
 ## Witness + `internal::Permit<T>` authorization
 
@@ -290,6 +314,7 @@ fun new_zero_id_aborts() {
 - [ ] Every persisted struct asserts `version == VERSION` on entry?
 - [ ] Extension data stored as dynamic fields with typed keys, not new `Entity` fields?
 - [ ] `Request`/`Frame` declare no abilities; constructors `public(package)`?
+- [ ] Non-entity gating uses `new_for<T>` / `complete_for<T>` with the module's own witness?
 - [ ] BCS decode mirrors encode field order exactly?
 
 **Docs & tests**
