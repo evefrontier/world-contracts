@@ -189,7 +189,8 @@ public fun derive_id(registry: &VariantRegistry, key: VariantKey): address {
 /// Start registering a variant. Returns the record and an admin-gated `Request`: the
 /// transaction must satisfy it (`admin_service::verify_admin`), then call
 /// `complete_registration`. `property_ids` must be strictly ascending; `magnitudes` and
-/// `negatives` line up with them.
+/// `negatives` line up with them. `unit_volume` is m³ per kg (`Mass`,
+/// the service's 1 / density) or per item (`Units`), at 1e9.
 public fun register(
     registry: &mut VariantRegistry,
     tenant: String,
@@ -217,12 +218,13 @@ public fun register(
         assert!(!negative || magnitude > 0, ENegativeZero);
         Value { magnitude, negative }
     });
+    let values = vec_map::from_keys_values(property_ids, values);
     let variant = Variant {
         id: derived_object::claim(&mut registry.id, key),
         key,
         decimals: kind.kind_decimals(),
         unit_volume,
-        values: vec_map::from_keys_values(property_ids, values),
+        values,
     };
     let request = request::new_for(register_permit(), vector[admin_service::admin_requirement()]);
     (variant, request)

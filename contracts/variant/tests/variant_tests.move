@@ -11,9 +11,11 @@ const PLAYER: address = @0xB;
 
 const TYPE_ID: u64 = 84210;
 const VARIANT_ID: u64 = 7;
-const UNIT_VOLUME: u64 = 1_250_000; // 0.00125 m³ per kg, at 1e9
+const UNIT_VOLUME: u64 = 1_250_000; // 0.00125 m³ per item, at 1e9
+const MASS_UNIT_VOLUME: u64 = 125_000; // 1/8000 m³ per kg, at 1e9
 
-const DENSITY: u32 = 12;
+const DENSITY: u32 = 4;
+const HARDNESS: u32 = 12;
 const IMPULSE: u32 = 208;
 const LEAP_THRUST: u32 = 201;
 
@@ -71,7 +73,7 @@ fun register_as(
         scenario,
         sender,
         variant_id,
-        variant::mass(),
+        variant::units(),
         UNIT_VOLUME,
         property_ids,
         magnitudes,
@@ -79,14 +81,18 @@ fun register_as(
     );
 }
 
+/// A mass variant: density 8,000 kg/m³ (so 1/8000 m³ per kg from the service), leap
+/// thrust 1e11, impulse 36.5.
 fun register_default(scenario: &mut ts::Scenario) {
-    register_as(
+    register_full(
         scenario,
         ADMIN,
         VARIANT_ID,
-        vector[LEAP_THRUST, IMPULSE],
-        vector[100_000_000_000_000_000_000, 36_500_000_000],
-        vector[false, false],
+        variant::mass(),
+        MASS_UNIT_VOLUME,
+        vector[DENSITY, LEAP_THRUST, IMPULSE],
+        vector[8_000_000_000_000, 100_000_000_000_000_000_000, 36_500_000_000],
+        vector[false, false, false],
     );
 }
 
@@ -117,16 +123,16 @@ fun register_freezes_record_at_derived_address() {
     assert!(record.key() == key);
     assert!(record.kind() == variant::mass());
     assert!(record.decimals() == 9);
-    assert!(record.unit_volume() == UNIT_VOLUME);
-    assert!(record.property_ids() == vector[LEAP_THRUST, IMPULSE]);
+    assert!(record.unit_volume() == MASS_UNIT_VOLUME);
+    assert!(record.property_ids() == vector[DENSITY, LEAP_THRUST, IMPULSE]);
 
     // Leap thrust at 1e9 overflows u64, so it is kept as u128.
     let thrust = record.value(LEAP_THRUST).destroy_some();
     assert!(thrust.magnitude() == 100_000_000_000_000_000_000);
     assert!(!thrust.negative());
     assert!(record.value_u64(IMPULSE) == option::some(36_500_000_000));
-    assert!(record.value(DENSITY).is_none());
-    assert!(record.value_u64(DENSITY).is_none());
+    assert!(record.value(HARDNESS).is_none());
+    assert!(record.value_u64(HARDNESS).is_none());
 
     ts::return_immutable(record);
     ts::return_shared(registry);
@@ -160,12 +166,12 @@ fun register_plain_type_with_no_values() {
 #[test]
 fun register_keeps_negative_values() {
     let mut scenario = begin();
-    register_as(&mut scenario, ADMIN, VARIANT_ID, vector[DENSITY], vector[5], vector[true]);
+    register_as(&mut scenario, ADMIN, VARIANT_ID, vector[HARDNESS], vector[5], vector[true]);
 
     ts::next_tx(&mut scenario, PLAYER);
     let record = ts::take_immutable<Variant>(&scenario);
-    let density = record.value(DENSITY).destroy_some();
-    assert!(density.magnitude() == 5 && density.negative());
+    let hardness = record.value(HARDNESS).destroy_some();
+    assert!(hardness.magnitude() == 5 && hardness.negative());
     ts::return_immutable(record);
     scenario.end();
 }
@@ -211,7 +217,7 @@ fun complete_without_admin_check_aborts() {
         tenant(),
         TYPE_ID,
         VARIANT_ID,
-        variant::mass(),
+        variant::units(),
         UNIT_VOLUME,
         vector[],
         vector[],
@@ -229,7 +235,7 @@ fun complete_with_foreign_request_aborts() {
         tenant(),
         TYPE_ID,
         VARIANT_ID,
-        variant::mass(),
+        variant::units(),
         UNIT_VOLUME,
         vector[],
         vector[],
@@ -243,7 +249,7 @@ fun complete_with_foreign_request_aborts() {
 #[test, expected_failure(abort_code = variant::EPropertyLengthMismatch)]
 fun register_length_mismatch_aborts() {
     let mut scenario = begin();
-    register_as(&mut scenario, ADMIN, VARIANT_ID, vector[DENSITY], vector[], vector[false]);
+    register_as(&mut scenario, ADMIN, VARIANT_ID, vector[HARDNESS], vector[], vector[false]);
     abort
 }
 
@@ -254,7 +260,7 @@ fun register_unsorted_ids_aborts() {
         &mut scenario,
         ADMIN,
         VARIANT_ID,
-        vector[IMPULSE, DENSITY],
+        vector[IMPULSE, HARDNESS],
         vector[1, 1],
         vector[false, false],
     );
@@ -278,14 +284,14 @@ fun register_duplicate_ids_aborts() {
 #[test, expected_failure(abort_code = variant::EValuesWithoutVariant)]
 fun register_values_without_variant_aborts() {
     let mut scenario = begin();
-    register_as(&mut scenario, ADMIN, 0, vector[DENSITY], vector[1], vector[false]);
+    register_as(&mut scenario, ADMIN, 0, vector[HARDNESS], vector[1], vector[false]);
     abort
 }
 
 #[test, expected_failure(abort_code = variant::ENegativeZero)]
 fun register_negative_zero_aborts() {
     let mut scenario = begin();
-    register_as(&mut scenario, ADMIN, VARIANT_ID, vector[DENSITY], vector[0], vector[true]);
+    register_as(&mut scenario, ADMIN, VARIANT_ID, vector[HARDNESS], vector[0], vector[true]);
     abort
 }
 
@@ -296,7 +302,7 @@ fun register_zero_unit_volume_aborts() {
         &mut scenario,
         ADMIN,
         VARIANT_ID,
-        variant::mass(),
+        variant::units(),
         0,
         vector[],
         vector[],
@@ -320,10 +326,10 @@ fun new_key_zero_type_aborts() {
 #[test, expected_failure(abort_code = variant::ENegativeValue)]
 fun value_u64_negative_aborts() {
     let mut scenario = begin();
-    register_as(&mut scenario, ADMIN, VARIANT_ID, vector[DENSITY], vector[5], vector[true]);
+    register_as(&mut scenario, ADMIN, VARIANT_ID, vector[HARDNESS], vector[5], vector[true]);
     ts::next_tx(&mut scenario, PLAYER);
     let record = ts::take_immutable<Variant>(&scenario);
-    record.value_u64(DENSITY);
+    record.value_u64(HARDNESS);
     abort
 }
 
