@@ -8,14 +8,14 @@ use core::{
     entity::{Self, Entity},
     object_registry::ObjectRegistry,
     request::Request,
-    requirement::Requirement,
+    requirement::{Self, Requirement},
     test_helpers::{claim, setup, take_acl, take_registry, tenant}
 };
 use creation::layout;
 use inventory::{inventory, item::{Self, Item}};
 use power::{grid_fuel, grid_generator, grid_load, grid_scenario, power_grid};
 use std::string::{Self, String};
-use sui::{clock::{Self, Clock}, event, test_scenario as ts};
+use sui::{bcs, clock::{Self, Clock}, event, test_scenario as ts};
 use variant::variant::{Self, Variant, VariantKey, VariantRegistry};
 
 const ADMIN: address = @0xA;
@@ -2188,5 +2188,172 @@ fun deposit_fuel_item_of_counted_item_aborts() {
     bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 3, VOL);
     let plain = variant_for(&mut scenario, tenant(), FUEL, VOL);
     burn_fuel(&mut scenario, e_id, plain, plain, 3, true);
+    abort
+}
+
+// === Builder property gate ===
+// This module stands in for a builder package: it defines its own requirement,
+// checks an item's variant property, then deposits that same item.
+
+#[error(code = 100)]
+const EGateBelowMin: vector<u8> = b"Item property is below the gate's minimum";
+#[error(code = 101)]
+const EGateWrongVariant: vector<u8> = b"Variant record is not the item's variant";
+
+const ORE: u64 = 777;
+const HARDNESS: u32 = 12;
+
+/// A builder's rule: accept only items whose `property_id` is at least `min` (at 1e9).
+public struct MinProperty has drop {
+    property_id: u32,
+    min: u64,
+}
+
+/// The builder's requirement type; only this module can satisfy it.
+public struct Gate(MinProperty) has drop;
+
+fun gate_requirement(property_id: u32, min: u64): Requirement {
+    requirement::from_config(option::none(), Gate(MinProperty { property_id, min }))
+}
+
+/// Builder handler, declared just before `Deposit` in the action: check `item` is
+/// `record`'s variant and meets the rule, then deposit that same `item`.
+fun gated_deposit(e: &mut Entity, req: &mut Request, item: Item, record: &Variant) {
+    let (rule, frame) = req.take_next(internal::permit<Gate>());
+    let mut config = bcs::new(rule.data());
+    let property_id = config.peel_u32();
+    let min = config.peel_u64();
+    assert!(item.key() == record.key(), EGateWrongVariant);
+    assert!(record.value_u64(property_id).destroy_or!(0) >= min, EGateBelowMin);
+    frame.destroy_empty_frame();
+    inventory::deposit(e, req, item);
+}
+
+/// A mass ore variant with `hardness` (at 1e9), registered in the test tenant.
+fun ore(scenario: &mut ts::Scenario, variant_id: u64, hardness: u128): ID {
+    ts::next_tx(scenario, ADMIN);
+    if (!ts::has_most_recent_shared<VariantRegistry>()) {
+        variant::init_for_testing(scenario.ctx());
+        ts::next_tx(scenario, ADMIN);
+    };
+    let mut variants = ts::take_shared<VariantRegistry>(scenario);
+    let id = variants.register_for_testing(
+        tenant(),
+        ORE,
+        variant_id,
+        variant::mass(),
+        1,
+        vector[HARDNESS],
+        vector[hardness],
+        vector[false],
+    );
+    ts::return_shared(variants);
+    id
+}
+
+/// A powered storage unit with a `gated_deposit` action (hardness >= 30) and 1 kg
+/// each of a hard (50) and a soft (10) ore. Returns `(entity, hard, soft)`.
+fun gated_unit(scenario: &mut ts::Scenario): (ID, ID, ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let e = build_entity_with_inventory(scenario, &mut registry, &acl, 1, OWNER, 1_000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(scenario, e_id, OWNER);
+    power_inventory(scenario, e_id, OWNER);
+    let any = option::none();
+    owner_enable(
+        scenario,
+        e_id,
+        OWNER,
+        b"gated_deposit",
+        action::new(vector[
+            access_cap::owner_requirement(),
+            gate_requirement(HARDNESS, 30_000_000_000),
+            inventory::deposit_requirement(MODULE_ID, any, any, any),
+        ]),
+    );
+    let hard = ore(scenario, 1, 50_000_000_000);
+    let soft = ore(scenario, 2, 10_000_000_000);
+    let kg = grid_scenario::kg();
+    bridge_in_record(scenario, e_id, OWNER, b"bridge_in", hard, kg);
+    bridge_in_record(scenario, e_id, OWNER, b"bridge_in", soft, kg);
+    (e_id, hard, soft)
+}
+
+/// The owner withdraws 1 kg of `stock`, then puts it back through
+/// `gated_deposit`, presenting `record` as its variant.
+fun gate_flow(scenario: &mut ts::Scenario, e_id: ID, stock: ID, record: ID) {
+    ts::next_tx(scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let held = ts::take_immutable_by_id<Variant>(scenario, stock);
+    let other = if (record != stock)
+        option::some(ts::take_immutable_by_id<Variant>(scenario, record)) else option::none();
+    let presented = other.borrow_with_default(&held);
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let mut req = e.interact(string::utf8(b"withdraw"), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    let item = inventory::withdraw(
+        &mut e,
+        &mut req,
+        held.key(),
+        grid_scenario::kg(),
+        scenario.ctx(),
+    );
+    grid_load::assert_online(&mut e, &mut req, &clock);
+    e.complete_request(req);
+
+    let mut req = e.interact(string::utf8(b"gated_deposit"), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    gated_deposit(&mut e, &mut req, item, presented);
+    grid_load::assert_online(&mut e, &mut req, &clock);
+    e.complete_request(req);
+
+    clock.destroy_for_testing();
+    other.do!(|record| ts::return_immutable(record));
+    ts::return_immutable(held);
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(e);
+}
+
+#[test]
+fun builder_gate_accepts_item_meeting_property() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let (e_id, hard, _) = gated_unit(&mut scenario);
+
+    gate_flow(&mut scenario, e_id, hard, hard);
+    // Events are per transaction: read them before the next one.
+    assert!(event::events_by_type<item::ItemDeposited>().length() == 1);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let key = variant::new_key(tenant(), ORE, 1);
+    assert!(inventory::balance_of(&e, MODULE_ID, key) == grid_scenario::kg());
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = EGateBelowMin)]
+fun builder_gate_refuses_item_below_property() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let (e_id, _, soft) = gated_unit(&mut scenario);
+    gate_flow(&mut scenario, e_id, soft, soft);
+    abort
+}
+
+/// Presenting a hard ore's record for a soft ore item can't get it through.
+#[test, expected_failure(abort_code = EGateWrongVariant)]
+fun builder_gate_refuses_another_variants_record() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let (e_id, hard, soft) = gated_unit(&mut scenario);
+    gate_flow(&mut scenario, e_id, soft, hard);
     abort
 }
