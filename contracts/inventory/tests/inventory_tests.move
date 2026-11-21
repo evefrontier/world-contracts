@@ -13,9 +13,10 @@ use core::{
 };
 use creation::layout;
 use inventory::{inventory, item::{Self, Item}};
-use power::{grid_fuel, grid_generator, grid_load, power_grid};
+use power::{grid_fuel, grid_generator, grid_load, grid_scenario, power_grid};
 use std::string::{Self, String};
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
+use variant::variant::Variant;
 
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
@@ -463,25 +464,24 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     ts::return_to_sender(scenario, cap);
     ts::return_shared(entity);
 
+    let fuel_id = grid_scenario::fuel_variant(scenario, 7, 900_000, 140_000, 50_000, 0);
     ensure_admin_sponsors(scenario);
     next_tx_owner_signs_admin_pays(scenario, owner);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
+    let fuel = ts::take_immutable_by_id<Variant>(scenario, fuel_id);
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
     grid_fuel::deposit_fuel(
         &mut entity,
         &mut req,
         FUEL_BAY_ID,
-        7,
-        100,
-        900_000,
-        140_000,
-        50_000,
-        0,
+        &fuel,
+        100 * grid_scenario::kg(),
         &clock,
     );
+    ts::return_immutable(fuel);
     entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);

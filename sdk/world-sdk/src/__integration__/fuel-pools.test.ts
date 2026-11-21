@@ -26,9 +26,11 @@ import {
   siphon,
   siphonRequirement,
 } from '../packages/power.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectAbort,
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   seatShell,
@@ -44,7 +46,6 @@ const UNITS = 100n
 const SIPHONED = 40n * POWER_SCALE
 
 const FUEL = {
-  amount: UNITS,
   impulse: 90n * POWER_SCALE,
   containmentBurden: 14n * POWER_SCALE,
   volatility: 1n * POWER_SCALE,
@@ -101,21 +102,31 @@ describe('fuel pools (localnet)', () => {
       owner: signer,
       transferable: true,
     })
+    const hydrogen = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: HYDROGEN,
+      ...FUEL,
+    })
+    const crude = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: CRUDE,
+      ...FUEL,
+    })
 
     // Hydrogen into one bay, Crude into the other, both online.
     const fuelTx = new Transaction()
     addSponsors(fuelTx, config, [signer])
     const entity = fuelTx.object(entityId)
     const cap = fuelTx.object(capId)
-    for (const [fuelBayId, fuelType] of [
-      [HYDROGEN_BAY, HYDROGEN],
-      [CRUDE_BAY, CRUDE],
-    ]) {
+    for (const [fuelBayId, variant] of [
+      [HYDROGEN_BAY, hydrogen],
+      [CRUDE_BAY, crude],
+    ] as const) {
       const deposit = interact(fuelTx, config, entity, 'deposit_fuel')
       depositFuel(fuelTx, config, entity, deposit, cap, {
         fuelBayId,
-        fuelType,
-        ...FUEL,
+        variant,
+        amount: UNITS * MASS_UNIT,
       })
       completeRequest(fuelTx, config, entity, deposit)
       const bay = interact(fuelTx, config, entity, 'set_fuel_bay')
@@ -140,8 +151,8 @@ describe('fuel pools (localnet)', () => {
     const mix = interact(mixTx, config, mixEntity, 'deposit_fuel')
     depositFuel(mixTx, config, mixEntity, mix, mixTx.object(capId), {
       fuelBayId: HYDROGEN_BAY,
-      fuelType: CRUDE,
-      ...FUEL,
+      variant: crude,
+      amount: UNITS * MASS_UNIT,
     })
     completeRequest(mixTx, config, mixEntity, mix)
     await expectAbort(client, mixTx, signer, /EFuelTypeMismatch/)
