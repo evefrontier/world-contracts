@@ -211,7 +211,8 @@ on `inventory`, which already depends on `power`.
 `deposit_fuel` (service path, in `power`) takes `&Variant` and an amount instead
 of the four fuel values.
 
-`deposit_fuel_item` lives in `inventory`. It takes an `Item` and its `&Variant`.
+`deposit_fuel_item` lives in `inventory`. It takes an `Item` and its `&Variant`,
+burns the item, and loads the fuel through `deposit_fuel`.
 
 Both paths read the fuel properties by fixed ID and convert to the grid's `SCALE` (1e4):
 
@@ -292,7 +293,6 @@ crosses; never deleted.
 - Stacks of a deprecated variant stay on it until bridged out; they never merge
 with the replacement variant.
 - New `variant` package under `power` and `inventory`; the item-to-fuel path
-lives in `inventory`, and `power` admits it through an admin-registered source
-type.
+lives in `inventory` and goes through the sponsored `deposit_fuel`.
 - Siphoned fuel comes back as whatever variant the game assigns to the blend.
 - Struct layouts change; ships as a fresh publish at the world reset.
