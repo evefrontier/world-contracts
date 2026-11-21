@@ -24,13 +24,25 @@ fun register(
     property_ids: vector<u32>,
     magnitudes: vector<u128>,
 ): Variant {
+    let negatives = magnitudes.map_ref!(|_| false);
+    register_signed(scenario, tenant, kind, property_ids, magnitudes, negatives)
+}
+
+/// `register` with signs.
+fun register_signed(
+    scenario: &mut ts::Scenario,
+    tenant: String,
+    kind: QuantityKind,
+    property_ids: vector<u32>,
+    magnitudes: vector<u128>,
+    negatives: vector<bool>,
+): Variant {
     ts::next_tx(scenario, admin());
     if (!ts::has_most_recent_shared<VariantRegistry>()) {
         variant::init_for_testing(scenario.ctx());
         ts::next_tx(scenario, admin());
     };
     let mut registry = ts::take_shared<VariantRegistry>(scenario);
-    let negatives = magnitudes.map_ref!(|_| false);
     let id = registry.register_for_testing(
         tenant,
         FUEL_TYPE,
@@ -95,6 +107,53 @@ fun from_variant_units_aborts() {
         variant::units(),
         vector[208, 209, 210, 211],
         vector[1, 1, 1, 1],
+    );
+    fuel_properties::from_variant(&record);
+    abort
+}
+
+#[test]
+fun from_variant_scales_before_range_check() {
+    let mut scenario = ts::begin(admin());
+    // Impulse above u64 at 1e9, but within u64 at SCALE.
+    let record = register(
+        &mut scenario,
+        tenant(),
+        variant::mass(),
+        vector[208, 209, 210, 211],
+        vector[20_000_000_000_000_000_000, 1, 1, 1_000_000_000],
+    );
+    let (impulse, _, _, _) = fuel_properties::from_variant(&record);
+    assert!(impulse == 200_000_000_000_000);
+    ts::return_immutable(record);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = fuel_properties::EFuelPropertyTooLarge)]
+fun from_variant_too_large_at_scale_aborts() {
+    let mut scenario = ts::begin(admin());
+    let too_large = ((std::u64::max_value!() as u128) + 1) * (fuel_properties::to_scale() as u128);
+    let record = register(
+        &mut scenario,
+        tenant(),
+        variant::mass(),
+        vector[208, 209, 210, 211],
+        vector[too_large, 1, 1, 1],
+    );
+    fuel_properties::from_variant(&record);
+    abort
+}
+
+#[test, expected_failure(abort_code = fuel_properties::ENegativeFuelProperty)]
+fun from_variant_negative_aborts() {
+    let mut scenario = ts::begin(admin());
+    let record = register_signed(
+        &mut scenario,
+        tenant(),
+        variant::mass(),
+        vector[208, 209, 210, 211],
+        vector[1, 1, 1, 1],
+        vector[false, true, false, false],
     );
     fuel_properties::from_variant(&record);
     abort

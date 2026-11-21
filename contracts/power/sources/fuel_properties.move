@@ -14,6 +14,10 @@ const EMissingFuelProperty: vector<u8> = b"Variant lacks a fuel property";
 const ENotMass: vector<u8> = b"Fuel must be counted by mass";
 #[error(code = 2)]
 const EAmountNotWholeStep: vector<u8> = b"Fuel amount must be a whole multiple of 0.0001 kg";
+#[error(code = 3)]
+const ENegativeFuelProperty: vector<u8> = b"Fuel property is negative";
+#[error(code = 4)]
+const EFuelPropertyTooLarge: vector<u8> = b"Fuel property does not fit in u64 at SCALE";
 
 // === Constants ===
 
@@ -27,7 +31,8 @@ const TO_SCALE: u64 = 100_000;
 // === Public Functions ===
 
 /// `(impulse, containment_burden, volatility, thermal_inefficiency)` at `SCALE`,
-/// rounded down. Aborts unless the variant is counted by mass and has all four.
+/// rounded down. Aborts unless the variant is counted by mass and has all four,
+/// each non-negative and within `u64` at `SCALE`.
 public fun from_variant(variant: &Variant): (u64, u64, u64, u64) {
     assert!(variant.kind() == variant::mass(), ENotMass);
     (
@@ -60,6 +65,11 @@ public fun to_scale(): u64 { TO_SCALE }
 
 // === Private Functions ===
 
+/// Scale before the range check, so values above `u64` at 1e9 still load.
 fun read(variant: &Variant, property_id: u32): u64 {
-    variant.value_u64(property_id).destroy_or!(abort EMissingFuelProperty) / TO_SCALE
+    let value = variant.value(property_id).destroy_or!(abort EMissingFuelProperty);
+    assert!(!value.negative(), ENegativeFuelProperty);
+    let scaled = value.magnitude() / (TO_SCALE as u128);
+    assert!(scaled <= (std::u64::max_value!() as u128), EFuelPropertyTooLarge);
+    scaled as u64
 }
