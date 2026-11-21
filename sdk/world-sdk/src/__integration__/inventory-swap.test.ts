@@ -25,6 +25,7 @@ import {
   expectSponsored,
   expectSuccess,
   genesisAccount,
+  itemVariant,
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
@@ -40,6 +41,8 @@ const VOL = 2n
 const TRADING_POST_TYPE = 1n
 const SHIP_TYPE = 2n
 const TENANT = 'inventory-t3'
+/** Key of the no-variant stack of `typeId` in `TENANT`. */
+const itemKey = (typeId: bigint) => ({ tenant: TENANT, typeId, variantId: 0n })
 
 describe('ship docks at a trading post and swaps cargo (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
@@ -195,6 +198,17 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       pilot,
     )
 
+    const lensVariant = await itemVariant(client, config, {
+      tenant: TENANT,
+      typeId: LENS,
+      unitVolume: VOL,
+    })
+    const fuelItemVariant = await itemVariant(client, config, {
+      tenant: TENANT,
+      typeId: FUEL,
+      unitVolume: VOL,
+    })
+
     // Merchant stocks one lens.
     const stockTx = new Transaction()
     addSponsors(stockTx, config, [signer])
@@ -208,9 +222,8 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       stockTx.object(merchantCapId),
     )
     gameItemToChain(stockTx, config, tradingPost, stockRequest, {
-      typeId: LENS,
+      variant: lensVariant,
       quantity: 1n,
-      volume: VOL,
     })
     completeRequest(stockTx, config, tradingPost, stockRequest)
     await expectSuccess(client, stockTx)
@@ -225,9 +238,8 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       const bridgeRequest = interact(fuelTx, config, ship, 'bridge_in')
       verifyOwner(fuelTx, config, ship, bridgeRequest, fuelTx.object(capId))
       gameItemToChain(fuelTx, config, ship, bridgeRequest, {
-        typeId: FUEL,
+        variant: fuelItemVariant,
         quantity: 1n,
-        volume: VOL,
       })
       completeRequest(fuelTx, config, ship, bridgeRequest)
     }
@@ -244,7 +256,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     const withdrawRequest = interact(tx, config, ship, 'withdraw')
     verifyOwner(tx, config, ship, withdrawRequest, tx.object(capId))
     const fuel = withdraw(tx, config, ship, withdrawRequest, {
-      typeId: FUEL,
+      key: itemKey(FUEL),
       quantity: 1n,
     })
     completeRequest(tx, config, ship, withdrawRequest)
@@ -260,7 +272,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     const swapRequest = interact(tx, config, tradingStructure, 'swap')
     deposit(tx, config, tradingStructure, swapRequest, fuel)
     const lens = withdraw(tx, config, tradingStructure, swapRequest, {
-      typeId: LENS,
+      key: itemKey(LENS),
       quantity: 1n,
     })
     completeRequest(tx, config, tradingStructure, swapRequest)
@@ -319,7 +331,11 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     await expectSuccess(client, tx, pilot)
 
     const itemBalance = (entity: string, typeId: bigint) =>
-      readBalance(client, config, { entity, componentId: MODULE_ID, typeId })
+      readBalance(client, config, {
+        entity,
+        componentId: MODULE_ID,
+        key: itemKey(typeId),
+      })
 
     expect(await itemBalance(tradingPostId, FUEL)).toBe(1n)
     expect(await itemBalance(tradingPostId, LENS)).toBe(0n)

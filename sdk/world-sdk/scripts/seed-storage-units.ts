@@ -6,7 +6,8 @@ import { loadScriptContext } from './context.js'
 import { loadSeedFiles } from './seed-files.js'
 
 const UNIT_NAME = 'SU'
-const CAPACITY = 1000n
+/** Volume cap in nano-m³: 1,000 m³. */
+const CAPACITY = 1_000n * 1_000_000_000n
 
 const { repoRoot, config, client, keypair } = loadScriptContext()
 const { resources, accounts } = loadSeedFiles(repoRoot)

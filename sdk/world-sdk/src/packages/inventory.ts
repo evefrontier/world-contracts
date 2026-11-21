@@ -10,6 +10,7 @@ import {
   entityNew,
   shareEntity,
   verifyAdmin,
+  verifyOwner,
   verifySponsor,
 } from './core.js'
 import {
@@ -20,6 +21,7 @@ import {
   migrateWith,
   modulePowerArguments,
 } from './power.js'
+import { type VariantKeyInput, variantKey } from './variant.js'
 
 const INVENTORY_PACKAGE = 'inventory'
 
@@ -192,11 +194,11 @@ export function createStorageUnit(
 
 export interface BalanceOfArgs {
   componentId: bigint
-  typeId: bigint
+  key: VariantKeyInput
 }
 
 /**
- * Read the balance of `typeId` in the entity's inventory. Read-only; run under
+ * Read the balance of variant `key` (base units) in the entity's inventory. Read-only; run under
  * `simulateTransaction` and decode the returned `u64`.
  */
 export function balanceOf(
@@ -210,18 +212,19 @@ export function balanceOf(
     arguments: [
       entity,
       tx.pure.u64(args.componentId),
-      tx.pure.u64(args.typeId),
+      variantKey(tx, config, args.key),
     ],
   })
 }
 
 export interface BridgeInArgs {
-  typeId: bigint
+  /** The frozen `Variant` record's object ID (see `deriveVariantId`). */
+  variant: string | TransactionArgument
+  /** Base units: items, or 1e-9 kg (whole 0.0001 kg) for mass. */
   quantity: bigint
-  volume: bigint
 }
 
-/** Game-to-chain bridge: mint a balance. Then checks the sponsor and the inventory's grant. */
+/** Game-to-chain bridge: mint a balance of the variant. The variant must be in the entity's tenant. Then checks the sponsor and the inventory's grant. */
 export function gameItemToChain(
   tx: Transaction,
   config: WorldConfig,
@@ -234,9 +237,8 @@ export function gameItemToChain(
     arguments: [
       entity,
       request,
-      tx.pure.u64(args.typeId),
+      typeof args.variant === 'string' ? tx.object(args.variant) : args.variant,
       tx.pure.u64(args.quantity),
-      tx.pure.u64(args.volume),
     ],
   })
   verifySponsor(tx, config, request)
@@ -244,7 +246,8 @@ export function gameItemToChain(
 }
 
 export interface ItemAmount {
-  typeId: bigint
+  key: VariantKeyInput
+  /** Base units: items, or 1e-9 kg (whole 0.0001 kg) for mass. */
   quantity: bigint
 }
 
@@ -261,7 +264,7 @@ export function chainItemToGame(
     arguments: [
       entity,
       request,
-      tx.pure.u64(args.typeId),
+      variantKey(tx, config, args.key),
       tx.pure.u64(args.quantity),
     ],
   })
@@ -303,10 +306,47 @@ export function withdraw(
     arguments: [
       entity,
       request,
-      tx.pure.u64(args.typeId),
+      variantKey(tx, config, args.key),
       tx.pure.u64(args.quantity),
     ],
   })
   assertOnline(tx, config, entity, request)
   return item
+}
+
+export interface DepositFuelItemArgs {
+  fuelBayId: bigint
+  /** A fuel `Item` withdrawn in this transaction. */
+  item: TransactionArgument
+  /** The item's frozen `Variant` record (see `deriveVariantId`). */
+  variant: string | TransactionArgument
+}
+
+/**
+ * Burn a fuel `Item` into a fuel bay of the entity. The item must come from this
+ * entity or one docked at it, and be `variant`. The next requirement must be the
+ * grid's `DepositFuel`; the owner's `ownerCap` authorizes it, and the gas sponsor
+ * must be on `AdminACL`.
+ */
+export function depositFuelItem(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+  request: TransactionArgument,
+  ownerCap: string | TransactionArgument,
+  args: DepositFuelItemArgs,
+): void {
+  tx.moveCall({
+    target: `${pkg(config)}::inventory::deposit_fuel_item`,
+    arguments: [
+      entity,
+      request,
+      tx.pure.u64(args.fuelBayId),
+      args.item,
+      typeof args.variant === 'string' ? tx.object(args.variant) : args.variant,
+      tx.object.clock(),
+    ],
+  })
+  verifyOwner(tx, config, entity, request, ownerCap)
+  verifySponsor(tx, config, request)
 }
