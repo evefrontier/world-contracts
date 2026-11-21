@@ -66,7 +66,8 @@ fun flags(scenario: &mut ts::Scenario, entity_id: ID): (bool, bool, bool, bool, 
 
 // === Shut down ===
 
-/// Shut down clears every intent and takes every source offline; the grid stays on.
+/// Shut down clears every module's intent and takes every source offline; the
+/// grid stays on, and so does the owner's Power On.
 #[test]
 fun shut_down_clears_intent_and_takes_sources_offline() {
     let mut scenario = ts::begin(admin());
@@ -82,6 +83,10 @@ fun shut_down_clears_intent_and_takes_sources_offline() {
         entity_id,
     );
     assert!(on && !generator_online && !bay_online && !mod_desired && !mod_b_desired);
+    ts::next_tx(&mut scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    assert!(power_grid::power_grid(&entity).desired_on());
+    ts::return_shared(entity);
     let (left_now, _, _, _) = projected(&mut scenario, entity_id, &clock);
     clock.set_for_testing(1_000_000);
     let (fuel_left, capacity, used, online) = projected(&mut scenario, entity_id, &clock);

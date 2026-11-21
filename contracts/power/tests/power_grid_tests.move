@@ -74,6 +74,15 @@ fun uninstall_grid(scenario: &mut ts::Scenario, entity_id: ID) {
     ts::return_shared(entity);
 }
 
+/// The owner's intent on the installed grid.
+fun desired_on(scenario: &mut ts::Scenario, entity_id: ID): bool {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let desired_on = power_grid::power_grid(&entity).desired_on();
+    ts::return_shared(entity);
+    desired_on
+}
+
 /// `(on, settled fuel in online bays, capacity_mw)` of the installed grid.
 fun grid_flags(scenario: &mut ts::Scenario, entity_id: ID): (bool, u64, u64) {
     ts::next_tx(scenario, owner());
@@ -161,12 +170,13 @@ fun power_on_then_off() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_grid(&mut scenario, &clock);
 
+    assert!(!desired_on(&mut scenario, entity_id));
     power(&mut scenario, entity_id, true, &clock);
     let (on, _, _) = grid_flags(&mut scenario, entity_id);
-    assert!(on);
+    assert!(on && desired_on(&mut scenario, entity_id));
     power(&mut scenario, entity_id, false, &clock);
     let (on, _, _) = grid_flags(&mut scenario, entity_id);
-    assert!(!on);
+    assert!(!on && !desired_on(&mut scenario, entity_id));
 
     clock.destroy_for_testing();
     scenario.end();

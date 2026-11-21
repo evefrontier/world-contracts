@@ -70,7 +70,10 @@ A trip happens on an owner action that no longer fits (`regrant`) or when a
 pool runs dry (the run-out step in `project`). It stays until the owner calls
 `set_power_grid(true)`; refuelling never resets it.
 Desired state survives a trip and Power Off, so Power On brings back every
-module set to run.
+module set to run. The owner's Power On/Off is kept apart from `on` as
+`desired_on`: a trip turns `on` off and leaves `desired_on` on, so a reader can
+tell a tripped grid from one the owner switched off. Power Off on a tripped
+grid only clears `desired_on`.
 
 Nothing is written when fuel runs out. Stored state can be out of date; every
 view projects it to the current time, trip included. `settle` stores a trip a

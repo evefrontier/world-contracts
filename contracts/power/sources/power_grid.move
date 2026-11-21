@@ -88,6 +88,10 @@ public struct PowerGrid has store {
     /// Power On/Off as of `last_settled_ms`, not live: a trip since then shows only
     /// after the next settle. See `projected_on` for now.
     on_at_last_settled: bool,
+    /// The owner's last Power On/Off. Only `set_power_grid` changes it: a trip
+    /// turns the grid off and leaves this On, so it tells a tripped grid from one
+    /// the owner switched off.
+    desired_on: bool,
     /// Timestamp the bays' fuel was last settled at.
     last_settled_ms: u64,
     /// Connected modules by component id.
@@ -326,6 +330,7 @@ public fun install(entity: &mut Entity, clock: &Clock, ctx: &mut TxContext): Req
     let entity_id = entity.id();
     let grid = PowerGrid {
         on_at_last_settled: false,
+        desired_on: false,
         last_settled_ms: clock.timestamp_ms(),
         modules: vec_map::empty(),
         generators: vec_map::empty(),
@@ -364,16 +369,19 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     req
 }
 
-/// Switch the grid on or off. Settles at the old state first, so a trip since
-/// the last settle counts as off, then regrants. Needs a Shell aboard.
+/// Switch the grid on or off, and record it as the owner's intent. Settles at the
+/// old state first, so a trip since the last settle counts as off, then
+/// regrants. Power Off on a tripped grid only clears the intent. Needs a Shell
+/// aboard.
 public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, clock: &Clock) {
     assert_shell(entity);
     let entity_id = entity.id();
     let (_requirement, mut frame, grid) = take_grid(entity, req, operate_grid_permit());
     grid.settle(clock);
     if (on) assert!(!grid.on_at_last_settled, EAlreadyOn)
-    else assert!(grid.on_at_last_settled, EAlreadyOff);
+    else assert!(grid.on_at_last_settled || grid.desired_on, EAlreadyOff);
     grid.on_at_last_settled = on;
+    grid.desired_on = on;
     event::emit(PowerToggled { entity_id, on });
     grid.regrant(entity_id);
     frame.require(access_cap::owner_requirement());
@@ -384,7 +392,7 @@ public fun set_power_grid(entity: &mut Entity, req: &mut Request, on: bool, cloc
 /// state, and take every generator and bay offline, so fuel stops burning and
 /// the next Shell finds everything off. `GridShutDown` stands for all of it: no
 /// `GeneratorToggled` or `FuelBayToggled` follows, and capacity is 0 after.
-/// `on` is unchanged. The service calls it in the same transaction as the
+/// `on` and `desired_on` are unchanged. The service calls it in the same transaction as the
 /// Layout edit that removes the Shell. Nothing can be switched again until a
 /// Shell is aboard. The request needs a `shut_down_requirement`, and the frame
 /// then requires the admin.
@@ -785,6 +793,11 @@ public fun component_id(): u64 {
 /// `projected_on` for now.
 public fun on_at_last_settled(grid: &PowerGrid): bool {
     grid.on_at_last_settled
+}
+
+/// The owner's last Power On/Off; a trip leaves it On.
+public fun desired_on(grid: &PowerGrid): bool {
+    grid.desired_on
 }
 
 /// Power limit as of the last settle, not live: the sum of `output_mw` over the

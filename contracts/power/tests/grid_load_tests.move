@@ -558,9 +558,37 @@ fun power_on_after_unsettled_trip_does_not_abort() {
     scenario.end();
 }
 
-/// Power Off after an unsettled trip aborts: settling shows the grid is already off.
-#[test, expected_failure(abort_code = power_grid::EAlreadyOff)]
-fun power_off_after_unsettled_trip_aborts() {
+/// A trip turns the grid off and leaves the owner's intent On, settled or not.
+/// Power Off then only clears the intent; it doesn't abort `EAlreadyOff`.
+#[test]
+fun trip_keeps_the_intent_until_power_off() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    assert!(power_grid_desired_on(&mut scenario, entity_id));
+
+    clock.set_for_testing(DEPLETING_MS);
+    assert!(!projected_on(&mut scenario, entity_id, &clock));
+    assert!(power_grid_desired_on(&mut scenario, entity_id));
+
+    catch_up(&mut scenario, entity_id, MOD_A, &clock);
+    assert!(!power_grid_on(&mut scenario, entity_id));
+    assert!(power_grid_desired_on(&mut scenario, entity_id));
+
+    power(&mut scenario, entity_id, false, &clock);
+    assert!(!power_grid_on(&mut scenario, entity_id));
+    assert!(!power_grid_desired_on(&mut scenario, entity_id));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Power Off on an unsettled trip settles first, then only clears the intent.
+#[test]
+fun power_off_after_unsettled_trip_clears_the_intent() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -569,6 +597,26 @@ fun power_off_after_unsettled_trip_aborts() {
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
 
     clock.set_for_testing(DEPLETING_MS);
+    power(&mut scenario, entity_id, false, &clock);
+    assert!(!power_grid_on(&mut scenario, entity_id));
+    assert!(!power_grid_desired_on(&mut scenario, entity_id));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Power Off once the intent is cleared aborts: nothing is left to switch off.
+#[test, expected_failure(abort_code = power_grid::EAlreadyOff)]
+fun power_off_twice_after_a_trip_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = powered(&mut scenario, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+
+    clock.set_for_testing(DEPLETING_MS);
+    power(&mut scenario, entity_id, false, &clock);
     power(&mut scenario, entity_id, false, &clock);
 
     abort
@@ -632,6 +680,24 @@ fun online_check_aborts_after_fuel_runs_out() {
     );
 
     abort
+}
+
+/// The owner's intent, as stored.
+fun power_grid_desired_on(scenario: &mut ts::Scenario, entity_id: ID): bool {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let desired_on = power_grid::power_grid(&entity).desired_on();
+    ts::return_shared(entity);
+    desired_on
+}
+
+/// Whether the grid is on now, a trip since the last settle included.
+fun projected_on(scenario: &mut ts::Scenario, entity_id: ID, clock: &Clock): bool {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let on = power_grid::projected_on(&entity, clock);
+    ts::return_shared(entity);
+    on
 }
 
 /// Whether the grid is on, as stored.
