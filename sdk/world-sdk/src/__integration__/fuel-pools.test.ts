@@ -130,6 +130,7 @@ describe('fuel pools (localnet)', () => {
       impulse: FUEL.impulse,
       thermalInefficiency: FUEL.thermalInefficiency,
       runOutMs: null,
+      burnRate: 0n,
     })
     expect(full.get(CRUDE)?.quantity).toBe(UNITS * POWER_SCALE)
 

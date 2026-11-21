@@ -838,8 +838,8 @@ export interface FuelAmount {
 }
 
 /**
- * Every pool now, by fuel type, with run-out times if grants hold. Decode the
- * result with `parseProjectedPools`.
+ * Every pool now, by fuel type, with run-out times if grants hold and burn
+ * rates now. Decode the result with `parseProjectedPools`.
  */
 export function projectedPools(
   tx: Transaction,
@@ -859,15 +859,21 @@ const PoolsBcs = bcs.struct('VecMap', {
       value: bcs.struct('PoolView', {
         fuel: FuelBcs,
         run_out_ms: bcs.option(bcs.u64()),
+        burn_rate: bcs.u64(),
       }),
     }),
   ),
 })
 
-/** One fuel type's pool now. `runOutMs` is `null` while nothing burns it. */
+/**
+ * One fuel type's pool now. `runOutMs` is `null` while nothing burns it.
+ * `burnRate` is the fuel burned per second now, at the scale of the fuel
+ * quantity: 0 while nothing burns it, constant until the earliest `runOutMs`.
+ */
 export interface ProjectedPool extends FuelAmount {
   poolFuelType: bigint
   runOutMs: bigint | null
+  burnRate: bigint
 }
 
 /** Decode the BCS return value of `projectedPools`. */
@@ -876,6 +882,7 @@ export function parseProjectedPools(bytes: Uint8Array): ProjectedPool[] {
     ...fuelAmount(value.fuel),
     poolFuelType: BigInt(key),
     runOutMs: value.run_out_ms == null ? null : BigInt(value.run_out_ms),
+    burnRate: BigInt(value.burn_rate),
   }))
 }
 

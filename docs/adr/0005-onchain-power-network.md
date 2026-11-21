@@ -202,7 +202,9 @@ public struct GeneratorState has copy, drop, store {
 There is no run-out event on chain; off chain services computes run-out from the views.
 
 - `projected_fuel`, `projected_bays`: fuel now, in total and per bay.
-- `projected_pools`: each pool now, by type, with its run-out time if grants hold.
+- `projected_pools`: each pool now, by type, with its run-out time if grants hold
+  and its burn rate now. Every rate is constant until the earliest run-out, so a
+  client can drain a gauge between reads without reading again.
 - `projected_module_states`: every module now, draws projected.
 - `projected_status`: power limit, `used_mw`, online module ids.
 - `module_state`: one module as of the last settle.

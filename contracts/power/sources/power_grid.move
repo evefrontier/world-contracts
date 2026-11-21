@@ -72,6 +72,8 @@ const NAME: vector<u8> = b"power_grid";
 const MAX_CONNECTED: u64 = 100;
 /// Cap on installed generators.
 const MAX_GENERATORS: u64 = 100;
+/// The span a `PoolView.burn_rate` covers.
+const MS_PER_SECOND: u64 = 1_000;
 /// Cap on fuel bays fitted plus stashed on one grid. Uninstalling or refitting a
 /// bay keeps the total, so only a new bay or an arriving stash can hit it.
 const MAX_FUEL_BAYS: u64 = 100;
@@ -202,12 +204,16 @@ public struct FuelSums has copy, drop {
     thermal_inefficiency: u128,
 }
 
-/// One fuel type's pool as `projected_pools` reads it: its fuel now, and when it
-/// runs dry if grants hold, stepping through the other pools' run-outs.
-/// `run_out_ms` is `None` while nothing burns it.
+/// One fuel type's pool as `projected_pools` reads it: its fuel now, when it
+/// runs dry if grants hold, stepping through the other pools' run-outs, and how
+/// fast it burns now. `run_out_ms` is `None` while nothing burns it.
 public struct PoolView has copy, drop, store {
     fuel: Fuel,
     run_out_ms: Option<u64>,
+    /// Fuel burned per second now, at the scale of `fuel.quantity`, rounded up
+    /// like the burn itself. 0 while nothing burns it. Holds until the earliest
+    /// `run_out_ms` of any pool, when every rate changes.
+    burn_rate: u64,
 }
 
 /// Marker for the owner's grid operations: `set_power_grid`, `set_generator`,
@@ -580,12 +586,13 @@ public fun effective_capacity_mw(grid: &PowerGrid): u64 {
 }
 
 /// Every pool now, by fuel type: the types held in online bays and those
-/// online Generators burn. Each with its fuel and its run-out time if grants
-/// hold.
+/// online Generators burn. Each with its fuel, its run-out time if grants
+/// hold, and its burn rate now.
 public fun projected_pools(entity: &Entity, clock: &Clock): VecMap<u64, PoolView> {
     let grid = power_grid(entity);
     let now_ms = clock.timestamp_ms();
     let (bays, on, capacity, draws) = grid.project(now_ms);
+    let burn_rates = grid.burn_rates(&bays, capacity, &draws);
     let (_, _, _, _, run_outs) = grid.step(
         bays,
         on,
@@ -606,7 +613,11 @@ public fun projected_pools(entity: &Entity, clock: &Clock): VecMap<u64, PoolView
     let mut pools = vec_map::empty();
     types.do!(|t| {
         let run_out_ms = if (run_outs.contains(&t)) option::some(run_outs[&t]) else option::none();
-        pools.insert(t, PoolView { fuel: blend_bays(&bays, option::some(t)), run_out_ms });
+        let burn_rate = if (burn_rates.contains(&t)) burn_rates[&t] else 0;
+        pools.insert(
+            t,
+            PoolView { fuel: blend_bays(&bays, option::some(t)), run_out_ms, burn_rate },
+        );
     });
     pools
 }
@@ -875,6 +886,11 @@ public fun pool_view_fuel(view: &PoolView): Fuel {
 /// When the pool runs dry if grants hold; `None` while nothing burns it.
 public fun run_out_ms(view: &PoolView): Option<u64> {
     view.run_out_ms
+}
+
+/// Fuel the pool burns per second now, at the scale of its fuel quantity.
+public fun burn_rate(view: &PoolView): u64 {
+    view.burn_rate
 }
 
 public fun max_output_mw(state: &GeneratorState): u64 {
@@ -1523,6 +1539,28 @@ fun step(
         draws = grid.draws_at(capacity);
     };
     (bays, on, capacity, draws, run_outs)
+}
+
+/// Fuel each burning pool burns per second with `bays`, `capacity` and
+/// `draws` as `project` returns them, by fuel type: `rate_burn` over one
+/// second, so it rounds up like a settle does. Pools that don't burn are left
+/// out.
+fun burn_rates(
+    grid: &PowerGrid,
+    bays: &VecMap<u64, FuelBayState>,
+    capacity: u64,
+    draws: &vector<u64>,
+): VecMap<u64, u64> {
+    let mut rates = vec_map::empty();
+    let mut used = 0;
+    draws.do_ref!(|draw| used = used + *draw);
+    let load = used.min(capacity);
+    if (load == 0) return rates;
+    grid.pool_rates(&pools_of(bays)).do_ref!(|rate| {
+        let burn = rate_burn(rate, capacity, load, MS_PER_SECOND);
+        rates.insert(rate.fuel_type, burn.min(std::u64::max_value!() as u128) as u64);
+    });
+    rates
 }
 
 /// Burn inputs of each pool that has a supplying Generator, given `pools`.
