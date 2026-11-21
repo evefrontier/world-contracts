@@ -122,10 +122,16 @@ tx that starts an action must finish it. Constructors are `public(package)`; onl
 mints/consumes an entity `Request`. Other modules use `new_for<T>` / `complete_for<T>` (below).
 
 ```move
-public struct Request { entity_id: Option<ID>, requires: vector<Requirement> }
+public struct Request {
+    entity_id: Option<ID>,
+    authorized_id: Option<ID>,
+    issuer: Option<TypeName>, // set by `new_for<T>`; `none` for entity requests
+    requires: vector<Requirement>,
+}
 public(package) fun new(...): Request { ... }
 public(package) fun complete(request: Request) {
-    let Request { requires, .. } = request;
+    let Request { issuer, requires, .. } = request;
+    assert!(issuer.is_none(), EWrongIssuer);
     assert!(requires.length() == 0, ERequestNotComplete);
 }
 ```

@@ -220,7 +220,9 @@ const VOLATILITY: u32 = 211;
 ```
 
 The fuel type is `key.type_id`. Amounts go from 1e9 to the grid's `SCALE` by
-dividing by 10⁵. Zero impulse, a missing fuel property or `Units` kind aborts.
+dividing by 10^5, which drops anything below 0.0001 kg; how the chain keeps `Mass`
+amounts on that step is decided in the inventory PR. Zero impulse, a missing fuel
+property or `Units` kind aborts.
 
 A bay keeps only the fuel type and four blended stats at `SCALE`, not a variant.
 A siphon emits those values (as `FuelSiphoned` does today); the service asks the
