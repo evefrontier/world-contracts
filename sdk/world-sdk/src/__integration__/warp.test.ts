@@ -23,9 +23,11 @@ import {
   withdrawFuel,
   withdrawFuelRequirement,
 } from '../packages/power.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectAbort,
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   seatShell,
@@ -75,6 +77,13 @@ describe('warp fuel (localnet)', () => {
       owner: signer,
       transferable: true,
     })
+    const variant = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: 1n,
+      impulse: 90n * POWER_SCALE,
+      containmentBurden: 14n * POWER_SCALE,
+      volatility: 1n * POWER_SCALE,
+    })
     const fuelTx = new Transaction()
     addSponsors(fuelTx, config, [signer])
     const entity = fuelTx.object(entityId)
@@ -82,11 +91,8 @@ describe('warp fuel (localnet)', () => {
     const fuel = interact(fuelTx, config, entity, 'deposit_fuel')
     depositFuel(fuelTx, config, entity, fuel, cap, {
       fuelBayId: BAY_ID,
-      fuelType: 1n,
-      amount: UNITS,
-      impulse: 90n * POWER_SCALE,
-      containmentBurden: 14n * POWER_SCALE,
-      volatility: 1n * POWER_SCALE,
+      variant,
+      amount: UNITS * MASS_UNIT,
     })
     completeRequest(fuelTx, config, entity, fuel)
     const bay = interact(fuelTx, config, entity, 'set_fuel_bay')

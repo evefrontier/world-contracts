@@ -31,6 +31,7 @@ use power::{
         impulse,
         install_fuel,
         install_module,
+        kg,
         owner,
         power_up,
         projected,
@@ -51,6 +52,7 @@ use power::{
     power_grid
 };
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
+use variant::variant::Variant;
 
 const FUEL_B: u64 = 9_002;
 const MOD_A: u64 = 401;
@@ -105,8 +107,8 @@ fun gated_deposit(scenario: &mut ts::Scenario, clock: &Clock): ID {
             vector[fuel_type(), OTHER_TYPE],
             option::some(500_000),
             option::some(150_000),
-            option::some(10),
-            option::some(1_000),
+            option::some(10 * kg()),
+            option::some(1_000 * kg()),
         ),
     );
     entity_id
@@ -694,7 +696,7 @@ fun deposit_blends_by_weighted_average() {
     let (_, bay, _, amount, resulting, impulse, burden, volatility, _) = added[
         0,
     ].fuel_added_fields();
-    assert!(bay == fuel_bay_id() && amount == starting_units());
+    assert!(bay == fuel_bay_id() && amount == starting_units() * kg());
     assert!(resulting == 2 * starting_fuel());
     assert!(impulse == 500_000 && burden == 90_000 && volatility == 40_000);
     assert!(settled_fuel(&mut scenario, entity_id) == 2 * starting_fuel());
@@ -1081,7 +1083,7 @@ fun admin_deposit_loads_fuel_without_owner() {
     let added = event::events_by_type<FuelAdded>();
     assert!(added.length() == 1);
     let (_, bay, added_type, amount, resulting, _, _, _, _) = added[0].fuel_added_fields();
-    assert!(bay == fuel_bay_id() && added_type == fuel_type() && amount == 7);
+    assert!(bay == fuel_bay_id() && added_type == fuel_type() && amount == 7 * kg());
     assert!(resulting == starting_fuel() + 7 * power_grid::scale());
     assert!(settled_fuel(&mut scenario, entity_id) == resulting);
 
@@ -1417,23 +1419,23 @@ fun deposit_by_non_owner_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], &clock);
 
-    grid_scenario::as_stranger!(
+    let variant_id = grid_scenario::fuel_variant(
         &mut scenario,
-        entity_id,
-        grid_scenario::deposit_action_name(),
-        |entity, req| grid_fuel::deposit_fuel(
-            entity,
-            req,
-            fuel_bay_id(),
-            fuel_type(),
-            100,
-            impulse(),
-            burden(),
-            volatility(),
-            thermal(),
-            &clock,
-        ),
+        fuel_type(),
+        impulse(),
+        burden(),
+        volatility(),
+        thermal(),
     );
+    ts::next_tx(&mut scenario, grid_scenario::stranger());
+    let mut entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let fuel = ts::take_immutable_by_id<Variant>(&scenario, variant_id);
+    let mut req = entity.interact(
+        std::string::utf8(grid_scenario::deposit_action_name()),
+        scenario.ctx(),
+    );
+    grid_fuel::deposit_fuel(&mut entity, &mut req, fuel_bay_id(), &fuel, 100 * kg(), &clock);
+    entity.complete_request(req);
 
     abort
 }

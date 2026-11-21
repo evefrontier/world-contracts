@@ -31,9 +31,11 @@ import {
   setGenerator,
   setPowerGrid,
 } from '../packages/power.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectAbort,
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   seatShell,
@@ -114,6 +116,13 @@ describe('power sharing (localnet)', () => {
       owner: signer,
       transferable: true,
     })
+    const variant = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: 1n,
+      impulse: 90n * POWER_SCALE,
+      containmentBurden: 14n * POWER_SCALE,
+      volatility: 1n * POWER_SCALE,
+    })
 
     // Plenty of fuel, bay and generator online, grid on.
     const onTx = new Transaction()
@@ -123,11 +132,8 @@ describe('power sharing (localnet)', () => {
     const fuel = interact(onTx, config, entity, 'deposit_fuel')
     depositFuel(onTx, config, entity, fuel, cap, {
       fuelBayId: BAY_ID,
-      fuelType: 1n,
-      amount: 9_000n,
-      impulse: 90n * POWER_SCALE,
-      containmentBurden: 14n * POWER_SCALE,
-      volatility: 1n * POWER_SCALE,
+      variant,
+      amount: 9_000n * MASS_UNIT,
     })
     completeRequest(onTx, config, entity, fuel)
     const bay = interact(onTx, config, entity, 'set_fuel_bay')

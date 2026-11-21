@@ -172,6 +172,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       client,
       config,
       tradingPostId,
+      TENANT,
       merchantCapId,
       MODULE_ID,
     )
@@ -179,6 +180,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       client,
       config,
       shipId,
+      TENANT,
       shipCapId,
       MODULE_ID,
       pilot,
@@ -187,6 +189,7 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       client,
       config,
       otherShipId,
+      TENANT,
       otherShipCapId,
       MODULE_ID,
       pilot,

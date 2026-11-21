@@ -85,5 +85,11 @@ deps = { core = "core", std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.power]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "943D7AC2657F8A150D2E97E859B7791C78AD19CF1DE77290CC0B915D862A90E0"
-deps = { core = "core", creation = "creation", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "3891B93818F06BC40238AFD275C2A1E49D275B93C97618D6B52FE9354A557C83"
+deps = { core = "core", creation = "creation", std = "MoveStdlib", sui = "Sui", variant = "variant" }
+
+[pinned.testnet.variant]
+source = { local = "../variant" }
+use_environment = "testnet"
+manifest_digest = "D59946E78C59818FEAB3920FB1CFE46E6601B41BBE737CC3E0BBE15760D89BCB"
+deps = { core = "core", std = "MoveStdlib", sui = "Sui" }

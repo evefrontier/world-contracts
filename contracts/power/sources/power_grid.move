@@ -305,7 +305,7 @@ public struct GeneratorRequirement has drop {
 }
 
 /// The owner's rules for which fuel `deposit_fuel` accepts. Empty `fuel_types`
-/// or `None` skips a check. Stats at `SCALE`, amounts plain.
+/// or `None` skips a check. Stats at `SCALE`, amounts in base units (1e-9 kg).
 public struct FuelRequirement has drop {
     /// Allowed fuel type ids; empty allows any.
     fuel_types: vector<u64>,
