@@ -2055,3 +2055,138 @@ fun bridge_in_mass_variant_sizes_per_kg() {
 
     scenario.end();
 }
+
+// === deposit_fuel_item ===
+
+/// The fuel `power_inventory` loads: type 7, impulse 90, burden 14, volatility 5.
+fun default_fuel(scenario: &mut ts::Scenario): ID {
+    grid_scenario::fuel_variant(scenario, 7, 900_000, 140_000, 50_000, 0)
+}
+
+/// A powered storage unit with a fuel bay, holding `kgs` kg of the default fuel.
+fun fuelled_unit(scenario: &mut ts::Scenario, kgs: u64): ID {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let e = build_entity_with_inventory(scenario, &mut registry, &acl, 1, OWNER, 1_000_000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(scenario, e_id, OWNER);
+    power_inventory(scenario, e_id, OWNER);
+    let fuel = default_fuel(scenario);
+    bridge_in_record(scenario, e_id, OWNER, b"bridge_in", fuel, kgs * grid_scenario::kg());
+    e_id
+}
+
+/// In one sponsored owner transaction: withdraw `qty` (base units) of `stock`, then burn it
+/// into the fuel bay naming `record` as its variant. `sponsored` false skips the
+/// game service as gas sponsor.
+fun burn_fuel(
+    scenario: &mut ts::Scenario,
+    e_id: ID,
+    stock: ID,
+    record: ID,
+    qty: u64,
+    sponsored: bool,
+) {
+    ensure_admin_sponsors(scenario);
+    if (sponsored) next_tx_owner_signs_admin_pays(scenario, OWNER)
+    else {
+        // A fresh context: a plain `next_tx` keeps the previous sponsor.
+        let epoch = scenario.ctx().epoch();
+        let timestamp = scenario.ctx().epoch_timestamp_ms();
+        let rgp = scenario.ctx().reference_gas_price();
+        let builder = ts::ctx_builder_from_sender(OWNER)
+            .set_epoch(epoch)
+            .set_epoch_timestamp(timestamp)
+            .set_reference_gas_price(rgp);
+        ts::next_with_context(scenario, builder);
+    };
+    let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let acl = take_acl(scenario);
+    let held = ts::take_immutable_by_id<Variant>(scenario, stock);
+    // The same frozen record can be taken only once per transaction.
+    let other = if (record != stock)
+        option::some(ts::take_immutable_by_id<Variant>(scenario, record)) else option::none();
+    let named = other.borrow_with_default(&held);
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let mut req = e.interact(string::utf8(b"withdraw"), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    let item = inventory::withdraw(&mut e, &mut req, held.key(), qty, scenario.ctx());
+    grid_load::assert_online(&mut e, &mut req, &clock);
+    e.complete_request(req);
+
+    let mut req = e.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
+    inventory::deposit_fuel_item(&mut e, &mut req, FUEL_BAY_ID, item, named, &clock);
+    e.verify_owner(&mut req, &cap);
+    admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    clock.destroy_for_testing();
+    other.do!(|record| ts::return_immutable(record));
+    ts::return_immutable(held);
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(acl);
+    ts::return_shared(e);
+}
+
+#[test]
+fun deposit_fuel_item_burns_item_into_bay() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+
+    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), true);
+
+    let deposited = event::events_by_type<inventory::FuelItemDeposited>();
+    assert!(deposited.length() == 1);
+    let (_, key, quantity, entity_id, fuel_bay_id) = deposited[0].fuel_item_deposited_fields();
+    assert!(key.type_id() == 7 && quantity == 3 * grid_scenario::kg());
+    assert!(entity_id == e_id && fuel_bay_id == FUEL_BAY_ID);
+    let added = event::events_by_type<grid_fuel::FuelAdded>();
+    let (_, bay, fuel_type, amount, _, _, _, _, _) = added[0].fuel_added_fields();
+    assert!(bay == FUEL_BAY_ID && fuel_type == 7 && amount == 3 * grid_scenario::kg());
+
+    ts::next_tx(&mut scenario, OWNER);
+    let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    assert!(inventory::balance_of(&e, MODULE_ID, key) == 2 * grid_scenario::kg());
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = inventory::EWrongVariant)]
+fun deposit_fuel_item_with_other_variant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    let other = grid_scenario::fuel_variant(&mut scenario, 7, 800_000, 140_000, 50_000, 0);
+    burn_fuel(&mut scenario, e_id, fuel, other, 3 * grid_scenario::kg(), true);
+    abort
+}
+
+#[test, expected_failure(abort_code = admin_service::EUnauthorizedSponsor)]
+fun deposit_fuel_item_without_sponsor_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), false);
+    abort
+}
+
+#[test, expected_failure(abort_code = power::fuel_properties::ENotMass)]
+fun deposit_fuel_item_of_counted_item_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 3, VOL);
+    let plain = variant_for(&mut scenario, tenant(), FUEL, VOL);
+    burn_fuel(&mut scenario, e_id, plain, plain, 3, true);
+    abort
+}

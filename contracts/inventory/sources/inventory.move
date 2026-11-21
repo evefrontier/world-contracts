@@ -21,7 +21,7 @@ use core::{
     requirement::{Self, Requirement}
 };
 use inventory::item::{Self, Item, ItemBag};
-use power::{grid_load, power_grid::{Self, DrawKind}};
+use power::{grid_fuel, grid_load, power_grid::{Self, DrawKind}};
 use std::{internal::Permit, string::String};
 use sui::{bcs, clock::Clock, event};
 use variant::variant::{Variant, VariantKey};
@@ -46,6 +46,8 @@ const EWrongTenant: vector<u8> = b"Inventory can only move between entities of t
 const EBatchLengthMismatch: vector<u8> = b"keys and quantities must be the same length";
 #[error(code = 8)]
 const EEmptyBatch: vector<u8> = b"Batch must not be empty";
+#[error(code = 9)]
+const EWrongVariant: vector<u8> = b"Item is not this variant";
 
 // === Constants ===
 
@@ -99,6 +101,16 @@ public struct InventoryUninstalled has copy, drop {
     used_before: u64,
     balance_count: u64,
     batch_count: u64,
+}
+
+/// A fuel `Item` was burned into fuel bay `fuel_bay_id` of `entity_id`. The service
+/// reports it to the game; `grid_fuel::FuelAdded` follows with the bay's values.
+public struct FuelItemDeposited has copy, drop {
+    item_id: ID,
+    key: VariantKey,
+    quantity: u64,
+    entity_id: ID,
+    fuel_bay_id: u64,
 }
 
 /// Inventory moved between entities with balances intact.
@@ -377,6 +389,28 @@ public fun withdraw_batch(
     items
 }
 
+/// Burn a fuel `Item` into fuel bay `fuel_bay_id` of the entity. Aborts unless the
+/// item comes from this entity or a docked one, is in this entity's tenant, and is
+/// `variant`. The fuel loads through `grid_fuel::deposit_fuel`: the next requirement
+/// must be the grid's `DepositFuel` (the owner's fuel rules apply), and it requires
+/// the owner and the sponsor, so fuel never enters a bay without the game service.
+public fun deposit_fuel_item(
+    entity: &mut Entity,
+    req: &mut Request,
+    fuel_bay_id: u64,
+    item: Item,
+    variant: &Variant,
+    clock: &Clock,
+) {
+    entity.assert_docked(item.source());
+    assert_tenant(entity, item.key());
+    assert!(item.key() == variant.key(), EWrongVariant);
+    let item_id = object::id(&item);
+    let (key, quantity) = item.burn_item();
+    grid_fuel::deposit_fuel(entity, req, fuel_bay_id, variant, quantity, clock);
+    event::emit(FuelItemDeposited { item_id, key, quantity, entity_id: entity.id(), fuel_bay_id });
+}
+
 /// Build a bridge-in requirement on component `component_id`.
 public fun bridge_in_requirement(
     component_id: u64,
@@ -560,6 +594,12 @@ public fun uninstalled_fields(e: &InventoryUninstalled): (ID, u64, u64, u64, u64
 
 #[test_only]
 public fun event_batch_size(): u64 { EVENT_BATCH_SIZE }
+
+/// `(item_id, key, quantity, entity_id, fuel_bay_id)`.
+#[test_only]
+public fun fuel_item_deposited_fields(e: &FuelItemDeposited): (ID, VariantKey, u64, ID, u64) {
+    (e.item_id, e.key, e.quantity, e.entity_id, e.fuel_bay_id)
+}
 
 #[test_only]
 public fun migrated_fields(e: &InventoryMigrated): (ID, ID, u64, u64, u64, u64) {
