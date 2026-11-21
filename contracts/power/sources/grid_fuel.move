@@ -111,9 +111,11 @@ public struct FuelWithdrawn has copy, drop {
     remaining: u64,
 }
 
-/// The admin siphoned `quantity` (at `SCALE`) out of one bay, with the bay's
-/// values at that moment. The service mints the siphoned stack from it.
+/// The admin siphoned `quantity` (base units, 1e-9 kg) out of one bay, with the
+/// bay's values (at `SCALE`) at that moment. The service asks the game which
+/// variant that fuel is and mints the stack from it in `tenant`.
 public struct FuelSiphoned has copy, drop {
+    tenant: String,
     entity_id: ID,
     fuel_bay_id: u64,
     fuel_type: u64,
@@ -299,7 +301,8 @@ public fun withdraw_fuel(
     req.enqueue(frame);
 }
 
-/// Siphon `quantity` (at `SCALE`) out of bay `fuel_bay_id`, online or not.
+/// Siphon `quantity` (base units, 1e-9 kg; whole 0.0001 kg) out of bay
+/// `fuel_bay_id`, online or not.
 /// Settles first, so burn counts before the check. Emits `FuelSiphoned` with
 /// the bay's values, from which the service mints the stack. The request needs
 /// a `siphon_requirement`, and the frame then requires the admin.
@@ -311,18 +314,21 @@ public fun siphon(
     clock: &Clock,
 ) {
     let entity_id = entity.id();
+    let tenant = entity.key().tenant();
+    let scaled = fuel_properties::amount_to_scale(quantity);
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,
         req,
         power_grid::siphon_permit(),
     );
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
-    assert!(quantity > 0, EZeroFuel);
+    assert!(scaled > 0, EZeroFuel);
     grid.settle(clock);
-    assert!(grid.bay_state(fuel_bay_id).fuel().quantity() >= quantity, EBayShort);
-    let taken = grid.take_from_bay(fuel_bay_id, quantity);
+    assert!(grid.bay_state(fuel_bay_id).fuel().quantity() >= scaled, EBayShort);
+    let taken = grid.take_from_bay(fuel_bay_id, scaled);
     grid.regrant(entity_id);
     event::emit(FuelSiphoned {
+        tenant,
         entity_id,
         fuel_bay_id,
         fuel_type: taken.fuel_type().destroy_some(),
@@ -686,6 +692,9 @@ public fun fuel_siphoned_fields(siphoned: &FuelSiphoned): (ID, u64, u64, u64, u6
         siphoned.thermal_inefficiency,
     )
 }
+
+#[test_only]
+public fun fuel_siphoned_tenant(siphoned: &FuelSiphoned): String { siphoned.tenant }
 
 /// `(entity_id, fuel_bay_id, fuel_type, amount, resulting_amount, resulting_impulse,
 /// resulting_containment_burden, resulting_volatility, resulting_thermal_inefficiency)`.

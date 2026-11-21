@@ -13,6 +13,7 @@ use core::{
 };
 use creation::layout;
 use power::{
+    fuel_properties,
     grid_fuel::{Self, FuelLoad},
     grid_generator,
     grid_load,
@@ -809,7 +810,7 @@ public fun enable_siphon(scenario: &mut ts::Scenario, entity_id: ID) {
     ts::return_shared(entity);
 }
 
-/// `sender` siphons `quantity` (at `SCALE`) out of bay `fuel_bay_id`.
+/// `sender` siphons `quantity` (given at `SCALE`, sent in base units) out of bay `fuel_bay_id`.
 public fun siphon(
     scenario: &mut ts::Scenario,
     sender: address,
@@ -822,7 +823,13 @@ public fun siphon(
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
     let mut req = entity.interact(string::utf8(SIPHON), scenario.ctx());
-    grid_fuel::siphon(&mut entity, &mut req, fuel_bay_id, quantity, clock);
+    grid_fuel::siphon(
+        &mut entity,
+        &mut req,
+        fuel_bay_id,
+        quantity * fuel_properties::to_scale(),
+        clock,
+    );
     close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);

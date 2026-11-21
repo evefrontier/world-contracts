@@ -668,8 +668,9 @@ export function withdrawFuel(
 }
 
 /**
- * Siphon `quantity` (at `POWER_SCALE`) out of bay `fuelBayId`, online or not.
- * The `FuelSiphoned` event carries the bay's values for minting the stack.
+ * Siphon `quantity` (base units, `MASS_UNIT` per kg; whole 0.0001 kg) out of bay
+ * `fuelBayId`, online or not. The `FuelSiphoned` event carries the tenant, the
+ * quantity in base units and the bay's values (at `POWER_SCALE`) for minting the stack.
  * Needs the `siphon` admin action (`siphonRequirement`). Admin-gated.
  */
 export function siphon(
