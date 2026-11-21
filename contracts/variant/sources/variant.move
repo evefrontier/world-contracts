@@ -258,3 +258,33 @@ public fun registered_key(event: &VariantRegistered): VariantKey { event.key }
 
 #[test_only]
 public fun registered_id(event: &VariantRegistered): ID { event.id }
+
+/// Register and freeze a variant without the admin check, for other packages'
+/// tests. Returns the record's ID.
+#[test_only]
+public fun register_for_testing(
+    registry: &mut VariantRegistry,
+    tenant: String,
+    type_id: u64,
+    variant_id: u64,
+    kind: QuantityKind,
+    unit_volume: u64,
+    property_ids: vector<u32>,
+    magnitudes: vector<u128>,
+    negatives: vector<bool>,
+): ID {
+    let (variant, request) = registry.register(
+        tenant,
+        type_id,
+        variant_id,
+        kind,
+        unit_volume,
+        property_ids,
+        magnitudes,
+        negatives,
+    );
+    request.destroy();
+    let id = variant.id.to_inner();
+    transfer::freeze_object(variant);
+    id
+}

@@ -40,9 +40,11 @@ import {
   type SectionModule,
   type SectionSpec,
 } from '../packages/sections.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectAbort,
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   signer,
@@ -293,6 +295,13 @@ async function seedFuel(
     owner: signer,
     transferable: false,
   })
+  const variant = await fuelVariant(client, config, {
+    tenant: TENANT,
+    fuelType: 1n,
+    impulse: IMPULSE,
+    containmentBurden: BURDEN,
+    volatility: VOLATILITY,
+  })
   const tx = new Transaction()
   addSponsors(tx, config, [signer])
   const entity = tx.object(entityId)
@@ -303,11 +312,8 @@ async function seedFuel(
     const request = interact(tx, config, entity, 'deposit_fuel')
     depositFuel(tx, config, entity, request, tx.object(capId), {
       fuelBayId,
-      fuelType: 1n,
-      amount,
-      impulse: IMPULSE,
-      containmentBurden: BURDEN,
-      volatility: VOLATILITY,
+      variant,
+      amount: amount * MASS_UNIT,
     })
     completeRequest(tx, config, entity, request)
   }

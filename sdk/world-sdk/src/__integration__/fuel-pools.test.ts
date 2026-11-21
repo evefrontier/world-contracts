@@ -26,9 +26,11 @@ import {
   siphon,
   siphonRequirement,
 } from '../packages/power.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectAbort,
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   seatShell,
@@ -41,10 +43,9 @@ const HYDROGEN_BAY = 0xf1n
 const CRUDE_BAY = 0xf2n
 const EMERGENCY = 0xf3n
 const UNITS = 100n
-const SIPHONED = 40n * POWER_SCALE
+const SIPHONED_KG = 40n
 
 const FUEL = {
-  amount: UNITS,
   impulse: 90n * POWER_SCALE,
   containmentBurden: 14n * POWER_SCALE,
   volatility: 1n * POWER_SCALE,
@@ -101,21 +102,31 @@ describe('fuel pools (localnet)', () => {
       owner: signer,
       transferable: true,
     })
+    const hydrogen = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: HYDROGEN,
+      ...FUEL,
+    })
+    const crude = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: CRUDE,
+      ...FUEL,
+    })
 
     // Hydrogen into one bay, Crude into the other, both online.
     const fuelTx = new Transaction()
     addSponsors(fuelTx, config, [signer])
     const entity = fuelTx.object(entityId)
     const cap = fuelTx.object(capId)
-    for (const [fuelBayId, fuelType] of [
-      [HYDROGEN_BAY, HYDROGEN],
-      [CRUDE_BAY, CRUDE],
-    ]) {
+    for (const [fuelBayId, variant] of [
+      [HYDROGEN_BAY, hydrogen],
+      [CRUDE_BAY, crude],
+    ] as const) {
       const deposit = interact(fuelTx, config, entity, 'deposit_fuel')
       depositFuel(fuelTx, config, entity, deposit, cap, {
         fuelBayId,
-        fuelType,
-        ...FUEL,
+        variant,
+        amount: UNITS * MASS_UNIT,
       })
       completeRequest(fuelTx, config, entity, deposit)
       const bay = interact(fuelTx, config, entity, 'set_fuel_bay')
@@ -140,8 +151,8 @@ describe('fuel pools (localnet)', () => {
     const mix = interact(mixTx, config, mixEntity, 'deposit_fuel')
     depositFuel(mixTx, config, mixEntity, mix, mixTx.object(capId), {
       fuelBayId: HYDROGEN_BAY,
-      fuelType: CRUDE,
-      ...FUEL,
+      variant: crude,
+      amount: UNITS * MASS_UNIT,
     })
     completeRequest(mixTx, config, mixEntity, mix)
     await expectAbort(client, mixTx, signer, /EFuelTypeMismatch/)
@@ -169,10 +180,16 @@ describe('fuel pools (localnet)', () => {
 
     // The admin siphons part of the Crude bay, then more than is left.
     const siphonTx = new Transaction()
-    siphon(siphonTx, config, siphonTx.object(entityId), CRUDE_BAY, SIPHONED)
+    siphon(
+      siphonTx,
+      config,
+      siphonTx.object(entityId),
+      CRUDE_BAY,
+      SIPHONED_KG * MASS_UNIT,
+    )
     await expectSuccess(client, siphonTx)
     const after = await readPools(entityId)
-    expect(after.get(CRUDE)?.quantity).toBe(UNITS * POWER_SCALE - SIPHONED)
+    expect(after.get(CRUDE)?.quantity).toBe((UNITS - SIPHONED_KG) * POWER_SCALE)
     expect(after.get(HYDROGEN)?.quantity).toBe(UNITS * POWER_SCALE)
 
     const shortTx = new Transaction()
@@ -181,7 +198,7 @@ describe('fuel pools (localnet)', () => {
       config,
       shortTx.object(entityId),
       CRUDE_BAY,
-      UNITS * POWER_SCALE,
+      UNITS * MASS_UNIT,
     )
     await expectAbort(client, shortTx, signer, /EBayShort/)
   })

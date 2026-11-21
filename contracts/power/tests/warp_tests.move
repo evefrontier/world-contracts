@@ -3,6 +3,7 @@ module power::warp_tests;
 
 use core::test_helpers::setup;
 use power::{
+    fuel_properties,
     grid_fuel::{Self, FuelSiphoned, FuelWithdrawn},
     grid_scenario::{
         admin,
@@ -318,7 +319,8 @@ fun siphon_takes_part_of_a_bay() {
         siphoned_thermal,
     ) = siphoned[0].fuel_siphoned_fields();
     assert!(siphoned_entity == entity_id && siphoned_bay == fuel_bay_id());
-    assert!(siphoned_type == fuel_type() && quantity == 70_000);
+    assert!(siphoned_type == fuel_type() && quantity == 70_000 * fuel_properties::to_scale());
+    assert!(siphoned[0].fuel_siphoned_tenant() == core::test_helpers::tenant());
     assert!(siphoned_impulse == impulse() && siphoned_volatility == volatility());
     assert!(siphoned_burden == burden() && siphoned_thermal == thermal());
     let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());

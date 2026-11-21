@@ -126,7 +126,7 @@ describe('inventory owner-access via Character', () => {
       returnAccess(enableTx, config, character, suCap, receipt)
     }
     await expectSuccess(client, enableTx)
-    await installInventoryPower(client, config, suId)
+    const fuel = await installInventoryPower(client, config, suId, suKey.tenant)
 
     // Assertion PTB: borrow -> power on -> bridge_in 100 -> withdraw 30 -> deposit it back -> return.
     const runTx = new Transaction()
@@ -141,7 +141,7 @@ describe('inventory owner-access via Character', () => {
         await getObjectRef(client, suCapId),
       )
       const su = runTx.object(suId)
-      powerInventoryOn(runTx, config, su, suCap, MODULE_ID)
+      powerInventoryOn(runTx, config, su, suCap, MODULE_ID, fuel)
 
       const bridgeRequest = interact(runTx, config, su, 'bridge_in')
       verifyOwner(runTx, config, su, bridgeRequest, suCap)

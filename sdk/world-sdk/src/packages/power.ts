@@ -446,7 +446,7 @@ export function operateGridRequirement(
   return tx.moveCall({ target: grid(config, 'operate_grid_requirement') })
 }
 
-/** The owner's rules for `depositFuel`. Omitted fields skip a check. Stats at `POWER_SCALE`, amounts plain. */
+/** The owner's rules for `depositFuel`. Omitted fields skip a check. Stats at `POWER_SCALE`, amounts in base units (`MASS_UNIT` per kg). */
 export interface FuelRule {
   fuelTypes?: bigint[]
   minImpulse?: bigint | null
@@ -493,21 +493,18 @@ export function onlineRequirement(
 
 // === Handlers (satisfy the next requirement on `request`) ===
 
-/** Fuel to load into one bay. Amount plain, stats at `POWER_SCALE`. */
+/** Fuel to load into one bay: a registered fuel `Variant` and an amount of it. */
 export interface DepositFuelArgs {
   fuelBayId: bigint
-  fuelType: bigint
+  /** The fuel variant's object ID (see `deriveVariantId`); type and stats come from it. */
+  variant: string | TransactionArgument
+  /** Base units (`MASS_UNIT` per kg), a whole multiple of 0.0001 kg. */
   amount: bigint
-  impulse: bigint
-  containmentBurden: bigint
-  volatility: bigint
-  /** Defaults to `0n`. */
-  thermalInefficiency?: bigint
 }
 
 /**
  * Load fuel into one bay; its stats blend by amount. An empty bay locks to
- * `fuelType` until it runs dry; another type or zero impulse aborts. The owner's `ownerCap`
+ * the variant's type until it runs dry; another type or zero impulse aborts. The owner's `ownerCap`
  * authorizes the deposit, and the gas sponsor must be on `AdminACL`.
  */
 export function depositFuel(
@@ -524,12 +521,8 @@ export function depositFuel(
       entity,
       request,
       tx.pure.u64(args.fuelBayId),
-      tx.pure.u64(args.fuelType),
+      typeof args.variant === 'string' ? tx.object(args.variant) : args.variant,
       tx.pure.u64(args.amount),
-      tx.pure.u64(args.impulse),
-      tx.pure.u64(args.containmentBurden),
-      tx.pure.u64(args.volatility),
-      tx.pure.u64(args.thermalInefficiency ?? 0n),
       tx.object.clock(),
     ],
   })
@@ -675,8 +668,9 @@ export function withdrawFuel(
 }
 
 /**
- * Siphon `quantity` (at `POWER_SCALE`) out of bay `fuelBayId`, online or not.
- * The `FuelSiphoned` event carries the bay's values for minting the stack.
+ * Siphon `quantity` (base units, `MASS_UNIT` per kg; whole 0.0001 kg) out of bay
+ * `fuelBayId`, online or not. The `FuelSiphoned` event carries the tenant, the
+ * quantity in base units and the bay's values (at `POWER_SCALE`) for minting the stack.
  * Needs the `siphon` admin action (`siphonRequirement`). Admin-gated.
  */
 export function siphon(
