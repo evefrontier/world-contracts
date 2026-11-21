@@ -217,6 +217,41 @@ public struct PoolView has copy, drop, store {
     burn_rate: u64,
 }
 
+/// A connected module as `projected_snapshot` reads it: its state with the draw
+/// projected to now, as `projected_module_states` gives it, and why it is or
+/// isn't running, as `module_status` gives it.
+public struct ModuleView has copy, drop, store {
+    state: ModuleState,
+    status: PowerStatus,
+}
+
+/// An installed Generator as `projected_snapshot` reads it: its state, why it is
+/// or isn't supplying power, and what it sends out now, plain MW.
+public struct GeneratorView has copy, drop, store {
+    state: GeneratorState,
+    status: PowerStatus,
+    output_mw: u64,
+}
+
+/// The whole grid now, from one projection: what the projected views each
+/// return at the same clock. See `projected_snapshot`.
+public struct GridSnapshot has copy, drop, store {
+    /// Whether the grid is on now, a trip included. See `projected_on`.
+    on: bool,
+    /// Capacity grants can use now, plain MW: 0 while off. See `projected_status`.
+    capacity_mw: u64,
+    /// MW granted now, the sum of the modules' draws.
+    used_mw: u64,
+    /// See `projected_pools`.
+    pools: VecMap<u64, PoolView>,
+    /// See `projected_bays`.
+    bays: VecMap<u64, FuelBayState>,
+    /// Every connected module, by module id.
+    modules: VecMap<u64, ModuleView>,
+    /// Every installed Generator, by component id.
+    generators: VecMap<u64, GeneratorView>,
+}
+
 /// Marker for the owner's grid operations: `set_power_grid`, `set_generator`,
 /// `set_priority` and `set_desired_state`. Each also requires the owner in its
 /// own frame.
@@ -593,34 +628,7 @@ public fun projected_pools(entity: &Entity, clock: &Clock): VecMap<u64, PoolView
     let grid = power_grid(entity);
     let now_ms = clock.timestamp_ms();
     let (bays, on, capacity, draws) = grid.project(now_ms);
-    let burn_rates = grid.burn_rates(&bays, capacity, &draws);
-    let (_, _, _, _, run_outs) = grid.step(
-        bays,
-        on,
-        capacity,
-        draws,
-        now_ms,
-        std::u64::max_value!(),
-    );
-    let mut types = vector[];
-    bays.length().do!(|i| {
-        let (_, bay) = bays.get_entry_by_idx(i);
-        if (bay.online) bay.fuel.fuel_type.do!(|t| if (!types.contains(&t)) types.push_back(t));
-    });
-    grid.generators.length().do!(|i| {
-        let (_, state) = grid.generators.get_entry_by_idx(i);
-        if (state.online && !types.contains(&state.fuel_type)) types.push_back(state.fuel_type);
-    });
-    let mut pools = vec_map::empty();
-    types.do!(|t| {
-        let run_out_ms = if (run_outs.contains(&t)) option::some(run_outs[&t]) else option::none();
-        let burn_rate = if (burn_rates.contains(&t)) burn_rates[&t] else 0;
-        pools.insert(
-            t,
-            PoolView { fuel: blend_bays(&bays, option::some(t)), run_out_ms, burn_rate },
-        );
-    });
-    pools
+    grid.pool_views(&bays, on, capacity, &draws, now_ms)
 }
 
 /// Fuel in online bays now, with the burn since the last settle applied.
@@ -726,11 +734,7 @@ public fun generator_status(entity: &Entity, generator_id: u64, clock: &Clock): 
     let state = &grid.generators[&generator_id];
     if (!state.online) return PowerStatus::Off;
     let (bays, on, _, _) = grid.project(clock.timestamp_ms());
-    if (blend_bays(&bays, option::some(state.fuel_type)).quantity == 0) {
-        return if (offline_types(&bays).contains(&state.fuel_type)) PowerStatus::BaysOffline
-        else PowerStatus::NoFuel
-    };
-    if (!on) PowerStatus::GridOff else PowerStatus::Online
+    generator_status_of(state, &bays, on)
 }
 
 /// Every connected module now, its draw projected through each pool's run-out.
@@ -745,6 +749,96 @@ public fun projected_module_states(entity: &Entity, clock: &Clock): VecMap<u64, 
         states.insert(*module_id, current);
     });
     states
+}
+
+/// The whole grid now from one projection: what `projected_on`,
+/// `projected_status`, `projected_pools`, `projected_bays`,
+/// `projected_module_states`, `module_statuses`, `generator_status` and
+/// `projected_output_mw` return at `clock`, at the cost of one of them.
+public fun projected_snapshot(entity: &Entity, clock: &Clock): GridSnapshot {
+    let grid = power_grid(entity);
+    let now_ms = clock.timestamp_ms();
+    let (bays, on, capacity, draws) = grid.project(now_ms);
+    let pools = grid.pool_views(&bays, on, capacity, &draws, now_ms);
+    let fuel_short = grid.fuel_short(&bays);
+    let mut used_mw = 0;
+    let mut modules = vec_map::empty();
+    grid.modules.length().do!(|i| {
+        let (module_id, state) = grid.modules.get_entry_by_idx(i);
+        let mut current = *state;
+        current.active_draw_at_last_settled = draws[i];
+        used_mw = used_mw + draws[i];
+        let status = status_of(state, on, draws[i], fuel_short);
+        modules.insert(*module_id, ModuleView { state: current, status });
+    });
+    let pools_now = pools_of(&bays);
+    let mut generators = vec_map::empty();
+    grid.generators.length().do!(|i| {
+        let (generator_id, state) = grid.generators.get_entry_by_idx(i);
+        let view = GeneratorView {
+            state: *state,
+            status: generator_status_of(state, &bays, on),
+            output_mw: output_from(&pools_now, state),
+        };
+        generators.insert(*generator_id, view);
+    });
+    GridSnapshot {
+        on,
+        capacity_mw: capacity,
+        used_mw,
+        pools,
+        bays,
+        modules,
+        generators,
+    }
+}
+
+public fun snapshot_on(snapshot: &GridSnapshot): bool {
+    snapshot.on
+}
+
+public fun snapshot_capacity_mw(snapshot: &GridSnapshot): u64 {
+    snapshot.capacity_mw
+}
+
+public fun snapshot_used_mw(snapshot: &GridSnapshot): u64 {
+    snapshot.used_mw
+}
+
+public fun snapshot_pools(snapshot: &GridSnapshot): &VecMap<u64, PoolView> {
+    &snapshot.pools
+}
+
+public fun snapshot_bays(snapshot: &GridSnapshot): &VecMap<u64, FuelBayState> {
+    &snapshot.bays
+}
+
+public fun snapshot_modules(snapshot: &GridSnapshot): &VecMap<u64, ModuleView> {
+    &snapshot.modules
+}
+
+public fun snapshot_generators(snapshot: &GridSnapshot): &VecMap<u64, GeneratorView> {
+    &snapshot.generators
+}
+
+public fun module_view_state(view: &ModuleView): ModuleState {
+    view.state
+}
+
+public fun module_view_status(view: &ModuleView): PowerStatus {
+    view.status
+}
+
+public fun generator_view_state(view: &GeneratorView): GeneratorState {
+    view.state
+}
+
+public fun generator_view_status(view: &GeneratorView): PowerStatus {
+    view.status
+}
+
+public fun generator_view_output_mw(view: &GeneratorView): u64 {
+    view.output_mw
 }
 
 /// MW in use at the last settle: the sum of modules' grants.
@@ -1426,6 +1520,21 @@ fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
     used_mw.do!(|max_used| assert!(grid.used_mw() <= max_used, EUsedAboveMax));
 }
 
+/// A Generator's status with `bays` and `on` as `project` returns them; see
+/// `generator_status`.
+fun generator_status_of(
+    state: &GeneratorState,
+    bays: &VecMap<u64, FuelBayState>,
+    on: bool,
+): PowerStatus {
+    if (!state.online) return PowerStatus::Off;
+    if (blend_bays(bays, option::some(state.fuel_type)).quantity == 0) {
+        return if (offline_types(bays).contains(&state.fuel_type)) PowerStatus::BaysOffline
+        else PowerStatus::NoFuel
+    };
+    if (!on) PowerStatus::GridOff else PowerStatus::Online
+}
+
 /// A module's status given its draw now and `fuel_short` from `fuel_short`.
 fun status_of(
     state: &ModuleState,
@@ -1538,6 +1647,46 @@ fun step(
         draws = grid.draws_at(capacity);
     };
     (bays, on, capacity, draws, run_outs)
+}
+
+/// Every pool with `bays`, `on`, `capacity` and `draws` as `project` returns
+/// them at `now_ms`; see `projected_pools`.
+fun pool_views(
+    grid: &PowerGrid,
+    bays: &VecMap<u64, FuelBayState>,
+    on: bool,
+    capacity: u64,
+    draws: &vector<u64>,
+    now_ms: u64,
+): VecMap<u64, PoolView> {
+    let burn_rates = grid.burn_rates(bays, capacity, draws);
+    let (_, _, _, _, run_outs) = grid.step(
+        *bays,
+        on,
+        capacity,
+        *draws,
+        now_ms,
+        std::u64::max_value!(),
+    );
+    let mut types = vector[];
+    bays.length().do!(|i| {
+        let (_, bay) = bays.get_entry_by_idx(i);
+        if (bay.online) bay.fuel.fuel_type.do!(|t| if (!types.contains(&t)) types.push_back(t));
+    });
+    grid.generators.length().do!(|i| {
+        let (_, state) = grid.generators.get_entry_by_idx(i);
+        if (state.online && !types.contains(&state.fuel_type)) types.push_back(state.fuel_type);
+    });
+    let mut pools = vec_map::empty();
+    types.do!(|t| {
+        let run_out_ms = if (run_outs.contains(&t)) option::some(run_outs[&t]) else option::none();
+        let burn_rate = if (burn_rates.contains(&t)) burn_rates[&t] else 0;
+        pools.insert(
+            t,
+            PoolView { fuel: blend_bays(bays, option::some(t)), run_out_ms, burn_rate },
+        );
+    });
+    pools
 }
 
 /// Fuel each burning pool burns per second with `bays`, `capacity` and
