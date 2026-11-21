@@ -1,55 +1,64 @@
 /// Fungible item foundation for the inventory module.
 ///
 /// `Item` is a standalone object created on withdraw and consumed on deposit;
-/// `ItemBag` is at-rest balances keyed by `type_id`. Items are fungible: balances
-/// stack exactly by `type_id`.
+/// `ItemBag` is at-rest balances keyed by `VariantKey`, so stacks join only when
+/// they are the same variant. Quantities are plain base units (1 item, or 1e-9 kg)
+/// and carry the variant's `unit_volume` and `decimals` (see `variant::variant`).
 ///
-/// TODO: volume (and mass) are per-type metadata, not per-balance. Move them to
-/// an admin-registered item type (source of truth) and read volume from there
-/// instead of carrying it on the bag. Pending team discussion.
+/// Volume is in nano-m³: a stack's volume is `ceil(unit_volume × quantity /
+/// 10^decimals)`, recomputed whenever its quantity changes, so rounding happens
+/// once per stack. Mass amounts must be whole 0.0001 kg (the game's precision),
+/// so nothing is lost when they go back to the game.
 module inventory::item;
 
-use core::entity_key::{Self, EntityKey};
-use std::string::String;
 use sui::{event, linked_table::{Self, LinkedTable}};
+use variant::variant::VariantKey;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EWrongType: vector<u8> = b"Item type does not match";
+const EWrongVariant: vector<u8> = b"Item variant does not match";
 #[error(code = 1)]
 const EInsufficientQuantity: vector<u8> = b"Not enough quantity in the bag";
 #[error(code = 2)]
 const EZeroQuantity: vector<u8> = b"Quantity must be non-zero";
 #[error(code = 3)]
-const EVolumeMismatch: vector<u8> = b"Item volume does not match the stored volume for this type";
-#[error(code = 4)]
 const ESourceMismatch: vector<u8> = b"Items withdrawn from different entities cannot merge";
+#[error(code = 4)]
+const EQuantityNotWholeStep: vector<u8> = b"Mass quantity must be a whole multiple of 0.0001 kg";
+#[error(code = 5)]
+const EVolumeOverflow: vector<u8> = b"Stack volume does not fit in u64";
+
+// === Constants ===
+
+/// Decimals the game keeps; finer base units must come in whole steps of this.
+const GAME_DECIMALS: u8 = 4;
 
 // === Structs ===
 
 /// Standalone item: created on withdraw, destroyed on deposit. No `store`: a
 /// withdrawn `Item` can only move via functions this package defines (i.e.
 /// `inventory::deposit`), never by a bare `public_transfer` that would let it
-/// leave the Entity/Requirement system ungated. `volume` is the per-unit
-/// volume (see module TODO).
+/// leave the Entity/Requirement system ungated.
 public struct Item has key {
     id: UID,
-    type_id: u64,
-    quantity: u64,
-    volume: u64,
+    key: VariantKey,
+    quantity: u64, // base units
+    unit_volume: u64, // nano-m³ per kg (mass) or per item, from the variant
+    decimals: u8, // of `quantity`, from the variant
     source: ID,
 }
 
-/// One at-rest balance: quantity plus the per-unit volume shared by the type.
+/// One at-rest stack of a variant.
 public struct Balance has drop, store {
     quantity: u64,
-    volume: u64,
+    unit_volume: u64,
+    decimals: u8,
 }
 
-/// At-rest balances inside an inventory: `type_id -> Balance`.
+/// At-rest balances inside an inventory: `VariantKey -> Balance`.
 public struct ItemBag has store {
-    balances: LinkedTable<u64, Balance>,
+    balances: LinkedTable<VariantKey, Balance>,
 }
 
 // === Events ===
@@ -57,7 +66,7 @@ public struct ItemBag has store {
 
 /// Game to chain bridge.
 public struct ItemMinted has copy, drop {
-    game_id: EntityKey,
+    key: VariantKey,
     quantity: u64,
     entity_id: ID,
     component_id: u64,
@@ -67,7 +76,7 @@ public struct ItemMinted has copy, drop {
 
 /// Chain to game bridge.
 public struct ItemBurned has copy, drop {
-    game_id: EntityKey,
+    key: VariantKey,
     quantity: u64,
     entity_id: ID,
     component_id: u64,
@@ -77,7 +86,7 @@ public struct ItemBurned has copy, drop {
 
 /// `transit_id` matches the `ItemWithdrawn` that produced the `Item`.
 public struct ItemDeposited has copy, drop {
-    game_id: EntityKey,
+    key: VariantKey,
     quantity: u64,
     entity_id: ID,
     component_id: u64,
@@ -88,7 +97,7 @@ public struct ItemDeposited has copy, drop {
 
 /// `transit_id` is the withdrawn `Item`'s id, matching its `ItemDeposited`.
 public struct ItemWithdrawn has copy, drop {
-    game_id: EntityKey,
+    key: VariantKey,
     quantity: u64,
     entity_id: ID,
     component_id: u64,
@@ -97,9 +106,9 @@ public struct ItemWithdrawn has copy, drop {
     used_after: u64,
 }
 
-/// One balance `uninstall` destroyed: `quantity` of `type_id` at per-unit `volume`.
+/// One balance `uninstall` destroyed: `quantity` of `key`, taking `volume` nano-m³.
 public struct DestroyedBalance has copy, drop {
-    type_id: u64,
+    key: VariantKey,
     quantity: u64,
     volume: u64,
 }
@@ -116,7 +125,7 @@ public struct ItemsDestroyed has copy, drop {
 /// One entry of a batched withdrawal or deposit, with the same meaning as the
 /// matching fields on `ItemWithdrawn` / `ItemDeposited`.
 public struct MovedBalance has copy, drop {
-    type_id: u64,
+    key: VariantKey,
     quantity: u64,
     transit_id: ID,
     balance_after: u64,
@@ -145,35 +154,55 @@ public struct ItemsDeposited has copy, drop {
 
 // === View Functions ===
 
-public fun type_id(item: &Item): u64 {
-    item.type_id
+public fun key(item: &Item): VariantKey {
+    item.key
 }
 
 public fun quantity(item: &Item): u64 {
     item.quantity
 }
 
-public fun volume(item: &Item): u64 {
-    item.volume
+public fun unit_volume(item: &Item): u64 {
+    item.unit_volume
+}
+
+public fun decimals(item: &Item): u8 {
+    item.decimals
 }
 
 public fun source(item: &Item): ID {
     item.source
 }
 
-/// Current quantity of `type_id` in `bag` (0 if absent).
-public fun balance(bag: &ItemBag, type_id: u64): u64 {
-    if (bag.balances.contains(type_id)) bag.balances[type_id].quantity else 0
+/// Volume the item takes in nano-m³, rounded up.
+public fun volume(item: &Item): u64 {
+    stack_volume(item.unit_volume, item.quantity, item.decimals)
 }
 
-/// Per-unit volume stored for `type_id` in `bag` (0 if absent).
-public fun volume_of(bag: &ItemBag, type_id: u64): u64 {
-    if (bag.balances.contains(type_id)) bag.balances[type_id].volume else 0
+/// Current quantity of `key` in `bag` (0 if absent).
+public fun balance(bag: &ItemBag, key: VariantKey): u64 {
+    if (bag.balances.contains(key)) bag.balances[key].quantity else 0
 }
 
-/// Number of types held in `bag`.
+/// Volume of the `key` stack in `bag` in nano-m³ (0 if absent).
+public fun volume_of(bag: &ItemBag, key: VariantKey): u64 {
+    if (bag.balances.contains(key)) {
+        let bal = &bag.balances[key];
+        stack_volume(bal.unit_volume, bal.quantity, bal.decimals)
+    } else 0
+}
+
+/// Number of stacks held in `bag`.
 public fun balance_count(bag: &ItemBag): u64 {
     bag.balances.length()
+}
+
+/// `ceil(unit_volume × quantity / 10^decimals)`: a stack's volume in nano-m³.
+public fun stack_volume(unit_volume: u64, quantity: u64, decimals: u8): u64 {
+    let product = (unit_volume as u128) * (quantity as u128);
+    let volume = product.div_ceil(std::u128::pow(10, decimals));
+    assert!(volume <= (std::u64::max_value!() as u128), EVolumeOverflow);
+    volume as u64
 }
 
 // === Package Functions ===
@@ -189,22 +218,21 @@ public(package) fun destroy_bag(bag: ItemBag) {
     linked_table::drop(balances);
 }
 
-/// Mint `quantity` of `game_id` into `bag` at `volume` (game-to-chain bridge).
+/// Mint `quantity` of `key` into `bag` (game-to-chain bridge).
 public(package) fun mint(
     bag: &mut ItemBag,
-    game_id: EntityKey,
+    key: VariantKey,
     quantity: u64,
-    volume: u64,
+    unit_volume: u64,
+    decimals: u8,
     entity_id: ID,
     component_id: u64,
     used: &mut u64,
 ) {
-    let type_id = entity_key::id(&game_id);
-    assert!(quantity > 0, EZeroQuantity);
-    let balance_after = add_balance(bag, type_id, quantity, volume);
-    *used = *used + quantity * volume;
+    assert_quantity(quantity, decimals);
+    let balance_after = add_balance(bag, key, quantity, unit_volume, decimals, used);
     event::emit(ItemMinted {
-        game_id,
+        key,
         quantity,
         entity_id,
         component_id,
@@ -213,21 +241,18 @@ public(package) fun mint(
     });
 }
 
-/// Burn `quantity` of `game_id` from `bag`, removing it from existence.
+/// Burn `quantity` of `key` from `bag`, removing it from existence.
 public(package) fun burn(
     bag: &mut ItemBag,
-    game_id: EntityKey,
+    key: VariantKey,
     quantity: u64,
     entity_id: ID,
     component_id: u64,
     used: &mut u64,
 ) {
-    let type_id = entity_key::id(&game_id);
-    assert!(quantity > 0, EZeroQuantity);
-    let (balance_after, volume) = subtract_balance(bag, type_id, quantity);
-    *used = *used - quantity * volume;
+    let balance_after = subtract_balance(bag, key, quantity, used);
     event::emit(ItemBurned {
-        game_id,
+        key,
         quantity,
         entity_id,
         component_id,
@@ -249,8 +274,9 @@ public(package) fun drain_and_destroy(
     while (!balances.is_empty()) {
         let mut batch = vector[];
         while (!balances.is_empty() && batch.length() < batch_size) {
-            let (type_id, Balance { quantity, volume }) = balances.pop_front();
-            batch.push_back(DestroyedBalance { type_id, quantity, volume });
+            let (key, Balance { quantity, unit_volume, decimals }) = balances.pop_front();
+            let volume = stack_volume(unit_volume, quantity, decimals);
+            batch.push_back(DestroyedBalance { key, quantity, volume });
         };
         event::emit(ItemsDestroyed { entity_id, component_id, batch_index, balances: batch });
         batch_index = batch_index + 1;
@@ -258,22 +284,21 @@ public(package) fun drain_and_destroy(
     balances.destroy_empty();
 }
 
-/// Deposit `item` into `bag`, merging into the existing balance for its type.
+/// Deposit `item` into `bag`, merging into the existing stack of its variant.
 public(package) fun deposit(
     bag: &mut ItemBag,
     item: Item,
-    tenant: String,
     entity_id: ID,
     component_id: u64,
     used: &mut u64,
 ) {
-    let MovedBalance { type_id, quantity, transit_id, balance_after, used_after } = put_item(
+    let MovedBalance { key, quantity, transit_id, balance_after, used_after } = put_item(
         bag,
         item,
         used,
     );
     event::emit(ItemDeposited {
-        game_id: entity_key::new(type_id, tenant),
+        key,
         quantity,
         entity_id,
         component_id,
@@ -313,20 +338,20 @@ public(package) fun deposit_batch(
     items.destroy_empty();
 }
 
-/// Withdraw `quantity` of `game_id` from `bag` as a fresh `Item`.
+/// Withdraw `quantity` of `key` from `bag` as a fresh `Item`.
 public(package) fun withdraw(
     bag: &mut ItemBag,
-    game_id: EntityKey,
+    key: VariantKey,
     quantity: u64,
     source: ID,
     component_id: u64,
     used: &mut u64,
     ctx: &mut TxContext,
 ): Item {
-    let (item, entry) = take_item(bag, entity_key::id(&game_id), quantity, source, used, ctx);
-    let MovedBalance { type_id: _, quantity, transit_id, balance_after, used_after } = entry;
+    let (item, entry) = take_item(bag, key, quantity, source, used, ctx);
+    let MovedBalance { key, quantity, transit_id, balance_after, used_after } = entry;
     event::emit(ItemWithdrawn {
-        game_id,
+        key,
         quantity,
         entity_id: source,
         component_id,
@@ -337,12 +362,12 @@ public(package) fun withdraw(
     item
 }
 
-/// Withdraw `quantities[i]` of `type_ids[i]` for each `i` as `withdraw` would,
+/// Withdraw `quantities[i]` of `keys[i]` for each `i` as `withdraw` would,
 /// returning the `Item`s in input order and listing them in `ItemsWithdrawn`
 /// events of at most `batch_size` each. The vectors must be the same length.
 public(package) fun withdraw_batch(
     bag: &mut ItemBag,
-    type_ids: vector<u64>,
+    keys: vector<VariantKey>,
     quantities: vector<u64>,
     source: ID,
     component_id: u64,
@@ -350,13 +375,13 @@ public(package) fun withdraw_batch(
     batch_size: u64,
     ctx: &mut TxContext,
 ): vector<Item> {
-    let count = type_ids.length();
+    let count = keys.length();
     let batch_count = count.div_ceil(batch_size);
     let mut items = vector[];
     let mut entries = vector[];
     let mut batch_index = 0;
     count.do!(|i| {
-        let (item, entry) = take_item(bag, type_ids[i], quantities[i], source, used, ctx);
+        let (item, entry) = take_item(bag, keys[i], quantities[i], source, used, ctx);
         items.push_back(item);
         entries.push_back(entry);
         if (entries.length() == batch_size || i + 1 == count) {
@@ -374,84 +399,115 @@ public(package) fun withdraw_batch(
     items
 }
 
-/// Split `quantity` off `item` into a new `Item` of the same type.
+/// Split `quantity` off `item` into a new `Item` of the same variant.
 public(package) fun split(item: &mut Item, quantity: u64, ctx: &mut TxContext): Item {
-    assert!(quantity > 0, EZeroQuantity);
+    assert_quantity(quantity, item.decimals);
     assert!(item.quantity >= quantity, EInsufficientQuantity);
     item.quantity = item.quantity - quantity;
     Item {
         id: object::new(ctx),
-        type_id: item.type_id,
+        key: item.key,
         quantity,
-        volume: item.volume,
+        unit_volume: item.unit_volume,
+        decimals: item.decimals,
         source: item.source,
     }
 }
 
-/// Merge `other` into `item`. Both must be the same type.
+/// Merge `other` into `item`. Both must be the same variant and source.
 public(package) fun merge(item: &mut Item, other: Item) {
-    let Item { id, type_id, quantity, source, .. } = other;
-    assert!(item.type_id == type_id, EWrongType);
+    let Item { id, key, quantity, source, .. } = other;
+    assert!(item.key == key, EWrongVariant);
     assert!(item.source == source, ESourceMismatch);
     id.delete();
     item.quantity = item.quantity + quantity;
 }
 
+/// Destroy `item`, taking it out of play. Returns its variant and quantity.
+public(package) fun burn_item(item: Item): (VariantKey, u64) {
+    let Item { id, key, quantity, .. } = item;
+    id.delete();
+    (key, quantity)
+}
+
 // === Private Functions ===
+
+/// Abort unless `quantity` is non-zero and, for units finer than the game's,
+/// a whole number of the game's smallest step.
+fun assert_quantity(quantity: u64, decimals: u8) {
+    assert!(quantity > 0, EZeroQuantity);
+    if (decimals > GAME_DECIMALS) {
+        let step = std::u64::pow(10, decimals - GAME_DECIMALS);
+        assert!(quantity % step == 0, EQuantityNotWholeStep);
+    };
+}
 
 /// Merge `item` into `bag` and account its volume; the shared core of
 /// `deposit` and `deposit_batch`.
 fun put_item(bag: &mut ItemBag, item: Item, used: &mut u64): MovedBalance {
-    let Item { id, type_id, quantity, volume, .. } = item;
+    let Item { id, key, quantity, unit_volume, decimals, .. } = item;
+    assert!(quantity > 0, EZeroQuantity);
     let transit_id = id.to_inner();
     id.delete();
-    let balance_after = add_balance(bag, type_id, quantity, volume);
-    *used = *used + quantity * volume;
-    MovedBalance { type_id, quantity, transit_id, balance_after, used_after: *used }
+    let balance_after = add_balance(bag, key, quantity, unit_volume, decimals, used);
+    MovedBalance { key, quantity, transit_id, balance_after, used_after: *used }
 }
 
 /// Split a fresh `Item` off `bag` and account its volume; the shared core of
 /// `withdraw` and `withdraw_batch`.
 fun take_item(
     bag: &mut ItemBag,
-    type_id: u64,
+    key: VariantKey,
     quantity: u64,
     source: ID,
     used: &mut u64,
     ctx: &mut TxContext,
 ): (Item, MovedBalance) {
-    assert!(quantity > 0, EZeroQuantity);
-    let (balance_after, volume) = subtract_balance(bag, type_id, quantity);
-    *used = *used - quantity * volume;
-    let item = Item { id: object::new(ctx), type_id, quantity, volume, source };
-    let transit_id = object::id(&item);
-    (item, MovedBalance { type_id, quantity, transit_id, balance_after, used_after: *used })
-}
-
-/// Returns the new quantity.
-fun add_balance(bag: &mut ItemBag, type_id: u64, quantity: u64, volume: u64): u64 {
-    if (bag.balances.contains(type_id)) {
-        let bal = &mut bag.balances[type_id];
-        assert!(bal.volume == volume, EVolumeMismatch);
-        bal.quantity = bal.quantity + quantity;
-        bal.quantity
-    } else {
-        bag.balances.push_back(type_id, Balance { quantity, volume });
-        quantity
-    }
-}
-
-/// Returns the remaining quantity and the type's per-unit volume.
-fun subtract_balance(bag: &mut ItemBag, type_id: u64, quantity: u64): (u64, u64) {
-    assert!(bag.balances.contains(type_id), EInsufficientQuantity);
-    let bal = &mut bag.balances[type_id];
-    assert!(bal.quantity >= quantity, EInsufficientQuantity);
-    bal.quantity = bal.quantity - quantity;
-    let (remaining, volume) = (bal.quantity, bal.volume);
-    if (remaining == 0) {
-        bag.balances.remove(type_id);
+    assert!(bag.balances.contains(key), EInsufficientQuantity);
+    let (unit_volume, decimals) = {
+        let bal = &bag.balances[key];
+        (bal.unit_volume, bal.decimals)
     };
-    (remaining, volume)
+    let balance_after = subtract_balance(bag, key, quantity, used);
+    let item = Item { id: object::new(ctx), key, quantity, unit_volume, decimals, source };
+    let transit_id = object::id(&item);
+    (item, MovedBalance { key, quantity, transit_id, balance_after, used_after: *used })
+}
+
+/// Add to the `key` stack, re-rounding its volume into `used`. Returns the new quantity.
+fun add_balance(
+    bag: &mut ItemBag,
+    key: VariantKey,
+    quantity: u64,
+    unit_volume: u64,
+    decimals: u8,
+    used: &mut u64,
+): u64 {
+    if (!bag.balances.contains(key)) {
+        bag.balances.push_back(key, Balance { quantity: 0, unit_volume, decimals });
+    };
+    let bal = &mut bag.balances[key];
+    let before = stack_volume(bal.unit_volume, bal.quantity, bal.decimals);
+    bal.quantity = bal.quantity + quantity;
+    *used = *used - before + stack_volume(bal.unit_volume, bal.quantity, bal.decimals);
+    bal.quantity
+}
+
+/// Take from the `key` stack, re-rounding its volume into `used`; drops an empty
+/// stack. Returns the remaining quantity.
+fun subtract_balance(bag: &mut ItemBag, key: VariantKey, quantity: u64, used: &mut u64): u64 {
+    assert!(bag.balances.contains(key), EInsufficientQuantity);
+    let bal = &mut bag.balances[key];
+    assert_quantity(quantity, bal.decimals);
+    assert!(bal.quantity >= quantity, EInsufficientQuantity);
+    let before = stack_volume(bal.unit_volume, bal.quantity, bal.decimals);
+    bal.quantity = bal.quantity - quantity;
+    let remaining = bal.quantity;
+    *used = *used - before + stack_volume(bal.unit_volume, remaining, bal.decimals);
+    if (remaining == 0) {
+        bag.balances.remove(key);
+    };
+    remaining
 }
 
 // === Test Functions ===
@@ -463,39 +519,23 @@ public fun destroy(item: Item) {
 }
 
 #[test_only]
-public fun minted_fields(e: &ItemMinted): (EntityKey, u64, ID, u64, u64, u64) {
-    (e.game_id, e.quantity, e.entity_id, e.component_id, e.balance_after, e.used_after)
+public fun minted_fields(e: &ItemMinted): (VariantKey, u64, ID, u64, u64, u64) {
+    (e.key, e.quantity, e.entity_id, e.component_id, e.balance_after, e.used_after)
 }
 
 #[test_only]
-public fun burned_fields(e: &ItemBurned): (EntityKey, u64, ID, u64, u64, u64) {
-    (e.game_id, e.quantity, e.entity_id, e.component_id, e.balance_after, e.used_after)
+public fun burned_fields(e: &ItemBurned): (VariantKey, u64, ID, u64, u64, u64) {
+    (e.key, e.quantity, e.entity_id, e.component_id, e.balance_after, e.used_after)
 }
 
 #[test_only]
-public fun deposited_fields(e: &ItemDeposited): (EntityKey, u64, ID, u64, ID, u64, u64) {
-    (
-        e.game_id,
-        e.quantity,
-        e.entity_id,
-        e.component_id,
-        e.transit_id,
-        e.balance_after,
-        e.used_after,
-    )
+public fun deposited_fields(e: &ItemDeposited): (VariantKey, u64, ID, u64, ID, u64, u64) {
+    (e.key, e.quantity, e.entity_id, e.component_id, e.transit_id, e.balance_after, e.used_after)
 }
 
 #[test_only]
-public fun withdrawn_fields(e: &ItemWithdrawn): (EntityKey, u64, ID, u64, ID, u64, u64) {
-    (
-        e.game_id,
-        e.quantity,
-        e.entity_id,
-        e.component_id,
-        e.transit_id,
-        e.balance_after,
-        e.used_after,
-    )
+public fun withdrawn_fields(e: &ItemWithdrawn): (VariantKey, u64, ID, u64, ID, u64, u64) {
+    (e.key, e.quantity, e.entity_id, e.component_id, e.transit_id, e.balance_after, e.used_after)
 }
 
 #[test_only]
@@ -504,19 +544,27 @@ public fun items_destroyed_fields(e: &ItemsDestroyed): (ID, u64, u64, vector<Des
 }
 
 #[test_only]
-public fun destroyed_balance_fields(b: &DestroyedBalance): (u64, u64, u64) {
-    (b.type_id, b.quantity, b.volume)
+public fun destroyed_balance_fields(b: &DestroyedBalance): (VariantKey, u64, u64) {
+    (b.key, b.quantity, b.volume)
+}
+
+/// A variant key with a 64-byte tenant, the widest the batch size tests assume.
+#[test_only]
+fun widest_key(): VariantKey {
+    let max = std::u64::max_value!();
+    let mut tenant = vector[];
+    64u64.do!(|_| tenant.push_back(0x61));
+    variant::variant::new_key(tenant.to_string(), max, max)
 }
 
 /// BCS size of an `ItemsDestroyed` holding `batch_size` balances, every field at
-/// its widest.
+/// its widest (tenant 64 bytes).
 #[test_only]
 public fun full_batch_bcs_size(batch_size: u64): u64 {
     let max = std::u64::max_value!();
+    let key = widest_key();
     let mut balances = vector[];
-    batch_size.do!(
-        |_| balances.push_back(DestroyedBalance { type_id: max, quantity: max, volume: max }),
-    );
+    batch_size.do!(|_| balances.push_back(DestroyedBalance { key, quantity: max, volume: max }));
     let batch = ItemsDestroyed {
         entity_id: object::id_from_address(@0x0),
         component_id: max,
@@ -536,22 +584,23 @@ public fun items_deposited_fields(e: &ItemsDeposited): (ID, u64, u64, u64, vecto
     (e.entity_id, e.component_id, e.batch_index, e.batch_count, e.items)
 }
 
-/// `(type_id, quantity, transit_id, balance_after, used_after)`.
+/// `(key, quantity, transit_id, balance_after, used_after)`.
 #[test_only]
-public fun moved_balance_fields(b: &MovedBalance): (u64, u64, ID, u64, u64) {
-    (b.type_id, b.quantity, b.transit_id, b.balance_after, b.used_after)
+public fun moved_balance_fields(b: &MovedBalance): (VariantKey, u64, ID, u64, u64) {
+    (b.key, b.quantity, b.transit_id, b.balance_after, b.used_after)
 }
 
 /// BCS size of an `ItemsWithdrawn` (same layout as `ItemsDeposited`) holding
-/// `batch_size` entries, every field at its widest.
+/// `batch_size` entries, every field at its widest (tenant 64 bytes).
 #[test_only]
 public fun full_moved_batch_bcs_size(batch_size: u64): u64 {
     let max = std::u64::max_value!();
     let id = object::id_from_address(@0x0);
+    let key = widest_key();
     let mut items = vector[];
     batch_size.do!(
         |_| items.push_back(MovedBalance {
-            type_id: max,
+            key,
             quantity: max,
             transit_id: id,
             balance_after: max,
