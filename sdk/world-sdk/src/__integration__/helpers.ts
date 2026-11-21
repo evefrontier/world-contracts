@@ -19,7 +19,12 @@ import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
 import { installLayout, setShell } from '../packages/layout.js'
-import { deriveVariantId, registerVariant } from '../packages/variant.js'
+import {
+  deriveVariantId,
+  type QuantityKind,
+  registerVariant,
+  type VariantKeyInput,
+} from '../packages/variant.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
@@ -159,21 +164,21 @@ export async function mintAccessCap(
   )
 }
 
-/** Read the `type_id` balance of an entity's inventory via `balance_of` (simulate). */
+/** Read the balance of variant `key` in an entity's inventory via `balance_of` (simulate). */
 export async function readBalance(
   client: WorldClient,
   config: WorldConfig,
   args: {
     entity: string
     componentId: bigint
-    typeId: bigint
+    key: VariantKeyInput
   },
 ): Promise<bigint> {
   const tx = new Transaction()
   tx.setSender(signer)
   balanceOf(tx, config, tx.object(args.entity), {
     componentId: args.componentId,
-    typeId: args.typeId,
+    key: args.key,
   })
   const res = await client.simulateTransaction({
     transaction: tx,
@@ -255,6 +260,48 @@ export async function fuelVariant(
       { propertyId: 210, magnitude: stats.containmentBurden },
       { propertyId: 211, magnitude: stats.volatility },
     ],
+  })
+  await expectSuccess(client, tx)
+  return id
+}
+
+export interface ItemVariantArgs {
+  tenant: string
+  typeId: bigint
+  /** m³ per item (`units`) or per kg (`mass`), at `VALUE_SCALE`. */
+  unitVolume: bigint
+  /** Defaults to `0n` (a type with no variant). */
+  variantId?: bigint
+  /** Defaults to `units`. */
+  kind?: QuantityKind
+}
+
+/**
+ * The item `Variant` for `typeId` in `tenant`, registered by the admin with no
+ * values on first use. Await it before the transaction that uses it. Returns its object ID.
+ */
+export async function itemVariant(
+  client: WorldClient,
+  config: WorldConfig,
+  args: ItemVariantArgs,
+): Promise<string> {
+  const key = {
+    tenant: args.tenant,
+    typeId: args.typeId,
+    variantId: args.variantId ?? 0n,
+  }
+  const id = deriveVariantId(config, key)
+  const exists = await client
+    .getObject({ objectId: id })
+    .then(() => true)
+    .catch(() => false)
+  if (exists) return id
+  const tx = new Transaction()
+  registerVariant(tx, config, {
+    key,
+    kind: args.kind ?? 'units',
+    unitVolume: args.unitVolume,
+    values: [],
   })
   await expectSuccess(client, tx)
   return id

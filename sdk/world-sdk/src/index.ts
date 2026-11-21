@@ -92,7 +92,9 @@ export {
   type CreateStorageUnitArgs,
   chainItemToGame,
   createStorageUnit,
+  type DepositFuelItemArgs,
   deposit,
+  depositFuelItem,
   depositRequirement,
   gameItemToChain,
   type InstallInventoryArgs,
@@ -226,4 +228,5 @@ export {
   registerVariant,
   VALUE_SCALE,
   type VariantKeyInput,
+  variantKey,
 } from './packages/variant.js'
