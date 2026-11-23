@@ -15,6 +15,10 @@ public fun scale(): u64 {
     SCALE
 }
 
+public fun ms_per_second(): u64 {
+    MS_PER_SECOND
+}
+
 // TODO: the stand-ins below are a sharp bend; swap for the smooth curve once
 // its formula and precision are shared.
 /// Usable impulse: the pool's impulse, capped at the Generator's impulse_limit. Fixed point at SCALE.
