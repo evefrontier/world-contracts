@@ -52,13 +52,13 @@ fun create_character(
     ts::return_shared(registry);
 }
 
-/// Admin exposes `edit_character` on the shared character: admin-gated, then the
-/// identity component's `Edit` requirement.
+/// Admin exposes `edit_character` on the shared character: the identity component's
+/// `Edit` requirement, which itself requires the admin.
 fun enable_edit_character(scenario: &mut ts::Scenario) {
     ts::next_tx(scenario, ADMIN);
     let mut e = ts::take_shared<Entity>(scenario);
     let acl = ts::take_shared<AdminACL>(scenario);
-    let act = action::new(vector[admin_service::admin_requirement(), identity::edit_requirement()]);
+    let act = action::new(vector[identity::edit_requirement()]);
     let mut req = e.enable_admin_action(string::utf8(b"edit_character"), act, scenario.ctx());
     admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
@@ -72,8 +72,8 @@ fun edit_character(scenario: &mut ts::Scenario, sender: address, new_tribe_id: u
     let mut e = ts::take_shared<Entity>(scenario);
     let acl = ts::take_shared<AdminACL>(scenario);
     let mut req = e.interact(string::utf8(b"edit_character"), scenario.ctx());
-    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     identity::edit(&mut e, &mut req, new_tribe_id);
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
     ts::return_shared(acl);
     ts::return_shared(e);
@@ -193,6 +193,21 @@ fun admin_edits_character() {
         assert!(identity::owner(&e) == OWNER);
         ts::return_shared(e);
     };
+
+    scenario.end();
+}
+
+#[test]
+fun edit_character_without_changes_skips_event() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
+    enable_edit_character(&mut scenario);
+    edit_character(&mut scenario, ADMIN, TRIBE_ID);
+
+    assert!(event::events_by_type<CharacterUpdated>().length() == 0);
 
     scenario.end();
 }

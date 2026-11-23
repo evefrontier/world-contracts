@@ -7,6 +7,7 @@
 module character::identity;
 
 use core::{
+    admin_service,
     component::{Self, Component},
     entity::Entity,
     entity_key::EntityKey,
@@ -106,17 +107,21 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     req
 }
 
-/// Set the character editable fields. Next requirement must be this component's `Edit`.
-/// the action also carries `admin_requirement`, so the caller must `verify_admin`.
+/// Set the character editable fields. Next requirement must be this component's `Edit`,
+/// and the frame then requires the admin. Emits `CharacterUpdated` only when a field changes.
 public fun edit(entity: &mut Entity, req: &mut Request, new_tribe_id: u32) {
     let character_id = entity.id();
     let key = entity.key();
     let c: &mut Component<Identity> = entity.component_mut(req, identity_permit());
     assert!(component::version(c) == VERSION, EWrongVersion);
-    let (_requirement, frame) = req.take_next(edit_permit());
-    c.inner_mut().tribe_id = new_tribe_id;
-    event::emit(CharacterUpdated { character_id, key, tribe_id: new_tribe_id });
-    frame.destroy_empty_frame();
+    let (_requirement, mut frame) = req.take_next(edit_permit());
+    let identity = c.inner_mut();
+    if (identity.tribe_id != new_tribe_id) {
+        identity.tribe_id = new_tribe_id;
+        event::emit(CharacterUpdated { character_id, key, tribe_id: new_tribe_id });
+    };
+    frame.require(admin_service::admin_requirement());
+    req.enqueue(frame);
 }
 
 /// Build an edit requirement targeting the identity component slot.
