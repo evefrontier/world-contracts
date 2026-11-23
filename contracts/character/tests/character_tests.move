@@ -3,6 +3,7 @@ module character::character_tests;
 
 use character::identity::{Self, CharacterCreated, CharacterUpdated};
 use core::{
+    access_cap::AccessCap,
     action,
     admin_service::{Self, AdminACL},
     component,
@@ -221,6 +222,48 @@ fun non_admin_edit_character_aborts() {
     create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
     enable_edit_character(&mut scenario);
     edit_character(&mut scenario, OWNER, TRIBE_ID + 1);
+
+    abort
+}
+
+/// An owner-configured action with only `edit_requirement` still can't skip the
+/// admin gate: `edit` enqueues it, so the request can't complete without it.
+#[test, expected_failure(abort_code = core::request::ERequestNotComplete)]
+fun owner_action_cannot_edit_without_admin() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut e = ts::take_shared<Entity>(&scenario);
+        let acl = ts::take_shared<AdminACL>(&scenario);
+        let mut req = e.mint_access(OWNER, false, scenario.ctx());
+        admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+        e.complete_request(req);
+        ts::return_shared(acl);
+        ts::return_shared(e);
+    };
+
+    ts::next_tx(&mut scenario, OWNER);
+    {
+        let mut e = ts::take_shared<Entity>(&scenario);
+        let cap = ts::take_from_sender<AccessCap>(&scenario);
+        let act = action::new(vector[identity::edit_requirement()]);
+        let mut req = e.enable_action(string::utf8(b"self_edit"), act, scenario.ctx());
+        e.verify_owner(&mut req, &cap);
+        e.complete_request(req);
+        ts::return_to_sender(&scenario, cap);
+        ts::return_shared(e);
+    };
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared<Entity>(&scenario);
+    let mut req = e.interact(string::utf8(b"self_edit"), scenario.ctx());
+    identity::edit(&mut e, &mut req, TRIBE_ID + 1);
+    e.complete_request(req);
 
     abort
 }
