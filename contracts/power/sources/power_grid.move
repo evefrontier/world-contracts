@@ -734,7 +734,7 @@ public fun generator_status(entity: &Entity, generator_id: u64, clock: &Clock): 
     let state = &grid.generators[&generator_id];
     if (!state.online) return PowerStatus::Off;
     let (bays, on, _, _) = grid.project(clock.timestamp_ms());
-    generator_status_of(state, &bays, on)
+    generator_status_of(state, &pools_of(&bays), &offline_types(&bays), on)
 }
 
 /// Every connected module now, its draw projected through each pool's run-out.
@@ -772,12 +772,13 @@ public fun projected_snapshot(entity: &Entity, clock: &Clock): GridSnapshot {
         modules.insert(*module_id, ModuleView { state: current, status });
     });
     let pools_now = pools_of(&bays);
+    let offline_held = offline_types(&bays);
     let mut generators = vec_map::empty();
     grid.generators.length().do!(|i| {
         let (generator_id, state) = grid.generators.get_entry_by_idx(i);
         let view = GeneratorView {
             state: *state,
-            status: generator_status_of(state, &bays, on),
+            status: generator_status_of(state, &pools_now, &offline_held, on),
             output_mw: output_from(&pools_now, state),
         };
         generators.insert(*generator_id, view);
@@ -1520,16 +1521,17 @@ fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
     used_mw.do!(|max_used| assert!(grid.used_mw() <= max_used, EUsedAboveMax));
 }
 
-/// A Generator's status with `bays` and `on` as `project` returns them; see
-/// `generator_status`.
+/// A Generator's status given `pools` from `pools_of`, `offline_held` from
+/// `offline_types` and `on` from `project`; see `generator_status`.
 fun generator_status_of(
     state: &GeneratorState,
-    bays: &VecMap<u64, FuelBayState>,
+    pools: &VecMap<u64, Fuel>,
+    offline_held: &vector<u64>,
     on: bool,
 ): PowerStatus {
     if (!state.online) return PowerStatus::Off;
-    if (blend_bays(bays, option::some(state.fuel_type)).quantity == 0) {
-        return if (offline_types(bays).contains(&state.fuel_type)) PowerStatus::BaysOffline
+    if (!pools.contains(&state.fuel_type)) {
+        return if (offline_held.contains(&state.fuel_type)) PowerStatus::BaysOffline
         else PowerStatus::NoFuel
     };
     if (!on) PowerStatus::GridOff else PowerStatus::Online
