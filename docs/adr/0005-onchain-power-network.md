@@ -205,7 +205,9 @@ There is no run-out event on chain; off chain services computes run-out from the
 - `projected_pools`: each pool now, by type, with its run-out time if grants hold
   and its burn rate now. Every rate is constant until the earliest run-out or the
   next change to the grid, so a client can drain a gauge between reads without
-  reading again. The rate is rounded up, so the run-out time is the real end.
+  reading again. The rate is the one a settle at that moment would use, so it can
+  move by a rounding unit between reads; it is rounded up, so the run-out time
+  is the real end.
 - `projected_module_states`: every module now, draws projected.
 - `projected_status`: power limit, `used_mw`, online module ids.
 - `module_state`: one module as of the last settle.

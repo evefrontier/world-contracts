@@ -211,8 +211,9 @@ public struct PoolView has copy, drop, store {
     /// Fuel burned per second now, at the scale of `fuel.quantity`, rounded up
     /// like the burn itself. 0 while nothing burns it. Holds until the earliest
     /// `run_out_ms` of any pool or the next change to the grid, whichever comes
-    /// first. Rounding up drains a gauge slightly early on a slow pool, so
-    /// `run_out_ms` is the real end time.
+    /// first. It is the rate a settle now would use, so between reads it can
+    /// move by a rounding unit. Rounding up drains a gauge slightly early on a
+    /// slow pool, so `run_out_ms` is the real end time.
     burn_rate: u64,
 }
 
