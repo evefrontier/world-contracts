@@ -628,7 +628,7 @@ public fun projected_pools(entity: &Entity, clock: &Clock): VecMap<u64, PoolView
     let grid = power_grid(entity);
     let now_ms = clock.timestamp_ms();
     let (bays, on, capacity, draws) = grid.project(now_ms);
-    grid.pool_views(&bays, on, capacity, &draws, now_ms)
+    grid.pool_views(&bays, &pools_of(&bays), on, capacity, &draws, now_ms)
 }
 
 /// Fuel in online bays now, with the burn since the last settle applied.
@@ -707,7 +707,7 @@ public fun module_status(entity: &Entity, module_id: u64, clock: &Clock): PowerS
     let grid = power_grid(entity);
     assert!(grid.modules.contains(&module_id), EModuleNotConnected);
     let (bays, on, _, draws) = grid.project(clock.timestamp_ms());
-    let fuel_short = grid.fuel_short(&bays);
+    let fuel_short = grid.fuel_short(&pools_of(&bays), &offline_types(&bays));
     let idx = grid.modules.get_idx(&module_id);
     status_of(&grid.modules[&module_id], on, draws[idx], fuel_short)
 }
@@ -716,7 +716,7 @@ public fun module_status(entity: &Entity, module_id: u64, clock: &Clock): PowerS
 public fun module_statuses(entity: &Entity, clock: &Clock): VecMap<u64, PowerStatus> {
     let grid = power_grid(entity);
     let (bays, on, _, draws) = grid.project(clock.timestamp_ms());
-    let fuel_short = grid.fuel_short(&bays);
+    let fuel_short = grid.fuel_short(&pools_of(&bays), &offline_types(&bays));
     let mut statuses = vec_map::empty();
     grid.modules.length().do!(|i| {
         let (module_id, state) = grid.modules.get_entry_by_idx(i);
@@ -759,8 +759,10 @@ public fun projected_snapshot(entity: &Entity, clock: &Clock): GridSnapshot {
     let grid = power_grid(entity);
     let now_ms = clock.timestamp_ms();
     let (bays, on, capacity, draws) = grid.project(now_ms);
-    let pools = grid.pool_views(&bays, on, capacity, &draws, now_ms);
-    let fuel_short = grid.fuel_short(&bays);
+    let pools_now = pools_of(&bays);
+    let offline_held = offline_types(&bays);
+    let pools = grid.pool_views(&bays, &pools_now, on, capacity, &draws, now_ms);
+    let fuel_short = grid.fuel_short(&pools_now, &offline_held);
     let mut used_mw = 0;
     let mut modules = vec_map::empty();
     grid.modules.length().do!(|i| {
@@ -771,8 +773,6 @@ public fun projected_snapshot(entity: &Entity, clock: &Clock): GridSnapshot {
         let status = status_of(state, on, draws[i], fuel_short);
         modules.insert(*module_id, ModuleView { state: current, status });
     });
-    let pools_now = pools_of(&bays);
-    let offline_held = offline_types(&bays);
     let mut generators = vec_map::empty();
     grid.generators.length().do!(|i| {
         let (generator_id, state) = grid.generators.get_entry_by_idx(i);
@@ -1551,13 +1551,16 @@ fun status_of(
     PowerStatus::Online
 }
 
-/// Why modules lack fuel with `bays`, if they do: when Generators are online
-/// but none of their pools holds fuel, `BaysOffline` if an offline bay holds
-/// one of their types, else `NoFuel`. `None` when an online Generator's pool
-/// holds fuel, or no Generator is online.
-fun fuel_short(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): Option<PowerStatus> {
-    let pools = pools_of(bays);
-    let offline_held = offline_types(bays);
+/// Why modules lack fuel, given `pools` from `pools_of` and `offline_held` from
+/// `offline_types`, if they do: when Generators are online but none of their
+/// pools holds fuel, `BaysOffline` if an offline bay holds one of their types,
+/// else `NoFuel`. `None` when an online Generator's pool holds fuel, or no
+/// Generator is online.
+fun fuel_short(
+    grid: &PowerGrid,
+    pools: &VecMap<u64, Fuel>,
+    offline_held: &vector<u64>,
+): Option<PowerStatus> {
     let mut any_online = false;
     let mut supplied = false;
     let mut offline = false;
@@ -1652,16 +1655,17 @@ fun step(
 }
 
 /// Every pool with `bays`, `on`, `capacity` and `draws` as `project` returns
-/// them at `now_ms`; see `projected_pools`.
+/// them at `now_ms`, and `pools` from `pools_of(bays)`; see `projected_pools`.
 fun pool_views(
     grid: &PowerGrid,
     bays: &VecMap<u64, FuelBayState>,
+    pools: &VecMap<u64, Fuel>,
     on: bool,
     capacity: u64,
     draws: &vector<u64>,
     now_ms: u64,
 ): VecMap<u64, PoolView> {
-    let burn_rates = grid.burn_rates(bays, capacity, draws);
+    let burn_rates = grid.burn_rates(pools, capacity, draws);
     let (_, _, _, _, run_outs) = grid.step(
         *bays,
         on,
@@ -1679,32 +1683,32 @@ fun pool_views(
         let (_, state) = grid.generators.get_entry_by_idx(i);
         if (state.online && !types.contains(&state.fuel_type)) types.push_back(state.fuel_type);
     });
-    let mut pools = vec_map::empty();
+    let mut views = vec_map::empty();
     types.do!(|t| {
         let run_out_ms = if (run_outs.contains(&t)) option::some(run_outs[&t]) else option::none();
         let burn_rate = if (burn_rates.contains(&t)) burn_rates[&t] else 0;
-        pools.insert(
+        views.insert(
             t,
             PoolView { fuel: blend_bays(bays, option::some(t)), run_out_ms, burn_rate },
         );
     });
-    pools
+    views
 }
 
-/// Fuel each burning pool burns per second with `bays`, `capacity` and
-/// `draws` as `project` returns them, by fuel type: `rate_burn` over one
-/// second, so it rounds up like a settle does. Pools that don't burn are left
-/// out.
+/// Fuel each burning pool burns per second with `pools` from `pools_of`, and
+/// `capacity` and `draws` as `project` returns them, by fuel type: `rate_burn`
+/// over one second, so it rounds up like a settle does. Pools that don't burn
+/// are left out.
 fun burn_rates(
     grid: &PowerGrid,
-    bays: &VecMap<u64, FuelBayState>,
+    pools: &VecMap<u64, Fuel>,
     capacity: u64,
     draws: &vector<u64>,
 ): VecMap<u64, u64> {
     let mut rates = vec_map::empty();
     let load = load_of(draws, capacity);
     if (load == 0) return rates;
-    grid.pool_rates(&pools_of(bays)).do_ref!(|rate| {
+    grid.pool_rates(pools).do_ref!(|rate| {
         let burn = rate_burn(rate, capacity, load, fuel_math::ms_per_second());
         rates.insert(rate.fuel_type, burn.min(std::u64::max_value!() as u128) as u64);
     });
