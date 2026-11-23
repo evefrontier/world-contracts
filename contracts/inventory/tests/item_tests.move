@@ -230,37 +230,14 @@ fun mint_mass_not_whole_step_aborts() {
     abort
 }
 
-#[test, expected_failure(abort_code = item::EQuantityNotWholeStep)]
-fun split_mass_not_whole_step_aborts() {
-    let mut scenario = ts::begin(@0xA);
-    let mut bag = item::new_bag(scenario.ctx());
-    let key = fuel_key();
-    let mut used = 0;
-    item::mint(&mut bag, key, 2 * STEP, 3, MASS, source(), COMPONENT, &mut used);
-    let mut a = item::withdraw(
-        &mut bag,
-        key,
-        2 * STEP,
-        source(),
-        COMPONENT,
-        &mut used,
-        scenario.ctx(),
-    );
-    let _b = item::split(&mut a, STEP / 2, scenario.ctx());
-
-    abort
-}
-
 #[test]
-fun split_and_merge() {
+fun merge_joins_two_items_of_one_variant() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
     let mut used = 0;
-    let mut a = withdraw_item(&mut bag, key, 100, &mut used, scenario.ctx());
-    let b = item::split(&mut a, 40, scenario.ctx());
-    assert!(a.quantity() == 60);
-    assert!(b.quantity() == 40);
+    let mut a = withdraw_item(&mut bag, key, 60, &mut used, scenario.ctx());
+    let b = withdraw_item(&mut bag, key, 40, &mut used, scenario.ctx());
     assert!(b.key() == key && b.unit_volume() == VOL);
 
     item::merge(&mut a, b);

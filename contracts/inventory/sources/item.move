@@ -399,21 +399,6 @@ public(package) fun withdraw_batch(
     items
 }
 
-/// Split `quantity` off `item` into a new `Item` of the same variant.
-public(package) fun split(item: &mut Item, quantity: u64, ctx: &mut TxContext): Item {
-    assert_quantity(quantity, item.decimals);
-    assert!(item.quantity >= quantity, EInsufficientQuantity);
-    item.quantity = item.quantity - quantity;
-    Item {
-        id: object::new(ctx),
-        key: item.key,
-        quantity,
-        unit_volume: item.unit_volume,
-        decimals: item.decimals,
-        source: item.source,
-    }
-}
-
 /// Merge `other` into `item`. Both must be the same variant and source.
 public(package) fun merge(item: &mut Item, other: Item) {
     let Item { id, key, quantity, source, .. } = other;
