@@ -110,6 +110,7 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
 /// Set the character editable fields. Next requirement must be this component's `Edit`,
 /// and the frame then requires the admin. Emits `CharacterUpdated` only when a field changes.
 public fun edit(entity: &mut Entity, req: &mut Request, new_tribe_id: u32) {
+    assert!(entity.has_component_with_type<Identity>(component_id()), EComponentMissing);
     let character_id = entity.id();
     let key = entity.key();
     let c: &mut Component<Identity> = entity.component_mut(req, identity_permit());
