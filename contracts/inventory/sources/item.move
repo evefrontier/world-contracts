@@ -250,7 +250,7 @@ public(package) fun burn(
     component_id: u64,
     used: &mut u64,
 ) {
-    let balance_after = subtract_balance(bag, key, quantity, used);
+    let (balance_after, _, _) = subtract_balance(bag, key, quantity, used);
     event::emit(ItemBurned {
         key,
         quantity,
@@ -463,12 +463,7 @@ fun take_item(
     used: &mut u64,
     ctx: &mut TxContext,
 ): (Item, MovedBalance) {
-    assert!(bag.balances.contains(key), EInsufficientQuantity);
-    let (unit_volume, decimals) = {
-        let bal = &bag.balances[key];
-        (bal.unit_volume, bal.decimals)
-    };
-    let balance_after = subtract_balance(bag, key, quantity, used);
+    let (balance_after, unit_volume, decimals) = subtract_balance(bag, key, quantity, used);
     let item = Item { id: object::new(ctx), key, quantity, unit_volume, decimals, source };
     let transit_id = object::id(&item);
     (item, MovedBalance { key, quantity, transit_id, balance_after, used_after: *used })
@@ -494,20 +489,26 @@ fun add_balance(
 }
 
 /// Take from the `key` stack, re-rounding its volume into `used`; drops an empty
-/// stack. Returns the remaining quantity.
-fun subtract_balance(bag: &mut ItemBag, key: VariantKey, quantity: u64, used: &mut u64): u64 {
+/// stack. Returns the remaining quantity and the stack's `unit_volume` and `decimals`.
+fun subtract_balance(
+    bag: &mut ItemBag,
+    key: VariantKey,
+    quantity: u64,
+    used: &mut u64,
+): (u64, u64, u8) {
     assert!(bag.balances.contains(key), EInsufficientQuantity);
     let bal = &mut bag.balances[key];
-    assert_quantity(quantity, bal.decimals);
+    let (unit_volume, decimals) = (bal.unit_volume, bal.decimals);
+    assert_quantity(quantity, decimals);
     assert!(bal.quantity >= quantity, EInsufficientQuantity);
-    let before = stack_volume(bal.unit_volume, bal.quantity, bal.decimals);
+    let before = stack_volume(unit_volume, bal.quantity, decimals);
     bal.quantity = bal.quantity - quantity;
     let remaining = bal.quantity;
-    *used = *used - before + stack_volume(bal.unit_volume, remaining, bal.decimals);
+    *used = *used - before + stack_volume(unit_volume, remaining, decimals);
     if (remaining == 0) {
         bag.balances.remove(key);
     };
-    remaining
+    (remaining, unit_volume, decimals)
 }
 
 // === Test Functions ===

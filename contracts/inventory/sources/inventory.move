@@ -397,9 +397,9 @@ public fun withdraw_batch(
 public fun deposit_fuel_item(
     entity: &mut Entity,
     req: &mut Request,
-    fuel_bay_id: u64,
     item: Item,
     variant: &Variant,
+    fuel_bay_id: u64,
     clock: &Clock,
 ) {
     entity.assert_docked(item.source());

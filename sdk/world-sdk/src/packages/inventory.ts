@@ -341,9 +341,9 @@ export function depositFuelItem(
     arguments: [
       entity,
       request,
-      tx.pure.u64(args.fuelBayId),
       args.item,
       typeof args.variant === 'string' ? tx.object(args.variant) : args.variant,
+      tx.pure.u64(args.fuelBayId),
       tx.object.clock(),
     ],
   })

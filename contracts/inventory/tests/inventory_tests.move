@@ -2122,7 +2122,7 @@ fun burn_fuel(
     e.complete_request(req);
 
     let mut req = e.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
-    inventory::deposit_fuel_item(&mut e, &mut req, FUEL_BAY_ID, item, named, &clock);
+    inventory::deposit_fuel_item(&mut e, &mut req, item, named, FUEL_BAY_ID, &clock);
     if (owner_signs) e.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
@@ -2227,7 +2227,7 @@ fun burn_made_up_item(
         scenario.ctx(),
     );
     let mut req = e.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
-    inventory::deposit_fuel_item(&mut e, &mut req, FUEL_BAY_ID, item, &fuel, &clock);
+    inventory::deposit_fuel_item(&mut e, &mut req, item, &fuel, FUEL_BAY_ID, &clock);
     abort
 }
 
