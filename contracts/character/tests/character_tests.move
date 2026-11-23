@@ -1,8 +1,9 @@
 #[test_only]
 module character::character_tests;
 
-use character::identity::{Self, CharacterCreated};
+use character::identity::{Self, CharacterCreated, CharacterUpdated};
 use core::{
+    action,
     admin_service::{Self, AdminACL},
     component,
     entity::{Self, Entity, EntityCreated},
@@ -49,6 +50,33 @@ fun create_character(
     character.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
+}
+
+/// Admin exposes `edit_character` on the shared character: admin-gated, then the
+/// identity component's `Edit` requirement.
+fun enable_edit_character(scenario: &mut ts::Scenario) {
+    ts::next_tx(scenario, ADMIN);
+    let mut e = ts::take_shared<Entity>(scenario);
+    let acl = ts::take_shared<AdminACL>(scenario);
+    let act = action::new(vector[admin_service::admin_requirement(), identity::edit_requirement()]);
+    let mut req = e.enable_admin_action(string::utf8(b"edit_character"), act, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(e);
+}
+
+/// `sender` runs the `edit_character` action on the shared character.
+fun edit_character(scenario: &mut ts::Scenario, sender: address, new_tribe_id: u32) {
+    ts::next_tx(scenario, sender);
+    let mut e = ts::take_shared<Entity>(scenario);
+    let acl = ts::take_shared<AdminACL>(scenario);
+    let mut req = e.interact(string::utf8(b"edit_character"), scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    identity::edit(&mut e, &mut req, new_tribe_id);
+    e.complete_request(req);
+    ts::return_shared(acl);
+    ts::return_shared(e);
 }
 
 /// Resolve the deterministic character object ID for `(in_game_id, tenant)`.
@@ -142,6 +170,42 @@ fun uninstall_without_identity_aborts() {
     e.complete_request(req);
 
     let _req = identity::uninstall(&mut e, scenario.ctx());
+
+    abort
+}
+
+#[test]
+fun admin_edits_character() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
+    enable_edit_character(&mut scenario);
+    edit_character(&mut scenario, ADMIN, TRIBE_ID + 1);
+
+    assert!(event::events_by_type<CharacterUpdated>().length() == 1);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let e = ts::take_shared<Entity>(&scenario);
+        assert!(identity::tribe_id(&e) == TRIBE_ID + 1);
+        assert!(identity::owner(&e) == OWNER);
+        ts::return_shared(e);
+    };
+
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = admin_service::EUnauthorizedAdmin)]
+fun non_admin_edit_character_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    create_character(&mut scenario, IN_GAME_ID, tenant(), TRIBE_ID, OWNER);
+    enable_edit_character(&mut scenario);
+    edit_character(&mut scenario, OWNER, TRIBE_ID + 1);
 
     abort
 }

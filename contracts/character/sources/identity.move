@@ -6,7 +6,13 @@
 /// multiple addresses can be bound to a single character.
 module character::identity;
 
-use core::{component::{Self, Component}, entity::Entity, entity_key::EntityKey, request::Request};
+use core::{
+    component::{Self, Component},
+    entity::Entity,
+    entity_key::EntityKey,
+    request::Request,
+    requirement::{Self, Requirement}
+};
 use std::{internal::Permit, string::{Self, String}};
 use sui::event;
 
@@ -29,6 +35,9 @@ public struct Identity has store {
     owner: address,
 }
 
+/// Requirement satisfied by `edit`.
+public struct Edit() has drop;
+
 // === Events ===
 
 /// Emitted when identity is installed on an entity, i.e. when it becomes a character.
@@ -37,6 +46,13 @@ public struct CharacterCreated has copy, drop {
     key: EntityKey,
     tribe_id: u32,
     character_address: address,
+}
+
+/// Emitted when a character's information changes.
+public struct CharacterUpdated has copy, drop {
+    character_id: ID,
+    key: EntityKey,
+    tribe_id: u32,
 }
 
 // === View Functions ===
@@ -90,6 +106,24 @@ public fun uninstall(entity: &mut Entity, ctx: &mut TxContext): Request {
     req
 }
 
+/// Set the character editable fields. Next requirement must be this component's `Edit`.
+/// the action also carries `admin_requirement`, so the caller must `verify_admin`.
+public fun edit(entity: &mut Entity, req: &mut Request, new_tribe_id: u32) {
+    let character_id = entity.id();
+    let key = entity.key();
+    let c: &mut Component<Identity> = entity.component_mut(req, identity_permit());
+    assert!(component::version(c) == VERSION, EWrongVersion);
+    let (_requirement, frame) = req.take_next(edit_permit());
+    c.inner_mut().tribe_id = new_tribe_id;
+    event::emit(CharacterUpdated { character_id, key, tribe_id: new_tribe_id });
+    frame.destroy_empty_frame();
+}
+
+/// Build an edit requirement targeting the identity component slot.
+public fun edit_requirement(): Requirement {
+    requirement::from_config(option::some(component_id()), Edit())
+}
+
 // === Private Functions ===
 
 fun borrow_component(entity: &Entity): &Component<Identity> {
@@ -108,4 +142,8 @@ fun component_label(): String {
 
 fun identity_permit(): Permit<Identity> {
     internal::permit<Identity>()
+}
+
+fun edit_permit(): Permit<Edit> {
+    internal::permit<Edit>()
 }
