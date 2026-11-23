@@ -7,7 +7,7 @@ use core::{
     admin_service::{Self, AdminACL},
     entity::{Self, Entity},
     object_registry::ObjectRegistry,
-    request::Request,
+    request::{Self, Request},
     requirement::{Self, Requirement},
     test_helpers::{claim, setup, take_acl, take_registry, tenant}
 };
@@ -2082,7 +2082,7 @@ fun fuelled_unit(scenario: &mut ts::Scenario, kgs: u64): ID {
 
 /// In one sponsored owner transaction: withdraw `qty` (base units) of `stock`, then burn it
 /// into the fuel bay naming `record` as its variant. `sponsored` false skips the
-/// game service as gas sponsor.
+/// game service as gas sponsor; `owner_signs` false skips the owner on the burn.
 fun burn_fuel(
     scenario: &mut ts::Scenario,
     e_id: ID,
@@ -2090,6 +2090,7 @@ fun burn_fuel(
     record: ID,
     qty: u64,
     sponsored: bool,
+    owner_signs: bool,
 ) {
     ensure_admin_sponsors(scenario);
     if (sponsored) next_tx_owner_signs_admin_pays(scenario, OWNER)
@@ -2122,7 +2123,7 @@ fun burn_fuel(
 
     let mut req = e.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
     inventory::deposit_fuel_item(&mut e, &mut req, FUEL_BAY_ID, item, named, &clock);
-    e.verify_owner(&mut req, &cap);
+    if (owner_signs) e.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     e.complete_request(req);
 
@@ -2141,7 +2142,7 @@ fun deposit_fuel_item_burns_item_into_bay() {
     let e_id = fuelled_unit(&mut scenario, 5);
     let fuel = default_fuel(&mut scenario);
 
-    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), true);
+    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), true, true);
 
     let deposited = event::events_by_type<inventory::FuelItemDeposited>();
     assert!(deposited.length() == 1);
@@ -2166,7 +2167,7 @@ fun deposit_fuel_item_with_other_variant_aborts() {
     let e_id = fuelled_unit(&mut scenario, 5);
     let fuel = default_fuel(&mut scenario);
     let other = grid_scenario::fuel_variant(&mut scenario, 7, 800_000, 140_000, 50_000, 0);
-    burn_fuel(&mut scenario, e_id, fuel, other, 3 * grid_scenario::kg(), true);
+    burn_fuel(&mut scenario, e_id, fuel, other, 3 * grid_scenario::kg(), true, true);
     abort
 }
 
@@ -2176,7 +2177,7 @@ fun deposit_fuel_item_without_sponsor_aborts() {
     setup(&mut scenario);
     let e_id = fuelled_unit(&mut scenario, 5);
     let fuel = default_fuel(&mut scenario);
-    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), false);
+    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), false, true);
     abort
 }
 
@@ -2187,7 +2188,70 @@ fun deposit_fuel_item_of_counted_item_aborts() {
     let e_id = fuelled_unit(&mut scenario, 5);
     bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 3, VOL);
     let plain = variant_for(&mut scenario, tenant(), FUEL, VOL);
-    burn_fuel(&mut scenario, e_id, plain, plain, 3, true);
+    burn_fuel(&mut scenario, e_id, plain, plain, 3, true, true);
+    abort
+}
+
+/// The sponsor alone cannot load the fuel: the owner must sign the burn.
+#[test, expected_failure(abort_code = request::EWrongRequirementType)]
+fun deposit_fuel_item_without_owner_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), true, false);
+    abort
+}
+
+/// Burn 3 kg of a made-up `Item` of `key` from `source` into the fuel bay, naming
+/// `record`. For checks that abort before the item's source is used.
+fun burn_made_up_item(
+    scenario: &mut ts::Scenario,
+    e_id: ID,
+    record: ID,
+    key: VariantKey,
+    source: ID,
+) {
+    ensure_admin_sponsors(scenario);
+    next_tx_owner_signs_admin_pays(scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
+    let fuel = ts::take_immutable_by_id<Variant>(scenario, record);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let qty = 3 * grid_scenario::kg();
+    let item = item::new_for_testing(
+        key,
+        qty,
+        fuel.unit_volume(),
+        fuel.decimals(),
+        source,
+        scenario.ctx(),
+    );
+    let mut req = e.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
+    inventory::deposit_fuel_item(&mut e, &mut req, FUEL_BAY_ID, item, &fuel, &clock);
+    abort
+}
+
+/// An item from an entity that is not docked here cannot fuel this entity.
+#[test, expected_failure(abort_code = entity::ENotDocked)]
+fun deposit_fuel_item_from_undocked_entity_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    let elsewhere = object::id_from_address(@0x99);
+    burn_made_up_item(&mut scenario, e_id, fuel, variant::new_key(tenant(), 7, 0), elsewhere);
+    abort
+}
+
+/// An item of another tenant cannot fuel this entity.
+#[test, expected_failure(abort_code = inventory::EWrongTenant)]
+fun deposit_fuel_item_of_other_tenant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    let key = variant::new_key(string::utf8(b"OTHER"), 7, 0);
+    burn_made_up_item(&mut scenario, e_id, fuel, key, e_id);
     abort
 }
 

@@ -518,6 +518,19 @@ public fun destroy(item: Item) {
     id.delete();
 }
 
+/// An `Item` no inventory produced, for checks that run before its source is used.
+#[test_only]
+public fun new_for_testing(
+    key: VariantKey,
+    quantity: u64,
+    unit_volume: u64,
+    decimals: u8,
+    source: ID,
+    ctx: &mut TxContext,
+): Item {
+    Item { id: object::new(ctx), key, quantity, unit_volume, decimals, source }
+}
+
 #[test_only]
 public fun minted_fields(e: &ItemMinted): (VariantKey, u64, ID, u64, u64, u64) {
     (e.key, e.quantity, e.entity_id, e.component_id, e.balance_after, e.used_after)

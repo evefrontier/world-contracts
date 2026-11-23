@@ -104,7 +104,7 @@ public struct InventoryUninstalled has copy, drop {
 }
 
 /// A fuel `Item` was burned into fuel bay `fuel_bay_id` of `entity_id`. The service
-/// reports it to the game; `grid_fuel::FuelAdded` follows with the bay's values.
+/// reports it to the game; `grid_fuel::FuelAdded`, emitted just before, has the bay's values.
 public struct FuelItemDeposited has copy, drop {
     item_id: ID,
     key: VariantKey,
@@ -126,7 +126,7 @@ public struct InventoryMigrated has copy, drop {
 // === Public Functions ===
 
 /// Build and install the storage component under `component_id` with the
-/// Inventory's volume capacity. `name` is an optional display label and is not
+/// Inventory's volume `capacity` in nano-m³. `name` is an optional display label and is not
 /// unique. The power fields are the spec the Inventory connects to the Creation's
 /// power grid with. Aborts if the grid is not installed.
 public fun install(

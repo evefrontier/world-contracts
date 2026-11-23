@@ -189,7 +189,8 @@ export async function readBalance(
       `balance_of simulation failed: ${res.FailedTransaction.status.error?.message ?? ''}`,
     )
   }
-  const rv = res.commandResults[0]?.returnValues[0]
+  // `new_key` runs before `balance_of`; the balance is the last command.
+  const rv = res.commandResults.at(-1)?.returnValues[0]
   if (!rv) throw new Error('balance_of returned no value')
   return BigInt(bcs.u64().parse(rv.bcs))
 }
