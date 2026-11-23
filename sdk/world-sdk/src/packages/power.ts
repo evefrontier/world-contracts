@@ -868,7 +868,10 @@ const PoolsBcs = bcs.struct('VecMap', {
 /**
  * One fuel type's pool now. `runOutMs` is `null` while nothing burns it.
  * `burnRate` is the fuel burned per second now, at the scale of the fuel
- * quantity: 0 while nothing burns it, constant until the earliest `runOutMs`.
+ * quantity: 0 while nothing burns it, constant until the earliest `runOutMs` or
+ * the next change to the grid, whichever comes first. It is rounded up, so a
+ * gauge drained at `burnRate` empties slightly early on a slow pool: `runOutMs`
+ * is the real end time.
  */
 export interface ProjectedPool extends FuelAmount {
   poolFuelType: bigint

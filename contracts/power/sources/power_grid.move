@@ -72,8 +72,6 @@ const NAME: vector<u8> = b"power_grid";
 const MAX_CONNECTED: u64 = 100;
 /// Cap on installed generators.
 const MAX_GENERATORS: u64 = 100;
-/// The span a `PoolView.burn_rate` covers.
-const MS_PER_SECOND: u64 = 1_000;
 /// Cap on fuel bays fitted plus stashed on one grid. Uninstalling or refitting a
 /// bay keeps the total, so only a new bay or an arriving stash can hit it.
 const MAX_FUEL_BAYS: u64 = 100;
@@ -212,7 +210,9 @@ public struct PoolView has copy, drop, store {
     run_out_ms: Option<u64>,
     /// Fuel burned per second now, at the scale of `fuel.quantity`, rounded up
     /// like the burn itself. 0 while nothing burns it. Holds until the earliest
-    /// `run_out_ms` of any pool, when every rate changes.
+    /// `run_out_ms` of any pool or the next change to the grid, whichever comes
+    /// first. Rounding up drains a gauge slightly early on a slow pool, so
+    /// `run_out_ms` is the real end time.
     burn_rate: u64,
 }
 
@@ -1518,9 +1518,7 @@ fun step(
     let mut run_outs = vec_map::empty();
     let mut at = from_ms;
     while (until_ms > at) {
-        let mut used = 0;
-        draws.do_ref!(|draw| used = used + *draw);
-        let load = used.min(capacity);
+        let load = load_of(&draws, capacity);
         if (load == 0) break;
         let rates = grid.pool_rates(&pools_of(&bays));
         let step = first_run_out(&rates, capacity, load, until_ms - at);
@@ -1552,15 +1550,20 @@ fun burn_rates(
     draws: &vector<u64>,
 ): VecMap<u64, u64> {
     let mut rates = vec_map::empty();
-    let mut used = 0;
-    draws.do_ref!(|draw| used = used + *draw);
-    let load = used.min(capacity);
+    let load = load_of(draws, capacity);
     if (load == 0) return rates;
     grid.pool_rates(&pools_of(bays)).do_ref!(|rate| {
-        let burn = rate_burn(rate, capacity, load, MS_PER_SECOND);
+        let burn = rate_burn(rate, capacity, load, fuel_math::ms_per_second());
         rates.insert(rate.fuel_type, burn.min(std::u64::max_value!() as u128) as u64);
     });
     rates
+}
+
+/// MW actually burned: the sum of `draws`, capped at `capacity`.
+fun load_of(draws: &vector<u64>, capacity: u64): u64 {
+    let mut used = 0;
+    draws.do_ref!(|draw| used = used + *draw);
+    used.min(capacity)
 }
 
 /// Burn inputs of each pool that has a supplying Generator, given `pools`.
