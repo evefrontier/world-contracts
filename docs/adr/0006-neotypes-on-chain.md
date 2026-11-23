@@ -255,11 +255,17 @@ service find a record without an index.
 - `VariantRegistered { key, id, kind }` for indexers; item movement events carry
 `variant_id`; `FuelItemDeposited` for items burned into a bay.
 
-Builders gate on properties in their own requirement handler, declared just
+Core `ItemRequirement` checks type, quantity and, optionally, one variant
+(`variant_id`, which needs `type_id`). Without `variant_id` a rule admits every
+variant of its type, so on a withdraw the caller picks the variant: a swap that
+only names the type gives out the best grade in stock. Pin `variant_id` when an
+action must release or accept one exact variant.
+
+Builders gate on property values in their own requirement handler, declared just
 before the deposit in the action. The handler takes the `Item` and its
 `&Variant`, checks `item.key == variant.key` and any property, then passes that
 same `Item` to `inventory::deposit` in the same call. A check on one item can't
-let a different item through. Core `ItemRequirement` stays type and quantity only.
+let a different item through.
 
 ## Alternatives Considered
 

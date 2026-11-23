@@ -29,8 +29,13 @@ function pkg(config: WorldConfig): string {
   return mvrName(config.env, INVENTORY_PACKAGE)
 }
 
+/**
+ * An item rule; an unset field allows anything. `variantId` pins the rule to
+ * one variant of `typeId` and needs `typeId`. Quantities are in base units.
+ */
 export interface ItemRule {
   typeId?: bigint | null
+  variantId?: bigint | null
   minQuantity?: bigint | null
   maxQuantity?: bigint | null
 }
@@ -47,6 +52,7 @@ function requirement(
     arguments: [
       tx.pure.u64(componentId),
       tx.pure.option('u64', rule.typeId ?? null),
+      tx.pure.option('u64', rule.variantId ?? null),
       tx.pure.option('u64', rule.minQuantity ?? null),
       tx.pure.option('u64', rule.maxQuantity ?? null),
     ],

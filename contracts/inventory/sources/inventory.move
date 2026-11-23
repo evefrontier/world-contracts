@@ -48,6 +48,10 @@ const EBatchLengthMismatch: vector<u8> = b"keys and quantities must be the same 
 const EEmptyBatch: vector<u8> = b"Batch must not be empty";
 #[error(code = 9)]
 const EWrongVariant: vector<u8> = b"Item is not this variant";
+#[error(code = 10)]
+const EVariantWithoutType: vector<u8> = b"A rule's variant_id needs its type_id";
+#[error(code = 11)]
+const EItemVariantNotAllowed: vector<u8> = b"Item variant not permitted by the requirement";
 
 // === Constants ===
 
@@ -69,8 +73,10 @@ public struct Inventory has store {
 }
 
 /// Requirement config shared by deposit, withdraw, and bridge handlers.
+/// `variant_id` narrows `type_id` to one variant; `none` admits every variant.
 public struct ItemRequirement has drop {
     type_id: Option<u64>,
+    variant_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 }
@@ -250,7 +256,7 @@ public fun game_item_to_chain_inventory(
     assert_tenant(entity, key);
     let (requirement, mut frame, inv) = take(entity, req, bridge_in_permit());
     let module_id = module_id(&requirement);
-    enforce_rule(&requirement, key.type_id(), quantity);
+    enforce_rule(&requirement, key, quantity);
     inv
         .items
         .mint(
@@ -280,7 +286,7 @@ public fun chain_item_to_game_inventory(
     assert_tenant(entity, key);
     let (requirement, mut frame, inv) = take(entity, req, bridge_out_permit());
     let module_id = module_id(&requirement);
-    enforce_rule(&requirement, key.type_id(), quantity);
+    enforce_rule(&requirement, key, quantity);
     inv.items.burn(key, quantity, entity_id, module_id, &mut inv.used);
     frame.require(admin_service::sponsor_requirement());
     frame.require(online_requirement(entity, module_id));
@@ -295,11 +301,11 @@ public fun deposit(entity: &mut Entity, req: &mut Request, item: Item) {
     let entity_id = entity.id();
     entity.assert_docked(item.source());
     assert_tenant(entity, item.key());
-    let type_id = item.key().type_id();
+    let key = item.key();
     let quantity = item.quantity();
     let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
     let module_id = module_id(&requirement);
-    enforce_rule(&requirement, type_id, quantity);
+    enforce_rule(&requirement, key, quantity);
     inv.items.deposit(item, entity_id, module_id, &mut inv.used);
     assert!(inv.used <= inv.capacity, EOverCapacity);
     frame.require(online_requirement(entity, module_id));
@@ -320,7 +326,7 @@ public fun withdraw(
     let source = entity.id();
     let (requirement, mut frame, inv) = take(entity, req, withdrawal_permit());
     let module_id = module_id(&requirement);
-    enforce_rule(&requirement, key.type_id(), quantity);
+    enforce_rule(&requirement, key, quantity);
     let item = inv.items.withdraw(key, quantity, source, module_id, &mut inv.used, ctx);
     frame.require(online_requirement(entity, module_id));
     req.enqueue(frame);
@@ -328,23 +334,23 @@ public fun withdraw(
 }
 
 /// `deposit` for every `items` entry under one `Deposit` requirement. Every
-/// entry must be the rule's type, and its quantity bounds apply to the batch's
+/// entry must be the rule's type and variant, and its quantity bounds apply to the batch's
 /// total, so one requirement never admits more than one `deposit` could. Emits `ItemsDeposited` in batches of at most
 /// `EVENT_BATCH_SIZE`. Aborts if `items` is empty.
 public fun deposit_batch(entity: &mut Entity, req: &mut Request, items: vector<Item>) {
     assert!(!items.is_empty(), EEmptyBatch);
     let entity_id = entity.id();
     let mut total = 0;
-    let mut type_ids = vector[];
+    let mut keys = vector[];
     items.do_ref!(|item| {
         entity.assert_docked(item.source());
         assert_tenant(entity, item.key());
         total = total + item.quantity();
-        type_ids.push_back(item.key().type_id());
+        keys.push_back(item.key());
     });
     let (requirement, mut frame, inv) = take(entity, req, deposit_permit());
     let module_id = module_id(&requirement);
-    enforce_batch_rule(&requirement, &type_ids, total);
+    enforce_batch_rule(&requirement, &keys, total);
     inv.items.deposit_batch(items, entity_id, module_id, &mut inv.used, EVENT_BATCH_SIZE);
     assert!(inv.used <= inv.capacity, EOverCapacity);
     frame.require(online_requirement(entity, module_id));
@@ -352,7 +358,7 @@ public fun deposit_batch(entity: &mut Entity, req: &mut Request, items: vector<I
 }
 
 /// `withdraw` of `quantities[i]` of `keys[i]` for each `i` under one
-/// `Withdrawal` requirement. Every entry must be the rule's type, and its
+/// `Withdrawal` requirement. Every entry must be the rule's type and variant, and its
 /// quantity bounds apply to the batch's total, so one requirement never
 /// releases more than one `withdraw` could. Returns the
 /// `Item`s in input order and emits `ItemsWithdrawn` in batches of at most
@@ -371,8 +377,7 @@ public fun withdraw_batch(
     let module_id = module_id(&requirement);
     let mut total = 0;
     quantities.do_ref!(|q| total = total + *q);
-    let type_ids = keys.map_ref!(|key| key.type_id());
-    enforce_batch_rule(&requirement, &type_ids, total);
+    enforce_batch_rule(&requirement, &keys, total);
     let items = inv
         .items
         .withdraw_batch(
@@ -411,16 +416,19 @@ public fun deposit_fuel_item(
     event::emit(FuelItemDeposited { item_id, key, quantity, entity_id: entity.id(), fuel_bay_id });
 }
 
-/// Build a bridge-in requirement on component `component_id`.
+/// Build a bridge-in requirement on component `component_id`. `none` allows any
+/// type, variant or amount. `variant_id` needs `type_id`; without it, any
+/// variant of the type passes. Quantities are in the variant's base units.
 public fun bridge_in_requirement(
     component_id: u64,
     type_id: Option<u64>,
+    variant_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(component_id),
-        BridgeIn(rule(type_id, min_quantity, max_quantity)),
+        BridgeIn(rule(type_id, variant_id, min_quantity, max_quantity)),
     )
 }
 
@@ -428,12 +436,13 @@ public fun bridge_in_requirement(
 public fun bridge_out_requirement(
     component_id: u64,
     type_id: Option<u64>,
+    variant_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(component_id),
-        BridgeOut(rule(type_id, min_quantity, max_quantity)),
+        BridgeOut(rule(type_id, variant_id, min_quantity, max_quantity)),
     )
 }
 
@@ -441,12 +450,13 @@ public fun bridge_out_requirement(
 public fun deposit_requirement(
     component_id: u64,
     type_id: Option<u64>,
+    variant_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(component_id),
-        Deposit(rule(type_id, min_quantity, max_quantity)),
+        Deposit(rule(type_id, variant_id, min_quantity, max_quantity)),
     )
 }
 
@@ -454,12 +464,13 @@ public fun deposit_requirement(
 public fun withdraw_requirement(
     component_id: u64,
     type_id: Option<u64>,
+    variant_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): Requirement {
     requirement::from_config(
         option::some(component_id),
-        Withdrawal(rule(type_id, min_quantity, max_quantity)),
+        Withdrawal(rule(type_id, variant_id, min_quantity, max_quantity)),
     )
 }
 
@@ -525,26 +536,33 @@ fun online_requirement(entity: &Entity, module_id: u64): Requirement {
 
 fun rule(
     type_id: Option<u64>,
+    variant_id: Option<u64>,
     min_quantity: Option<u64>,
     max_quantity: Option<u64>,
 ): ItemRequirement {
-    ItemRequirement { type_id, min_quantity, max_quantity }
+    // A variant ID only names a variant within its type.
+    assert!(variant_id.is_none() || type_id.is_some(), EVariantWithoutType);
+    ItemRequirement { type_id, variant_id, min_quantity, max_quantity }
 }
 
 /// Decode the `ItemRequirement` config and assert the operation satisfies it.
-/// Mirrors field order: type_id, min, max.
-fun enforce_rule(requirement: &Requirement, type_id: u64, quantity: u64) {
-    enforce_batch_rule(requirement, &vector[type_id], quantity)
+fun enforce_rule(requirement: &Requirement, key: VariantKey, quantity: u64) {
+    enforce_batch_rule(requirement, &vector[key], quantity)
 }
 
-/// The rule for everything one requirement moves: each of `type_ids` must be the
-/// allowed type, and `total` quantity must be within the bounds.
-fun enforce_batch_rule(requirement: &Requirement, type_ids: &vector<u64>, total: u64) {
+/// The rule for everything one requirement moves: each of `keys` must be the
+/// allowed type and variant, and `total` quantity must be within the bounds.
+/// Mirrors field order: type_id, variant_id, min, max.
+fun enforce_batch_rule(requirement: &Requirement, keys: &vector<VariantKey>, total: u64) {
     let mut b = bcs::new(requirement.data());
     let allowed_type = b.peel_option_u64();
+    let allowed_variant = b.peel_option_u64();
     let min_quantity = b.peel_option_u64();
     let max_quantity = b.peel_option_u64();
-    allowed_type.do!(|t| type_ids.do_ref!(|type_id| assert!(*type_id == t, EItemTypeNotAllowed)));
+    allowed_type.do!(|t| keys.do_ref!(|key| assert!(key.type_id() == t, EItemTypeNotAllowed)));
+    allowed_variant.do!(
+        |v| keys.do_ref!(|key| assert!(key.variant_id() == v, EItemVariantNotAllowed)),
+    );
     min_quantity.do!(|m| assert!(total >= m, EQuantityBelowMin));
     max_quantity.do!(|m| assert!(total <= m, EQuantityAboveMax));
 }

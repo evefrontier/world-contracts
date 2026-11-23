@@ -229,28 +229,28 @@ fun configure_default_actions(scenario: &mut ts::Scenario, e_id: ID, owner: addr
     enable(
         &mut e,
         b"bridge_in",
-        inventory::bridge_in_requirement(MODULE_ID, any, any, any),
+        inventory::bridge_in_requirement(MODULE_ID, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"bridge_out",
-        inventory::bridge_out_requirement(MODULE_ID, any, any, any),
+        inventory::bridge_out_requirement(MODULE_ID, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"deposit",
-        inventory::deposit_requirement(MODULE_ID, any, any, any),
+        inventory::deposit_requirement(MODULE_ID, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"withdraw",
-        inventory::withdraw_requirement(MODULE_ID, any, any, any),
+        inventory::withdraw_requirement(MODULE_ID, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
@@ -924,12 +924,14 @@ fun swap_moves_items_between_two_entities() {
             inventory::deposit_requirement(
                 MODULE_ID,
                 option::some(FUEL),
+                option::none(),
                 option::some(1),
                 option::some(1),
             ),
             inventory::withdraw_requirement(
                 MODULE_ID,
                 option::some(LENS),
+                option::none(),
                 option::some(1),
                 option::some(1),
             ),
@@ -1063,6 +1065,7 @@ fun bridge_in_wrong_type_aborts() {
             inventory::bridge_in_requirement(
                 MODULE_ID,
                 option::some(FUEL),
+                option::none(),
                 option::none(),
                 option::none(),
             ),
@@ -1242,7 +1245,7 @@ fun move_between_two_inventories_without_docking() {
         b"deposit_2",
         action::new(vector[
             access_cap::owner_requirement(),
-            inventory::deposit_requirement(MODULE_ID_2, any, any, any),
+            inventory::deposit_requirement(MODULE_ID_2, any, any, any, any),
         ]),
     );
     power_inventory(&mut scenario, e_id, OWNER);
@@ -1731,6 +1734,7 @@ fun withdraw_batch_entry_over_rule_max_aborts() {
         MODULE_ID,
         option::none(),
         option::none(),
+        option::none(),
         option::some(3),
     );
     enable(&mut e, b"withdraw_small", small, &cap, scenario.ctx());
@@ -1759,6 +1763,7 @@ fun withdraw_batch_total_over_rule_max_aborts() {
         MODULE_ID,
         option::none(),
         option::none(),
+        option::none(),
         option::some(3),
     );
     enable(&mut e, b"withdraw_small", small, &cap, scenario.ctx());
@@ -1783,6 +1788,7 @@ fun withdraw_batch_total_at_rule_max_succeeds() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let small = inventory::withdraw_requirement(
         MODULE_ID,
+        option::none(),
         option::none(),
         option::some(4),
         option::some(4),
@@ -1818,6 +1824,7 @@ fun withdraw_batch_entry_wrong_type_aborts() {
         option::some(FUEL),
         option::none(),
         option::none(),
+        option::none(),
     );
     enable(&mut e, b"withdraw_fuel", fuel_only, &cap, scenario.ctx());
     let _items = withdraw_batch(
@@ -1842,6 +1849,7 @@ fun deposit_batch_total_over_rule_max_aborts() {
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let small = inventory::deposit_requirement(
         MODULE_ID,
+        option::none(),
         option::none(),
         option::none(),
         option::some(3),
@@ -1892,12 +1900,14 @@ fun swap_batch_withdraw_cannot_exceed_payment() {
             inventory::deposit_requirement(
                 MODULE_ID,
                 option::some(FUEL),
+                option::none(),
                 option::some(1),
                 option::some(1),
             ),
             inventory::withdraw_requirement(
                 MODULE_ID,
                 option::some(LENS),
+                option::none(),
                 option::some(1),
                 option::some(1),
             ),
@@ -2337,7 +2347,7 @@ fun gated_unit(scenario: &mut ts::Scenario): (ID, ID, ID) {
         action::new(vector[
             access_cap::owner_requirement(),
             gate_requirement(HARDNESS, 30_000_000_000),
-            inventory::deposit_requirement(MODULE_ID, any, any, any),
+            inventory::deposit_requirement(MODULE_ID, any, any, any, any),
         ]),
     );
     let hard = ore(scenario, 1, 50_000_000_000);
@@ -2419,5 +2429,103 @@ fun builder_gate_refuses_another_variants_record() {
     setup(&mut scenario);
     let (e_id, hard, soft) = gated_unit(&mut scenario);
     gate_flow(&mut scenario, e_id, soft, hard);
+    abort
+}
+
+// === Rules pinned to a variant ===
+
+/// `gated_unit` plus an owner-gated `action` whose item rule admits only `ORE`
+/// variant 1 (the hard ore).
+fun unit_with_hard_ore_rule(scenario: &mut ts::Scenario, action: vector<u8>, deposit: bool): ID {
+    let (e_id, _, _) = gated_unit(scenario);
+    let (ore, hard, any) = (option::some(ORE), option::some(1), option::none());
+    let rule = if (deposit) inventory::deposit_requirement(MODULE_ID, ore, hard, any, any)
+    else inventory::withdraw_requirement(MODULE_ID, ore, hard, any, any);
+    owner_enable(
+        scenario,
+        e_id,
+        OWNER,
+        action,
+        action::new(vector[access_cap::owner_requirement(), rule]),
+    );
+    e_id
+}
+
+/// The owner withdraws 1 kg of `ORE` variant `variant_id` through `action`.
+fun withdraw_ore(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    cap: &AccessCap,
+    action: vector<u8>,
+    variant_id: u64,
+): Item {
+    let mut req = e.interact(string::utf8(action), scenario.ctx());
+    e.verify_owner(&mut req, cap);
+    let key = variant::new_key(tenant(), ORE, variant_id);
+    let item = inventory::withdraw(e, &mut req, key, grid_scenario::kg(), scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    grid_load::assert_online(e, &mut req, &clock);
+    clock.destroy_for_testing();
+    e.complete_request(req);
+    item
+}
+
+#[test]
+fun withdraw_rule_pinned_to_variant_releases_it() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = unit_with_hard_ore_rule(&mut scenario, b"withdraw_hard", false);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+
+    let item = withdraw_ore(&mut scenario, &mut e, &cap, b"withdraw_hard", 1);
+    assert!(item.key() == variant::new_key(tenant(), ORE, 1));
+    assert!(inventory::balance_of(&e, MODULE_ID, item.key()) == 0);
+    deposit(&mut scenario, &mut e, &cap, b"deposit", item);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+/// A withdraw rule pinned to the hard ore can't release the soft one, though it
+/// is the same type.
+#[test, expected_failure(abort_code = inventory::EItemVariantNotAllowed)]
+fun withdraw_rule_pinned_to_variant_refuses_another_variant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = unit_with_hard_ore_rule(&mut scenario, b"withdraw_hard", false);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let _item = withdraw_ore(&mut scenario, &mut e, &cap, b"withdraw_hard", 2);
+    abort
+}
+
+/// Every entry of a batch must be the pinned variant.
+#[test, expected_failure(abort_code = inventory::EItemVariantNotAllowed)]
+fun deposit_batch_rule_pinned_to_variant_refuses_another_variant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = unit_with_hard_ore_rule(&mut scenario, b"deposit_hard", true);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let hard = withdraw_ore(&mut scenario, &mut e, &cap, b"withdraw", 1);
+    let soft = withdraw_ore(&mut scenario, &mut e, &cap, b"withdraw", 2);
+    deposit_batch(&mut scenario, &mut e, &cap, b"deposit_hard", vector[hard, soft]);
+    abort
+}
+
+#[test, expected_failure(abort_code = inventory::EVariantWithoutType)]
+fun rule_with_variant_but_no_type_aborts() {
+    let _rule = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::none(),
+        option::some(1),
+        option::none(),
+        option::none(),
+    );
     abort
 }
