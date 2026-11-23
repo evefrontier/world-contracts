@@ -37,8 +37,10 @@ import {
   setGenerator,
   setPowerGrid,
 } from '../packages/power.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   seatShell,
@@ -58,8 +60,8 @@ const MODULES: Record<string, [bigint, bigint, DrawKind, boolean]> = {
   off: [0xdcn, 10n, 'firm', false],
 }
 
+const UNITS = 100n
 const FUEL = {
-  amount: 100n,
   impulse: 90n * POWER_SCALE,
   containmentBurden: 14n * POWER_SCALE,
   volatility: 1n * POWER_SCALE,
@@ -129,6 +131,16 @@ describe('power snapshot (localnet)', () => {
       owner: signer,
       transferable: true,
     })
+    const hydrogenVariant = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: HYDROGEN,
+      ...FUEL,
+    })
+    const crudeVariant = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: CRUDE,
+      ...FUEL,
+    })
 
     // Hydrogen in an online bay feeds Main; Crude waits in an offline bay;
     // the third bay stays empty. Main and the grid on, two modules wanted on.
@@ -136,15 +148,15 @@ describe('power snapshot (localnet)', () => {
     addSponsors(onTx, config, [signer])
     const entity = onTx.object(entityId)
     const cap = onTx.object(capId)
-    for (const [fuelBayId, fuelType] of [
-      [HYDROGEN_BAY, HYDROGEN],
-      [CRUDE_BAY, CRUDE],
-    ]) {
+    for (const [fuelBayId, variant] of [
+      [HYDROGEN_BAY, hydrogenVariant],
+      [CRUDE_BAY, crudeVariant],
+    ] as const) {
       const deposit = interact(onTx, config, entity, 'deposit_fuel')
       depositFuel(onTx, config, entity, deposit, cap, {
         fuelBayId,
-        fuelType,
-        ...FUEL,
+        variant,
+        amount: UNITS * MASS_UNIT,
       })
       completeRequest(onTx, config, entity, deposit)
     }
