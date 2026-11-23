@@ -175,6 +175,30 @@ fun uninstall_without_identity_aborts() {
     abort
 }
 
+#[test, expected_failure(abort_code = identity::EComponentMissing)]
+fun edit_without_identity_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    // Claim an entity and expose the edit action, but never install identity.
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = ts::take_shared<ObjectRegistry>(&scenario);
+    let acl = ts::take_shared<AdminACL>(&scenario);
+    let (mut e, mut req) = entity::new(&mut registry, IN_GAME_ID, tenant());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    let act = action::new(vector[identity::edit_requirement()]);
+    let mut req = e.enable_admin_action(string::utf8(b"edit_character"), act, scenario.ctx());
+    admin_service::verify_admin(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    let mut req = e.interact(string::utf8(b"edit_character"), scenario.ctx());
+    identity::edit(&mut e, &mut req, TRIBE_ID + 1);
+
+    abort
+}
+
 #[test]
 fun admin_edits_character() {
     let mut scenario = ts::begin(ADMIN);
