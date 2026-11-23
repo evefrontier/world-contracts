@@ -562,17 +562,17 @@ public fun destroyed_balance_fields(b: &DestroyedBalance): (VariantKey, u64, u64
     (b.key, b.quantity, b.volume)
 }
 
-/// A variant key with a 64-byte tenant, the widest the batch size tests assume.
+/// A variant key with the longest tenant `new_key` accepts.
 #[test_only]
 fun widest_key(): VariantKey {
     let max = std::u64::max_value!();
     let mut tenant = vector[];
-    64u64.do!(|_| tenant.push_back(0x61));
+    variant::variant::max_tenant_length().do!(|_| tenant.push_back(0x61));
     variant::variant::new_key(tenant.to_string(), max, max)
 }
 
 /// BCS size of an `ItemsDestroyed` holding `batch_size` balances, every field at
-/// its widest (tenant 64 bytes).
+/// its widest.
 #[test_only]
 public fun full_batch_bcs_size(batch_size: u64): u64 {
     let max = std::u64::max_value!();
@@ -605,7 +605,7 @@ public fun moved_balance_fields(b: &MovedBalance): (VariantKey, u64, ID, u64, u6
 }
 
 /// BCS size of an `ItemsWithdrawn` (same layout as `ItemsDeposited`) holding
-/// `batch_size` entries, every field at its widest (tenant 64 bytes).
+/// `batch_size` entries, every field at its widest.
 #[test_only]
 public fun full_moved_batch_bcs_size(batch_size: u64): u64 {
     let max = std::u64::max_value!();

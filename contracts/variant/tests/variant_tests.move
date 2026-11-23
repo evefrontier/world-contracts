@@ -24,6 +24,12 @@ public struct Other() has drop;
 
 // === Helpers ===
 
+fun tenant_of_length(len: u64): string::String {
+    let mut bytes = vector[];
+    len.do!(|_| bytes.push_back(0x61));
+    bytes.to_string()
+}
+
 fun begin(): ts::Scenario {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
@@ -314,6 +320,18 @@ fun register_zero_unit_volume_aborts() {
 #[test, expected_failure(abort_code = variant::ETenantEmpty)]
 fun new_key_empty_tenant_aborts() {
     variant::new_key(string::utf8(b""), TYPE_ID, VARIANT_ID);
+    abort
+}
+
+#[test]
+fun new_key_accepts_max_tenant_length() {
+    let key = variant::new_key(tenant_of_length(variant::max_tenant_length()), TYPE_ID, VARIANT_ID);
+    assert!(key.tenant().length() == variant::max_tenant_length());
+}
+
+#[test, expected_failure(abort_code = variant::ETenantTooLong)]
+fun new_key_tenant_too_long_aborts() {
+    variant::new_key(tenant_of_length(variant::max_tenant_length() + 1), TYPE_ID, VARIANT_ID);
     abort
 }
 

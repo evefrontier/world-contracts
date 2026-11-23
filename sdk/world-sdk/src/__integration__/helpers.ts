@@ -234,16 +234,7 @@ export async function fuelVariant(
   stats: FuelStats,
 ): Promise<string> {
   const thermal = stats.thermalInefficiency ?? 0n
-  const mixed =
-    ((stats.impulse * 1_000_003n + stats.containmentBurden) * 1_000_003n +
-      stats.volatility) *
-      1_000_003n +
-    thermal
-  const key = {
-    tenant: stats.tenant,
-    typeId: stats.fuelType,
-    variantId: 1n + (mixed % 1_000_000_007n),
-  }
+  const key = fuelVariantKey(stats)
   const id = deriveVariantId(config, key)
   const exists = await client
     .getObject({ objectId: id })
@@ -264,6 +255,21 @@ export async function fuelVariant(
   })
   await expectSuccess(client, tx)
   return id
+}
+
+/** The key `fuelVariant` registers for these stats. */
+export function fuelVariantKey(stats: FuelStats): VariantKeyInput {
+  const thermal = stats.thermalInefficiency ?? 0n
+  const mixed =
+    ((stats.impulse * 1_000_003n + stats.containmentBurden) * 1_000_003n +
+      stats.volatility) *
+      1_000_003n +
+    thermal
+  return {
+    tenant: stats.tenant,
+    typeId: stats.fuelType,
+    variantId: 1n + (mixed % 1_000_000_007n),
+  }
 }
 
 export interface ItemVariantArgs {
