@@ -201,6 +201,11 @@ public struct GeneratorState has copy, drop, store {
 
 There is no run-out event on chain; off chain services computes run-out from the views.
 
+- `projected_snapshot`: the whole grid now in one read, from one projection:
+  whether it is on, capacity and use, every pool, bay, module
+  (state, status, draw) and Generator (state, status, output). Each view below
+  runs the projection again, so reading them one by one costs one projection
+  each.
 - `projected_fuel`, `projected_bays`: fuel now, in total and per bay.
 - `projected_pools`: each pool now, by type, with its run-out time if grants hold
   and its burn rate now. Every rate is constant until the earliest run-out or the

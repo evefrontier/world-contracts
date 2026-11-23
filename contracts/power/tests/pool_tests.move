@@ -437,6 +437,110 @@ fun idle_pools_never_run_out() {
     scenario.end();
 }
 
+// === Snapshot ===
+
+/// The snapshot equals every view it stands for, read at the same clock.
+fun assert_snapshot_matches_the_views(scenario: &mut ts::Scenario, entity_id: ID, clock: &Clock) {
+    ts::next_tx(scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let snapshot = power_grid::projected_snapshot(&entity, clock);
+
+    assert!(snapshot.snapshot_on() == power_grid::projected_on(&entity, clock));
+    let (capacity, used, _) = power_grid::projected_status(&entity, clock);
+    assert!(snapshot.snapshot_capacity_mw() == capacity);
+    assert!(snapshot.snapshot_used_mw() == used);
+    let pools = power_grid::projected_pools(&entity, clock);
+    assert!(snapshot.snapshot_pools().length() == pools.length());
+    pools
+        .keys()
+        .do!(|fuel_type| assert!(snapshot.snapshot_pools()[&fuel_type] == pools[&fuel_type]));
+    let bays = power_grid::projected_bays(&entity, clock);
+    assert!(snapshot.snapshot_bays().length() == bays.length());
+    bays.keys().do!(|bay_id| assert!(snapshot.snapshot_bays()[&bay_id] == bays[&bay_id]));
+
+    let states = power_grid::projected_module_states(&entity, clock);
+    let statuses = power_grid::module_statuses(&entity, clock);
+    let modules = snapshot.snapshot_modules();
+    assert!(modules.length() == states.length());
+    states.keys().do!(|module_id| {
+        let view = modules[&module_id];
+        assert!(view.module_view_state() == states[&module_id]);
+        assert!(view.module_view_status() == statuses[&module_id]);
+    });
+
+    let generators = snapshot.snapshot_generators();
+    let installed = *power_grid::power_grid(&entity).generators();
+    assert!(generators.length() == installed.length());
+    installed.keys().do!(|generator_id| {
+        let view = generators[&generator_id];
+        assert!(view.generator_view_state() == power_grid::generator_state(&entity, generator_id));
+        assert!(
+            view.generator_view_status() == power_grid::generator_status(&entity, generator_id, clock),
+        );
+        assert!(
+            view.generator_view_output_mw() == power_grid::projected_output_mw(&entity, generator_id, clock),
+        );
+    });
+
+    ts::return_shared(entity);
+}
+
+/// Before a run-out, mid-stretch, after one pool runs dry and after a refuel
+/// with nothing settled: the snapshot always equals the views.
+#[test]
+fun snapshot_matches_the_views_through_a_run_out() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+
+    assert_snapshot_matches_the_views(&mut scenario, entity_id, &clock);
+    clock.set_for_testing(4_000);
+    assert_snapshot_matches_the_views(&mut scenario, entity_id, &clock);
+    clock.set_for_testing(10_000);
+    assert_snapshot_matches_the_views(&mut scenario, entity_id, &clock);
+    deposit_typed(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        OTHER_TYPE,
+        5,
+        OTHER_IMPULSE,
+        thermal(),
+        &clock,
+    );
+    clock.set_for_testing(12_000);
+    assert_snapshot_matches_the_views(&mut scenario, entity_id, &clock);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A run-out that overloads trips the grid: the snapshot reads it off and
+/// nothing drawing, before and after a settle.
+#[test]
+fun snapshot_reads_a_trip() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_pools_holding(&mut scenario, 20, 1, &clock);
+
+    clock.set_for_testing(10_000);
+    assert_snapshot_matches_the_views(&mut scenario, entity_id, &clock);
+    ts::next_tx(&mut scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let snapshot = power_grid::projected_snapshot(&entity, &clock);
+    assert!(!snapshot.snapshot_on());
+    assert!(snapshot.snapshot_capacity_mw() == 0 && snapshot.snapshot_used_mw() == 0);
+    ts::return_shared(entity);
+
+    catch_up(&mut scenario, entity_id, MOD_A, &clock);
+    assert_snapshot_matches_the_views(&mut scenario, entity_id, &clock);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
 // === Statuses ===
 
 /// A Generator reads its own pool: empty reads `NoFuel`, held only in an
