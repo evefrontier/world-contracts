@@ -818,13 +818,20 @@ export interface ProjectedBay extends FuelAmount {
 
 /** Decode the BCS return value of `projectedBays`. */
 export function parseProjectedBays(bytes: Uint8Array): ProjectedBay[] {
-  return BaysBcs.parse(bytes).contents.map(({ key, value }) => ({
+  return BaysBcs.parse(bytes).contents.map(toProjectedBay)
+}
+
+function toProjectedBay({
+  key,
+  value,
+}: (typeof BaysBcs.$inferType)['contents'][number]): ProjectedBay {
+  return {
     fuelBayId: BigInt(key),
     capacity: BigInt(value.capacity),
     containmentRating: BigInt(value.containment_rating),
     online: value.online,
     ...fuelAmount(value.fuel),
-  }))
+  }
 }
 
 /** Fuel quantity and its stats, all at `POWER_SCALE`. `fuelType` is `null` while empty. */
@@ -838,8 +845,8 @@ export interface FuelAmount {
 }
 
 /**
- * Every pool now, by fuel type, with run-out times if grants hold. Decode the
- * result with `parseProjectedPools`.
+ * Every pool now, by fuel type, with run-out times if grants hold and burn
+ * rates now. Decode the result with `parseProjectedPools`.
  */
 export function projectedPools(
   tx: Transaction,
@@ -859,24 +866,41 @@ const PoolsBcs = bcs.struct('VecMap', {
       value: bcs.struct('PoolView', {
         fuel: FuelBcs,
         run_out_ms: bcs.option(bcs.u64()),
+        burn_rate: bcs.u64(),
       }),
     }),
   ),
 })
 
-/** One fuel type's pool now. `runOutMs` is `null` while nothing burns it. */
+/**
+ * One fuel type's pool now. `runOutMs` is `null` while nothing burns it.
+ * `burnRate` is the fuel burned per second now, at the scale of the fuel
+ * quantity: 0 while nothing burns it, constant until the earliest `runOutMs` or
+ * the next change to the grid, whichever comes first, give or take a rounding
+ * unit between reads. It is rounded up, so a gauge drained at `burnRate`
+ * empties slightly early on a slow pool: `runOutMs` is the real end time.
+ */
 export interface ProjectedPool extends FuelAmount {
   poolFuelType: bigint
   runOutMs: bigint | null
+  burnRate: bigint
 }
 
 /** Decode the BCS return value of `projectedPools`. */
 export function parseProjectedPools(bytes: Uint8Array): ProjectedPool[] {
-  return PoolsBcs.parse(bytes).contents.map(({ key, value }) => ({
+  return PoolsBcs.parse(bytes).contents.map(toProjectedPool)
+}
+
+function toProjectedPool({
+  key,
+  value,
+}: (typeof PoolsBcs.$inferType)['contents'][number]): ProjectedPool {
+  return {
     ...fuelAmount(value.fuel),
     poolFuelType: BigInt(key),
     runOutMs: value.run_out_ms == null ? null : BigInt(value.run_out_ms),
-  }))
+    burnRate: BigInt(value.burn_rate),
+  }
 }
 
 /** Decode the BCS return value of `stashedFuel`: `null` when no stash. */
@@ -935,6 +959,174 @@ export function parsePowerStatus(bytes: Uint8Array): PowerStatus {
   const status = POWER_STATUSES[bytes[0]]
   if (!status) throw new Error(`unknown power status tag ${bytes[0]}`)
   return status
+}
+
+/**
+ * The whole grid now from one projection: what `projectedPools`,
+ * `projectedBays`, `projectedStatus`, `moduleStatus`, `generatorStatus` and
+ * the other projected views return at the same clock, at the cost of one of
+ * them. Decode the result with `parseProjectedSnapshot`.
+ */
+export function projectedSnapshot(
+  tx: Transaction,
+  config: WorldConfig,
+  entity: TransactionArgument,
+): TransactionResult {
+  return tx.moveCall({
+    target: grid(config, 'projected_snapshot'),
+    arguments: [entity, tx.object.clock()],
+  })
+}
+
+const PowerStatusBcs = bcs.enum('PowerStatus', {
+  Online: null,
+  Off: null,
+  GridOff: null,
+  NoPower: null,
+  NoFuel: null,
+  BaysOffline: null,
+})
+
+const DrawKindBcs = bcs.enum('DrawKind', { Firm: null, Elastic: null })
+
+const ModuleViewBcs = bcs.struct('ModuleView', {
+  state: bcs.struct('ModuleState', {
+    module_spec: bcs.struct('ModulePowerSpec', {
+      power_req: bcs.u64(),
+      draw_kind: DrawKindBcs,
+      priority: bcs.u64(),
+      line_loss: bcs.u64(),
+    }),
+    desired_online: bcs.bool(),
+    active_draw_at_last_settled: bcs.u64(),
+  }),
+  status: PowerStatusBcs,
+})
+
+const GeneratorViewBcs = bcs.struct('GeneratorView', {
+  state: bcs.struct('GeneratorState', {
+    fuel_type: bcs.u64(),
+    selectable_fuel_types: bcs.vector(bcs.u64()),
+    max_output_mw: bcs.u64(),
+    impulse_limit: bcs.u64(),
+    volatility_limit: bcs.u64(),
+    online: bcs.bool(),
+  }),
+  status: PowerStatusBcs,
+  output_mw: bcs.u64(),
+})
+
+const SnapshotBcs = bcs.struct('GridSnapshot', {
+  on: bcs.bool(),
+  capacity_mw: bcs.u64(),
+  used_mw: bcs.u64(),
+  pools: PoolsBcs,
+  bays: BaysBcs,
+  modules: bcs.struct('VecMap', {
+    contents: bcs.vector(
+      bcs.struct('Entry', { key: bcs.u64(), value: ModuleViewBcs }),
+    ),
+  }),
+  generators: bcs.struct('VecMap', {
+    contents: bcs.vector(
+      bcs.struct('Entry', { key: bcs.u64(), value: GeneratorViewBcs }),
+    ),
+  }),
+})
+
+/** A connected module now: its spec, the owner's intent, its draw now and its status. */
+export interface ModuleSnapshot {
+  moduleId: bigint
+  powerReq: bigint
+  drawKind: DrawKind
+  priority: bigint
+  lineLoss: bigint
+  desiredOnline: boolean
+  /** MW drawn now, plain. */
+  drawMw: bigint
+  status: PowerStatus
+}
+
+/** An installed generator now: its state, its status and what it sends out now. */
+export interface GeneratorSnapshot {
+  generatorId: bigint
+  fuelType: bigint
+  selectableFuelTypes: bigint[]
+  maxOutputMw: bigint
+  /** At `POWER_SCALE`. */
+  impulseLimit: bigint
+  /** At `POWER_SCALE`. */
+  volatilityLimit: bigint
+  online: boolean
+  status: PowerStatus
+  /** MW sent out now, plain. */
+  outputMw: bigint
+}
+
+/** The whole grid now, as `projectedSnapshot` returns it. */
+export interface ProjectedSnapshot {
+  /** Whether the grid is on now, a trip included. */
+  on: boolean
+  /** Capacity grants can use now, plain MW: 0 while off. */
+  capacityMw: bigint
+  /** MW granted now. */
+  usedMw: bigint
+  pools: ProjectedPool[]
+  bays: ProjectedBay[]
+  modules: ModuleSnapshot[]
+  generators: GeneratorSnapshot[]
+}
+
+/** Decode the BCS return value of `projectedSnapshot`. */
+export function parseProjectedSnapshot(bytes: Uint8Array): ProjectedSnapshot {
+  const snapshot = SnapshotBcs.parse(bytes)
+  return {
+    on: snapshot.on,
+    capacityMw: BigInt(snapshot.capacity_mw),
+    usedMw: BigInt(snapshot.used_mw),
+    pools: snapshot.pools.contents.map(toProjectedPool),
+    bays: snapshot.bays.contents.map(toProjectedBay),
+    modules: snapshot.modules.contents.map(({ key, value }) => ({
+      moduleId: BigInt(key),
+      powerReq: BigInt(value.state.module_spec.power_req),
+      drawKind:
+        value.state.module_spec.draw_kind.$kind === 'Firm' ? 'firm' : 'elastic',
+      priority: BigInt(value.state.module_spec.priority),
+      lineLoss: BigInt(value.state.module_spec.line_loss),
+      desiredOnline: value.state.desired_online,
+      drawMw: BigInt(value.state.active_draw_at_last_settled),
+      status: toPowerStatus(value.status),
+    })),
+    generators: snapshot.generators.contents.map(({ key, value }) => ({
+      generatorId: BigInt(key),
+      fuelType: BigInt(value.state.fuel_type),
+      selectableFuelTypes: value.state.selectable_fuel_types.map((t) =>
+        BigInt(t),
+      ),
+      maxOutputMw: BigInt(value.state.max_output_mw),
+      impulseLimit: BigInt(value.state.impulse_limit),
+      volatilityLimit: BigInt(value.state.volatility_limit),
+      online: value.state.online,
+      status: toPowerStatus(value.status),
+      outputMw: BigInt(value.output_mw),
+    })),
+  }
+}
+
+const POWER_STATUS_BY_KIND: Record<
+  (typeof PowerStatusBcs.$inferType)['$kind'],
+  PowerStatus
+> = {
+  Online: 'online',
+  Off: 'off',
+  GridOff: 'gridOff',
+  NoPower: 'noPower',
+  NoFuel: 'noFuel',
+  BaysOffline: 'baysOffline',
+}
+
+function toPowerStatus(status: typeof PowerStatusBcs.$inferType): PowerStatus {
+  return POWER_STATUS_BY_KIND[status.$kind]
 }
 
 /** `(effective capacity, used MW, online module ids)` now. Fuel at zero reads as all zeros. */
