@@ -175,6 +175,9 @@ service registers variants, and the chain trusts it to pair a `variant_id` with
 its real values. A second `register` for the same key aborts, so the first
 registration stands.
 
+Admins are global: any admin can register under any tenant, and the service is
+trusted to pick the right one. Tenant-scoped admins are not planned.
+
 A rebalance or migration that conforms stock to new ranges moves the game's items
 to a new `variant_id`; new stacks bridge in under that ID. Variants already on
 chain are pinned in the game and marked **deprecated**: the game mints no new
