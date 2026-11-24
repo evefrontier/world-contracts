@@ -408,6 +408,27 @@ fun siphon_zero_aborts() {
     abort
 }
 
+/// 0.0099 kg is a whole step but below the game's smallest stack: it could not
+/// be minted back, so it never leaves the bay.
+#[test, expected_failure(abort_code = fuel_properties::EBelowMinimum)]
+fun siphon_below_minimum_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = siphon_ready(&mut scenario, &clock);
+
+    siphon(
+        &mut scenario,
+        admin(),
+        entity_id,
+        FUEL_B,
+        fuel_properties::min_stack() - fuel_properties::mass_step(),
+        &clock,
+    );
+
+    abort
+}
+
 #[test, expected_failure(abort_code = grid_fuel::EFuelBayNotConnected)]
 fun siphon_unknown_bay_aborts() {
     let mut scenario = ts::begin(admin());

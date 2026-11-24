@@ -18,6 +18,8 @@ const EAmountNotWholeStep: vector<u8> = b"Fuel amount must be a whole multiple o
 const ENegativeFuelProperty: vector<u8> = b"Fuel property is negative";
 #[error(code = 4)]
 const EFuelPropertyTooLarge: vector<u8> = b"Fuel property does not fit in u64";
+#[error(code = 5)]
+const EBelowMinimum: vector<u8> = b"Siphoned fuel must be at least 0.01 kg";
 
 // === Constants ===
 
@@ -27,6 +29,8 @@ const CONTAINMENT_BURDEN: u32 = 210;
 const VOLATILITY: u32 = 211;
 /// 0.0001 kg (the game's precision) in base units.
 const MASS_STEP: u64 = 100_000;
+/// 0.01 kg, the game's smallest stack (`CONTINUOUS_MIN_SPLIT`), in base units.
+const MIN_STACK: u64 = 10_000_000;
 
 // === Public Functions ===
 
@@ -49,6 +53,12 @@ public fun assert_whole_step(amount: u64) {
     assert!(amount % MASS_STEP == 0, EAmountNotWholeStep);
 }
 
+/// Abort unless `amount` is at least 0.01 kg, so fuel taken out of a bay can
+/// become a stack the game (and inventory) accepts.
+public fun assert_min_stack(amount: u64) {
+    assert!(amount >= MIN_STACK, EBelowMinimum);
+}
+
 // === View Functions ===
 
 public fun impulse_id(): u32 { IMPULSE }
@@ -61,6 +71,9 @@ public fun volatility_id(): u32 { VOLATILITY }
 
 /// 0.0001 kg in base units: fuel amounts are whole multiples of it.
 public fun mass_step(): u64 { MASS_STEP }
+
+/// 0.01 kg in base units: the smallest siphon.
+public fun min_stack(): u64 { MIN_STACK }
 
 // === Private Functions ===
 

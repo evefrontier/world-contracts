@@ -230,7 +230,8 @@ views, is at 1e9, so the service sends and reads the values as they are, with no
 conversion. Fuel stats load from the variant unchanged.
 
 The fuel type is `key.type_id`. A deposit or siphon amount must be a whole 0.0001
-kg (10^5), the game's precision, or the call aborts. Zero impulse, zero
+kg (10^5), the game's precision, or the call aborts; a siphon must also be at
+least 0.01 kg, the smallest stack it can be minted back as. Zero impulse, zero
 volatility, a missing fuel property or `Units` kind aborts; a zero containment
 burden or thermal inefficiency loads as 0.
 

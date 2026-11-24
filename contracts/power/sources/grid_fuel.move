@@ -301,7 +301,7 @@ public fun withdraw_fuel(
     req.enqueue(frame);
 }
 
-/// Siphon `quantity` (at `SCALE`, 1e-9 kg; whole 0.0001 kg) out of bay
+/// Siphon `quantity` (at `SCALE`, 1e-9 kg; whole 0.0001 kg, at least 0.01 kg) out of bay
 /// `fuel_bay_id`, online or not.
 /// Settles first, so burn counts before the check. Emits `FuelSiphoned` with
 /// the bay's values, from which the service mints the stack. The request needs
@@ -323,6 +323,7 @@ public fun siphon(
     );
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     assert!(quantity > 0, EZeroFuel);
+    fuel_properties::assert_min_stack(quantity);
     grid.settle(clock);
     assert!(grid.bay_state(fuel_bay_id).fuel().quantity() >= quantity, EBayShort);
     let taken = grid.take_from_bay(fuel_bay_id, quantity);
