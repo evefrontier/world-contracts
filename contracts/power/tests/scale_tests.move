@@ -34,8 +34,8 @@ const FIRST_BAY: u64 = 20_000;
 const FIRST_MODULE: u64 = 30_000;
 const BAY_CAPACITY: u64 = 10_000;
 /// Impulse 90 at `SCALE`.
-const IMPULSE: u64 = 900_000;
-const IMPULSE_LIMIT: u64 = 1_000_000;
+const IMPULSE: u64 = 90_000_000_000;
+const IMPULSE_LIMIT: u64 = 100_000_000_000;
 /// Generators, bays and modules each.
 const SIZE: u64 = 20;
 /// Long enough that both pools run dry, in ms.

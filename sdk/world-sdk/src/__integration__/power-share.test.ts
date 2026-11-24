@@ -79,7 +79,7 @@ describe('power sharing (localnet)', () => {
     })
     installFuelBay(createTx, config, creation, {
       componentId: BAY_ID,
-      capacity: 10_000n,
+      capacity: 10_000n * POWER_SCALE,
     })
     for (const [componentId, powerReq, drawKind] of Object.values(MODULES)) {
       installGenericModule(createTx, config, creation, {

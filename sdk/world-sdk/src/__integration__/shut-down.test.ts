@@ -75,7 +75,7 @@ describe('shut down (localnet)', () => {
     })
     installFuelBay(createTx, config, creation, {
       componentId: BAY_ID,
-      capacity: 1_000n,
+      capacity: 1_000n * POWER_SCALE,
     })
     installGenericModule(createTx, config, creation, {
       componentId: MODULE_ID,

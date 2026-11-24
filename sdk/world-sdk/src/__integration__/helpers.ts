@@ -218,9 +218,6 @@ export interface FuelStats {
   thermalInefficiency?: bigint
 }
 
-/** `POWER_SCALE` stats times this are variant values at `VALUE_SCALE`. */
-const STAT_TO_VALUE = 100_000n
-
 /**
  * The fuel `Variant` with these stats in `tenant`, registered by the admin on
  * first use (one variant per set of stats, as in the game). Returns its object ID.
@@ -253,10 +250,10 @@ export async function fuelVariant(
     kind: 'mass',
     unitVolume: 1n,
     values: [
-      { propertyId: 208, magnitude: stats.impulse * STAT_TO_VALUE },
-      { propertyId: 209, magnitude: thermal * STAT_TO_VALUE },
-      { propertyId: 210, magnitude: stats.containmentBurden * STAT_TO_VALUE },
-      { propertyId: 211, magnitude: stats.volatility * STAT_TO_VALUE },
+      { propertyId: 208, magnitude: stats.impulse },
+      { propertyId: 209, magnitude: thermal },
+      { propertyId: 210, magnitude: stats.containmentBurden },
+      { propertyId: 211, magnitude: stats.volatility },
     ],
   })
   await expectSuccess(client, tx)

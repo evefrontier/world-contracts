@@ -14,10 +14,10 @@ import {
   verifySponsor,
 } from './core.js'
 
-// MW, bay capacity and deposit amounts are plain integers. Fuel quantities,
-// stats and rates are fixed point at `POWER_SCALE` (0.1 units = 1_000n), so
-// stats keep fractions and short settles still burn a fraction.
-export const POWER_SCALE = 10_000n
+// MW is a plain integer. Every fuel amount, capacity, stat, limit and rate is
+// fixed point at `POWER_SCALE` (1e9: 1e-9 kg, the proto's nanos), the same
+// units as `VALUE_SCALE` and `MASS_UNIT`, so nothing is converted.
+export const POWER_SCALE = 1_000_000_000n
 
 const POWER_PACKAGE = 'power'
 
@@ -152,6 +152,7 @@ export function installGenerator(
 export interface InstallFuelBayArgs {
   componentId: bigint
   name?: string | null
+  /** At `POWER_SCALE` (`MASS_UNIT` per kg). */
   capacity: bigint
   /** At `POWER_SCALE`; defaults to `0n`. Stored only; deposits are not checked against it yet. */
   containmentRating?: bigint
@@ -446,7 +447,7 @@ export function operateGridRequirement(
   return tx.moveCall({ target: grid(config, 'operate_grid_requirement') })
 }
 
-/** The owner's rules for `depositFuel`. Omitted fields skip a check. Stats at `POWER_SCALE`, amounts in base units (`MASS_UNIT` per kg). */
+/** The owner's rules for `depositFuel`. Omitted fields skip a check. Stats and amounts at `POWER_SCALE`. */
 export interface FuelRule {
   fuelTypes?: bigint[]
   minImpulse?: bigint | null
@@ -641,7 +642,7 @@ export function shutDown(
 }
 
 /**
- * Take `quantity` of fuel (at `POWER_SCALE`) from the `fuelType` pool for a
+ * Take `quantity` of fuel (at `POWER_SCALE`, `MASS_UNIT` per kg) from the `fuelType` pool for a
  * warp, all or nothing; an abort means no warp. Needs the `withdraw_fuel`
  * admin action (`withdrawFuelRequirement`). Admin-gated.
  */
@@ -668,9 +669,9 @@ export function withdrawFuel(
 }
 
 /**
- * Siphon `quantity` (base units, `MASS_UNIT` per kg; whole 0.0001 kg) out of bay
+ * Siphon `quantity` (at `POWER_SCALE`, `MASS_UNIT` per kg; whole 0.0001 kg) out of bay
  * `fuelBayId`, online or not. The `FuelSiphoned` event carries the tenant, the
- * quantity in base units and the bay's values (at `POWER_SCALE`) for minting the stack.
+ * quantity and the bay's values (all at `POWER_SCALE`) for minting the stack.
  * Needs the `siphon` admin action (`siphonRequirement`). Admin-gated.
  */
 export function siphon(

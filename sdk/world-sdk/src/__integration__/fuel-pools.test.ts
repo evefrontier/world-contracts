@@ -71,7 +71,7 @@ describe('fuel pools (localnet)', () => {
     for (const componentId of [HYDROGEN_BAY, CRUDE_BAY]) {
       installFuelBay(createTx, config, creation, {
         componentId,
-        capacity: 1_000n,
+        capacity: 1_000n * POWER_SCALE,
         containmentRating: 10n * POWER_SCALE,
       })
     }

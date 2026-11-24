@@ -12,6 +12,7 @@ use power::{
         burden,
         firm_power,
         fuel_bay_id,
+        kg,
         fuel_capacity,
         generator_id,
         impulse,
@@ -47,7 +48,7 @@ const OUTPUT: u64 = 15;
 /// 25 MW.
 const OUTPUT_2: u64 = 25;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
-const IMPULSE_LIMIT: u64 = 1_000_000;
+const IMPULSE_LIMIT: u64 = 100_000_000_000;
 /// 10 MW.
 const DRAW: u64 = 10;
 const SECOND_FUEL_ID: u64 = 9_002;
@@ -280,7 +281,7 @@ fun migrate_fuel_moves_the_bays_exact_fuel() {
     let capacity = with_entity!(&mut scenario, to, |e| {
         power_grid::fuel_bay_state(e, fuel_bay_id()).capacity()
     });
-    assert!(capacity == fuel_capacity());
+    assert!(capacity == fuel_capacity() * kg());
     let rating = with_entity!(&mut scenario, to, |e| {
         power_grid::fuel_bay_state(e, fuel_bay_id()).containment_rating()
     });

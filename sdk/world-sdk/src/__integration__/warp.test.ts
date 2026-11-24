@@ -58,7 +58,7 @@ describe('warp fuel (localnet)', () => {
     seatShell(createTx, config, creation)
     installFuelBay(createTx, config, creation, {
       componentId: BAY_ID,
-      capacity: 1_000n,
+      capacity: 1_000n * POWER_SCALE,
     })
     enableAdminAction(createTx, config, creation, 'set_fuel_bay', [
       operateGridRequirement(createTx, config),

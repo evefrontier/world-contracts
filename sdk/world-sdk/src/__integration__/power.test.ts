@@ -93,7 +93,7 @@ describe('power grid powers an inventory (localnet)', () => {
     })
     installFuelBay(installTx, config, installEntity, {
       componentId: FUEL_ID,
-      capacity: 1000n,
+      capacity: 1000n * POWER_SCALE,
     })
     seatShell(installTx, config, installEntity)
     await expectSuccess(client, installTx)

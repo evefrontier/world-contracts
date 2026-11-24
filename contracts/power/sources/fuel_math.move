@@ -1,12 +1,12 @@
 /// Pure fuel math. No grid state: callers pass the numbers and get a number back.
 /// Power comes in as plain integers. Fuel quantity, stats, rates and burn are
-/// fixed point at `SCALE` (4 decimals), so stats keep fractions and a short
-/// settle still burns a fraction.
+/// fixed point at `SCALE` (1e9: 1e-9 kg, the proto's nanos), the same units as
+/// variant values and the game service, so nothing is converted at the boundary.
 module power::fuel_math;
 
 // === Constants ===
 
-const SCALE: u64 = 10_000;
+const SCALE: u64 = 1_000_000_000;
 const MS_PER_SECOND: u64 = 1_000;
 
 // === Public Functions ===
@@ -81,15 +81,15 @@ public(package) fun generator_burn(
 /// 1 MW split across two equal generators at impulse 1: each burns 0.5 a second.
 #[test]
 fun half_share_burns_half_the_load() {
-    assert!(generator_burn(10_000, 2, 1, 1, 1) == 5);
-    assert!(generator_burn(10_000, 2, 1, 1, 1_000) == 5_000);
-    assert!(generator_burn(10_000, 2, 1, 1, 3_000) == 15_000);
+    assert!(generator_burn(SCALE, 2, 1, 1, 1) == 500_000);
+    assert!(generator_burn(SCALE, 2, 1, 1, 1_000) == 500_000_000);
+    assert!(generator_burn(SCALE, 2, 1, 1, 3_000) == 1_500_000_000);
 }
 
-/// 10 MW at impulse 46.6666 burns 0.2143 a second; burden plays no part.
+/// 10 MW at impulse 46.6666 burns 0.214286 a second; burden plays no part.
 #[test]
 fun scaled_impulse_burns() {
-    assert!(generator_burn(466_666, 10, 10, 10, 1_000) == 2_143);
+    assert!(generator_burn(46_666_600_000, 10, 10, 10, 1_000) == 214_286_021);
 }
 
 /// A tiny impulse with a huge load caps at `u64::MAX`.
@@ -102,25 +102,25 @@ fun burn_caps_at_u64_max() {
 /// The pool's impulse is used up to the Generator's limit.
 #[test]
 fun usable_impulse_caps_at_limit() {
-    assert!(usable_impulse(250_000, 500_000) == 250_000);
-    assert!(usable_impulse(900_000, 500_000) == 500_000);
+    assert!(usable_impulse(25 * SCALE, 50 * SCALE) == 25 * SCALE);
+    assert!(usable_impulse(90 * SCALE, 50 * SCALE) == 50 * SCALE);
 }
 
 /// Share scales with volatility up to the limit, then stays at `SCALE`.
 #[test]
 fun volatility_share_caps_at_scale() {
-    assert!(volatility_share(5_000, 10_000) == 5_000);
-    assert!(volatility_share(10_000, 10_000) == 10_000);
-    assert!(volatility_share(30_000, 10_000) == 10_000);
-    assert!(volatility_share(0, 10_000) == 0);
-    assert!(volatility_share(1, 30_000) == 1);
+    assert!(volatility_share(SCALE / 2, SCALE) == SCALE / 2);
+    assert!(volatility_share(SCALE, SCALE) == SCALE);
+    assert!(volatility_share(3 * SCALE, SCALE) == SCALE);
+    assert!(volatility_share(0, SCALE) == 0);
+    assert!(volatility_share(1, 30 * SCALE) == 1);
 }
 
 /// Output is rated × share, floored, but at least 1 MW for any share.
 #[test]
 fun generator_output_floors() {
-    assert!(generator_output(15, 10_000) == 15);
-    assert!(generator_output(15, 5_000) == 7);
+    assert!(generator_output(15, SCALE) == 15);
+    assert!(generator_output(15, SCALE / 2) == 7);
     assert!(generator_output(15, 1) == 1);
     assert!(generator_output(15, 0) == 0);
 }

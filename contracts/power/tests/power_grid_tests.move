@@ -11,7 +11,6 @@ use power::{
         power,
         setup_entity,
         starting_fuel,
-        starting_units,
         temp_action,
         owner
     },
@@ -22,9 +21,9 @@ use sui::{clock::{Self, Clock}, test_scenario as ts};
 const MOD_A: u64 = 401;
 const OUTPUT: u64 = 15;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
-const IMPULSE_LIMIT: u64 = 1_000_000;
+const IMPULSE_LIMIT: u64 = 100_000_000_000;
 const DRAW: u64 = 10;
-const IMPULSE: u64 = 900_000;
+const IMPULSE: u64 = 90_000_000_000;
 
 /// A grid with no power sources, off.
 fun setup_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {
@@ -316,7 +315,7 @@ fun check_aborts_when_fuel_below() {
         entity_id,
         power_grid::power_grid_requirement(
             false,
-            option::some(starting_units() + 1),
+            option::some(starting_fuel() + 1),
             option::none(),
             0,
             option::none(),

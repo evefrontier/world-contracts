@@ -421,8 +421,8 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
         7,
         vector[],
         10,
-        1_000_000,
-        50_000,
+        100_000_000_000,
+        5_000_000_000,
         &clock,
         scenario.ctx(),
     );
@@ -432,7 +432,7 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
         &mut entity,
         FUEL_BAY_ID,
         option::none(),
-        1_000,
+        1_000 * grid_scenario::kg(),
         0,
         &clock,
         scenario.ctx(),
@@ -464,7 +464,14 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     ts::return_to_sender(scenario, cap);
     ts::return_shared(entity);
 
-    let fuel_id = grid_scenario::fuel_variant(scenario, 7, 900_000, 140_000, 50_000, 0);
+    let fuel_id = grid_scenario::fuel_variant(
+        scenario,
+        7,
+        90_000_000_000,
+        14_000_000_000,
+        5_000_000_000,
+        0,
+    );
     ensure_admin_sponsors(scenario);
     next_tx_owner_signs_admin_pays(scenario, owner);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);

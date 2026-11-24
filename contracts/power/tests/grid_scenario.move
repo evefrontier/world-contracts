@@ -13,7 +13,6 @@ use core::{
 };
 use creation::layout;
 use power::{
-    fuel_properties,
     grid_fuel::{Self, FuelLoad},
     grid_generator,
     grid_load,
@@ -30,28 +29,25 @@ const GENERATOR_BASE: u64 = 101;
 /// Base burn rate of every Generator, 1 unit per second.
 /// Component id of the fuel bay every `setup_entity` grid gets.
 const FUEL_BAY_ID: u64 = 9_001;
-/// Capacity of that bay, plain units.
+/// Capacity of that bay in kg; helpers send it at `SCALE`.
 const FUEL_CAPACITY: u64 = 100_000;
-/// Starting fuel of that bay, plain units.
+/// Starting fuel of that bay in kg; helpers send it at `SCALE`.
 const STARTING_FUEL: u64 = 50_000;
-/// Fuel stats, plain.
-/// Fuel stats at `SCALE`: impulse 90, burden 14, volatility 1.
-const IMPULSE: u64 = 900_000;
-const BURDEN: u64 = 140_000;
-const VOLATILITY: u64 = 10_000;
+/// Fuel stats at `SCALE` (1e9): impulse 90, burden 14, volatility 1.
+const IMPULSE: u64 = 90_000_000_000;
+const BURDEN: u64 = 14_000_000_000;
+const VOLATILITY: u64 = 1_000_000_000;
 /// Generators' volatility limit 0.5: the test fuels sit above it, so Generators
 /// send out their full rated output.
-const VOLATILITY_LIMIT: u64 = 5_000;
+const VOLATILITY_LIMIT: u64 = 500_000_000;
 const FUEL_TYPE: u64 = 7;
-const THERMAL: u64 = 20_000;
+const THERMAL: u64 = 2_000_000_000;
 /// Bay containment rating 10, below `BURDEN`: deposits are not checked against it.
-const CONTAINMENT_RATING: u64 = 100_000;
+const CONTAINMENT_RATING: u64 = 10_000_000_000;
 /// Component id of the Command Module every `setup_entity` Creation gets.
 const COMMAND_MODULE_ID: u64 = 8_001;
 /// Base units (1e-9 kg) per kg: helpers take plain kg and deposit at 1e9.
 const KG: u64 = 1_000_000_000;
-/// `SCALE` stats times this are variant values at 1e9.
-const STAT_TO_VALUE: u128 = 100_000;
 
 const OPERATE: vector<u8> = b"operate_grid";
 const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
@@ -154,7 +150,7 @@ public fun setup_entity(
         &mut entity,
         FUEL_BAY_ID,
         option::none(),
-        FUEL_CAPACITY,
+        FUEL_CAPACITY * KG,
         CONTAINMENT_RATING,
         clock,
         scenario.ctx(),
@@ -527,8 +523,19 @@ public fun set_fuel_bay(
     );
 }
 
-/// Install empty fuel bay `fuel_bay_id` with `capacity` plain units, offline.
+/// Install empty fuel bay `fuel_bay_id` with `capacity` kg, offline.
 public fun install_fuel(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    capacity: u64,
+    clock: &Clock,
+) {
+    install_fuel_at_scale(scenario, entity_id, fuel_bay_id, capacity * KG, clock);
+}
+
+/// Install empty fuel bay `fuel_bay_id` with `capacity` at `SCALE`, offline.
+public fun install_fuel_at_scale(
     scenario: &mut ts::Scenario,
     entity_id: ID,
     fuel_bay_id: u64,
@@ -669,7 +676,7 @@ public fun refit_stash(
         &mut to,
         fuel_bay_id,
         option::none(),
-        capacity,
+        capacity * KG,
         CONTAINMENT_RATING,
         load,
         clock,
@@ -810,7 +817,7 @@ public fun enable_siphon(scenario: &mut ts::Scenario, entity_id: ID) {
     ts::return_shared(entity);
 }
 
-/// `sender` siphons `quantity` (given at `SCALE`, sent in base units) out of bay `fuel_bay_id`.
+/// `sender` siphons `quantity` (at `SCALE`) out of bay `fuel_bay_id`.
 public fun siphon(
     scenario: &mut ts::Scenario,
     sender: address,
@@ -827,7 +834,7 @@ public fun siphon(
         &mut entity,
         &mut req,
         fuel_bay_id,
-        quantity * fuel_properties::to_scale(),
+        quantity,
         clock,
     );
     close_admin(&mut entity, req, &acl, scenario.ctx());
@@ -1008,12 +1015,7 @@ public fun fuel_variant(
             variant::mass(),
             1,
             vector[208, 209, 210, 211],
-            vector[
-                (impulse as u128) * STAT_TO_VALUE,
-                (thermal as u128) * STAT_TO_VALUE,
-                (burden as u128) * STAT_TO_VALUE,
-                (volatility as u128) * STAT_TO_VALUE,
-            ],
+            vector[impulse as u128, thermal as u128, burden as u128, volatility as u128],
             vector[false, false, false, false],
         );
     };

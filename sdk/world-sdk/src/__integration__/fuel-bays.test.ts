@@ -62,14 +62,14 @@ const FUEL_A = {
   fuelType: 1n,
   impulse: 25n * POWER_SCALE,
   containmentBurden: 4n * POWER_SCALE,
-  volatility: 6_000n,
+  volatility: 600_000_000n,
 }
 const FUEL_A_AMOUNT = 1_000n
 const FUEL_B = {
   fuelType: 1n,
   impulse: 90n * POWER_SCALE,
   containmentBurden: 14n * POWER_SCALE,
-  volatility: 5_000n,
+  volatility: 500_000_000n,
 }
 const FUEL_B_AMOUNT = 500n
 
@@ -99,7 +99,7 @@ describe('fuel bays (localnet)', () => {
     for (const componentId of [BAY_A, BAY_B]) {
       installFuelBay(createTx, config, creation, {
         componentId,
-        capacity: BAY_CAPACITY,
+        capacity: BAY_CAPACITY * POWER_SCALE,
       })
     }
     installGenericModule(createTx, config, creation, {
@@ -169,10 +169,10 @@ describe('fuel bays (localnet)', () => {
     const loaded = await readBays(client, config, entityId)
     expect(loaded.get(BAY_A)).toMatchObject({
       online: false,
-      quantity: 15_000_000n,
-      impulse: 466_666n,
-      containmentBurden: 73_333n,
-      volatility: 5_666n,
+      quantity: 1_500n * POWER_SCALE,
+      impulse: 46_666_666_666n,
+      containmentBurden: 7_333_333_333n,
+      volatility: 566_666_666n,
     })
     expect(loaded.get(BAY_B)).toMatchObject({
       online: false,
@@ -280,7 +280,7 @@ describe('fuel bays (localnet)', () => {
       if (key === fromKey) {
         installFuelBay(createTx, config, creation, {
           componentId: STASH_BAY,
-          capacity: BAY_CAPACITY,
+          capacity: BAY_CAPACITY * POWER_SCALE,
         })
         enableAdminAction(createTx, config, creation, 'deposit_fuel', [
           depositFuelRequirement(createTx, config),
@@ -329,7 +329,7 @@ describe('fuel bays (localnet)', () => {
     )
     installFuelBay(moveTx, config, moveTx.object(toId), {
       componentId: STASH_BAY,
-      capacity: BAY_CAPACITY,
+      capacity: BAY_CAPACITY * POWER_SCALE,
     })
     await expectSuccess(client, moveTx)
 

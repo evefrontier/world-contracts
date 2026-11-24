@@ -72,14 +72,14 @@ fun fuel(scenario: &mut ts::Scenario, tenant: String): Variant {
 // === from_variant ===
 
 #[test]
-fun from_variant_converts_to_scale_rounding_down() {
+fun from_variant_loads_values_unchanged() {
     let mut scenario = ts::begin(admin());
     let record = fuel(&mut scenario, tenant());
     let (impulse, burden, volatility, thermal) = fuel_properties::from_variant(&record);
-    assert!(impulse == 901_234);
-    assert!(burden == 140_000);
-    assert!(volatility == 10_000);
-    assert!(thermal == 200_000);
+    assert!(impulse == 90_123_456_789);
+    assert!(burden == 14_000_000_000);
+    assert!(volatility == 1_000_000_000);
+    assert!(thermal == 20_000_000_000);
     ts::return_immutable(record);
     scenario.end();
 }
@@ -113,26 +113,26 @@ fun from_variant_units_aborts() {
 }
 
 #[test]
-fun from_variant_scales_before_range_check() {
+fun from_variant_loads_u64_max() {
     let mut scenario = ts::begin(admin());
-    // Impulse above u64 at 1e9, but within u64 at SCALE.
+    let max = std::u64::max_value!();
     let record = register(
         &mut scenario,
         tenant(),
         variant::mass(),
         vector[208, 209, 210, 211],
-        vector[20_000_000_000_000_000_000, 1, 1, 1_000_000_000],
+        vector[max as u128, 1, 1, 1_000_000_000],
     );
     let (impulse, _, _, _) = fuel_properties::from_variant(&record);
-    assert!(impulse == 200_000_000_000_000);
+    assert!(impulse == max);
     ts::return_immutable(record);
     scenario.end();
 }
 
 #[test, expected_failure(abort_code = fuel_properties::EFuelPropertyTooLarge)]
-fun from_variant_too_large_at_scale_aborts() {
+fun from_variant_above_u64_aborts() {
     let mut scenario = ts::begin(admin());
-    let too_large = ((std::u64::max_value!() as u128) + 1) * (fuel_properties::to_scale() as u128);
+    let too_large = (std::u64::max_value!() as u128) + 1;
     let record = register(
         &mut scenario,
         tenant(),
@@ -159,21 +159,18 @@ fun from_variant_negative_aborts() {
     abort
 }
 
-// === amount_to_scale ===
+// === assert_whole_step ===
 
 #[test]
-fun amount_to_scale_is_exact_for_whole_steps() {
-    assert!(fuel_properties::amount_to_scale(12_500_000_000) == 125_000);
-    assert!(fuel_properties::amount_to_scale(100_000) == 1);
-    assert!(
-        (fuel_properties::to_scale() as u128) * (fuel_math::scale() as u128)
-            == variant::value_scale(),
-    );
+fun whole_steps_pass_and_scale_matches_variants() {
+    fuel_properties::assert_whole_step(12_500_000_000);
+    fuel_properties::assert_whole_step(fuel_properties::mass_step());
+    assert!((fuel_math::scale() as u128) == variant::value_scale());
 }
 
 #[test, expected_failure(abort_code = fuel_properties::EAmountNotWholeStep)]
 fun amount_below_step_aborts() {
-    fuel_properties::amount_to_scale(12_500_000_001);
+    fuel_properties::assert_whole_step(12_500_000_001);
     abort
 }
 

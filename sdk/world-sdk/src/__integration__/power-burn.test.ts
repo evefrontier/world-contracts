@@ -97,7 +97,7 @@ describe('power grid fuel burn (localnet)', () => {
     installFuelBay(createTx, config, creation, {
       componentId: FUEL_ID,
       name: 'fuel bay',
-      capacity: FUEL_CAPACITY,
+      capacity: FUEL_CAPACITY * POWER_SCALE,
     })
     installInventory(createTx, config, creation, {
       componentId: INVENTORY_ID,

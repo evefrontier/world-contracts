@@ -56,7 +56,7 @@ export async function installInventoryPower(
   })
   installFuelBay(installTx, config, entity, {
     componentId: FUEL_BAY_ID,
-    capacity: 1_000n,
+    capacity: 1_000n * POWER_SCALE,
   })
   seatShell(installTx, config, entity)
   await expectSuccess(client, installTx)
