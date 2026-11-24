@@ -19,7 +19,12 @@ import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
 import { installLayout, setShell } from '../packages/layout.js'
-import { deriveVariantId, registerVariant } from '../packages/variant.js'
+import {
+  deriveVariantId,
+  type QuantityKind,
+  registerVariant,
+  type VariantKeyInput,
+} from '../packages/variant.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
@@ -159,21 +164,21 @@ export async function mintAccessCap(
   )
 }
 
-/** Read the `type_id` balance of an entity's inventory via `balance_of` (simulate). */
+/** Read the balance of variant `key` in an entity's inventory via `balance_of` (simulate). */
 export async function readBalance(
   client: WorldClient,
   config: WorldConfig,
   args: {
     entity: string
     componentId: bigint
-    typeId: bigint
+    key: VariantKeyInput
   },
 ): Promise<bigint> {
   const tx = new Transaction()
   tx.setSender(signer)
   balanceOf(tx, config, tx.object(args.entity), {
     componentId: args.componentId,
-    typeId: args.typeId,
+    key: args.key,
   })
   const res = await client.simulateTransaction({
     transaction: tx,
@@ -184,7 +189,8 @@ export async function readBalance(
       `balance_of simulation failed: ${res.FailedTransaction.status.error?.message ?? ''}`,
     )
   }
-  const rv = res.commandResults[0]?.returnValues[0]
+  // `new_key` runs before `balance_of`; the balance is the last command.
+  const rv = res.commandResults.at(-1)?.returnValues[0]
   if (!rv) throw new Error('balance_of returned no value')
   return BigInt(bcs.u64().parse(rv.bcs))
 }
@@ -228,16 +234,7 @@ export async function fuelVariant(
   stats: FuelStats,
 ): Promise<string> {
   const thermal = stats.thermalInefficiency ?? 0n
-  const mixed =
-    ((stats.impulse * 1_000_003n + stats.containmentBurden) * 1_000_003n +
-      stats.volatility) *
-      1_000_003n +
-    thermal
-  const key = {
-    tenant: stats.tenant,
-    typeId: stats.fuelType,
-    variantId: 1n + (mixed % 1_000_000_007n),
-  }
+  const key = fuelVariantKey(stats)
   const id = deriveVariantId(config, key)
   const exists = await client
     .getObject({ objectId: id })
@@ -255,6 +252,63 @@ export async function fuelVariant(
       { propertyId: 210, magnitude: stats.containmentBurden },
       { propertyId: 211, magnitude: stats.volatility },
     ],
+  })
+  await expectSuccess(client, tx)
+  return id
+}
+
+/** The key `fuelVariant` registers for these stats. */
+export function fuelVariantKey(stats: FuelStats): VariantKeyInput {
+  const thermal = stats.thermalInefficiency ?? 0n
+  const mixed =
+    ((stats.impulse * 1_000_003n + stats.containmentBurden) * 1_000_003n +
+      stats.volatility) *
+      1_000_003n +
+    thermal
+  return {
+    tenant: stats.tenant,
+    typeId: stats.fuelType,
+    variantId: 1n + (mixed % 1_000_000_007n),
+  }
+}
+
+export interface ItemVariantArgs {
+  tenant: string
+  typeId: bigint
+  /** m³ per item (`units`) or per kg (`mass`), at `VALUE_SCALE`. */
+  unitVolume: bigint
+  /** Defaults to `0n` (a type with no variant). */
+  variantId?: bigint
+  /** Defaults to `units`. */
+  kind?: QuantityKind
+}
+
+/**
+ * The item `Variant` for `typeId` in `tenant`, registered by the admin with no
+ * values on first use. Await it before the transaction that uses it. Returns its object ID.
+ */
+export async function itemVariant(
+  client: WorldClient,
+  config: WorldConfig,
+  args: ItemVariantArgs,
+): Promise<string> {
+  const key = {
+    tenant: args.tenant,
+    typeId: args.typeId,
+    variantId: args.variantId ?? 0n,
+  }
+  const id = deriveVariantId(config, key)
+  const exists = await client
+    .getObject({ objectId: id })
+    .then(() => true)
+    .catch(() => false)
+  if (exists) return id
+  const tx = new Transaction()
+  registerVariant(tx, config, {
+    key,
+    kind: args.kind ?? 'units',
+    unitVolume: args.unitVolume,
+    values: [],
   })
   await expectSuccess(client, tx)
   return id

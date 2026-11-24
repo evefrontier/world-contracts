@@ -25,13 +25,16 @@ import {
   expectSponsored,
   expectSuccess,
   genesisAccount,
+  itemVariant,
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
   signer,
 } from './helpers.js'
 
-// A merchant (admin) runs a trading post with a public FUEL -> LENS swap.
+// A merchant (admin) runs a trading post with a public FUEL -> LENS swap. Its rules
+// pin the variant on both sides: a type-only withdraw rule would let the pilot
+// pick any LENS variant in stock, including the better PRIZE one.
 // PLAYER_A owns two ships: one docked at the trading post, the other not.
 const MODULE_ID = 0x51n
 const FUEL = 88834n
@@ -40,6 +43,16 @@ const VOL = 2n
 const TRADING_POST_TYPE = 1n
 const SHIP_TYPE = 2n
 const TENANT = 'inventory-t3'
+/** The plain variant, the only one the swap trades. */
+const PLAIN = 0n
+/** A better LENS variant the merchant also stocks but does not swap. */
+const PRIZE = 7n
+/** Key of the `variantId` stack of `typeId` in `TENANT`. */
+const itemKey = (typeId: bigint, variantId = PLAIN) => ({
+  tenant: TENANT,
+  typeId,
+  variantId,
+})
 
 describe('ship docks at a trading post and swaps cargo (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
@@ -111,11 +124,13 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       [
         depositRequirement(merchantTx, config, MODULE_ID, {
           typeId: FUEL,
+          variantId: PLAIN,
           minQuantity: 1n,
           maxQuantity: 1n,
         }),
         withdrawRequirement(merchantTx, config, MODULE_ID, {
           typeId: LENS,
+          variantId: PLAIN,
           minQuantity: 1n,
           maxQuantity: 1n,
         }),
@@ -195,7 +210,24 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       pilot,
     )
 
-    // Merchant stocks one lens.
+    const lensVariant = await itemVariant(client, config, {
+      tenant: TENANT,
+      typeId: LENS,
+      unitVolume: VOL,
+    })
+    const prizeLensVariant = await itemVariant(client, config, {
+      tenant: TENANT,
+      typeId: LENS,
+      variantId: PRIZE,
+      unitVolume: VOL,
+    })
+    const fuelItemVariant = await itemVariant(client, config, {
+      tenant: TENANT,
+      typeId: FUEL,
+      unitVolume: VOL,
+    })
+
+    // Merchant stocks one plain lens and one prize lens.
     const stockTx = new Transaction()
     addSponsors(stockTx, config, [signer])
     const tradingPost = stockTx.object(tradingPostId)
@@ -208,11 +240,23 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       stockTx.object(merchantCapId),
     )
     gameItemToChain(stockTx, config, tradingPost, stockRequest, {
-      typeId: LENS,
+      variant: lensVariant,
       quantity: 1n,
-      volume: VOL,
     })
     completeRequest(stockTx, config, tradingPost, stockRequest)
+    const prizeRequest = interact(stockTx, config, tradingPost, 'bridge_in')
+    verifyOwner(
+      stockTx,
+      config,
+      tradingPost,
+      prizeRequest,
+      stockTx.object(merchantCapId),
+    )
+    gameItemToChain(stockTx, config, tradingPost, prizeRequest, {
+      variant: prizeLensVariant,
+      quantity: 1n,
+    })
+    completeRequest(stockTx, config, tradingPost, prizeRequest)
     await expectSuccess(client, stockTx)
 
     // Pilot bridges one fuel onto each ship; bridging needs a sponsor, so the admin pays gas.
@@ -225,9 +269,8 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
       const bridgeRequest = interact(fuelTx, config, ship, 'bridge_in')
       verifyOwner(fuelTx, config, ship, bridgeRequest, fuelTx.object(capId))
       gameItemToChain(fuelTx, config, ship, bridgeRequest, {
-        typeId: FUEL,
+        variant: fuelItemVariant,
         quantity: 1n,
-        volume: VOL,
       })
       completeRequest(fuelTx, config, ship, bridgeRequest)
     }
@@ -244,23 +287,24 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     const withdrawRequest = interact(tx, config, ship, 'withdraw')
     verifyOwner(tx, config, ship, withdrawRequest, tx.object(capId))
     const fuel = withdraw(tx, config, ship, withdrawRequest, {
-      typeId: FUEL,
+      key: itemKey(FUEL),
       quantity: 1n,
     })
     completeRequest(tx, config, ship, withdrawRequest)
     return fuel
   }
 
-  /** Swap `fuel` for a LENS at the trading post. */
+  /** Swap `fuel` for a LENS of `lensVariant` at the trading post. */
   function swap(
     tx: Transaction,
     fuel: TransactionArgument,
+    lensVariant = PLAIN,
   ): TransactionArgument {
     const tradingStructure = tx.object(tradingPostId)
     const swapRequest = interact(tx, config, tradingStructure, 'swap')
     deposit(tx, config, tradingStructure, swapRequest, fuel)
     const lens = withdraw(tx, config, tradingStructure, swapRequest, {
-      typeId: LENS,
+      key: itemKey(LENS, lensVariant),
       quantity: 1n,
     })
     completeRequest(tx, config, tradingStructure, swapRequest)
@@ -310,6 +354,13 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     await expectAbort(client, tx, pilotAddr, /EWrongSource/)
   })
 
+  it('rejects a swap for a lens variant the rule does not name', async () => {
+    // Docked (previous test), but the swap's withdraw rule is pinned to the plain lens.
+    const tx = new Transaction()
+    depositLens(tx, swap(tx, unload(tx, shipId, shipCapId), PRIZE))
+    await expectAbort(client, tx, pilotAddr, /EItemVariantNotAllowed/)
+  })
+
   it("swaps fuel from the pilot's docked ship for the merchant's lens", async () => {
     // The ship is docked at the trading post (previous test), recorded on both, which covers
     // every withdraw and deposit: ship to trading post to ship.
@@ -319,10 +370,20 @@ describe('ship docks at a trading post and swaps cargo (localnet)', () => {
     await expectSuccess(client, tx, pilot)
 
     const itemBalance = (entity: string, typeId: bigint) =>
-      readBalance(client, config, { entity, componentId: MODULE_ID, typeId })
+      readBalance(client, config, {
+        entity,
+        componentId: MODULE_ID,
+        key: itemKey(typeId),
+      })
 
     expect(await itemBalance(tradingPostId, FUEL)).toBe(1n)
     expect(await itemBalance(tradingPostId, LENS)).toBe(0n)
+    const prizeLeft = await readBalance(client, config, {
+      entity: tradingPostId,
+      componentId: MODULE_ID,
+      key: itemKey(LENS, PRIZE),
+    })
+    expect(prizeLeft).toBe(1n)
     expect(await itemBalance(shipId, LENS)).toBe(1n)
     expect(await itemBalance(shipId, FUEL)).toBe(0n)
     expect(await itemBalance(otherShipId, FUEL)).toBe(1n)

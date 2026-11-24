@@ -39,6 +39,8 @@ const ENegativeZero: vector<u8> = b"Zero must not be marked negative";
 const ENegativeValue: vector<u8> = b"Property value is negative";
 #[error(code = 10)]
 const EValueTooLarge: vector<u8> = b"Property value does not fit in u64";
+#[error(code = 11)]
+const ETenantTooLong: vector<u8> = b"Tenant must be at most 64 bytes";
 
 // === Constants ===
 
@@ -47,6 +49,8 @@ const VERSION: u64 = 1;
 const VALUE_SCALE: u128 = 1_000_000_000;
 const UNITS_DECIMALS: u8 = 0;
 const MASS_DECIMALS: u8 = 9;
+/// Bounds a key's size, so inventory event batches stay under Sui's event size limit.
+const MAX_TENANT_LENGTH: u64 = 64;
 
 // === Structs ===
 
@@ -105,9 +109,10 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Build a variant key.
+/// Build a variant key. `tenant` is 1 to 64 bytes.
 public fun new_key(tenant: String, type_id: u64, variant_id: u64): VariantKey {
     assert!(tenant.length() > 0, ETenantEmpty);
+    assert!(tenant.length() <= MAX_TENANT_LENGTH, ETenantTooLong);
     assert!(type_id != 0, ETypeIdZero);
     VariantKey { tenant, type_id, variant_id }
 }
@@ -189,7 +194,8 @@ public fun derive_id(registry: &VariantRegistry, key: VariantKey): address {
 /// Start registering a variant. Returns the record and an admin-gated `Request`: the
 /// transaction must satisfy it (`admin_service::verify_admin`), then call
 /// `complete_registration`. `property_ids` must be strictly ascending; `magnitudes` and
-/// `negatives` line up with them.
+/// `negatives` line up with them. `unit_volume` is m³ per kg (`Mass`,
+/// the service's 1 / density) or per item (`Units`), at 1e9.
 public fun register(
     registry: &mut VariantRegistry,
     tenant: String,
@@ -217,12 +223,13 @@ public fun register(
         assert!(!negative || magnitude > 0, ENegativeZero);
         Value { magnitude, negative }
     });
+    let values = vec_map::from_keys_values(property_ids, values);
     let variant = Variant {
         id: derived_object::claim(&mut registry.id, key),
         key,
         decimals: kind.kind_decimals(),
         unit_volume,
-        values: vec_map::from_keys_values(property_ids, values),
+        values,
     };
     let request = request::new_for(register_permit(), vector[admin_service::admin_requirement()]);
     (variant, request)
@@ -252,6 +259,9 @@ fun register_permit(): Permit<Register> {
 public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);
 }
+
+#[test_only]
+public fun max_tenant_length(): u64 { MAX_TENANT_LENGTH }
 
 #[test_only]
 public fun registered_key(event: &VariantRegistered): VariantKey { event.key }

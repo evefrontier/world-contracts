@@ -43,7 +43,10 @@ export interface PropertyValue {
 export interface RegisterVariantArgs {
   key: VariantKeyInput
   kind: QuantityKind
-  /** m³ per kg (`mass`) or per item (`units`), at `VALUE_SCALE`. */
+  /**
+   * m³ per kg (`mass`, i.e. 1 / the variant's density) or per item (`units`), at
+   * `VALUE_SCALE`. Must be non-zero.
+   */
   unitVolume: bigint
   /** Any order; sorted ascending by `propertyId` here. */
   values: PropertyValue[]
@@ -134,5 +137,21 @@ export function registerVariant(
   tx.moveCall({
     target: target(config, 'complete_registration'),
     arguments: [record as TransactionArgument, request as TransactionArgument],
+  })
+}
+
+/** Build a `VariantKey` in the transaction (structs can't be pure arguments). */
+export function variantKey(
+  tx: Transaction,
+  config: WorldConfig,
+  key: VariantKeyInput,
+): TransactionResult {
+  return tx.moveCall({
+    target: target(config, 'new_key'),
+    arguments: [
+      tx.pure.string(key.tenant),
+      tx.pure.u64(key.typeId),
+      tx.pure.u64(key.variantId),
+    ],
   })
 }

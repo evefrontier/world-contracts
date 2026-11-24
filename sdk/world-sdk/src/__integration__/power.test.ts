@@ -32,6 +32,7 @@ import {
   expectAbort,
   expectSuccess,
   fuelVariant,
+  itemVariant,
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
@@ -216,6 +217,12 @@ describe('power grid powers an inventory (localnet)', () => {
     expect(eventNames(online)).toContain('DrawChanged')
 
     // tx4: the powered bridge works while the inventory holds its grant.
+    const itemKey = { tenant: key.tenant, typeId: ITEM, variantId: 0n }
+    const itemVariantId = await itemVariant(client, config, {
+      tenant: key.tenant,
+      typeId: ITEM,
+      unitVolume: VOL,
+    })
     const bridge = () => {
       const tx = new Transaction()
       const bridgeEntity = tx.object(entityId)
@@ -233,9 +240,8 @@ describe('power grid powers an inventory (localnet)', () => {
         tx.object(capId),
       )
       gameItemToChain(tx, config, bridgeEntity, bridgeInItemsRequest, {
-        typeId: ITEM,
+        variant: itemVariantId,
         quantity: 10n,
-        volume: VOL,
       })
       completeRequest(tx, config, bridgeEntity, bridgeInItemsRequest)
       return tx
@@ -244,7 +250,7 @@ describe('power grid powers an inventory (localnet)', () => {
     const balance = await readBalance(client, config, {
       entity: entityId,
       componentId: INVENTORY_ID,
-      typeId: ITEM,
+      key: itemKey,
     })
     expect(balance).toBe(10n)
 

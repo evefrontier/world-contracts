@@ -31,8 +31,16 @@ import {
 } from './helpers.js'
 
 const GENERATOR_ID = 0x71n
-const FUEL_BAY_ID = 0x72n
-const FUEL_TYPE = 7n
+/** The fuel bay `installInventoryPower` installs. */
+export const FUEL_BAY_ID = 0x72n
+
+/** Stats of the fuel `installInventoryPower` registers, less the tenant. */
+export const INVENTORY_FUEL = {
+  fuelType: 7n,
+  impulse: 90n * POWER_SCALE,
+  containmentBurden: 14n * POWER_SCALE,
+  volatility: 5n * POWER_SCALE,
+}
 
 /**
  * Install a generator and fuel bay and expose the owner steps that turn a
@@ -50,7 +58,7 @@ export async function installInventoryPower(
   installGenerator(installTx, config, entity, {
     componentId: GENERATOR_ID,
     maxOutputMw: 10n,
-    fuelType: FUEL_TYPE,
+    fuelType: INVENTORY_FUEL.fuelType,
     impulseLimit: 100n * POWER_SCALE,
     volatilityLimit: 1n,
   })
@@ -81,13 +89,7 @@ export async function installInventoryPower(
   ])
   await expectSuccess(client, enableTx)
 
-  return fuelVariant(client, config, {
-    tenant,
-    fuelType: FUEL_TYPE,
-    impulse: 90n * POWER_SCALE,
-    containmentBurden: 14n * POWER_SCALE,
-    volatility: 5n * POWER_SCALE,
-  })
+  return fuelVariant(client, config, { tenant, ...INVENTORY_FUEL })
 }
 
 /** Fuel the bay with `fuelVariantId`, bring it online, switch the grid on, and grant `moduleId`. The owner cap authorizes each step. */

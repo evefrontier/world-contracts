@@ -38,10 +38,15 @@ values.
 one stack per key, so identical variants join and different ones don't.
 - **Quantity** is a plain `u64` in base units: a count of items, or a stack's total
 mass at 1e9, the proto's nanos (12.5 kg is 12,500,000,000). The game keeps 4
-decimals; 1e9 matches the proto with no conversion and leaves room. The record's
+decimals; 1e9 matches the proto with no conversion and leaves room. Mass
+amounts on chain must be whole 0.0001 kg (10^5 base units) on every mint,
+withdraw and bridge, so nothing is lost going back to the game, and at least
+0.01 kg, the game's smallest split: any amount moved, and any stack a partial
+take leaves, so the chain makes no dust stack the game can't. The record's
 `QuantityKind` says which; arithmetic never branches on it.
-- **Volume** comes from the variant: the record holds m³ per kg (1/density) or
-per item, and a stack's volume is that times its kg or item count.
+- **Volume** comes from the variant: the record holds m³ per kg (`Mass`, the
+service's 1 / density from the `density` property) or per item (`Units`), and a
+stack's volume is that times its kg or item count, rounded up once in nano-m³.
 - **A value change** moves stock to a new variant ID in the game, so a new frozen
 record. Old stacks keep their key and values.
 - **Any contract** reads properties by passing `&Variant`. Fuel deposits read the
@@ -191,11 +196,12 @@ public struct Item has key {
     id: UID,
     key: VariantKey,
     quantity: u64,              // base units
-    unit_volume: u64,
+    unit_volume: u64,           // from the variant
+    decimals: u8,
     source: ID,
 }
 
-public struct Balance has drop, store { quantity: u64, unit_volume: u64 }
+public struct Balance has drop, store { quantity: u64, unit_volume: u64, decimals: u8 }
 
 public struct ItemBag has store { balances: LinkedTable<VariantKey, Balance> }
 ```
@@ -246,16 +252,22 @@ game's call.
 - `variant::derive_id(registry, key)`: the record's object ID, so clients and the
 service find a record without an index.
 - `variant::value(v, property_id)`, `value_u64`, `property_ids`, `kind`,
-`decimals`, `unit_volume`.
+`decimals`, `unit_volume`; `item::stack_volume`.
 - `inventory::balance_of(entity, component_id, key)`; `item::key`, `quantity`.
 - `VariantRegistered { key, id, kind }` for indexers; item movement events carry
 `variant_id`; `FuelItemDeposited` for items burned into a bay.
 
-Builders gate on properties in their own requirement handler, declared just
+Core `ItemRequirement` checks type, quantity and, optionally, one variant
+(`variant_id`, which needs `type_id`). Without `variant_id` a rule admits every
+variant of its type, so on a withdraw the caller picks the variant: a swap that
+only names the type gives out the best grade in stock. Pin `variant_id` when an
+action must release or accept one exact variant.
+
+Builders gate on property values in their own requirement handler, declared just
 before the deposit in the action. The handler takes the `Item` and its
 `&Variant`, checks `item.key == variant.key` and any property, then passes that
 same `Item` to `inventory::deposit` in the same call. A check on one item can't
-let a different item through. Core `ItemRequirement` stays type and quantity only.
+let a different item through.
 
 ## Alternatives Considered
 

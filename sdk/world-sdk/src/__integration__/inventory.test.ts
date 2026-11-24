@@ -21,6 +21,7 @@ import {
 import { bringInventoryOnline } from './bring-online.js'
 import {
   expectSuccess,
+  itemVariant,
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
@@ -88,6 +89,13 @@ describe('inventory owner round-trip (localnet)', () => {
       MODULE_ID,
     )
 
+    const itemKey = { tenant: key.tenant, typeId: FUEL, variantId: 0n }
+    const variant = await itemVariant(client, config, {
+      tenant: key.tenant,
+      typeId: FUEL,
+      unitVolume: VOL,
+    })
+
     // tx4: bridge_in 100 -> withdraw 20 -> deposit the Item back, one signer.
     const runTx = new Transaction()
     addSponsors(runTx, config, [signer])
@@ -97,16 +105,15 @@ describe('inventory owner round-trip (localnet)', () => {
     const bridgeRequest = interact(runTx, config, e, 'bridge_in')
     verifyOwner(runTx, config, e, bridgeRequest, c)
     gameItemToChain(runTx, config, e, bridgeRequest, {
-      typeId: FUEL,
+      variant,
       quantity: 100n,
-      volume: VOL,
     })
     completeRequest(runTx, config, e, bridgeRequest)
 
     const withdrawRequest = interact(runTx, config, e, 'withdraw')
     verifyOwner(runTx, config, e, withdrawRequest, c)
     const item = withdraw(runTx, config, e, withdrawRequest, {
-      typeId: FUEL,
+      key: itemKey,
       quantity: 20n,
     })
     completeRequest(runTx, config, e, withdrawRequest)
@@ -122,7 +129,7 @@ describe('inventory owner round-trip (localnet)', () => {
     const balance = await readBalance(client, config, {
       entity: entityId,
       componentId: MODULE_ID,
-      typeId: FUEL,
+      key: itemKey,
     })
     expect(balance).toBe(100n)
   })
