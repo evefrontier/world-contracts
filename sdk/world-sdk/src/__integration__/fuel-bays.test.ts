@@ -224,7 +224,7 @@ describe('fuel bays (localnet)', () => {
     // Only the online bay burns; the offline reserve keeps its fuel.
     await sleep(BURN_WAIT_MS)
     const reserveKept = await readBays(client, config, entityId)
-    expect(amountOf(reserveKept, BAY_A)).toBeLessThan(15_000_000n)
+    expect(amountOf(reserveKept, BAY_A)).toBeLessThan(1_500n * POWER_SCALE)
     expect(amountOf(reserveKept, BAY_B)).toBe(FUEL_B_AMOUNT * POWER_SCALE)
 
     // Bring the reserve online: both bays now burn, each by what it holds.

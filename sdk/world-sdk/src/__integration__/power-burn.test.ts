@@ -54,7 +54,7 @@ const GENERIC_DRAW = 5n
 const USED = INVENTORY_DRAW + GENERIC_DRAW
 // Impulse 15 (at POWER_SCALE) and no burden: 15 MW burns 1 fuel unit per second,
 // so 25 units last ~25s.
-const FUEL_IMPULSE = 150_000n
+const FUEL_IMPULSE = 15n * POWER_SCALE
 const FUEL_AMOUNT = 25n
 const FUEL_CAPACITY = 1_000n
 
