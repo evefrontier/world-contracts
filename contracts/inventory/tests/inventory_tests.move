@@ -2070,7 +2070,7 @@ fun bridge_in_mass_variant_sizes_per_kg() {
 
 /// The fuel `power_inventory` loads: type 7, impulse 90, burden 14, volatility 5.
 fun default_fuel(scenario: &mut ts::Scenario): ID {
-    grid_scenario::fuel_variant(scenario, 7, 900_000, 140_000, 50_000, 0)
+    grid_scenario::fuel_variant(scenario, 7, 90_000_000_000, 14_000_000_000, 5_000_000_000, 0)
 }
 
 /// A powered storage unit with a fuel bay, holding `kgs` kg of the default fuel.
@@ -2176,7 +2176,14 @@ fun deposit_fuel_item_with_other_variant_aborts() {
     setup(&mut scenario);
     let e_id = fuelled_unit(&mut scenario, 5);
     let fuel = default_fuel(&mut scenario);
-    let other = grid_scenario::fuel_variant(&mut scenario, 7, 800_000, 140_000, 50_000, 0);
+    let other = grid_scenario::fuel_variant(
+        &mut scenario,
+        7,
+        80_000_000_000,
+        14_000_000_000,
+        5_000_000_000,
+        0,
+    );
     burn_fuel(&mut scenario, e_id, fuel, other, 3 * grid_scenario::kg(), true, true);
     abort
 }
