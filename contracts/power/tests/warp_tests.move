@@ -424,6 +424,28 @@ fun withdraw_from_unknown_bay_aborts() {
     abort
 }
 
+/// An offline bay feeds nothing, so it can't be named for a warp.
+#[test, expected_failure(abort_code = grid_fuel::EFuelBayOffline)]
+fun withdraw_from_offline_bay_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+    set_fuel_bay(&mut scenario, entity_id, FUEL_B, false, &clock);
+
+    withdraw_from_bay(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_type(),
+        FUEL_B,
+        power_grid::scale(),
+        &clock,
+    );
+
+    abort
+}
+
 /// The named bay holds another type than the withdrawal asks for.
 #[test, expected_failure(abort_code = grid_fuel::EFuelTypeMismatch)]
 fun withdraw_from_bay_of_another_type_aborts() {

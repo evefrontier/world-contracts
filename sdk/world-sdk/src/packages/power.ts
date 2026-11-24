@@ -643,7 +643,7 @@ export function shutDown(
 
 /**
  * Take `quantity` of `fuelType` (at `POWER_SCALE`, `MASS_UNIT` per kg) for a warp, all or
- * nothing; an abort means no warp. With `fuelBayId`, only that bay gives; without, the
+ * nothing; an abort means no warp. With `fuelBayId`, only that online bay gives; without, the
  * pool of online bays does. Needs the `withdraw_fuel` admin action
  * (`withdrawFuelRequirement`). Admin-gated.
  */

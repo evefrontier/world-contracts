@@ -57,6 +57,8 @@ const EBayShort: vector<u8> = b"Fuel bay holds less fuel than the siphon";
 const EZeroVolatility: vector<u8> = b"Fuel with zero volatility gives no output";
 #[error(code = 20)]
 const EVariantWrongTenant: vector<u8> = b"Fuel variant belongs to another tenant";
+#[error(code = 21)]
+const EFuelBayOffline: vector<u8> = b"Fuel bay is offline";
 
 // === Structs ===
 
@@ -275,7 +277,7 @@ public fun stash_load(entity: &mut Entity, req: &mut Request, load: FuelLoad) {
 }
 
 /// Take `quantity` of `fuel_type` (at `SCALE`, 1e-9 kg), all or nothing. With
-/// `fuel_bay_id`, only that connected bay gives; without, each online bay of the
+/// `fuel_bay_id`, only that online bay gives; without, each online bay of the
 /// pool gives in proportion to what it holds. The game server calls it before a
 /// warp with the warp's cost; an abort means no warp. Settles first, so burn
 /// counts before the check. The request needs a `withdraw_fuel_requirement`, and
@@ -595,10 +597,12 @@ fun withdraw_from_pool(grid: &mut PowerGrid, fuel_type: u64, quantity: u64): u64
     held - quantity
 }
 
-/// Take `quantity` of `fuel_type` from bay `fuel_bay_id` and return what it holds after.
+/// Take `quantity` of `fuel_type` from online bay `fuel_bay_id` and return what it holds after.
 fun withdraw_from_bay(grid: &mut PowerGrid, fuel_bay_id: u64, fuel_type: u64, quantity: u64): u64 {
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
-    let fuel = grid.bay_state(fuel_bay_id).fuel();
+    let bay = grid.bay_state(fuel_bay_id);
+    assert!(bay.bay_online(), EFuelBayOffline);
+    let fuel = bay.fuel();
     assert!(fuel.quantity() >= quantity, EBayShort);
     assert!(fuel.fuel_type() == option::some(fuel_type), EFuelTypeMismatch);
     grid.take_from_bay(fuel_bay_id, quantity);
