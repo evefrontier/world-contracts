@@ -801,7 +801,34 @@ public fun withdraw_type(
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
     let mut req = entity.interact(string::utf8(WITHDRAW_FUEL), scenario.ctx());
-    grid_fuel::withdraw_fuel(&mut entity, &mut req, fuel_type, quantity, clock);
+    grid_fuel::withdraw_fuel(&mut entity, &mut req, fuel_type, option::none(), quantity, clock);
+    close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_shared(acl);
+    ts::return_shared(entity);
+}
+
+/// `sender` withdraws `quantity` (at `SCALE`) of `fuel_type` from bay `fuel_bay_id` only.
+public fun withdraw_from_bay(
+    scenario: &mut ts::Scenario,
+    sender: address,
+    entity_id: ID,
+    fuel_type: u64,
+    fuel_bay_id: u64,
+    quantity: u64,
+    clock: &Clock,
+) {
+    ts::next_tx(scenario, sender);
+    let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
+    let acl = take_acl(scenario);
+    let mut req = entity.interact(string::utf8(WITHDRAW_FUEL), scenario.ctx());
+    grid_fuel::withdraw_fuel(
+        &mut entity,
+        &mut req,
+        fuel_type,
+        option::some(fuel_bay_id),
+        quantity,
+        clock,
+    );
     close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);

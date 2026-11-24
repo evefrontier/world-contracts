@@ -97,8 +97,8 @@ sequenceDiagram
     Owner->>Grid: set_generator_fuel_type(Emergency, Crude)
     Note over Grid: offline generator switches pool
 
-    Service->>Grid: withdraw_fuel(type, warp cost)
-    Note over Grid: all or nothing, abort means no warp
+    Service->>Grid: withdraw_fuel(type, bay?, warp cost)
+    Note over Grid: one bay if given, else the pool; all or nothing, abort means no warp
 
     Admin->>Grid: siphon(bay, quantity)
     Note over Grid: FuelSiphoned carries the stack's values
