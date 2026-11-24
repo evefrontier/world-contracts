@@ -106,21 +106,18 @@ describe('warp fuel (localnet)', () => {
 
     // The same warp, from that one bay.
     const bayTx = new Transaction()
-    withdrawFuel(bayTx, config, bayTx.object(entityId), 1n, WARP_COST, BAY_ID)
+    withdrawFuel(bayTx, config, bayTx.object(entityId), 1n, WARP_COST, {
+      fuelBayId: BAY_ID,
+    })
     await expectSuccess(client, bayTx)
     const left = UNITS * POWER_SCALE - 2n * WARP_COST
     expect(await readFuel(entityId)).toBe(left)
 
     // A bay that isn't on the grid gives nothing.
     const unknownTx = new Transaction()
-    withdrawFuel(
-      unknownTx,
-      config,
-      unknownTx.object(entityId),
-      1n,
-      WARP_COST,
-      BAY_ID + 1n,
-    )
+    withdrawFuel(unknownTx, config, unknownTx.object(entityId), 1n, WARP_COST, {
+      fuelBayId: BAY_ID + 1n,
+    })
     await expectAbort(client, unknownTx, signer, /EFuelBayNotConnected/)
     expect(await readFuel(entityId)).toBe(left)
 

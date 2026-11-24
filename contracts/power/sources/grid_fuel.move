@@ -50,7 +50,7 @@ const EFuelBayTooLarge: vector<u8> = b"Fuel bay capacity is above the maximum";
 #[error(code = 16)]
 const EZeroImpulse: vector<u8> = b"Fuel with zero impulse holds no energy";
 #[error(code = 17)]
-const EFuelTypeMismatch: vector<u8> = b"Fuel bay holds another fuel type until it is empty";
+const EFuelTypeMismatch: vector<u8> = b"Fuel bay holds another fuel type";
 #[error(code = 18)]
 const EBayShort: vector<u8> = b"Fuel bay holds less fuel than the siphon";
 #[error(code = 19)]
@@ -105,8 +105,8 @@ public struct FuelBayToggled has copy, drop {
 }
 
 /// The service took `quantity` (at `SCALE`, 1e-9 kg) of `fuel_type` for a warp, from
-/// bay `fuel_bay_id` if set, else from the pool. `remaining` is what that bay or
-/// pool holds after.
+/// bay `fuel_bay_id` if set, else from the pool. `remaining` is what the pool
+/// holds after.
 public struct FuelWithdrawn has copy, drop {
     entity_id: ID,
     fuel_type: u64,
@@ -298,11 +298,9 @@ public fun withdraw_fuel(
     );
     assert!(quantity > 0, EZeroFuel);
     grid.settle(clock);
-    let remaining = if (fuel_bay_id.is_some()) {
-        withdraw_from_bay(grid, *fuel_bay_id.borrow(), fuel_type, quantity)
-    } else {
-        withdraw_from_pool(grid, fuel_type, quantity)
-    };
+    let remaining = fuel_bay_id
+        .map!(|id| withdraw_from_bay(grid, id, fuel_type, quantity))
+        .destroy_or!(withdraw_from_pool(grid, fuel_type, quantity));
     grid.regrant(entity_id);
     event::emit(FuelWithdrawn { entity_id, fuel_type, fuel_bay_id, quantity, remaining });
     frame.require(admin_service::admin_requirement());
@@ -597,16 +595,16 @@ fun withdraw_from_pool(grid: &mut PowerGrid, fuel_type: u64, quantity: u64): u64
     held - quantity
 }
 
-/// Take `quantity` of `fuel_type` from online bay `fuel_bay_id` and return what it holds after.
+/// Take `quantity` of `fuel_type` from online bay `fuel_bay_id`; return what the pool holds after.
 fun withdraw_from_bay(grid: &mut PowerGrid, fuel_bay_id: u64, fuel_type: u64, quantity: u64): u64 {
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     let bay = grid.bay_state(fuel_bay_id);
     assert!(bay.bay_online(), EFuelBayOffline);
     let fuel = bay.fuel();
+    fuel.fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
     assert!(fuel.quantity() >= quantity, EBayShort);
-    assert!(fuel.fuel_type() == option::some(fuel_type), EFuelTypeMismatch);
     grid.take_from_bay(fuel_bay_id, quantity);
-    fuel.quantity() - quantity
+    grid.pool_fuel(fuel_type).quantity()
 }
 
 /// Abort unless the grid has room for one more fitted or stashed bay.

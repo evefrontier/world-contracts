@@ -305,7 +305,7 @@ fun withdraw_from_bay_takes_only_that_bay() {
     let (_, withdrawn_type, quantity, remaining) = withdrawn[0].fuel_withdrawn_fields();
     let left = starting_fuel() / 4 - 10 * power_grid::scale();
     assert!(withdrawn_type == fuel_type() && quantity == 10 * power_grid::scale());
-    assert!(remaining == left);
+    assert!(remaining == starting_fuel() + left);
     assert!(withdrawn[0].fuel_withdrawn_bay_id() == option::some(FUEL_B));
     assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == left);
     assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel());
@@ -446,13 +446,36 @@ fun withdraw_from_offline_bay_aborts() {
     abort
 }
 
-/// The named bay holds another type than the withdrawal asks for.
+/// The named bay holds another type, and less than asked: the type is reported.
 #[test, expected_failure(abort_code = grid_fuel::EFuelTypeMismatch)]
 fun withdraw_from_bay_of_another_type_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = two_types(&mut scenario, &clock);
+
+    withdraw_from_bay(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_type(),
+        FUEL_B,
+        starting_fuel() / 4 + 1,
+        &clock,
+    );
+
+    abort
+}
+
+/// An emptied bay has no type, so it is short rather than mismatched.
+#[test, expected_failure(abort_code = grid_fuel::EBayShort)]
+fun withdraw_from_empty_bay_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+    let all = starting_fuel() / 4;
+    withdraw_from_bay(&mut scenario, admin(), entity_id, fuel_type(), FUEL_B, all, &clock);
 
     withdraw_from_bay(
         &mut scenario,
