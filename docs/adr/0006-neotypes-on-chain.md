@@ -224,9 +224,18 @@ const VOLATILITY: u32 = 211;
 ```
 
 The fuel type is `key.type_id`. Amounts go from 1e9 to the grid's `SCALE` by
-dividing by 10^5, which drops anything below 0.0001 kg; how the chain keeps `Mass`
-amounts on that step is decided in the inventory PR. Zero impulse, a missing fuel
-property or `Units` kind aborts.
+dividing by 10^5, so an amount must be a whole 0.0001 kg or the call aborts; no
+fuel is lost to rounding. The four stats are divided the same way and rounded
+down, so a stat below 0.0001 becomes 0. Zero impulse, zero volatility, a missing
+fuel property or `Units` kind aborts; a zero containment burden or thermal
+inefficiency loads as 0.
+
+Fuel events mix units:
+
+| Units | Fields |
+|---|---|
+| Base units (1e-9 kg) | `FuelAdded.amount`, `FuelSiphoned.quantity` |
+| `SCALE` (1e4) | `FuelAdded.resulting_*`, the `FuelSiphoned` stats, `FuelWithdrawn.quantity` and `remaining` |
 
 A bay keeps only the fuel type and four blended stats at `SCALE`, not a variant.
 A siphon emits those values with the tenant and the quantity in base units
