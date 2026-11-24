@@ -6,10 +6,9 @@
 # Usage: ./scripts/deploy-world.sh [localnet|dev|test|uat|live] [deploy|publish|upgrade]
 source "$(dirname "$0")/lib.sh"
 
-# Packages in dependency order. creation depends on core; power on core and creation;
-# inventory and generic_module on core and power.
-# killmail depends on core and character.
-PACKAGES=(core character metadata creation power inventory generic_module killmail)
+# Packages in dependency order. creation and variant depend on core; power on core and creation;
+# inventory and generic_module on core and power; killmail on core and character.
+PACKAGES=(core character metadata creation variant power inventory generic_module killmail)
 
 setup
 ENV=$(get_env "${1:-}")

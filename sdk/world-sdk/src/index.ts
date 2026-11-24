@@ -23,6 +23,8 @@ export {
   OBJECT_REGISTRY,
   objectRegistry,
   requireSharedObject,
+  VARIANT_REGISTRY,
+  variantRegistry,
 } from './config/shared-objects.js'
 export type {
   Env,
