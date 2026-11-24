@@ -40,7 +40,9 @@ one stack per key, so identical variants join and different ones don't.
 mass at 1e9, the proto's nanos (12.5 kg is 12,500,000,000). The game keeps 4
 decimals; 1e9 matches the proto with no conversion and leaves room. Mass
 amounts on chain must be whole 0.0001 kg (10^5 base units) on every mint,
-withdraw and bridge, so nothing is lost going back to the game. The record's
+withdraw and bridge, so nothing is lost going back to the game, and at least
+0.01 kg, the game's smallest split: any amount moved, and any stack a partial
+take leaves, so the chain makes no dust stack the game can't. The record's
 `QuantityKind` says which; arithmetic never branches on it.
 - **Volume** comes from the variant: the record holds m³ per kg (`Mass`, the
 service's 1 / density from the `density` property) or per item (`Units`), and a

@@ -226,7 +226,7 @@ export function balanceOf(
 export interface BridgeInArgs {
   /** The frozen `Variant` record's object ID (see `deriveVariantId`). */
   variant: string | TransactionArgument
-  /** Base units: items, or 1e-9 kg (whole 0.0001 kg) for mass. */
+  /** Base units: items, or 1e-9 kg for mass (whole 0.0001 kg, at least 0.01 kg, and a partial take leaves at least 0.01 kg). */
   quantity: bigint
 }
 
@@ -253,7 +253,7 @@ export function gameItemToChain(
 
 export interface ItemAmount {
   key: VariantKeyInput
-  /** Base units: items, or 1e-9 kg (whole 0.0001 kg) for mass. */
+  /** Base units: items, or 1e-9 kg for mass (whole 0.0001 kg, at least 0.01 kg, and a partial take leaves at least 0.01 kg). */
   quantity: bigint
 }
 

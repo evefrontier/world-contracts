@@ -13,6 +13,8 @@ const COMPONENT: u64 = 7;
 const MASS: u8 = 9;
 /// 0.0001 kg, the smallest whole mass step.
 const STEP: u64 = 100_000;
+/// 0.01 kg, the game's smallest split of a mass stack.
+const MIN_MASS: u64 = 10_000_000;
 
 fun tenant(): string::String { string::utf8(b"test") }
 
@@ -202,19 +204,96 @@ fun variants_of_one_type_stay_separate() {
     scenario.end();
 }
 
-/// A mass stack rounds its volume up once, not once per mint: two 0.0001 kg
-/// mints at 3 nano-m³/kg take ceil(3 × 0.0002) = 1, not 2.
+/// A mass stack rounds its volume up once, not once per mint: two 0.01 kg
+/// mints at 3 nano-m³/kg take ceil(3 × 0.02) = 1, not 2.
 #[test]
 fun mass_stack_volume_rounds_up_once() {
     let mut scenario = ts::begin(@0xA);
     let mut bag = item::new_bag(scenario.ctx());
     let key = fuel_key();
     let mut used = 0;
-    item::mint(&mut bag, key, STEP, 3, MASS, source(), COMPONENT, &mut used);
+    item::mint(&mut bag, key, MIN_MASS, 3, MASS, source(), COMPONENT, &mut used);
     assert!(used == 1);
-    item::mint(&mut bag, key, STEP, 3, MASS, source(), COMPONENT, &mut used);
-    assert!(item::balance(&bag, key) == 2 * STEP);
+    item::mint(&mut bag, key, MIN_MASS, 3, MASS, source(), COMPONENT, &mut used);
+    assert!(item::balance(&bag, key) == 2 * MIN_MASS);
     assert!(item::volume_of(&bag, key) == 1 && used == 1);
+
+    item::destroy_bag(bag);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = item::EBelowMinimum)]
+fun mint_mass_below_minimum_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let mut used = 0;
+    item::mint(&mut bag, fuel_key(), MIN_MASS - STEP, 3, MASS, source(), COMPONENT, &mut used);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::EBelowMinimum)]
+fun withdraw_mass_below_minimum_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let mut used = 0;
+    item::mint(&mut bag, fuel_key(), 2 * MIN_MASS, 3, MASS, source(), COMPONENT, &mut used);
+    let _out = item::withdraw(
+        &mut bag,
+        fuel_key(),
+        STEP,
+        source(),
+        COMPONENT,
+        &mut used,
+        scenario.ctx(),
+    );
+
+    abort
+}
+
+/// Taking 0.01 kg from 0.0101 kg would leave a 0.0001 kg stack the game can't make.
+#[test, expected_failure(abort_code = item::ERemainderBelowMinimum)]
+fun withdraw_leaving_dust_aborts() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let mut used = 0;
+    item::mint(&mut bag, fuel_key(), MIN_MASS + STEP, 3, MASS, source(), COMPONENT, &mut used);
+    let _out = item::withdraw(
+        &mut bag,
+        fuel_key(),
+        MIN_MASS,
+        source(),
+        COMPONENT,
+        &mut used,
+        scenario.ctx(),
+    );
+
+    abort
+}
+
+/// Partial takes and what they leave are both at least 0.01 kg; a whole stack
+/// of any size above that comes out in one take.
+#[test]
+fun mass_takes_of_at_least_the_minimum_succeed() {
+    let mut scenario = ts::begin(@0xA);
+    let mut bag = item::new_bag(scenario.ctx());
+    let key = fuel_key();
+    let mut used = 0;
+    item::mint(&mut bag, key, 3 * MIN_MASS + STEP, 3, MASS, source(), COMPONENT, &mut used);
+    let a = item::withdraw(&mut bag, key, MIN_MASS, source(), COMPONENT, &mut used, scenario.ctx());
+    assert!(item::balance(&bag, key) == 2 * MIN_MASS + STEP);
+    let b = item::withdraw(
+        &mut bag,
+        key,
+        2 * MIN_MASS + STEP,
+        source(),
+        COMPONENT,
+        &mut used,
+        scenario.ctx(),
+    );
+    assert!(item::balance(&bag, key) == 0 && used == 0);
+    item::destroy(a);
+    item::destroy(b);
 
     item::destroy_bag(bag);
     scenario.end();

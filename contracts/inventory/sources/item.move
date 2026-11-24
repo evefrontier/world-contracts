@@ -8,7 +8,8 @@
 /// Volume is in nano-m³: a stack's volume is `ceil(unit_volume × quantity /
 /// 10^decimals)`, recomputed whenever its quantity changes, so rounding happens
 /// once per stack. Mass amounts must be whole 0.0001 kg (the game's precision),
-/// so nothing is lost when they go back to the game.
+/// so nothing is lost when they go back to the game, and at least 0.01 kg, the
+/// game's smallest split: any amount moved, and any stack left behind.
 module inventory::item;
 
 use sui::{event, linked_table::{Self, LinkedTable}};
@@ -28,11 +29,19 @@ const ESourceMismatch: vector<u8> = b"Items withdrawn from different entities ca
 const EQuantityNotWholeStep: vector<u8> = b"Mass quantity must be a whole multiple of 0.0001 kg";
 #[error(code = 5)]
 const EVolumeOverflow: vector<u8> = b"Stack volume does not fit in u64";
+#[error(code = 6)]
+const EBelowMinimum: vector<u8> = b"Mass quantity must be at least 0.01 kg";
+#[error(code = 7)]
+const ERemainderBelowMinimum: vector<u8> =
+    b"A partial take must leave at least 0.01 kg, or take the whole stack";
 
 // === Constants ===
 
 /// Decimals the game keeps; finer base units must come in whole steps of this.
 const GAME_DECIMALS: u8 = 4;
+/// Decimals of the game's smallest split of a continuous stack (0.01 kg,
+/// `CONTINUOUS_MIN_SPLIT`): no amount moved or stack left is smaller.
+const MIN_SPLIT_DECIMALS: u8 = 2;
 
 // === Structs ===
 
@@ -418,13 +427,20 @@ public(package) fun burn_item(item: Item): (VariantKey, u64) {
 // === Private Functions ===
 
 /// Abort unless `quantity` is non-zero and, for units finer than the game's,
-/// a whole number of the game's smallest step.
+/// a whole number of the game's smallest step and at least its smallest split.
 fun assert_quantity(quantity: u64, decimals: u8) {
     assert!(quantity > 0, EZeroQuantity);
     if (decimals > GAME_DECIMALS) {
         let step = std::u64::pow(10, decimals - GAME_DECIMALS);
         assert!(quantity % step == 0, EQuantityNotWholeStep);
+        assert!(quantity >= min_quantity(decimals), EBelowMinimum);
     };
+}
+
+/// The smallest stack the game makes, in base units: 0.01 kg for mass, 1 item
+/// otherwise.
+fun min_quantity(decimals: u8): u64 {
+    if (decimals > MIN_SPLIT_DECIMALS) std::u64::pow(10, decimals - MIN_SPLIT_DECIMALS) else 1
 }
 
 /// Merge `item` into `bag` and account its volume; the shared core of
@@ -489,6 +505,7 @@ fun subtract_balance(
     let before = stack_volume(unit_volume, bal.quantity, decimals);
     bal.quantity = bal.quantity - quantity;
     let remaining = bal.quantity;
+    assert!(remaining == 0 || remaining >= min_quantity(decimals), ERemainderBelowMinimum);
     *used = *used - before + stack_volume(unit_volume, remaining, decimals);
     if (remaining == 0) {
         bag.balances.remove(key);
