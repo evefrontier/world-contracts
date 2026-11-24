@@ -32,6 +32,7 @@ use power::{
         thermal,
         volatility,
         withdraw,
+        withdraw_from_bay,
         withdraw_type
     },
     power_grid
@@ -274,6 +275,202 @@ fun withdraw_counting_another_type_aborts() {
         entity_id,
         OTHER_TYPE,
         QUARTER_UNITS * power_grid::scale() + fuel_properties::mass_step(),
+        &clock,
+    );
+
+    abort
+}
+
+// === Withdraw from one bay ===
+
+/// Only the named bay gives; the other online bay of the same type keeps its fuel.
+#[test]
+fun withdraw_from_bay_takes_only_that_bay() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+
+    withdraw_from_bay(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_type(),
+        FUEL_B,
+        10 * power_grid::scale(),
+        &clock,
+    );
+
+    let withdrawn = event::events_by_type<FuelWithdrawn>();
+    let (_, withdrawn_type, quantity, remaining) = withdrawn[0].fuel_withdrawn_fields();
+    let left = starting_fuel() / 4 - 10 * power_grid::scale();
+    assert!(withdrawn_type == fuel_type() && quantity == 10 * power_grid::scale());
+    assert!(remaining == left);
+    assert!(withdrawn[0].fuel_withdrawn_bay_id() == option::some(FUEL_B));
+    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == left);
+    assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A pool withdrawal reports no bay.
+#[test]
+fun withdraw_from_pool_reports_no_bay() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+
+    withdraw(&mut scenario, admin(), entity_id, power_grid::scale(), &clock);
+
+    let withdrawn = event::events_by_type<FuelWithdrawn>();
+    assert!(withdrawn[0].fuel_withdrawn_bay_id().is_none());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Taking everything a bay holds empties it and clears its type.
+#[test]
+fun withdraw_from_bay_all_clears_the_type() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+
+    withdraw_from_bay(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_type(),
+        FUEL_B,
+        starting_fuel() / 4,
+        &clock,
+    );
+
+    let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
+    assert!(fuel.quantity() == 0 && fuel.fuel_type().is_none());
+    assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel());
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The pool could cover it, but the named bay can't: nothing is taken.
+#[test, expected_failure(abort_code = grid_fuel::EBayShort)]
+fun withdraw_from_bay_more_than_it_holds_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+
+    withdraw_from_bay(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_type(),
+        FUEL_B,
+        starting_fuel() / 4 + 1,
+        &clock,
+    );
+
+    abort
+}
+
+/// Burn counts before the check: a bay that looks full can still be short.
+#[test, expected_failure(abort_code = grid_fuel::EBayShort)]
+fun withdraw_from_bay_more_than_left_after_burn_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[15], vector[IMPULSE_LIMIT], &clock);
+    power_up(&mut scenario, entity_id, 1, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    enable_withdraw(&mut scenario, entity_id);
+    clock.set_for_testing(10_000);
+
+    withdraw_from_bay(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_type(),
+        fuel_bay_id(),
+        starting_fuel(),
+        &clock,
+    );
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EFuelBayNotConnected)]
+fun withdraw_from_unknown_bay_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+
+    withdraw_from_bay(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_type(),
+        1,
+        power_grid::scale(),
+        &clock,
+    );
+
+    abort
+}
+
+/// The named bay holds another type than the withdrawal asks for.
+#[test, expected_failure(abort_code = grid_fuel::EFuelTypeMismatch)]
+fun withdraw_from_bay_of_another_type_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_types(&mut scenario, &clock);
+
+    withdraw_from_bay(
+        &mut scenario,
+        admin(),
+        entity_id,
+        fuel_type(),
+        FUEL_B,
+        power_grid::scale(),
+        &clock,
+    );
+
+    abort
+}
+
+#[test, expected_failure(abort_code = grid_fuel::EZeroFuel)]
+fun withdraw_from_bay_zero_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+
+    withdraw_from_bay(&mut scenario, admin(), entity_id, fuel_type(), FUEL_B, 0, &clock);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = core::admin_service::EUnauthorizedAdmin)]
+fun withdraw_from_bay_by_non_admin_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = two_bays(&mut scenario, &clock);
+
+    withdraw_from_bay(
+        &mut scenario,
+        owner(),
+        entity_id,
+        fuel_type(),
+        FUEL_B,
+        power_grid::scale(),
         &clock,
     );
 

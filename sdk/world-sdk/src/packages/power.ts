@@ -642,9 +642,10 @@ export function shutDown(
 }
 
 /**
- * Take `quantity` of fuel (at `POWER_SCALE`, `MASS_UNIT` per kg) from the `fuelType` pool for a
- * warp, all or nothing; an abort means no warp. Needs the `withdraw_fuel`
- * admin action (`withdrawFuelRequirement`). Admin-gated.
+ * Take `quantity` of `fuelType` (at `POWER_SCALE`, `MASS_UNIT` per kg) for a warp, all or
+ * nothing; an abort means no warp. With `fuelBayId`, only that bay gives; without, the
+ * pool of online bays does. Needs the `withdraw_fuel` admin action
+ * (`withdrawFuelRequirement`). Admin-gated.
  */
 export function withdrawFuel(
   tx: Transaction,
@@ -652,6 +653,7 @@ export function withdrawFuel(
   entity: TransactionArgument,
   fuelType: bigint,
   quantity: bigint,
+  fuelBayId?: bigint,
 ): void {
   const request = interact(tx, config, entity, 'withdraw_fuel')
   tx.moveCall({
@@ -660,6 +662,7 @@ export function withdrawFuel(
       entity,
       request,
       tx.pure.u64(fuelType),
+      tx.pure.option('u64', fuelBayId ?? null),
       tx.pure.u64(quantity),
       tx.object.clock(),
     ],

@@ -102,11 +102,13 @@ public struct FuelBayToggled has copy, drop {
     online: bool,
 }
 
-/// The service took `quantity` (at `SCALE`, 1e-9 kg) from the pool of `fuel_type`, for
-/// a warp. `remaining` is what that pool holds after.
+/// The service took `quantity` (at `SCALE`, 1e-9 kg) of `fuel_type` for a warp, from
+/// bay `fuel_bay_id` if set, else from the pool. `remaining` is what that bay or
+/// pool holds after.
 public struct FuelWithdrawn has copy, drop {
     entity_id: ID,
     fuel_type: u64,
+    fuel_bay_id: Option<u64>,
     quantity: u64,
     remaining: u64,
 }
@@ -272,15 +274,17 @@ public fun stash_load(entity: &mut Entity, req: &mut Request, load: FuelLoad) {
     req.enqueue(frame);
 }
 
-/// Take `quantity` of fuel (at `SCALE`, 1e-9 kg) from the pool of `fuel_type`, all or
-/// nothing, each of its online bays giving in proportion to what it holds. The
-/// game server calls it before a warp with the warp's cost; an abort means no
-/// warp. Settles first, so burn counts before the check. The request needs a
-/// `withdraw_fuel_requirement`, and the frame then requires the admin.
+/// Take `quantity` of `fuel_type` (at `SCALE`, 1e-9 kg), all or nothing. With
+/// `fuel_bay_id`, only that connected bay gives; without, each online bay of the
+/// pool gives in proportion to what it holds. The game server calls it before a
+/// warp with the warp's cost; an abort means no warp. Settles first, so burn
+/// counts before the check. The request needs a `withdraw_fuel_requirement`, and
+/// the frame then requires the admin.
 public fun withdraw_fuel(
     entity: &mut Entity,
     req: &mut Request,
     fuel_type: u64,
+    fuel_bay_id: Option<u64>,
     quantity: u64,
     clock: &Clock,
 ) {
@@ -292,11 +296,13 @@ public fun withdraw_fuel(
     );
     assert!(quantity > 0, EZeroFuel);
     grid.settle(clock);
-    let held = grid.pool_fuel(fuel_type).quantity();
-    assert!(held >= quantity, EFuelShort);
-    grid.take_from_pool(fuel_type, quantity);
+    let remaining = if (fuel_bay_id.is_some()) {
+        withdraw_from_bay(grid, *fuel_bay_id.borrow(), fuel_type, quantity)
+    } else {
+        withdraw_from_pool(grid, fuel_type, quantity)
+    };
     grid.regrant(entity_id);
-    event::emit(FuelWithdrawn { entity_id, fuel_type, quantity, remaining: held - quantity });
+    event::emit(FuelWithdrawn { entity_id, fuel_type, fuel_bay_id, quantity, remaining });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
 }
@@ -581,6 +587,24 @@ fun detach(
     (req, fuel)
 }
 
+/// Take `quantity` from the pool of `fuel_type` and return what it holds after.
+fun withdraw_from_pool(grid: &mut PowerGrid, fuel_type: u64, quantity: u64): u64 {
+    let held = grid.pool_fuel(fuel_type).quantity();
+    assert!(held >= quantity, EFuelShort);
+    grid.take_from_pool(fuel_type, quantity);
+    held - quantity
+}
+
+/// Take `quantity` of `fuel_type` from bay `fuel_bay_id` and return what it holds after.
+fun withdraw_from_bay(grid: &mut PowerGrid, fuel_bay_id: u64, fuel_type: u64, quantity: u64): u64 {
+    assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
+    let fuel = grid.bay_state(fuel_bay_id).fuel();
+    assert!(fuel.quantity() >= quantity, EBayShort);
+    assert!(fuel.fuel_type() == option::some(fuel_type), EFuelTypeMismatch);
+    grid.take_from_bay(fuel_bay_id, quantity);
+    fuel.quantity() - quantity
+}
+
 /// Abort unless the grid has room for one more fitted or stashed bay.
 fun assert_room_for_bay(grid: &PowerGrid) {
     let held = power_grid::bays(grid).length() + power_grid::stashed(grid).length();
@@ -675,6 +699,11 @@ fun enforce_fuel(
 #[test_only]
 public fun fuel_withdrawn_fields(withdrawn: &FuelWithdrawn): (ID, u64, u64, u64) {
     (withdrawn.entity_id, withdrawn.fuel_type, withdrawn.quantity, withdrawn.remaining)
+}
+
+#[test_only]
+public fun fuel_withdrawn_bay_id(withdrawn: &FuelWithdrawn): Option<u64> {
+    withdrawn.fuel_bay_id
 }
 
 /// `(entity_id, fuel_bay_id, fuel_type, quantity, impulse, volatility,
