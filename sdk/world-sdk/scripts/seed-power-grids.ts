@@ -8,6 +8,7 @@ import {
   installFuelBay,
   installGenerator,
   operateGridRequirement,
+  POWER_SCALE,
 } from '../src/packages/power.js'
 import { loadScriptContext } from './context.js'
 import { loadSeedFiles } from './seed-files.js'
@@ -20,12 +21,12 @@ const FUEL_ID = componentIdFromName('fuel')
 const GRID_ID = componentIdFromName('power_grid')
 const SHELL_ID = '0x5e11'
 const OUTPUT = 15n
-// Fuel type 7, impulse limit 100 and volatility limit 0.0001 (at POWER_SCALE):
-// any type-7 fuel with volatility gives full output.
+// Fuel type 7, impulse limit 100 and volatility limit 1e-9 (at POWER_SCALE):
+// any type-7 fuel with volatility gives full output. Bay capacity 1,000 kg.
 const FUEL_TYPE = 7n
-const IMPULSE_LIMIT = 1_000_000n
+const IMPULSE_LIMIT = 100n * POWER_SCALE
 const VOLATILITY_LIMIT = 1n
-const FUEL_CAPACITY = 1000n
+const FUEL_CAPACITY = 1_000n * POWER_SCALE
 
 const { repoRoot, config, client, keypair } = loadScriptContext()
 const { resources } = loadSeedFiles(repoRoot)

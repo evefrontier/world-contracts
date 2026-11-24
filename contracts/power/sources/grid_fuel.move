@@ -7,9 +7,10 @@
 module power::grid_fuel;
 
 use core::{access_cap, admin_service, entity::Entity, request::Request, requirement::Requirement};
-use power::{fuel_bay, power_grid::{Self, Fuel, PowerGrid}};
+use power::{fuel_bay, fuel_properties, power_grid::{Self, Fuel, PowerGrid}};
 use std::string::String;
 use sui::{bcs, clock::Clock, event};
+use variant::variant::Variant;
 
 // === Errors ===
 
@@ -54,6 +55,8 @@ const EFuelTypeMismatch: vector<u8> = b"Fuel bay holds another fuel type until i
 const EBayShort: vector<u8> = b"Fuel bay holds less fuel than the siphon";
 #[error(code = 19)]
 const EZeroVolatility: vector<u8> = b"Fuel with zero volatility gives no output";
+#[error(code = 20)]
+const EVariantWrongTenant: vector<u8> = b"Fuel variant belongs to another tenant";
 
 // === Structs ===
 
@@ -99,7 +102,7 @@ public struct FuelBayToggled has copy, drop {
     online: bool,
 }
 
-/// The service took `quantity` (at `SCALE`) from the pool of `fuel_type`, for
+/// The service took `quantity` (at `SCALE`, 1e-9 kg) from the pool of `fuel_type`, for
 /// a warp. `remaining` is what that pool holds after.
 public struct FuelWithdrawn has copy, drop {
     entity_id: ID,
@@ -108,9 +111,11 @@ public struct FuelWithdrawn has copy, drop {
     remaining: u64,
 }
 
-/// The admin siphoned `quantity` (at `SCALE`) out of one bay, with the bay's
-/// values at that moment. The service mints the siphoned stack from it.
+/// The admin siphoned `quantity` (at `SCALE`, 1e-9 kg) out of one bay, with the
+/// bay's values (at `SCALE`) at that moment. The service asks the game which
+/// variant that fuel is and mints the stack from it in `tenant`.
 public struct FuelSiphoned has copy, drop {
+    tenant: String,
     entity_id: ID,
     fuel_bay_id: u64,
     fuel_type: u64,
@@ -122,7 +127,7 @@ public struct FuelSiphoned has copy, drop {
 }
 
 /// Fuel was loaded into a bay; the `resulting_*` values are that bay after blending.
-/// `amount` is plain as deposited; `resulting_amount` is at `SCALE`.
+/// Every amount and stat is at `SCALE` (1e9), as deposited.
 public struct FuelAdded has copy, drop {
     entity_id: ID,
     fuel_bay_id: u64,
@@ -137,8 +142,8 @@ public struct FuelAdded has copy, drop {
 
 // === Public Functions ===
 
-/// Install a fuel bay of `capacity` plain units and `containment_rating` (at
-/// `SCALE`), offline. It takes back its stashed fuel if this grid holds any for
+/// Install a fuel bay of `capacity` and `containment_rating`, both at `SCALE`
+/// (1e9), offline. It takes back its stashed fuel if this grid holds any for
 /// `component_id`, else starts empty. Admin-gated. Aborts if the stash exceeds
 /// `capacity`.
 public fun install(
@@ -267,7 +272,7 @@ public fun stash_load(entity: &mut Entity, req: &mut Request, load: FuelLoad) {
     req.enqueue(frame);
 }
 
-/// Take `quantity` of fuel (at `SCALE`) from the pool of `fuel_type`, all or
+/// Take `quantity` of fuel (at `SCALE`, 1e-9 kg) from the pool of `fuel_type`, all or
 /// nothing, each of its online bays giving in proportion to what it holds. The
 /// game server calls it before a warp with the warp's cost; an abort means no
 /// warp. Settles first, so burn counts before the check. The request needs a
@@ -296,7 +301,8 @@ public fun withdraw_fuel(
     req.enqueue(frame);
 }
 
-/// Siphon `quantity` (at `SCALE`) out of bay `fuel_bay_id`, online or not.
+/// Siphon `quantity` (at `SCALE`, 1e-9 kg; whole 0.0001 kg, at least 0.01 kg) out of bay
+/// `fuel_bay_id`, online or not.
 /// Settles first, so burn counts before the check. Emits `FuelSiphoned` with
 /// the bay's values, from which the service mints the stack. The request needs
 /// a `siphon_requirement`, and the frame then requires the admin.
@@ -308,6 +314,8 @@ public fun siphon(
     clock: &Clock,
 ) {
     let entity_id = entity.id();
+    let tenant = entity.key().tenant();
+    fuel_properties::assert_whole_step(quantity);
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,
         req,
@@ -315,11 +323,13 @@ public fun siphon(
     );
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
     assert!(quantity > 0, EZeroFuel);
+    fuel_properties::assert_min_stack(quantity);
     grid.settle(clock);
     assert!(grid.bay_state(fuel_bay_id).fuel().quantity() >= quantity, EBayShort);
     let taken = grid.take_from_bay(fuel_bay_id, quantity);
     grid.regrant(entity_id);
     event::emit(FuelSiphoned {
+        tenant,
         entity_id,
         fuel_bay_id,
         fuel_type: taken.fuel_type().destroy_some(),
@@ -378,28 +388,34 @@ public fun set_fuel_bay(
 }
 
 // TODO: an `Item` to fuel path once inventory can connect to the fuel bay.
-/// Load `amount` of `fuel_type` into one bay and blend its stats by weighted
+/// Load `amount` of a fuel variant into one bay and blend its stats by weighted
 /// average, if it meets the owner's `FuelRequirement`. An empty bay takes any
-/// type and locks to it until it runs dry; zero-impulse fuel is refused.
-/// Supplied by the game server: `amount` plain, stats at `SCALE`. The bay stores
-/// the amount at `SCALE`.
+/// type and locks to it until it runs dry; zero-impulse fuel is refused. The fuel
+/// type and stats come from `variant`; `amount` is in its base units (1e-9 kg,
+/// the grid's `SCALE`) and must be whole 0.0001 kg.
 public fun deposit_fuel(
     entity: &mut Entity,
     req: &mut Request,
     fuel_bay_id: u64,
-    fuel_type: u64,
+    variant: &Variant,
     amount: u64,
-    impulse: u64,
-    containment_burden: u64,
-    volatility: u64,
-    thermal_inefficiency: u64,
     clock: &Clock,
 ) {
     let entity_id = entity.id();
+    assert_variant_tenant(entity, variant);
     let (requirement, mut frame, grid) = power_grid::take_grid(
         entity,
         req,
         power_grid::deposit_fuel_permit(),
+    );
+    let fuel_type = variant.key().type_id();
+    let (
+        impulse,
+        containment_burden,
+        volatility,
+        thermal_inefficiency,
+    ) = fuel_properties::from_variant(
+        variant,
     );
     assert_fuel_stats(amount, impulse, volatility);
     enforce_fuel(&requirement, fuel_type, amount, impulse, containment_burden);
@@ -427,26 +443,31 @@ public fun admin_deposit_fuel(
     entity: &mut Entity,
     req: &mut Request,
     fuel_bay_id: u64,
-    fuel_type: u64,
+    variant: &Variant,
     amount: u64,
-    impulse: u64,
-    containment_burden: u64,
-    volatility: u64,
-    thermal_inefficiency: u64,
     clock: &Clock,
 ) {
     let entity_id = entity.id();
+    assert_variant_tenant(entity, variant);
     let (_requirement, mut frame, grid) = power_grid::take_grid(
         entity,
         req,
         power_grid::admin_deposit_fuel_permit(),
+    );
+    let (
+        impulse,
+        containment_burden,
+        volatility,
+        thermal_inefficiency,
+    ) = fuel_properties::from_variant(
+        variant,
     );
     assert_fuel_stats(amount, impulse, volatility);
     blend_deposit(
         grid,
         entity_id,
         fuel_bay_id,
-        fuel_type,
+        variant.key().type_id(),
         amount,
         impulse,
         containment_burden,
@@ -566,14 +587,13 @@ fun assert_room_for_bay(grid: &PowerGrid) {
     assert!(held < power_grid::max_fuel_bays(), ETooManyFuelBays);
 }
 
-/// Abort unless `quantity` (at `SCALE`) fits a bay of `capacity` plain units.
 fun assert_fuel_stats(amount: u64, impulse: u64, volatility: u64) {
     assert!(amount > 0, EZeroFuel);
     assert!(impulse > 0, EZeroImpulse);
     assert!(volatility > 0, EZeroVolatility);
 }
 
-/// Settle, then blend `amount` (plain) into bay `fuel_bay_id` and emit `FuelAdded`.
+/// Settle, then blend `amount` (base units) into bay `fuel_bay_id` and emit `FuelAdded`.
 fun blend_deposit(
     grid: &mut PowerGrid,
     entity_id: ID,
@@ -590,13 +610,13 @@ fun blend_deposit(
     grid.settle(clock);
     let bay = grid.bay_state(fuel_bay_id);
     bay.fuel().fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
-    let scaled = (amount as u128) * (power_grid::scale() as u128);
-    assert_fits(bay.capacity(), (bay.fuel().quantity() as u128) + scaled);
+    fuel_properties::assert_whole_step(amount);
+    assert_fits(bay.capacity(), (bay.fuel().quantity() as u128) + (amount as u128));
     grid.blend_into_bay(
         fuel_bay_id,
         power_grid::new_fuel(
             fuel_type,
-            scaled as u64,
+            amount,
             impulse,
             containment_burden,
             volatility,
@@ -618,9 +638,14 @@ fun blend_deposit(
     grid.regrant(entity_id);
 }
 
+/// Abort unless the fuel variant is in the entity's tenant.
+fun assert_variant_tenant(entity: &Entity, variant: &Variant) {
+    assert!(variant.key().tenant() == entity.key().tenant(), EVariantWrongTenant);
+}
+
+/// Abort unless `quantity` fits a bay of `capacity`, both at `SCALE`.
 fun assert_fits(capacity: u64, quantity: u128) {
-    let room = (capacity as u128) * (power_grid::scale() as u128);
-    assert!(quantity <= room, EFuelOverCapacity);
+    assert!(quantity <= (capacity as u128), EFuelOverCapacity);
 }
 
 /// Abort if a deposit breaks a `FuelRequirement`. Mirrors its field order.
@@ -667,6 +692,9 @@ public fun fuel_siphoned_fields(siphoned: &FuelSiphoned): (ID, u64, u64, u64, u6
         siphoned.thermal_inefficiency,
     )
 }
+
+#[test_only]
+public fun fuel_siphoned_tenant(siphoned: &FuelSiphoned): String { siphoned.tenant }
 
 /// `(entity_id, fuel_bay_id, fuel_type, amount, resulting_amount, resulting_impulse,
 /// resulting_containment_burden, resulting_volatility, resulting_thermal_inefficiency)`.

@@ -75,9 +75,9 @@ const MAX_GENERATORS: u64 = 100;
 /// Cap on fuel bays fitted plus stashed on one grid. Uninstalling or refitting a
 /// bay keeps the total, so only a new bay or an arriving stash can hit it.
 const MAX_FUEL_BAYS: u64 = 100;
-/// Cap on one bay's capacity, plain units: `u64::MAX ÷ (SCALE × MAX_FUEL_BAYS)`, so
-/// the fuel of every bay at `SCALE` fits a u64.
-const MAX_FUEL_BAY_CAPACITY: u64 = 18_446_744_073_709;
+/// Cap on one bay's capacity at `SCALE` (about 184 million kg):
+/// `u64::MAX ÷ MAX_FUEL_BAYS`, so the fuel of every bay fits a u64.
+const MAX_FUEL_BAY_CAPACITY: u64 = 184_467_440_737_095_516;
 
 // === Structs ===
 
@@ -102,7 +102,7 @@ public struct PowerGrid has store {
 
 /// A fuel bay's capacity, online state and fuel, held by the grid.
 public struct FuelBayState has copy, drop, store {
-    /// Plain fuel units.
+    /// At `SCALE` (1e-9 kg).
     capacity: u64,
     /// At `SCALE`, set at install and fixed. Stored only; deposits are not
     /// checked against it yet.
@@ -285,7 +285,7 @@ public struct Fits() has drop;
 /// Minimum grid state an action can require. `None` skips a check.
 public struct PowerGridRequirement has drop {
     on: bool,
-    /// Minimum fuel in online bays, plain units, if set.
+    /// Minimum fuel in online bays, at `SCALE`, if set.
     fuel_quantity: Option<u64>,
     /// Minimum blended impulse of the online bays, at `SCALE`, if set.
     fuel_impulse: Option<u64>,
@@ -305,7 +305,7 @@ public struct GeneratorRequirement has drop {
 }
 
 /// The owner's rules for which fuel `deposit_fuel` accepts. Empty `fuel_types`
-/// or `None` skips a check. Stats at `SCALE`, amounts plain.
+/// or `None` skips a check. Stats and amounts at `SCALE` (1e9).
 public struct FuelRequirement has drop {
     /// Allowed fuel type ids; empty allows any.
     fuel_types: vector<u64>,
@@ -1512,10 +1512,7 @@ fun enforce_power_grid(requirement: &Requirement, grid: &PowerGrid) {
     let used_mw = encoded.peel_option_u64();
     assert!(grid.on_at_last_settled == on, EGridState);
     let fuel = grid.online_fuel();
-    fuel_quantity.do!(|min_fuel| {
-        let min_scaled = (min_fuel as u128) * (fuel_math::scale() as u128);
-        assert!((fuel.quantity as u128) >= min_scaled, EFuelBelowMin)
-    });
+    fuel_quantity.do!(|min_fuel| assert!(fuel.quantity >= min_fuel, EFuelBelowMin));
     fuel_impulse.do!(|min_impulse| assert!(fuel.impulse >= min_impulse, EImpulseBelowMin));
     assert!(grid.capacity_mw() >= capacity_mw, ECapacityBelowMin);
     used_mw.do!(|max_used| assert!(grid.used_mw() <= max_used, EUsedAboveMax));

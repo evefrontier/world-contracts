@@ -36,8 +36,10 @@ import {
   stashedFuel,
   uninstallFuelBay,
 } from '../packages/power.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   seatShell,
@@ -55,21 +57,21 @@ const BAY_CAPACITY = 2_000n
 const BURN_WAIT_MS = 4_000
 
 // The overview's fuels: two stacks of one type (a bay holds one type), plain
-// amounts, stats at `POWER_SCALE`.
+// amounts (kg), stats at `POWER_SCALE`.
 const FUEL_A = {
   fuelType: 1n,
-  amount: 1_000n,
   impulse: 25n * POWER_SCALE,
   containmentBurden: 4n * POWER_SCALE,
-  volatility: 6_000n,
+  volatility: 600_000_000n,
 }
+const FUEL_A_AMOUNT = 1_000n
 const FUEL_B = {
   fuelType: 1n,
-  amount: 500n,
   impulse: 90n * POWER_SCALE,
   containmentBurden: 14n * POWER_SCALE,
-  volatility: 5_000n,
+  volatility: 500_000_000n,
 }
+const FUEL_B_AMOUNT = 500n
 
 describe('fuel bays (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
@@ -97,7 +99,7 @@ describe('fuel bays (localnet)', () => {
     for (const componentId of [BAY_A, BAY_B]) {
       installFuelBay(createTx, config, creation, {
         componentId,
-        capacity: BAY_CAPACITY,
+        capacity: BAY_CAPACITY * POWER_SCALE,
       })
     }
     installGenericModule(createTx, config, creation, {
@@ -132,6 +134,14 @@ describe('fuel bays (localnet)', () => {
       depositFuelRequirement(enableTx, config),
     ])
     await expectSuccess(client, enableTx)
+    const fuelA = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      ...FUEL_A,
+    })
+    const fuelB = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      ...FUEL_B,
+    })
 
     // Fuel A then fuel B into bay A blend (plain stats round down); bay B holds
     // fuel B alone.
@@ -141,29 +151,32 @@ describe('fuel bays (localnet)', () => {
     const fuelCap = fuelTx.object(capId)
     deposit(fuelTx, config, fuelEntity, fuelCap, {
       fuelBayId: BAY_A,
-      ...FUEL_A,
+      variant: fuelA,
+      amount: FUEL_A_AMOUNT * MASS_UNIT,
     })
     deposit(fuelTx, config, fuelEntity, fuelCap, {
       fuelBayId: BAY_A,
-      ...FUEL_B,
+      variant: fuelB,
+      amount: FUEL_B_AMOUNT * MASS_UNIT,
     })
     deposit(fuelTx, config, fuelEntity, fuelCap, {
       fuelBayId: BAY_B,
-      ...FUEL_B,
+      variant: fuelB,
+      amount: FUEL_B_AMOUNT * MASS_UNIT,
     })
     await expectSuccess(client, fuelTx)
 
     const loaded = await readBays(client, config, entityId)
     expect(loaded.get(BAY_A)).toMatchObject({
       online: false,
-      quantity: 15_000_000n,
-      impulse: 466_666n,
-      containmentBurden: 73_333n,
-      volatility: 5_666n,
+      quantity: 1_500n * POWER_SCALE,
+      impulse: 46_666_666_666n,
+      containmentBurden: 7_333_333_333n,
+      volatility: 566_666_666n,
     })
     expect(loaded.get(BAY_B)).toMatchObject({
       online: false,
-      quantity: FUEL_B.amount * POWER_SCALE,
+      quantity: FUEL_B_AMOUNT * POWER_SCALE,
     })
 
     // Bay A online, grid on, generator on, module on: the burn starts.
@@ -211,8 +224,8 @@ describe('fuel bays (localnet)', () => {
     // Only the online bay burns; the offline reserve keeps its fuel.
     await sleep(BURN_WAIT_MS)
     const reserveKept = await readBays(client, config, entityId)
-    expect(amountOf(reserveKept, BAY_A)).toBeLessThan(15_000_000n)
-    expect(amountOf(reserveKept, BAY_B)).toBe(FUEL_B.amount * POWER_SCALE)
+    expect(amountOf(reserveKept, BAY_A)).toBeLessThan(1_500n * POWER_SCALE)
+    expect(amountOf(reserveKept, BAY_B)).toBe(FUEL_B_AMOUNT * POWER_SCALE)
 
     // Bring the reserve online: both bays now burn, each by what it holds.
     const reserveTx = new Transaction()
@@ -267,7 +280,7 @@ describe('fuel bays (localnet)', () => {
       if (key === fromKey) {
         installFuelBay(createTx, config, creation, {
           componentId: STASH_BAY,
-          capacity: BAY_CAPACITY,
+          capacity: BAY_CAPACITY * POWER_SCALE,
         })
         enableAdminAction(createTx, config, creation, 'deposit_fuel', [
           depositFuelRequirement(createTx, config),
@@ -282,13 +295,17 @@ describe('fuel bays (localnet)', () => {
       owner: signer,
       transferable: true,
     })
+    const fuelB = await fuelVariant(client, config, {
+      tenant: fromKey.tenant,
+      ...FUEL_B,
+    })
     const fuelTx = new Transaction()
     addSponsors(fuelTx, config, [signer])
     const fuelEntity = fuelTx.object(fromId)
     deposit(fuelTx, config, fuelEntity, fuelTx.object(capId), {
       fuelBayId: STASH_BAY,
-      ...FUEL_B,
-      amount: UNITS,
+      variant: fuelB,
+      amount: UNITS * MASS_UNIT,
     })
     await expectSuccess(client, fuelTx)
 
@@ -312,7 +329,7 @@ describe('fuel bays (localnet)', () => {
     )
     installFuelBay(moveTx, config, moveTx.object(toId), {
       componentId: STASH_BAY,
-      capacity: BAY_CAPACITY,
+      capacity: BAY_CAPACITY * POWER_SCALE,
     })
     await expectSuccess(client, moveTx)
 

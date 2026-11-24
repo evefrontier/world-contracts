@@ -3,6 +3,7 @@ module power::warp_tests;
 
 use core::test_helpers::setup;
 use power::{
+    fuel_properties,
     grid_fuel::{Self, FuelSiphoned, FuelWithdrawn},
     grid_scenario::{
         admin,
@@ -43,7 +44,7 @@ const MOD_A: u64 = 401;
 const QUARTER_UNITS: u64 = 12_500;
 const OTHER_TYPE: u64 = 8;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
-const IMPULSE_LIMIT: u64 = 1_000_000;
+const IMPULSE_LIMIT: u64 = 100_000_000_000;
 
 // === Helpers ===
 
@@ -77,17 +78,19 @@ fun withdraw_takes_from_online_bays_in_proportion() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = two_bays(&mut scenario, &clock);
 
-    withdraw(&mut scenario, admin(), entity_id, 100_000, &clock);
+    withdraw(&mut scenario, admin(), entity_id, 10 * power_grid::scale(), &clock);
 
     let withdrawn = event::events_by_type<FuelWithdrawn>();
     let (_, withdrawn_type, quantity, remaining) = withdrawn[0].fuel_withdrawn_fields();
     assert!(withdrawn_type == fuel_type());
     let total = starting_fuel() + starting_fuel() / 4;
-    assert!(quantity == 100_000 && remaining == total - 100_000);
+    assert!(quantity == 10 * power_grid::scale() && remaining == total - 10 * power_grid::scale());
     assert!(
-        bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel() - 80_000,
+        bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel() - 8 * power_grid::scale(),
     );
-    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == starting_fuel() / 4 - 20_000);
+    assert!(
+        bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == starting_fuel() / 4 - 2 * power_grid::scale(),
+    );
 
     clock.destroy_for_testing();
     scenario.end();
@@ -119,10 +122,10 @@ fun withdraw_leaves_offline_bays_alone() {
     let entity_id = two_bays(&mut scenario, &clock);
     set_fuel_bay(&mut scenario, entity_id, FUEL_B, false, &clock);
 
-    withdraw(&mut scenario, admin(), entity_id, 100_000, &clock);
+    withdraw(&mut scenario, admin(), entity_id, 10 * power_grid::scale(), &clock);
 
     assert!(
-        bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel() - 100_000,
+        bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel() - 10 * power_grid::scale(),
     );
     assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == starting_fuel() / 4);
 
@@ -136,7 +139,7 @@ fun withdraw_everything_after_burn() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[15], vector[1_000_000], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[15], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
@@ -161,7 +164,7 @@ fun withdraw_more_than_left_after_burn_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[15], vector[1_000_000], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[15], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
@@ -206,7 +209,7 @@ fun withdraw_by_non_admin_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = two_bays(&mut scenario, &clock);
 
-    withdraw(&mut scenario, owner(), entity_id, 100_000, &clock);
+    withdraw(&mut scenario, owner(), entity_id, 10 * power_grid::scale(), &clock);
 
     abort
 }
@@ -241,14 +244,16 @@ fun withdraw_takes_only_its_pool() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = two_types(&mut scenario, &clock);
 
-    withdraw_type(&mut scenario, admin(), entity_id, OTHER_TYPE, 100_000, &clock);
+    withdraw_type(&mut scenario, admin(), entity_id, OTHER_TYPE, 10 * power_grid::scale(), &clock);
 
     let withdrawn = event::events_by_type<FuelWithdrawn>();
     let (_, withdrawn_type, quantity, remaining) = withdrawn[0].fuel_withdrawn_fields();
     let other_held = QUARTER_UNITS * power_grid::scale();
-    assert!(withdrawn_type == OTHER_TYPE && quantity == 100_000);
-    assert!(remaining == other_held - 100_000);
-    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == other_held - 100_000);
+    assert!(withdrawn_type == OTHER_TYPE && quantity == 10 * power_grid::scale());
+    assert!(remaining == other_held - 10 * power_grid::scale());
+    assert!(
+        bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == other_held - 10 * power_grid::scale(),
+    );
     assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == starting_fuel());
 
     clock.destroy_for_testing();
@@ -268,7 +273,7 @@ fun withdraw_counting_another_type_aborts() {
         admin(),
         entity_id,
         OTHER_TYPE,
-        QUARTER_UNITS * power_grid::scale() + 1,
+        QUARTER_UNITS * power_grid::scale() + fuel_properties::mass_step(),
         &clock,
     );
 
@@ -304,7 +309,7 @@ fun siphon_takes_part_of_a_bay() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = siphon_ready(&mut scenario, &clock);
 
-    siphon(&mut scenario, admin(), entity_id, fuel_bay_id(), 70_000, &clock);
+    siphon(&mut scenario, admin(), entity_id, fuel_bay_id(), 7 * power_grid::scale(), &clock);
 
     let siphoned = event::events_by_type<FuelSiphoned>();
     let (
@@ -318,11 +323,12 @@ fun siphon_takes_part_of_a_bay() {
         siphoned_thermal,
     ) = siphoned[0].fuel_siphoned_fields();
     assert!(siphoned_entity == entity_id && siphoned_bay == fuel_bay_id());
-    assert!(siphoned_type == fuel_type() && quantity == 70_000);
+    assert!(siphoned_type == fuel_type() && quantity == 7 * power_grid::scale());
+    assert!(siphoned[0].fuel_siphoned_tenant() == core::test_helpers::tenant());
     assert!(siphoned_impulse == impulse() && siphoned_volatility == volatility());
     assert!(siphoned_burden == burden() && siphoned_thermal == thermal());
     let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
-    assert!(fuel.quantity() == starting_fuel() - 70_000);
+    assert!(fuel.quantity() == starting_fuel() - 7 * power_grid::scale());
     assert!(fuel.fuel_type() == option::some(fuel_type()));
 
     clock.destroy_for_testing();
@@ -337,9 +343,9 @@ fun siphon_an_offline_bay() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = siphon_ready(&mut scenario, &clock);
 
-    siphon(&mut scenario, admin(), entity_id, FUEL_B, 10_000, &clock);
+    siphon(&mut scenario, admin(), entity_id, FUEL_B, power_grid::scale(), &clock);
 
-    let held = QUARTER_UNITS * power_grid::scale() - 10_000;
+    let held = QUARTER_UNITS * power_grid::scale() - power_grid::scale();
     assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).quantity() == held);
 
     clock.destroy_for_testing();
@@ -383,7 +389,7 @@ fun siphon_more_than_the_bay_holds_aborts() {
         admin(),
         entity_id,
         FUEL_B,
-        QUARTER_UNITS * power_grid::scale() + 1,
+        QUARTER_UNITS * power_grid::scale() + fuel_properties::mass_step(),
         &clock,
     );
 
@@ -402,6 +408,27 @@ fun siphon_zero_aborts() {
     abort
 }
 
+/// 0.0099 kg is a whole step but below the game's smallest stack: it could not
+/// be minted back, so it never leaves the bay.
+#[test, expected_failure(abort_code = fuel_properties::EBelowMinimum)]
+fun siphon_below_minimum_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = siphon_ready(&mut scenario, &clock);
+
+    siphon(
+        &mut scenario,
+        admin(),
+        entity_id,
+        FUEL_B,
+        fuel_properties::min_stack() - fuel_properties::mass_step(),
+        &clock,
+    );
+
+    abort
+}
+
 #[test, expected_failure(abort_code = grid_fuel::EFuelBayNotConnected)]
 fun siphon_unknown_bay_aborts() {
     let mut scenario = ts::begin(admin());
@@ -409,7 +436,7 @@ fun siphon_unknown_bay_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = siphon_ready(&mut scenario, &clock);
 
-    siphon(&mut scenario, admin(), entity_id, 1, 10_000, &clock);
+    siphon(&mut scenario, admin(), entity_id, 1, power_grid::scale(), &clock);
 
     abort
 }
@@ -421,7 +448,7 @@ fun siphon_by_non_admin_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = siphon_ready(&mut scenario, &clock);
 
-    siphon(&mut scenario, owner(), entity_id, FUEL_B, 10_000, &clock);
+    siphon(&mut scenario, owner(), entity_id, FUEL_B, power_grid::scale(), &clock);
 
     abort
 }

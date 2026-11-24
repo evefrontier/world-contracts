@@ -40,9 +40,11 @@ import {
   type SectionModule,
   type SectionSpec,
 } from '../packages/sections.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectAbort,
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   signer,
@@ -74,7 +76,11 @@ describe('sections (localnet)', () => {
       sectionId: 1n,
       modules: [
         generic(0x80n),
-        { kind: 'fuelBay', componentId: 0x81n, capacity: 1_000_000n },
+        {
+          kind: 'fuelBay',
+          componentId: 0x81n,
+          capacity: 1_000_000n * POWER_SCALE,
+        },
       ],
     }
     const leaving: SectionSpec = {
@@ -82,7 +88,11 @@ describe('sections (localnet)', () => {
       modules: [
         generic(0x82n),
         generator(0x83n),
-        { kind: 'fuelBay', componentId: 0x84n, capacity: 3_000_000n },
+        {
+          kind: 'fuelBay',
+          componentId: 0x84n,
+          capacity: 3_000_000n * POWER_SCALE,
+        },
       ],
     }
 
@@ -103,7 +113,7 @@ describe('sections (localnet)', () => {
       config,
       smallTx.object(sourceId),
       targetKey,
-      withBayCapacity(leaving, 10n),
+      withBayCapacity(leaving, 10n * POWER_SCALE),
       'reinstall',
     )
     await expectAbort(client, smallTx, signer, /EFuelOverCapacity/)
@@ -115,7 +125,7 @@ describe('sections (localnet)', () => {
       config,
       detachTx.object(sourceId),
       targetKey,
-      withBayCapacity(leaving, 5_000_000n),
+      withBayCapacity(leaving, 5_000_000n * POWER_SCALE),
       'reinstall',
     )
     await expectSuccess(client, detachTx)
@@ -128,10 +138,14 @@ describe('sections (localnet)', () => {
       0x84n,
     ])
     // Each bay kept exactly its own fuel.
-    expect(await readBayFuel(client, config, sourceId, 0x81n)).toBe(100_000n)
-    expect(await readBayFuel(client, config, targetId, 0x84n)).toBe(300_000n)
+    expect(await readBayFuel(client, config, sourceId, 0x81n)).toBe(
+      10n * POWER_SCALE,
+    )
+    expect(await readBayFuel(client, config, targetId, 0x84n)).toBe(
+      30n * POWER_SCALE,
+    )
     expect(await readBayCapacity(client, config, targetId, 0x84n)).toBe(
-      5_000_000n,
+      5_000_000n * POWER_SCALE,
     )
     expect(await readGenericData(client, config, targetId, 0x82n)).toEqual(DATA)
 
@@ -171,7 +185,11 @@ describe('sections (localnet)', () => {
       modules: [
         generic(0x92n),
         generator(0x93n),
-        { kind: 'fuelBay', componentId: 0x94n, capacity: 1_000_000n },
+        {
+          kind: 'fuelBay',
+          componentId: 0x94n,
+          capacity: 1_000_000n * POWER_SCALE,
+        },
       ],
     }
 
@@ -206,7 +224,9 @@ describe('sections (localnet)', () => {
       0x93n,
       0x94n,
     ])
-    expect(await readBayFuel(client, config, survivorId, 0x94n)).toBe(250_000n)
+    expect(await readBayFuel(client, config, survivorId, 0x94n)).toBe(
+      25n * POWER_SCALE,
+    )
     expect(await readGenericData(client, config, survivorId, 0x92n)).toEqual(
       DATA,
     )
@@ -293,6 +313,13 @@ async function seedFuel(
     owner: signer,
     transferable: false,
   })
+  const variant = await fuelVariant(client, config, {
+    tenant: TENANT,
+    fuelType: 1n,
+    impulse: IMPULSE,
+    containmentBurden: BURDEN,
+    volatility: VOLATILITY,
+  })
   const tx = new Transaction()
   addSponsors(tx, config, [signer])
   const entity = tx.object(entityId)
@@ -303,11 +330,8 @@ async function seedFuel(
     const request = interact(tx, config, entity, 'deposit_fuel')
     depositFuel(tx, config, entity, request, tx.object(capId), {
       fuelBayId,
-      fuelType: 1n,
-      amount,
-      impulse: IMPULSE,
-      containmentBurden: BURDEN,
-      volatility: VOLATILITY,
+      variant,
+      amount: amount * MASS_UNIT,
     })
     completeRequest(tx, config, entity, request)
   }

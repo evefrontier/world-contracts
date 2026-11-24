@@ -32,7 +32,7 @@ const OUTPUT: u64 = 15;
 /// 10 MW.
 const DRAW: u64 = 10;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
-const IMPULSE_LIMIT: u64 = 1_000_000;
+const IMPULSE_LIMIT: u64 = 100_000_000_000;
 /// 5 MW.
 const DRAW_B: u64 = 5;
 

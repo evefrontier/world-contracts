@@ -44,9 +44,9 @@ const FUEL_C: u64 = 9_003;
 /// 15 MW each.
 const OUTPUT: u64 = 15;
 /// Impulse limit 100, above both test fuels.
-const IMPULSE_LIMIT: u64 = 1_000_000;
-/// `OTHER_TYPE` fuel: impulse 45, 1_000 plain units.
-const OTHER_IMPULSE: u64 = 450_000;
+const IMPULSE_LIMIT: u64 = 100_000_000_000;
+/// `OTHER_TYPE` fuel: impulse 45, 1_000 kg.
+const OTHER_IMPULSE: u64 = 45_000_000_000;
 const OTHER_UNITS: u64 = 1_000;
 
 // === Helpers ===
@@ -57,7 +57,7 @@ fun two_pools(scenario: &mut ts::Scenario, draw: u64, clock: &Clock): ID {
     two_pools_holding(scenario, draw, OTHER_UNITS, clock)
 }
 
-/// `two_pools` with `other_units` plain units in the `OTHER_TYPE` pool.
+/// `two_pools` with `other_units` kg in the `OTHER_TYPE` pool.
 fun two_pools_holding(scenario: &mut ts::Scenario, draw: u64, other_units: u64, clock: &Clock): ID {
     let entity_id = setup_entity(scenario, vector[OUTPUT], vector[IMPULSE_LIMIT], clock);
     install_other_generator(scenario, entity_id, clock);
@@ -131,8 +131,8 @@ fun pool_reads_only_its_type() {
 }
 
 /// 20 MW splits 10/10 across two 15 MW Generators. Generator 0 burns 10 MW at
-/// impulse 90 (1_112 a second, rounded up) from its pool; Generator 1 burns
-/// 10 MW at impulse 45 (2_223) from the other. The view matches the settle.
+/// impulse 90 (111_111_112 a second, rounded up) from its pool; Generator 1 burns
+/// 10 MW at impulse 45 (222_222_223) from the other. The view matches the settle.
 #[test]
 fun two_pools_burn_independently() {
     let mut scenario = ts::begin(admin());
@@ -143,8 +143,8 @@ fun two_pools_burn_independently() {
     clock.set_for_testing(1_000);
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
     let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
-    assert!(own_left == starting_fuel() - 1_112);
-    assert!(other_left == OTHER_UNITS * power_grid::scale() - 2_223);
+    assert!(own_left == starting_fuel() - 111_111_112);
+    assert!(other_left == OTHER_UNITS * power_grid::scale() - 222_222_223);
 
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     assert!(bay_fuel(&mut scenario, entity_id, fuel_bay_id()).quantity() == own_left);
@@ -251,7 +251,7 @@ fun offline_bay_leaves_its_pool() {
 // === Run-out ===
 
 /// 20 MW Firm across two 15 MW Generators. The 1-unit `OTHER_TYPE` pool burns
-/// 2.2222 a ms and runs dry at 4.5 s; the default pool has burned 5_000 by
+/// 222_222.2 a ms and runs dry at 4.5 s; the default pool has burned 500_000_000 by
 /// then. Capacity drops to 15 MW, the Firm load no longer fits, and nothing
 /// draws or burns after. The view at 10 s matches the settle, which emits the
 /// drop once.
@@ -266,7 +266,7 @@ fun run_out_overloads_at_that_moment() {
     let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
     assert!(capacity == 0 && used == 0 && online.is_empty());
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
-    assert!(own_left == starting_fuel() - 5_000);
+    assert!(own_left == starting_fuel() - 500_000_000);
     assert!(projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock) == 0);
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 0);
 
@@ -283,9 +283,9 @@ fun run_out_overloads_at_that_moment() {
 }
 
 /// 10 MW Firm across two 15 MW Generators, 5 MW each. The 1-unit `OTHER_TYPE`
-/// pool runs dry at 9 s, when the default pool has burned 5_000. The default
-/// Generator then serves all 10 MW, burning 1_112 more over the last second:
-/// 6_112 in all, not the 5_556 a single stretch would give.
+/// pool runs dry at 9 s, when the default pool has burned 500_000_000. The default
+/// Generator then serves all 10 MW, burning 111_111_112 more over the last second:
+/// 611_111_112 in all, not the 555_555_556 a single stretch would give.
 #[test]
 fun other_pool_burns_at_the_new_rate_after_a_run_out() {
     let mut scenario = ts::begin(admin());
@@ -297,7 +297,7 @@ fun other_pool_burns_at_the_new_rate_after_a_run_out() {
     let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
     assert!(capacity == OUTPUT && used == 10 && online == vector[MOD_A]);
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
-    assert!(own_left == starting_fuel() - 6_112);
+    assert!(own_left == starting_fuel() - 611_111_112);
 
     catch_up(&mut scenario, entity_id, MOD_A, &clock);
     assert!(event::events_by_type<DrawChanged>().is_empty());
@@ -319,8 +319,8 @@ fun read_before_run_out_uses_one_stretch() {
     clock.set_for_testing(4_000);
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
     let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
-    assert!(own_left == starting_fuel() - 2_223);
-    assert!(other_left == power_grid::scale() - 4_445);
+    assert!(own_left == starting_fuel() - 222_222_223);
+    assert!(other_left == power_grid::scale() - 444_444_445);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -358,8 +358,8 @@ fun module_status(scenario: &mut ts::Scenario, entity_id: ID, clock: &Clock): Po
 }
 
 /// Each pool reads its fuel and run-out. The 1-unit pool runs dry at 9 s; the
-/// default pool then carries all 10 MW at 10/9 a ms, so its 499_995_000 left
-/// lasts 449_995_500 ms more.
+/// default pool then carries all 10 MW at 111_111.1 a ms, so its 49_999_500_000_000
+/// left lasts 449_995_500 ms more.
 #[test]
 fun projected_pools_step_through_run_outs() {
     let mut scenario = ts::begin(admin());
@@ -383,9 +383,9 @@ fun projected_pools_step_through_run_outs() {
 }
 
 /// Each pool reads how fast it burns now, rounded up like a settle: 10 MW split
-/// across both Generators burns the default pool at 5_000 per 9 s and the
-/// 1-unit pool at 10_000 per 9 s. The rates hold until the first run-out, at
-/// 9 s; then the default pool carries all 10 MW at 10_000 per 9 s and the empty
+/// across both Generators burns the default pool at 55_555_556 a second and the
+/// 1-unit pool at 111_111_112. The rates hold until the first run-out, at
+/// 9 s; then the default pool carries all 10 MW at 111_111_112 and the empty
 /// pool burns nothing.
 #[test]
 fun projected_pools_read_the_burn_rate() {
@@ -397,8 +397,8 @@ fun projected_pools_read_the_burn_rate() {
 
     let pools = pools(&mut scenario, entity_id, &clock);
     let own_rate = pools[&fuel_type()].burn_rate();
-    assert!(own_rate == 556);
-    assert!(pools[&other_type].burn_rate() == 1_112);
+    assert!(own_rate == 55_555_556);
+    assert!(pools[&other_type].burn_rate() == 111_111_112);
 
     clock.set_for_testing(4_000);
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
@@ -408,7 +408,7 @@ fun projected_pools_read_the_burn_rate() {
 
     clock.set_for_testing(10_000);
     let pools = pools(&mut scenario, entity_id, &clock);
-    assert!(pools[&fuel_type()].burn_rate() == 1_112);
+    assert!(pools[&fuel_type()].burn_rate() == 111_111_112);
     assert!(pools[&other_type].burn_rate() == 0);
 
     clock.destroy_for_testing();
@@ -626,8 +626,8 @@ fun one_supplying_pool_keeps_modules_online() {
 // === Generator limits ===
 
 /// Fuel above the Generator's impulse limit is wasted: impulse 90 against a
-/// limit of 45 burns as if it were 45, so 10 MW takes 2_223 a second instead
-/// of the 1_112 it would at a limit above 90.
+/// limit of 45 burns as if it were 45, so 10 MW takes 222_222_223 a second instead
+/// of the 111_111_112 it would at a limit above 90.
 #[test]
 fun impulse_above_limit_burns_faster() {
     let mut scenario = ts::begin(admin());
@@ -640,7 +640,7 @@ fun impulse_above_limit_burns_faster() {
 
     clock.set_for_testing(1_000);
     let left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
-    assert!(left == starting_fuel() - 2_223);
+    assert!(left == starting_fuel() - 222_222_223);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -649,8 +649,8 @@ fun impulse_above_limit_burns_faster() {
 // === Several bays and types ===
 
 /// Two bays of the default type and one `OTHER_TYPE` bay; one Generator per
-/// type, 20 MW split 10/10. The default Generator's 1_112 a second comes off
-/// its two bays 2:1 (742 and 370, the remainder off the larger); the other
+/// type, 20 MW split 10/10. The default Generator's 111_111_112 a second comes off
+/// its two bays 2:1 (74_074_075 and 37_037_037, the remainder off the larger); the other
 /// Generator burns only its own bay.
 #[test]
 fun one_type_burns_its_bays_in_proportion_beside_another_type() {
@@ -691,9 +691,9 @@ fun one_type_burns_its_bays_in_proportion_beside_another_type() {
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
     let half_left = projected_bay_amount(&mut scenario, entity_id, FUEL_C, &clock);
     let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
-    assert!(own_left == starting_fuel() - 742);
-    assert!(half_left == starting_fuel() / 2 - 370);
-    assert!(other_left == OTHER_UNITS * power_grid::scale() - 2_223);
+    assert!(own_left == starting_fuel() - 74_074_075);
+    assert!(half_left == starting_fuel() / 2 - 37_037_037);
+    assert!(other_left == OTHER_UNITS * power_grid::scale() - 222_222_223);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -773,7 +773,7 @@ fun emergency_stops_when_its_type_runs_dry() {
 }
 
 /// After the owner sets it to the default type, power follows the default pool:
-/// it burns 1_112 a second there and the `OTHER_TYPE` bay keeps its fuel.
+/// it burns 111_111_112 a second there and the `OTHER_TYPE` bay keeps its fuel.
 #[test]
 fun emergency_set_to_another_type_burns_that_pool() {
     let mut scenario = ts::begin(admin());
@@ -787,7 +787,7 @@ fun emergency_set_to_another_type_burns_that_pool() {
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 10);
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
     let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
-    assert!(own_left == starting_fuel() - 1_112);
+    assert!(own_left == starting_fuel() - 111_111_112);
     assert!(other_left == OTHER_UNITS * power_grid::scale());
 
     clock.destroy_for_testing();

@@ -27,9 +27,11 @@ import {
   setGenerator,
   setPowerGrid,
 } from '../packages/power.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectAbort,
   expectSuccess,
+  fuelVariant,
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
@@ -91,7 +93,7 @@ describe('power grid powers an inventory (localnet)', () => {
     })
     installFuelBay(installTx, config, installEntity, {
       componentId: FUEL_ID,
-      capacity: 1000n,
+      capacity: 1000n * POWER_SCALE,
     })
     seatShell(installTx, config, installEntity)
     await expectSuccess(client, installTx)
@@ -127,6 +129,13 @@ describe('power grid powers an inventory (localnet)', () => {
       bridgeInRequirement(enableTx, config, INVENTORY_ID, {}),
     ])
     await expectSuccess(client, enableTx)
+    const variant = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: ITEM,
+      impulse: IMPULSE,
+      containmentBurden: BURDEN,
+      volatility: VOLATILITY,
+    })
 
     // tx3: owner deposits fuel (signer is also the sponsor), brings the bay
     // online, powers on, brings the generator online, and asks the inventory to draw.
@@ -142,11 +151,8 @@ describe('power grid powers an inventory (localnet)', () => {
     )
     depositFuel(onlineTx, config, onlineEntity, depositFuelRequest, cap, {
       fuelBayId: FUEL_ID,
-      fuelType: ITEM,
-      amount: FUEL_AMOUNT,
-      impulse: IMPULSE,
-      containmentBurden: BURDEN,
-      volatility: VOLATILITY,
+      variant,
+      amount: FUEL_AMOUNT * MASS_UNIT,
     })
     completeRequest(onlineTx, config, onlineEntity, depositFuelRequest)
     const setFuelBayRequest = interact(

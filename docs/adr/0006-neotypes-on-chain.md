@@ -211,9 +211,10 @@ on `inventory`, which already depends on `power`.
 `deposit_fuel` (service path, in `power`) takes `&Variant` and an amount instead
 of the four fuel values.
 
-`deposit_fuel_item` lives in `inventory`. It takes an `Item` and its `&Variant`.
+`deposit_fuel_item` lives in `inventory`. It takes an `Item` and its `&Variant`,
+burns the item, and loads the fuel through `deposit_fuel`.
 
-Both paths read the fuel properties by fixed ID and convert to the grid's `SCALE` (1e4):
+Both paths read the fuel properties by fixed ID:
 
 ```move
 const IMPULSE: u32 = 208;
@@ -222,16 +223,23 @@ const CONTAINMENT_BURDEN: u32 = 210;
 const VOLATILITY: u32 = 211;
 ```
 
-The fuel type is `key.type_id`. Amounts go from 1e9 to the grid's `SCALE` by
-dividing by 10^5, which drops anything below 0.0001 kg; how the chain keeps `Mass`
-amounts on that step is decided in the inventory PR. Zero impulse, a missing fuel
-property or `Units` kind aborts.
+**One unit everywhere.** The power grid's `SCALE` is 1e9, the same as variant
+values, mass quantities and the proto's nanos. Every fuel amount, bay capacity,
+stat, generator limit, requirement threshold and burn rate, in calls, events and
+views, is at 1e9, so the service sends and reads the values as they are, with no
+conversion. Fuel stats load from the variant unchanged.
 
-A bay keeps only the fuel type and four blended stats at `SCALE`, not a variant.
-A siphon emits those values (as `FuelSiphoned` does today); the service asks the
-game which variant that fuel is, registers it if new, and mints the stack. The
-chain never rebuilds the original variant: blending and the drop from 1e9 to 1e4
-precision make that the game's call.
+The fuel type is `key.type_id`. A deposit or siphon amount must be a whole 0.0001
+kg (10^5), the game's precision, or the call aborts; a siphon must also be at
+least 0.01 kg, the smallest stack it can be minted back as. Zero impulse, zero
+volatility, a missing fuel property or `Units` kind aborts; a zero containment
+burden or thermal inefficiency loads as 0.
+
+A bay keeps only the fuel type and four blended stats, not a variant. A siphon
+emits those values with the tenant and the quantity (`FuelSiphoned`); the service
+asks the game which variant that fuel is, registers it if new, and mints the
+stack. The chain never rebuilds the original variant: blending makes that the
+game's call.
 
 ### Client & PTB discovery
 
@@ -292,7 +300,6 @@ crosses; never deleted.
 - Stacks of a deprecated variant stay on it until bridged out; they never merge
 with the replacement variant.
 - New `variant` package under `power` and `inventory`; the item-to-fuel path
-lives in `inventory`, and `power` admits it through an admin-registered source
-type.
+lives in `inventory` and goes through the sponsored `deposit_fuel`.
 - Siphoned fuel comes back as whatever variant the game assigns to the blend.
 - Struct layouts change; ships as a fresh publish at the world reset.

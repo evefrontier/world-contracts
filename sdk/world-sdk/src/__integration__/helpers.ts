@@ -19,6 +19,7 @@ import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
 import { installLayout, setShell } from '../packages/layout.js'
+import { deriveVariantId, registerVariant } from '../packages/variant.js'
 
 export const LOCALNET_MANIFEST = fileURLToPath(
   new URL('../../../../deployments/localnet/world.json', import.meta.url),
@@ -204,5 +205,57 @@ export async function getObjectRef(
 export function requirePackage(config: WorldConfig, pkg: string): string {
   const id = config.packageOverrides?.[pkg]
   if (!id) throw new Error(`localnet config must supply the ${pkg} package id`)
+  return id
+}
+
+/** Fuel stats at `POWER_SCALE`, as the grid keeps them. */
+export interface FuelStats {
+  tenant: string
+  fuelType: bigint
+  impulse: bigint
+  containmentBurden: bigint
+  volatility: bigint
+  thermalInefficiency?: bigint
+}
+
+/**
+ * The fuel `Variant` with these stats in `tenant`, registered by the admin on
+ * first use (one variant per set of stats, as in the game). Returns its object ID.
+ */
+export async function fuelVariant(
+  client: WorldClient,
+  config: WorldConfig,
+  stats: FuelStats,
+): Promise<string> {
+  const thermal = stats.thermalInefficiency ?? 0n
+  const mixed =
+    ((stats.impulse * 1_000_003n + stats.containmentBurden) * 1_000_003n +
+      stats.volatility) *
+      1_000_003n +
+    thermal
+  const key = {
+    tenant: stats.tenant,
+    typeId: stats.fuelType,
+    variantId: 1n + (mixed % 1_000_000_007n),
+  }
+  const id = deriveVariantId(config, key)
+  const exists = await client
+    .getObject({ objectId: id })
+    .then(() => true)
+    .catch(() => false)
+  if (exists) return id
+  const tx = new Transaction()
+  registerVariant(tx, config, {
+    key,
+    kind: 'mass',
+    unitVolume: 1n,
+    values: [
+      { propertyId: 208, magnitude: stats.impulse },
+      { propertyId: 209, magnitude: thermal },
+      { propertyId: 210, magnitude: stats.containmentBurden },
+      { propertyId: 211, magnitude: stats.volatility },
+    ],
+  })
+  await expectSuccess(client, tx)
   return id
 }

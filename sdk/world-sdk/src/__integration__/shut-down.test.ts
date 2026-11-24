@@ -32,9 +32,11 @@ import {
   shutDown,
   shutDownRequirement,
 } from '../packages/power.js'
+import { MASS_UNIT } from '../packages/variant.js'
 import {
   expectAbort,
   expectSuccess,
+  fuelVariant,
   GRID_ID,
   loadLocalnetWorld,
   mintAccessCap,
@@ -73,7 +75,7 @@ describe('shut down (localnet)', () => {
     })
     installFuelBay(createTx, config, creation, {
       componentId: BAY_ID,
-      capacity: 1_000n,
+      capacity: 1_000n * POWER_SCALE,
     })
     installGenericModule(createTx, config, creation, {
       componentId: MODULE_ID,
@@ -106,6 +108,13 @@ describe('shut down (localnet)', () => {
       owner: signer,
       transferable: true,
     })
+    const variant = await fuelVariant(client, config, {
+      tenant: key.tenant,
+      fuelType: 1n,
+      impulse: 90n * POWER_SCALE,
+      containmentBurden: 14n * POWER_SCALE,
+      volatility: 1n * POWER_SCALE,
+    })
 
     // Fuel, bay, grid, generator and module on.
     const onTx = new Transaction()
@@ -115,11 +124,8 @@ describe('shut down (localnet)', () => {
     const fuel = interact(onTx, config, entity, 'deposit_fuel')
     depositFuel(onTx, config, entity, fuel, cap, {
       fuelBayId: BAY_ID,
-      fuelType: 1n,
-      amount: 500n,
-      impulse: 90n * POWER_SCALE,
-      containmentBurden: 14n * POWER_SCALE,
-      volatility: 1n * POWER_SCALE,
+      variant,
+      amount: 500n * MASS_UNIT,
     })
     completeRequest(onTx, config, entity, fuel)
     owner(onTx, entity, 'set_fuel_bay', (request) =>

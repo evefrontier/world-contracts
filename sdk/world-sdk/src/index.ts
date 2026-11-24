@@ -217,3 +217,13 @@ export {
   type SectionModule,
   type SectionSpec,
 } from './packages/sections.js'
+export {
+  deriveVariantId,
+  MASS_UNIT,
+  type PropertyValue,
+  type QuantityKind,
+  type RegisterVariantArgs,
+  registerVariant,
+  VALUE_SCALE,
+  type VariantKeyInput,
+} from './packages/variant.js'

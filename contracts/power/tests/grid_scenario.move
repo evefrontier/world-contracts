@@ -9,7 +9,7 @@ use core::{
     entity::{Self, Entity},
     request::Request,
     requirement::Requirement,
-    test_helpers::{claim, take_acl, take_registry}
+    test_helpers::{claim, take_acl, take_registry, tenant}
 };
 use creation::layout;
 use power::{
@@ -20,6 +20,7 @@ use power::{
 };
 use std::string;
 use sui::{clock::Clock, test_scenario as ts};
+use variant::variant::{Self, Variant, VariantRegistry};
 
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
@@ -28,24 +29,25 @@ const GENERATOR_BASE: u64 = 101;
 /// Base burn rate of every Generator, 1 unit per second.
 /// Component id of the fuel bay every `setup_entity` grid gets.
 const FUEL_BAY_ID: u64 = 9_001;
-/// Capacity of that bay, plain units.
+/// Capacity of that bay in kg; helpers send it at `SCALE`.
 const FUEL_CAPACITY: u64 = 100_000;
-/// Starting fuel of that bay, plain units.
+/// Starting fuel of that bay in kg; helpers send it at `SCALE`.
 const STARTING_FUEL: u64 = 50_000;
-/// Fuel stats, plain.
-/// Fuel stats at `SCALE`: impulse 90, burden 14, volatility 1.
-const IMPULSE: u64 = 900_000;
-const BURDEN: u64 = 140_000;
-const VOLATILITY: u64 = 10_000;
+/// Fuel stats at `SCALE` (1e9): impulse 90, burden 14, volatility 1.
+const IMPULSE: u64 = 90_000_000_000;
+const BURDEN: u64 = 14_000_000_000;
+const VOLATILITY: u64 = 1_000_000_000;
 /// Generators' volatility limit 0.5: the test fuels sit above it, so Generators
 /// send out their full rated output.
-const VOLATILITY_LIMIT: u64 = 5_000;
+const VOLATILITY_LIMIT: u64 = 500_000_000;
 const FUEL_TYPE: u64 = 7;
-const THERMAL: u64 = 20_000;
+const THERMAL: u64 = 2_000_000_000;
 /// Bay containment rating 10, below `BURDEN`: deposits are not checked against it.
-const CONTAINMENT_RATING: u64 = 100_000;
+const CONTAINMENT_RATING: u64 = 10_000_000_000;
 /// Component id of the Command Module every `setup_entity` Creation gets.
 const COMMAND_MODULE_ID: u64 = 8_001;
+/// Base units (1e-9 kg) per kg: helpers take plain kg and deposit at 1e9.
+const KG: u64 = 1_000_000_000;
 
 const OPERATE: vector<u8> = b"operate_grid";
 const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
@@ -148,7 +150,7 @@ public fun setup_entity(
         &mut entity,
         FUEL_BAY_ID,
         option::none(),
-        FUEL_CAPACITY,
+        FUEL_CAPACITY * KG,
         CONTAINMENT_RATING,
         clock,
         scenario.ctx(),
@@ -521,8 +523,19 @@ public fun set_fuel_bay(
     );
 }
 
-/// Install empty fuel bay `fuel_bay_id` with `capacity` plain units, offline.
+/// Install empty fuel bay `fuel_bay_id` with `capacity` kg, offline.
 public fun install_fuel(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    capacity: u64,
+    clock: &Clock,
+) {
+    install_fuel_at_scale(scenario, entity_id, fuel_bay_id, capacity * KG, clock);
+}
+
+/// Install empty fuel bay `fuel_bay_id` with `capacity` at `SCALE`, offline.
+public fun install_fuel_at_scale(
     scenario: &mut ts::Scenario,
     entity_id: ID,
     fuel_bay_id: u64,
@@ -663,7 +676,7 @@ public fun refit_stash(
         &mut to,
         fuel_bay_id,
         option::none(),
-        capacity,
+        capacity * KG,
         CONTAINMENT_RATING,
         load,
         clock,
@@ -817,7 +830,13 @@ public fun siphon(
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
     let mut req = entity.interact(string::utf8(SIPHON), scenario.ctx());
-    grid_fuel::siphon(&mut entity, &mut req, fuel_bay_id, quantity, clock);
+    grid_fuel::siphon(
+        &mut entity,
+        &mut req,
+        fuel_bay_id,
+        quantity,
+        clock,
+    );
     close_admin(&mut entity, req, &acl, scenario.ctx());
     ts::return_shared(acl);
     ts::return_shared(entity);
@@ -851,23 +870,15 @@ public fun admin_deposit(
     impulse: u64,
     clock: &Clock,
 ) {
+    let variant_id = fuel_variant(scenario, fuel_type, impulse, BURDEN, VOLATILITY, THERMAL);
     ts::next_tx(scenario, sender);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let acl = take_acl(scenario);
+    let fuel = ts::take_immutable_by_id<Variant>(scenario, variant_id);
     let mut req = entity.interact(string::utf8(ADMIN_DEPOSIT_FUEL), scenario.ctx());
-    grid_fuel::admin_deposit_fuel(
-        &mut entity,
-        &mut req,
-        fuel_bay_id,
-        fuel_type,
-        amount,
-        impulse,
-        BURDEN,
-        VOLATILITY,
-        THERMAL,
-        clock,
-    );
+    grid_fuel::admin_deposit_fuel(&mut entity, &mut req, fuel_bay_id, &fuel, amount * KG, clock);
     close_admin(&mut entity, req, &acl, scenario.ctx());
+    ts::return_immutable(fuel);
     ts::return_shared(acl);
     ts::return_shared(entity);
 }
@@ -952,30 +963,65 @@ public fun deposit_fuel_via(
     thermal: u64,
     clock: &Clock,
 ) {
+    let variant_id = fuel_variant(scenario, fuel_type, impulse, burden, volatility, thermal);
     ensure_admin_sponsors(scenario);
     next_tx_owner_signs_admin_pays(scenario);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
+    let fuel = ts::take_immutable_by_id<Variant>(scenario, variant_id);
     let mut req = entity.interact(string::utf8(name), scenario.ctx());
-    grid_fuel::deposit_fuel(
-        &mut entity,
-        &mut req,
-        fuel_bay_id,
-        fuel_type,
-        amount,
-        impulse,
-        burden,
-        volatility,
-        thermal,
-        clock,
-    );
+    grid_fuel::deposit_fuel(&mut entity, &mut req, fuel_bay_id, &fuel, amount * KG, clock);
     entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
+    ts::return_immutable(fuel);
     ts::return_to_sender(scenario, cap);
     ts::return_shared(acl);
     ts::return_shared(entity);
+}
+
+/// Base units per kg; helpers take plain kg.
+public fun kg(): u64 { KG }
+
+/// The fuel variant of `fuel_type` with these stats (at `SCALE`) in the test
+/// tenant, registered on first use. Returns its ID.
+public fun fuel_variant(
+    scenario: &mut ts::Scenario,
+    fuel_type: u64,
+    impulse: u64,
+    burden: u64,
+    volatility: u64,
+    thermal: u64,
+): ID {
+    ts::next_tx(scenario, ADMIN);
+    if (!ts::has_most_recent_shared<VariantRegistry>()) {
+        variant::init_for_testing(scenario.ctx());
+        ts::next_tx(scenario, ADMIN);
+    };
+    let mut registry = ts::take_shared<VariantRegistry>(scenario);
+    // One variant per set of stats, as in the game.
+    let mixed =
+        (((impulse as u128) * 1_000_003 + (burden as u128)) * 1_000_003
+        + (volatility as u128)) * 1_000_003 + (thermal as u128);
+    let variant_id = 1 + ((mixed % 1_000_000_007) as u64);
+    let key = variant::new_key(tenant(), fuel_type, variant_id);
+    if (!registry.exists(key)) {
+        // Ascending ids: impulse 208, thermal 209, burden 210, volatility 211.
+        registry.register_for_testing(
+            tenant(),
+            fuel_type,
+            variant_id,
+            variant::mass(),
+            1,
+            vector[208, 209, 210, 211],
+            vector[impulse as u128, thermal as u128, burden as u128, volatility as u128],
+            vector[false, false, false, false],
+        );
+    };
+    let id = object::id_from_address(registry.derive_id(key));
+    ts::return_shared(registry);
+    id
 }
 
 /// Put ADMIN on the sponsor list.

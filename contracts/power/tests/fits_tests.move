@@ -32,7 +32,7 @@ const C: u64 = 503;
 const D: u64 = 504;
 const E: u64 = 505;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
-const IMPULSE_LIMIT: u64 = 1_000_000;
+const IMPULSE_LIMIT: u64 = 100_000_000_000;
 
 // === Helpers ===
 

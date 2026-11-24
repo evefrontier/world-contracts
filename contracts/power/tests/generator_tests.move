@@ -20,7 +20,7 @@ use power::{
 use sui::{clock::{Self, Clock}, event, test_scenario as ts};
 
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
-const IMPULSE_LIMIT: u64 = 1_000_000;
+const IMPULSE_LIMIT: u64 = 100_000_000_000;
 /// 10 MW and 5 MW.
 const OUTPUT_A: u64 = 10;
 const OUTPUT_B: u64 = 5;
@@ -30,8 +30,8 @@ const HYDROGEN: u64 = 1;
 const CRUDE: u64 = 2;
 /// 20 MW, impulse limit 50, volatility limit 2, all at `SCALE` where scaled.
 const EMERGENCY_OUTPUT: u64 = 20;
-const EMERGENCY_IMPULSE_LIMIT: u64 = 500_000;
-const EMERGENCY_VOLATILITY_LIMIT: u64 = 20_000;
+const EMERGENCY_IMPULSE_LIMIT: u64 = 50_000_000_000;
+const EMERGENCY_VOLATILITY_LIMIT: u64 = 2_000_000_000;
 const MOD_A: u64 = 401;
 
 /// Grid with Generators A (`OUTPUT_A`) and B (`OUTPUT_B`), off.
