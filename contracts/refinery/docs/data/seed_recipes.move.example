@@ -1,0 +1,204 @@
+// Seed-data example: register all 21 refinery schemas observed in-game on Stillness.
+// This is NOT a module — it's a reference snippet to be incorporated into a
+// migration script (Move test, or TypeScript that builds a Transaction calling
+// recipe::register_recipe for each entry). type_ids sourced from EVE Frontier
+// WorldAPI /v2/types, 2026-05-15.
+
+// Example shape, per schema:
+//
+//   recipe::register_recipe(
+//       registry, admin_acl, name,
+//       input_type_id, input_quantity,
+//       output_type_ids, output_quantities,
+//       processing_time_ms, ctx,
+//   );
+
+// Silica Grains
+recipe::register_recipe(
+    registry, admin_acl, b"Silica Grains".to_string(),
+    89259u64, 20u32,                       // Silica Grains
+    vector[77803u64, 88235u64],  // Silicon Dust, Feldspar Crystal Shards
+    vector[150u32, 50u32],
+    9000u64, ctx,
+);
+
+// Aromatic Carbon Veins
+recipe::register_recipe(
+    registry, admin_acl, b"Aromatic Carbon Veins".to_string(),
+    78448u64, 100u32,                       // Aromatic Carbon Veins
+    vector[88781u64, 88782u64, 88783u64],  // Chitinous Organics, Aromatic Carbon Weave, Kerogen Tar
+    vector[1u32, 4u32, 8u32],
+    15000u64, ctx,
+);
+
+// D2 Fuel
+recipe::register_recipe(
+    registry, admin_acl, b"D2 Fuel".to_string(),
+    88319u64, 200u32,                       // D2 Fuel
+    vector[83839u64],  // Salt
+    vector[1u32],
+    3000u64, ctx,
+);
+
+// Eupraxite
+recipe::register_recipe(
+    registry, admin_acl, b"Eupraxite".to_string(),
+    78435u64, 10u32,                       // Eupraxite
+    vector[78516u64],  // EU-40 Fuel
+    vector[600u32],
+    25000u64, ctx,
+);
+
+// Feldspar Crystals
+recipe::register_recipe(
+    registry, admin_acl, b"Feldspar Crystals".to_string(),
+    77800u64, 40u32,                       // Feldspar Crystals
+    vector[89258u64, 89259u64],  // Hydrocarbon Residue, Silica Grains
+    vector[10u32, 30u32],
+    3000u64, ctx,
+);
+
+// Iron-Rich Nodules
+recipe::register_recipe(
+    registry, admin_acl, b"Iron-Rich Nodules".to_string(),
+    89260u64, 10u32,                       // Iron-Rich Nodules
+    vector[77805u64, 77801u64],  // Platinum-Group Veins, Nickel-Iron Veins
+    vector[20u32, 198u32],
+    9000u64, ctx,
+);
+
+// Methane Ice Shards
+recipe::register_recipe(
+    registry, admin_acl, b"Methane Ice Shards".to_string(),
+    78446u64, 100u32,                       // Methane Ice Shards
+    vector[88781u64, 77804u64, 78423u64],  // Chitinous Organics, Tholin Aggregates, Water Ice
+    vector[1u32, 126u32, 349u32],
+    15000u64, ctx,
+);
+
+// Mummified Clone
+recipe::register_recipe(
+    registry, admin_acl, b"Mummified Clone".to_string(),
+    88765u64, 5u32,                       // Mummified Clone
+    vector[88782u64, 88783u64, 78423u64],  // Aromatic Carbon Weave, Kerogen Tar, Water Ice
+    vector[1u32, 1u32, 50u32],
+    3000u64, ctx,
+);
+
+// Platinum-Palladium Matrix
+recipe::register_recipe(
+    registry, admin_acl, b"Platinum-Palladium Matrix".to_string(),
+    77810u64, 40u32,                       // Platinum-Palladium Matrix
+    vector[89259u64, 89260u64, 99001u64],  // Silica Grains, Iron-Rich Nodules, Palladium
+    vector[16u32, 30u32, 8u32],
+    3000u64, ctx,
+);
+
+// Primitive Kerogen Matrix
+recipe::register_recipe(
+    registry, admin_acl, b"Primitive Kerogen Matrix".to_string(),
+    78447u64, 100u32,                       // Primitive Kerogen Matrix
+    vector[88781u64, 88783u64],  // Chitinous Organics, Kerogen Tar
+    vector[1u32, 16u32],
+    15000u64, ctx,
+);
+
+// Rough Old Crude Matter
+recipe::register_recipe(
+    registry, admin_acl, b"Rough Old Crude Matter".to_string(),
+    77729u64, 30u32,                       // Rough Old Crude Matter
+    vector[83839u64, 77728u64],  // Salt, Sophrogon
+    vector[16u32, 28u32],
+    20000u64, ctx,
+);
+
+// Rough Young Crude Matter
+recipe::register_recipe(
+    registry, admin_acl, b"Rough Young Crude Matter".to_string(),
+    78434u64, 30u32,                       // Rough Young Crude Matter
+    vector[83839u64, 78435u64],  // Salt, Eupraxite
+    vector[1u32, 28u32],
+    20000u64, ctx,
+);
+
+// Salvaged Materials
+recipe::register_recipe(
+    registry, admin_acl, b"Salvaged Materials".to_string(),
+    88764u64, 10u32,                       // Salvaged Materials
+    vector[84210u64, 88561u64, 84182u64],  // Carbon Weave, Thermal Composites, Reinforced Alloys
+    vector[1u32, 2u32, 6u32],
+    4000u64, ctx,
+);
+
+// Sophrogon
+recipe::register_recipe(
+    registry, admin_acl, b"Sophrogon".to_string(),
+    77728u64, 10u32,                       // Sophrogon
+    vector[84868u64],  // SOF-40 Fuel
+    vector[600u32],
+    25000u64, ctx,
+);
+
+// Tholin Nodules
+recipe::register_recipe(
+    registry, admin_acl, b"Tholin Nodules".to_string(),
+    78449u64, 100u32,                       // Tholin Nodules
+    vector[88781u64, 88782u64],  // Chitinous Organics, Aromatic Carbon Weave
+    vector[1u32, 8u32],
+    15000u64, ctx,
+);
+
+// Water Ice
+recipe::register_recipe(
+    registry, admin_acl, b"Water Ice".to_string(),
+    78423u64, 275u32,                       // Water Ice
+    vector[88335u64],  // D1 Fuel
+    vector[75u32],
+    8000u64, ctx,
+);
+
+// Fine Old Crude Matter
+recipe::register_recipe(
+    registry, admin_acl, b"Fine Old Crude Matter".to_string(),
+    92414u64, 30u32,                       // Fine Old Crude Matter
+    vector[77728u64, 92422u64],  // Sophrogon, Brine
+    vector[6u32, 26u32],
+    20000u64, ctx,
+);
+
+// Fine Young Crude Matter
+recipe::register_recipe(
+    registry, admin_acl, b"Fine Young Crude Matter".to_string(),
+    92394u64, 30u32,                       // Fine Young Crude Matter
+    vector[78435u64, 92422u64],  // Eupraxite, Brine
+    vector[6u32, 26u32],
+    20000u64, ctx,
+);
+
+// Hydrated Sulfide Matrix
+recipe::register_recipe(
+    registry, admin_acl, b"Hydrated Sulfide Matrix".to_string(),
+    77811u64, 40u32,                       // Hydrated Sulfide Matrix
+    vector[89258u64, 78423u64],  // Hydrocarbon Residue, Water Ice
+    vector[20u32, 300u32],
+    3000u64, ctx,
+);
+
+// Hydrocarbon Residue
+recipe::register_recipe(
+    registry, admin_acl, b"Hydrocarbon Residue".to_string(),
+    89258u64, 20u32,                       // Hydrocarbon Residue
+    vector[88234u64, 77804u64],  // Troilite Sulfide Grains, Tholin Aggregates
+    vector[20u32, 180u32],
+    9000u64, ctx,
+);
+
+// Iridosmine Nodules
+recipe::register_recipe(
+    registry, admin_acl, b"Iridosmine Nodules".to_string(),
+    78426u64, 40u32,                       // Iridosmine Nodules
+    vector[89260u64],  // Iron-Rich Nodules
+    vector[40u32],
+    5000u64, ctx,
+);
+
