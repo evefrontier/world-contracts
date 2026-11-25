@@ -57,6 +57,26 @@ public(package) fun blend(
     (total / ((pooled_quantity + added_quantity) as u128)) as u64
 }
 
+/// `blend`, rounded up: for a fuel's `unit_volume`, so a blend's volume is never
+/// under-counted against a bay's capacity.
+public(package) fun blend_up(
+    pooled_stat: u64,
+    pooled_quantity: u64,
+    added_stat: u64,
+    added_quantity: u64,
+): u64 {
+    let total =
+        (pooled_stat as u128) * (pooled_quantity as u128)
+            + (added_stat as u128) * (added_quantity as u128);
+    total.div_ceil((pooled_quantity + added_quantity) as u128) as u64
+}
+
+/// Volume in nano-m³ of `quantity` (1e-9 kg) at `unit_volume` (m³ per kg at
+/// `SCALE`, 1 / density), rounded up: `ceil(quantity × unit_volume ÷ SCALE)`.
+public fun volume(quantity: u64, unit_volume: u64): u128 {
+    ((quantity as u128) * (unit_volume as u128)).div_ceil(SCALE as u128)
+}
+
 /// One online Generator's burn over `elapsed_ms`, at `SCALE`, rounded up:
 /// its load (`load × output ÷ capacity_mw`) over `usable_impulse` (at `SCALE`).
 /// The share stays in the numerator, so a load that does not split evenly

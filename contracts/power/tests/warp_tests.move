@@ -567,6 +567,7 @@ fun siphon_takes_part_of_a_bay() {
     assert!(siphoned_entity == entity_id && siphoned_bay == fuel_bay_id());
     assert!(siphoned_type == fuel_type() && quantity == 7 * power_grid::scale());
     assert!(siphoned[0].fuel_siphoned_tenant() == core::test_helpers::tenant());
+    assert!(siphoned[0].fuel_siphoned_unit_volume() == power::grid_scenario::unit_volume());
     assert!(siphoned_impulse == impulse() && siphoned_volatility == volatility());
     assert!(siphoned_burden == burden() && siphoned_thermal == thermal());
     let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());

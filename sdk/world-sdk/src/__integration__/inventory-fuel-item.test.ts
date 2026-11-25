@@ -18,6 +18,7 @@ import {
   withdraw,
   withdrawRequirement,
 } from '../packages/inventory.js'
+import { POWER_SCALE } from '../packages/power.js'
 import { MASS_UNIT } from '../packages/variant.js'
 import {
   bringInventoryOnline,
@@ -67,7 +68,8 @@ describe('inventory fuel item (localnet)', () => {
       componentId: MODULE_ID,
       typeId: 1n,
       name: 'Fuel Depot',
-      capacity: 1000n,
+      // nano-m³: 1,000 m³, room for the test fuel at 1 m³ per kg.
+      capacity: 1_000n * POWER_SCALE,
     })
     await expectSuccess(client, createTx)
 

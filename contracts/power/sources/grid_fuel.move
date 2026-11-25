@@ -59,6 +59,8 @@ const EZeroVolatility: vector<u8> = b"Fuel with zero volatility gives no output"
 const EVariantWrongTenant: vector<u8> = b"Fuel variant belongs to another tenant";
 #[error(code = 21)]
 const EFuelBayOffline: vector<u8> = b"Fuel bay is offline";
+#[error(code = 22)]
+const EFuelBayTooHeavy: vector<u8> = b"Fuel mass would exceed the cap on one fuel bay";
 
 // === Structs ===
 
@@ -96,6 +98,7 @@ public struct FuelLoadDestroyed has copy, drop {
     containment_burden: u64,
     volatility: u64,
     thermal_inefficiency: u64,
+    unit_volume: u64,
 }
 
 public struct FuelBayToggled has copy, drop {
@@ -128,6 +131,8 @@ public struct FuelSiphoned has copy, drop {
     volatility: u64,
     containment_burden: u64,
     thermal_inefficiency: u64,
+    /// m³ per kg at `SCALE` (1 / density) of the bay's blend.
+    unit_volume: u64,
 }
 
 /// Fuel was loaded into a bay; the `resulting_*` values are that bay after blending.
@@ -142,12 +147,14 @@ public struct FuelAdded has copy, drop {
     resulting_containment_burden: u64,
     resulting_volatility: u64,
     resulting_thermal_inefficiency: u64,
+    /// m³ per kg at `SCALE` (1 / density) of the blend.
+    resulting_unit_volume: u64,
 }
 
 // === Public Functions ===
 
-/// Install a fuel bay of `capacity` and `containment_rating`, both at `SCALE`
-/// (1e9), offline. It takes back its stashed fuel if this grid holds any for
+/// Install a fuel bay of `capacity` (volume, nano-m³) and `containment_rating`
+/// (at `SCALE`), offline. It takes back its stashed fuel if this grid holds any for
 /// `component_id`, else starts empty. Admin-gated. Aborts if the stash exceeds
 /// `capacity`.
 public fun install(
@@ -344,6 +351,7 @@ public fun siphon(
         volatility: taken.volatility(),
         containment_burden: taken.containment_burden(),
         thermal_inefficiency: taken.thermal_inefficiency(),
+        unit_volume: taken.unit_volume(),
     });
     frame.require(admin_service::admin_requirement());
     req.enqueue(frame);
@@ -361,6 +369,7 @@ public fun destroy_fuel_load(load: FuelLoad) {
         containment_burden: fuel.containment_burden(),
         volatility: fuel.volatility(),
         thermal_inefficiency: fuel.thermal_inefficiency(),
+        unit_volume: fuel.unit_volume(),
     });
 }
 
@@ -435,6 +444,7 @@ public fun deposit_fuel(
         containment_burden,
         volatility,
         thermal_inefficiency,
+        variant.unit_volume(),
         clock,
     );
     frame.require(access_cap::owner_requirement());
@@ -479,6 +489,7 @@ public fun admin_deposit_fuel(
         containment_burden,
         volatility,
         thermal_inefficiency,
+        variant.unit_volume(),
         clock,
     );
     frame.require(admin_service::admin_requirement());
@@ -560,7 +571,7 @@ fun connect(
     assert_room_for_bay(grid);
     let restored = if (moved.is_some()) moved else stash;
     let fuel = restored.destroy_or!(power_grid::empty_fuel());
-    assert_fits(capacity, fuel.quantity() as u128);
+    assert_fits(capacity, &fuel);
     grid.settle(clock);
     grid.connect_fuel_bay(fuel_bay_id, capacity, containment_rating, fuel);
     grid.regrant(entity_id);
@@ -619,7 +630,8 @@ fun assert_fuel_stats(amount: u64, impulse: u64, volatility: u64) {
     assert!(volatility > 0, EZeroVolatility);
 }
 
-/// Settle, then blend `amount` (base units) into bay `fuel_bay_id` and emit `FuelAdded`.
+/// Settle, then blend `amount` (base units) at `unit_volume` into bay
+/// `fuel_bay_id`, check the blend's volume fits, and emit `FuelAdded`.
 fun blend_deposit(
     grid: &mut PowerGrid,
     entity_id: ID,
@@ -630,6 +642,7 @@ fun blend_deposit(
     containment_burden: u64,
     volatility: u64,
     thermal_inefficiency: u64,
+    unit_volume: u64,
     clock: &Clock,
 ) {
     assert!(power_grid::bays(grid).contains(&fuel_bay_id), EFuelBayNotConnected);
@@ -637,7 +650,11 @@ fun blend_deposit(
     let bay = grid.bay_state(fuel_bay_id);
     bay.fuel().fuel_type().do!(|held| assert!(held == fuel_type, EFuelTypeMismatch));
     fuel_properties::assert_whole_step(amount);
-    assert_fits(bay.capacity(), (bay.fuel().quantity() as u128) + (amount as u128));
+    let held = bay.fuel().quantity() as u128;
+    assert!(
+        held + (amount as u128) <= (power_grid::max_fuel_bay_quantity() as u128),
+        EFuelBayTooHeavy,
+    );
     grid.blend_into_bay(
         fuel_bay_id,
         power_grid::new_fuel(
@@ -647,9 +664,12 @@ fun blend_deposit(
             containment_burden,
             volatility,
             thermal_inefficiency,
+            unit_volume,
         ),
     );
-    let fuel = grid.bay_state(fuel_bay_id).fuel();
+    let bay = grid.bay_state(fuel_bay_id);
+    assert_fits(bay.capacity(), &bay.fuel());
+    let fuel = bay.fuel();
     event::emit(FuelAdded {
         entity_id,
         fuel_bay_id,
@@ -660,6 +680,7 @@ fun blend_deposit(
         resulting_containment_burden: fuel.containment_burden(),
         resulting_volatility: fuel.volatility(),
         resulting_thermal_inefficiency: fuel.thermal_inefficiency(),
+        resulting_unit_volume: fuel.unit_volume(),
     });
     grid.regrant(entity_id);
 }
@@ -669,9 +690,9 @@ fun assert_variant_tenant(entity: &Entity, variant: &Variant) {
     assert!(variant.key().tenant() == entity.key().tenant(), EVariantWrongTenant);
 }
 
-/// Abort unless `quantity` fits a bay of `capacity`, both at `SCALE`.
-fun assert_fits(capacity: u64, quantity: u128) {
-    assert!(quantity <= (capacity as u128), EFuelOverCapacity);
+/// Abort unless `fuel`'s volume fits a bay of `capacity` nano-m³.
+fun assert_fits(capacity: u64, fuel: &Fuel) {
+    assert!(power_grid::fuel_volume(fuel) <= (capacity as u128), EFuelOverCapacity);
 }
 
 /// Abort if a deposit breaks a `FuelRequirement`. Mirrors its field order.
@@ -726,6 +747,12 @@ public fun fuel_siphoned_fields(siphoned: &FuelSiphoned): (ID, u64, u64, u64, u6
 
 #[test_only]
 public fun fuel_siphoned_tenant(siphoned: &FuelSiphoned): String { siphoned.tenant }
+
+#[test_only]
+public fun fuel_siphoned_unit_volume(siphoned: &FuelSiphoned): u64 { siphoned.unit_volume }
+
+#[test_only]
+public fun fuel_added_unit_volume(added: &FuelAdded): u64 { added.resulting_unit_volume }
 
 /// `(entity_id, fuel_bay_id, fuel_type, amount, resulting_amount, resulting_impulse,
 /// resulting_containment_burden, resulting_volatility, resulting_thermal_inefficiency)`.

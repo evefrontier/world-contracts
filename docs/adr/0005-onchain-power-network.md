@@ -158,7 +158,7 @@ public struct PowerGrid has store {
 }
 
 public struct FuelBayState has copy, drop, store {
-    capacity: u64,
+    capacity: u64,                      // volume, nano-m³
     containment_rating: u64,            // set at install; stored only
     online: bool,
     fuel: Fuel,
@@ -171,6 +171,7 @@ public struct Fuel has copy, drop, store {
     containment_burden: u64,            // stored, not used in burn
     volatility: u64,
     thermal_inefficiency: u64,          // stored for siphon and off-chain heat
+    unit_volume: u64,                   // m³ per kg (1 / density), blended by mass
 }
 
 public struct ModuleState has copy, drop, store {

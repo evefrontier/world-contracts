@@ -152,7 +152,7 @@ export function installGenerator(
 export interface InstallFuelBayArgs {
   componentId: bigint
   name?: string | null
-  /** At `POWER_SCALE` (`MASS_UNIT` per kg). */
+  /** Volume in nano-m³ (m³ at `POWER_SCALE`). The fuel's mass × its `unitVolume` must fit. */
   capacity: bigint
   /** At `POWER_SCALE`; defaults to `0n`. Stored only; deposits are not checked against it yet. */
   containmentRating?: bigint
@@ -779,6 +779,7 @@ const FuelBcs = bcs.struct('Fuel', {
   containment_burden: bcs.u64(),
   volatility: bcs.u64(),
   thermal_inefficiency: bcs.u64(),
+  unit_volume: bcs.u64(),
 })
 
 function fuelAmount(fuel: typeof FuelBcs.$inferType): FuelAmount {
@@ -789,6 +790,7 @@ function fuelAmount(fuel: typeof FuelBcs.$inferType): FuelAmount {
     containmentBurden: BigInt(fuel.containment_burden),
     volatility: BigInt(fuel.volatility),
     thermalInefficiency: BigInt(fuel.thermal_inefficiency),
+    unitVolume: BigInt(fuel.unit_volume),
   }
 }
 
@@ -808,6 +810,7 @@ const BaysBcs = bcs.struct('VecMap', {
 /** A fuel bay as `projectedBays` returns it. Quantity and stats at `POWER_SCALE`. */
 export interface ProjectedBay extends FuelAmount {
   fuelBayId: bigint
+  /** Volume in nano-m³. */
   capacity: bigint
   /** At `POWER_SCALE`. Stored only; deposits are not checked against it yet. */
   containmentRating: bigint
@@ -840,6 +843,8 @@ export interface FuelAmount {
   containmentBurden: bigint
   volatility: bigint
   thermalInefficiency: bigint
+  /** m³ per kg at `POWER_SCALE` (1 / density), blended by mass and rounded up. */
+  unitVolume: bigint
 }
 
 /**

@@ -698,6 +698,121 @@ fun all_fuel_offline_cuts_power() {
     scenario.end();
 }
 
+// === Volume ===
+
+/// 1_000 kg at 1 m³/kg and 1_000 kg at 3 m³/kg blend to 2 m³/kg: 4_000 m³,
+/// exactly what the bay holds.
+#[test]
+fun deposit_blends_unit_volume_by_mass() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 4_000, &clock);
+    let scale = power_grid::scale();
+
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1_000, scale, &clock);
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1_000, 3 * scale, &clock);
+
+    let added = event::events_by_type<FuelAdded>();
+    assert!(grid_fuel::fuel_added_unit_volume(&added[0]) == 2 * scale);
+    let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
+    assert!(fuel.quantity() == 2_000 * kg() && fuel.unit_volume() == 2 * scale);
+    assert!(power_grid::fuel_volume(&fuel) == ((4_000 * kg()) as u128));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The same two deposits need 4_000 m³; a 3_999 m³ bay refuses the second.
+#[test, expected_failure(abort_code = grid_fuel::EFuelOverCapacity)]
+fun deposit_over_volume_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 3_999, &clock);
+    let scale = power_grid::scale();
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1_000, scale, &clock);
+
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1_000, 3 * scale, &clock);
+
+    abort
+}
+
+/// A dense fuel (0.5 m³/kg) fits 2_000 kg in a 1_000 m³ bay.
+#[test]
+fun dense_fuel_fits_more_mass() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 1_000, &clock);
+
+    grid_scenario::deposit_at_volume(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        2_000,
+        power_grid::scale() / 2,
+        &clock,
+    );
+
+    let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
+    assert!(power_grid::fuel_volume(&fuel) == ((1_000 * kg()) as u128));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The blend's unit volume rounds up, so the bay's volume is never under-counted:
+/// 2 kg at 1 m³/kg and 1 kg at 1 m³/kg + 1 average to 1 m³/kg + 1/3, stored as + 1.
+#[test]
+fun blended_unit_volume_rounds_up() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 10, &clock);
+    let scale = power_grid::scale();
+
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 2, scale, &clock);
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1, scale + 1, &clock);
+
+    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).unit_volume() == scale + 1);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A fuel light enough to fit the volume still can't pass the mass cap, which
+/// keeps every bay's fuel within a u64.
+#[test, expected_failure(abort_code = grid_fuel::EFuelBayTooHeavy)]
+fun deposit_over_the_mass_cap_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    grid_scenario::install_fuel_at_scale(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        power_grid::max_fuel_bay_capacity(),
+        &clock,
+    );
+
+    grid_scenario::deposit_at_volume(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        power_grid::max_fuel_bay_quantity() / kg() + 1,
+        1,
+        &clock,
+    );
+
+    abort
+}
+
 // === Deposit ===
 
 /// Equal amounts average the stats: impulse (90 + 10) / 2, burden (14 + 4) / 2,
