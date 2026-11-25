@@ -92,6 +92,19 @@ fun create_killmail_structure_loss() {
     ts::end(scenario);
 }
 
+#[test, expected_failure(abort_code = record::EWrongVersion)]
+fun read_killmail_wrong_version_aborts() {
+    let mut scenario = begin_with_reporter();
+    create_default(&mut scenario, ADMIN, KILLMAIL_ID_1, LOSS_TYPE_SHIP);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut km = ts::take_shared<Killmail>(&scenario);
+    km.set_version_for_testing(2);
+    km.killer_id();
+
+    abort
+}
+
 #[test]
 fun create_multiple_killmails() {
     let mut scenario = begin_with_reporter();

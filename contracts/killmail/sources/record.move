@@ -31,6 +31,8 @@ const EInvalidLossType: vector<u8> = b"Invalid loss type";
 const EInvalidTimestamp: vector<u8> = b"Invalid timestamp";
 #[error(code = 6)]
 const EKillmailAlreadyExists: vector<u8> = b"Killmail with this ItemId already exists";
+#[error(code = 7)]
+const EWrongVersion: vector<u8> = b"Killmail version does not match the package version";
 
 // === Constants ===
 
@@ -90,36 +92,58 @@ public fun id(killmail: &Killmail): ID { object::id(killmail) }
 /// Package version the killmail was created under.
 public fun version(killmail: &Killmail): u64 { killmail.version }
 
+// Field getters abort with `EWrongVersion` unless the record's version matches this
+// package's `VERSION`; `id` and `version` stay readable at any version.
+
 /// Unique key for this killmail (used for dedupe and derivation).
-public fun key(killmail: &Killmail): KillmailKey { killmail.key }
+public fun key(killmail: &Killmail): KillmailKey {
+    assert!(killmail.version == VERSION, EWrongVersion);
+    killmail.key
+}
 
 /// In-game ID of the killer character.
-public fun killer_id(killmail: &Killmail): EntityKey { killmail.killer_id }
+public fun killer_id(killmail: &Killmail): EntityKey {
+    assert!(killmail.version == VERSION, EWrongVersion);
+    killmail.killer_id
+}
 
 /// In-game ID of the victim (ship or structure).
-public fun victim_id(killmail: &Killmail): EntityKey { killmail.victim_id }
+public fun victim_id(killmail: &Killmail): EntityKey {
+    assert!(killmail.version == VERSION, EWrongVersion);
+    killmail.victim_id
+}
 
 /// Character who reported the kill.
 public fun reported_by_character_id(killmail: &Killmail): EntityKey {
+    assert!(killmail.version == VERSION, EWrongVersion);
     killmail.reported_by_character_id
 }
 
 /// Unix timestamp (seconds) of the kill.
-public fun kill_timestamp(killmail: &Killmail): u64 { killmail.kill_timestamp }
+public fun kill_timestamp(killmail: &Killmail): u64 {
+    assert!(killmail.version == VERSION, EWrongVersion);
+    killmail.kill_timestamp
+}
 
 /// Whether the loss was a ship or structure.
-public fun loss_type(killmail: &Killmail): LossType { killmail.loss_type }
+public fun loss_type(killmail: &Killmail): LossType {
+    assert!(killmail.version == VERSION, EWrongVersion);
+    killmail.loss_type
+}
 
 /// Solar system where the kill occurred.
-public fun solar_system_id(killmail: &Killmail): EntityKey { killmail.solar_system_id }
+public fun solar_system_id(killmail: &Killmail): EntityKey {
+    assert!(killmail.version == VERSION, EWrongVersion);
+    killmail.solar_system_id
+}
 
 /// Returns true if the loss was a structure.
 public fun is_structure_loss(killmail: &Killmail): bool {
-    killmail.loss_type == LossType::STRUCTURE
+    killmail.loss_type() == LossType::STRUCTURE
 }
 
 /// Returns true if the loss was a ship.
-public fun is_ship_loss(killmail: &Killmail): bool { killmail.loss_type == LossType::SHIP }
+public fun is_ship_loss(killmail: &Killmail): bool { killmail.loss_type() == LossType::SHIP }
 
 // === Admin Functions ===
 
@@ -211,6 +235,11 @@ public fun created_key(event: &KillmailCreated): KillmailKey { event.key }
 
 #[test_only]
 public fun created_id(event: &KillmailCreated): ID { event.id }
+
+#[test_only]
+public fun set_version_for_testing(killmail: &mut Killmail, version: u64) {
+    killmail.version = version;
+}
 
 /// Create and share a killmail without the sponsor check, for other packages' tests.
 /// Returns the record's ID.
