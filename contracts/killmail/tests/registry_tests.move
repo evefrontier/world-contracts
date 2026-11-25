@@ -1,7 +1,7 @@
 #[test_only]
 module killmail::registry_tests;
 
-use core::{entity_key, test_helpers::tenant};
+use core::test_helpers::tenant;
 use killmail::registry::{Self, KillmailRegistry};
 use std::string;
 use sui::{derived_object, test_scenario as ts};
@@ -18,6 +18,7 @@ fun init_shares_registry_with_stable_id() {
     {
         let registry = take_registry(&scenario);
         assert!(registry::id(&registry) == object::id(&registry));
+        assert!(registry::version(&registry) == 1);
         ts::return_shared(registry);
     };
 
@@ -32,7 +33,7 @@ fun fresh_key_does_not_exist() {
     ts::next_tx(&mut scenario, ADMIN);
     {
         let registry = take_registry(&scenario);
-        let key = entity_key::new(1, tenant());
+        let key = registry::new_key(tenant(), 1);
         assert!(!registry.exists(key));
         ts::return_shared(registry);
     };
@@ -48,7 +49,7 @@ fun derive_id_is_deterministic() {
     ts::next_tx(&mut scenario, ADMIN);
     {
         let registry = take_registry(&scenario);
-        let key = entity_key::new(5, tenant());
+        let key = registry::new_key(tenant(), 5);
         assert!(registry.derive_id(key) == registry.derive_id(key));
         ts::return_shared(registry);
     };
@@ -64,9 +65,9 @@ fun derive_id_differs_by_key() {
     ts::next_tx(&mut scenario, ADMIN);
     {
         let registry = take_registry(&scenario);
-        let by_id_a = registry.derive_id(entity_key::new(1, tenant()));
-        let by_id_b = registry.derive_id(entity_key::new(2, tenant()));
-        let by_tenant = registry.derive_id(entity_key::new(1, string::utf8(b"other")));
+        let by_id_a = registry.derive_id(registry::new_key(tenant(), 1));
+        let by_id_b = registry.derive_id(registry::new_key(tenant(), 2));
+        let by_tenant = registry.derive_id(registry::new_key(string::utf8(b"other"), 1));
         assert!(by_id_a != by_id_b);
         assert!(by_id_a != by_tenant);
         ts::return_shared(registry);
@@ -85,7 +86,7 @@ fun claim_marks_key_existing() {
     ts::next_tx(&mut scenario, ADMIN);
     {
         let mut registry = take_registry(&scenario);
-        let key = entity_key::new(99, tenant());
+        let key = registry::new_key(tenant(), 99);
         let precomputed = object::id_from_address(registry.derive_id(key));
 
         let uid = derived_object::claim(registry.borrow_id(), key);
@@ -98,6 +99,25 @@ fun claim_marks_key_existing() {
     };
 
     scenario.end();
+}
+
+#[test]
+fun new_key_holds_tenant_and_id() {
+    let key = registry::new_key(tenant(), 42);
+    assert!(key.tenant() == tenant());
+    assert!(key.killmail_id() == 42);
+}
+
+#[test, expected_failure(abort_code = registry::ETenantEmpty)]
+fun new_key_empty_tenant_aborts() {
+    registry::new_key(string::utf8(b""), 1);
+    abort
+}
+
+#[test, expected_failure(abort_code = registry::EKillmailIdZero)]
+fun new_key_zero_id_aborts() {
+    registry::new_key(tenant(), 0);
+    abort
 }
 
 // === Test Functions ===

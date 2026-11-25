@@ -1,76 +1,95 @@
-import { fileURLToPath } from 'node:url'
-import 'dotenv/config'
 import { Transaction } from '@mysten/sui/transactions'
-import { describe, expect, it } from 'vitest'
-import { createWorldClient } from '../client.js'
-import { loadWorldConfig } from '../config/load.js'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { createCharacter } from '../packages/character.js'
 import { addSponsors } from '../packages/core.js'
 import {
   createKillmail,
+  type KillmailArgs,
   killmailObjectId,
   LOSS_TYPE_SHIP,
+  LOSS_TYPE_STRUCTURE,
 } from '../packages/killmail.js'
-import { expectSuccess } from './helpers.js'
+import {
+  expectAbort,
+  expectSponsored,
+  expectSuccess,
+  genesisAccount,
+  loadLocalnetWorld,
+  requirePackage,
+  signer,
+} from './helpers.js'
 
-// Integration: exercises the createKillmail binding against a running localnet.
-const MANIFEST = fileURLToPath(
-  new URL('../../../../deployments/localnet/world.json', import.meta.url),
-)
-const ADMIN = process.env.WORLD_ADMIN_ADDRESS
-if (!ADMIN) {
-  throw new Error('WORLD_ADMIN_ADDRESS is required (an admin)')
-}
-
-const PLAYER =
-  '0x000000000000000000000000000000000000000000000000000000000000000b'
+// Integration: creates killmails against a running localnet, and reads them back.
+const TENANT = 'killmail-t1'
+const REPORTER_ID = 5n
 
 describe('createKillmail (localnet)', () => {
-  const config = loadWorldConfig(MANIFEST)
-  const client = createWorldClient({ config })
+  const { config, client } = loadLocalnetWorld()
+  const player = genesisAccount('PLAYER_A')
 
-  it('builds a killmail-creation PTB the chain accepts, at the derived id', async () => {
-    const key = { id: 7n, tenant: 'integration' }
-    const reporterId = 5n
+  const args = (inGameId: bigint): KillmailArgs => ({
+    inGameId,
+    tenant: TENANT,
+    reporterId: REPORTER_ID,
+    killerId: 1n,
+    victimId: 2n,
+    lossType: LOSS_TYPE_SHIP,
+    solarSystemId: 4n,
+    killTime: new Date(),
+  })
 
-    // The reporter must already exist on-chain as a character (identity installed),
-    // and create_killmail requires the sender to be a sponsor.
-    const setupTx = new Transaction()
-    addSponsors(setupTx, config, [ADMIN])
-    createCharacter(setupTx, config, {
-      inGameId: reporterId,
-      tenant: key.tenant,
-      tribeId: 1,
-      owner: PLAYER,
+  /** The killmail at `inGameId` is shared at its derived id, as a `record::Killmail`. */
+  async function expectSharedKillmail(inGameId: bigint): Promise<void> {
+    const id = killmailObjectId(config, {
+      tenant: TENANT,
+      killmailId: inGameId,
     })
-    await expectSuccess(client, setupTx)
+    const { object } = await client.getObject({ objectId: id })
+    const killmailPkg = requirePackage(config, 'killmail')
+    expect(object.type).toBe(`${killmailPkg}::record::Killmail`)
+    expect(object.owner.$kind).toBe('Shared')
+  }
 
+  beforeAll(async () => {
+    // The reporter must already exist on-chain as a character (identity installed),
+    // and the admin must be a sponsor to create or pay for killmails.
+    const tx = new Transaction()
+    addSponsors(tx, config, [signer])
+    createCharacter(tx, config, {
+      inGameId: REPORTER_ID,
+      tenant: TENANT,
+      tribeId: 1,
+      owner: player.toSuiAddress(),
+    })
+    await expectSuccess(client, tx)
+  })
+
+  it('a sponsor creates a killmail, shared at the derived id', async () => {
+    const tx = new Transaction()
+    createKillmail(tx, config, args(7n))
+    const result = await expectSuccess(client, tx)
+
+    const created = (result.events ?? []).filter((event) =>
+      event.eventType.endsWith('::record::KillmailCreated'),
+    )
+    expect(created).toHaveLength(1)
+    await expectSharedKillmail(7n)
+  })
+
+  it('a sponsored transaction authorizes the gas sponsor, not the sender', async () => {
+    // PLAYER_A sends (not a sponsor); the admin pays gas (a sponsor).
     const tx = new Transaction()
     createKillmail(tx, config, {
-      inGameId: key.id,
-      tenant: key.tenant,
-      killerId: BigInt(1),
-      victimId: BigInt(2),
-      lossType: LOSS_TYPE_SHIP,
-      solarSystemId: BigInt(4),
-      reporterId,
-      killTime: new Date(),
+      ...args(8n),
+      lossType: LOSS_TYPE_STRUCTURE,
     })
+    await expectSponsored(client, tx, player)
+    await expectSharedKillmail(8n)
+  })
 
-    tx.setSender(ADMIN)
-    const res = await client.simulateTransaction({
-      transaction: tx,
-      include: { effects: true },
-    })
-    if (res.$kind !== 'Transaction') {
-      throw new Error(
-        res.FailedTransaction.status.error?.message ?? 'simulation failed',
-      )
-    }
-
-    const created = res.Transaction.effects.changedObjects
-      .filter((o) => o.idOperation === 'Created')
-      .map((o) => o.objectId)
-    expect(created).toContain(killmailObjectId(config, key))
+  it('a non-sponsor cannot create a killmail', async () => {
+    const tx = new Transaction()
+    createKillmail(tx, config, args(9n))
+    await expectAbort(client, tx, player.toSuiAddress(), /EUnauthorizedSponsor/)
   })
 })

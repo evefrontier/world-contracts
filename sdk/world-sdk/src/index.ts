@@ -111,6 +111,7 @@ export {
 export {
   createKillmail,
   type KillmailArgs,
+  type KillmailKeyInput,
   killmailObjectId,
   LOSS_TYPE_SHIP,
   LOSS_TYPE_STRUCTURE,
