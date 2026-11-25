@@ -1,15 +1,10 @@
 import { bcs } from '@mysten/sui/bcs'
-import type { Transaction } from '@mysten/sui/transactions'
-import { blake2b } from '@noble/hashes/blake2'
+import type { Transaction, TransactionArgument } from '@mysten/sui/transactions'
+import { deriveObjectID } from '@mysten/sui/utils'
 import { mvrName } from '../config/env.js'
+import { killmailRegistry } from '../config/shared-objects.js'
 import type { WorldConfig } from '../config/types.js'
-import {
-  completeRequest,
-  deriveObjectId,
-  entityNew,
-  shareEntity,
-  verifyAdmin,
-} from './core.js'
+import { deriveObjectId, verifySponsor } from './core.js'
 
 const KILLMAIL_PACKAGE = 'killmail'
 
@@ -20,6 +15,7 @@ export const LOSS_TYPE_STRUCTURE = 2 as const
 export type LossType = typeof LOSS_TYPE_SHIP | typeof LOSS_TYPE_STRUCTURE
 
 export interface KillmailArgs {
+  /** The game's killmail id; with the reporter's tenant, the killmail's `KillmailKey`. */
   inGameId: bigint
   tenant: string
   reporterId: bigint
@@ -30,66 +26,91 @@ export interface KillmailArgs {
   killTime: Date
 }
 
-const KILLMAIL_ID_SUFFIX = new TextEncoder().encode('killmail')
+/** Must match `killmail::registry::KillmailKey` in Move. */
+const KillmailKey = bcs.struct('KillmailKey', {
+  tenant: bcs.string(),
+  killmail_id: bcs.u64(),
+})
 
-/**
- * Entity id for a killmail: first 8 bytes (LE) of `blake2b256(bcs(u64 inGameId) ++ "killmail")`.
- * Namespaces killmail ids so they can't collide with other entities' game ids.
- */
-export function killmailId(inGameId: bigint): bigint {
-  const idBytes = bcs.u64().serialize(inGameId).toBytes()
-  const input = new Uint8Array(idBytes.length + KILLMAIL_ID_SUFFIX.length)
-  input.set(idBytes)
-  input.set(KILLMAIL_ID_SUFFIX, idBytes.length)
-  const digest = blake2b(input, { dkLen: 32 })
-  const view = new DataView(digest.buffer, digest.byteOffset, digest.byteLength)
-  return view.getBigUint64(0, true)
+export interface KillmailKeyInput {
+  tenant: string
+  /** The game's killmail id. Must be non-zero. */
+  killmailId: bigint
 }
 
 /**
- * Converts a Date to milliseconds
- * @param killTime
- * @returns Date as milliseconds (u64)
+ * Object ID a killmail has, or will have, under `key`, mirroring
+ * `killmail::registry::derive_id`. Offline: needs the killmail package id, which
+ * only local/CI carry in `packageOverrides`.
  */
-function convertDateToMilliseconds(killTime: Date): bigint {
+export function killmailObjectId(
+  config: WorldConfig,
+  key: KillmailKeyInput,
+): string {
+  const killmailPkg = config.packageOverrides?.[KILLMAIL_PACKAGE]
+  if (!killmailPkg) {
+    throw new Error(
+      `cannot derive killmail object id for env "${config.env}" offline: no killmail package id (only local/CI supply packageOverrides)`,
+    )
+  }
+  const bytes = KillmailKey.serialize({
+    tenant: key.tenant,
+    killmail_id: key.killmailId,
+  }).toBytes()
+  return deriveObjectID(
+    killmailRegistry(config).id,
+    `${killmailPkg}::registry::KillmailKey`,
+    bytes,
+  )
+}
+
+/** Unix seconds for `killTime`; Move stores `kill_timestamp` in seconds. */
+function toUnixSeconds(killTime: Date): bigint {
   return BigInt(Math.floor(killTime.getTime() / 1000))
 }
+
+function target(
+  config: WorldConfig,
+  fn: string,
+): `${string}::${string}::${string}` {
+  return `${mvrName(config.env, KILLMAIL_PACKAGE)}::record::${fn}`
+}
+
 /**
- * Append the full killmail-creation flow to `tx`: claim the entity, install the
- * killmail module, and share it. Each lifecycle step is admin-gated, so the
- * transaction must be signed by a whitelisted admin.
+ * Create a killmail and share it at its `KillmailRegistry`-derived id:
+ * `create_killmail`, then the sponsor check, then `complete_killmail`. The gas
+ * sponsor (or the sender, when unsponsored) must be a sponsor on `AdminACL`, and
+ * the reporter must be an existing character; the killmail takes its tenant. The
+ * record can only be read in a later transaction.
  */
 export function createKillmail(
   tx: Transaction,
   config: WorldConfig,
   args: KillmailArgs,
 ): void {
-  const [killmail, claimReq] = entityNew(tx, config, {
-    inGameId: killmailId(args.inGameId),
-    tenant: args.tenant,
-  })
-
-  verifyAdmin(tx, config, claimReq)
-  completeRequest(tx, config, killmail, claimReq)
-
-  const reporter = tx.object(
-    deriveObjectId(config, { id: args.reporterId, tenant: args.tenant }),
-  )
-
-  const installReq = tx.moveCall({
-    target: `${mvrName(config.env, KILLMAIL_PACKAGE)}::record::install`,
+  const registry = killmailRegistry(config)
+  const [record, request] = tx.moveCall({
+    target: target(config, 'create_killmail'),
     arguments: [
-      killmail,
-      reporter,
+      tx.sharedObjectRef({
+        objectId: registry.id,
+        initialSharedVersion: registry.initialSharedVersion ?? 0,
+        mutable: true,
+      }),
+      tx.object(
+        deriveObjectId(config, { id: args.reporterId, tenant: args.tenant }),
+      ),
+      tx.pure.u64(args.inGameId),
       tx.pure.u64(args.killerId),
       tx.pure.u64(args.victimId),
-      tx.pure.u64(convertDateToMilliseconds(args.killTime)),
+      tx.pure.u64(toUnixSeconds(args.killTime)),
       tx.pure.u8(args.lossType),
       tx.pure.u64(args.solarSystemId),
     ],
   })
-  verifyAdmin(tx, config, installReq)
-  completeRequest(tx, config, killmail, installReq)
-
-  shareEntity(tx, config, killmail)
+  verifySponsor(tx, config, request as TransactionArgument)
+  tx.moveCall({
+    target: target(config, 'complete_killmail'),
+    arguments: [record as TransactionArgument, request as TransactionArgument],
+  })
 }
