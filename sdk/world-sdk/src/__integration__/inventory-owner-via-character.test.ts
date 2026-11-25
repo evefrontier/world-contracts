@@ -10,7 +10,6 @@ import {
   interact,
   ownerRequirement,
   returnAccess,
-  verifyDocking,
   verifyOwner,
 } from '../packages/core.js'
 import {
@@ -24,10 +23,9 @@ import {
 } from '../packages/inventory.js'
 import { installInventoryPower, powerInventoryOn } from './bring-online.js'
 import {
-  DOCKED_SHIP,
-  dockedProof,
   expectSuccess,
   getObjectRef,
+  itemVariant,
   loadLocalnetWorld,
   mintAccessCap,
   readBalance,
@@ -129,7 +127,14 @@ describe('inventory owner-access via Character', () => {
       returnAccess(enableTx, config, character, suCap, receipt)
     }
     await expectSuccess(client, enableTx)
-    await installInventoryPower(client, config, suId)
+    const fuel = await installInventoryPower(client, config, suId, suKey.tenant)
+
+    const itemKey = { tenant: suKey.tenant, typeId: FUEL, variantId: 0n }
+    const variant = await itemVariant(client, config, {
+      tenant: suKey.tenant,
+      typeId: FUEL,
+      unitVolume: VOL,
+    })
 
     // Assertion PTB: borrow -> power on -> bridge_in 100 -> withdraw 30 -> deposit it back -> return.
     const runTx = new Transaction()
@@ -144,22 +149,20 @@ describe('inventory owner-access via Character', () => {
         await getObjectRef(client, suCapId),
       )
       const su = runTx.object(suId)
-      powerInventoryOn(runTx, config, su, suCap, MODULE_ID)
+      powerInventoryOn(runTx, config, su, suCap, MODULE_ID, fuel)
 
       const bridgeRequest = interact(runTx, config, su, 'bridge_in')
       verifyOwner(runTx, config, su, bridgeRequest, suCap)
       gameItemToChain(runTx, config, su, bridgeRequest, {
-        typeId: FUEL,
+        variant,
         quantity: 100n,
-        volume: VOL,
       })
       completeRequest(runTx, config, su, bridgeRequest)
 
-      verifyDocking(runTx, config, await dockedProof(config, DOCKED_SHIP, suId))
       const withdrawRequest = interact(runTx, config, su, 'withdraw')
       verifyOwner(runTx, config, su, withdrawRequest, suCap)
       const item = withdraw(runTx, config, su, withdrawRequest, {
-        typeId: FUEL,
+        key: itemKey,
         quantity: 30n,
       })
       completeRequest(runTx, config, su, withdrawRequest)
@@ -177,7 +180,7 @@ describe('inventory owner-access via Character', () => {
     const balance = await readBalance(client, config, {
       entity: suId,
       componentId: MODULE_ID,
-      typeId: FUEL,
+      key: itemKey,
     })
     expect(balance).toBe(100n)
 

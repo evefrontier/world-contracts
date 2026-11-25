@@ -4,6 +4,8 @@ edition = "2024"
 
 [dependencies]
 core = { local = "../core" }
+creation = { local = "../creation" }
+variant = { local = "../variant" }
 
 # Per-env deploy targets. dev/test/uat are independent deployments on the same
 # testnet chain (distinguished by name);

@@ -2,9 +2,10 @@ import { Transaction } from '@mysten/sui/transactions'
 import { signAndExecute } from '../src/client.js'
 import { componentIdFromName } from '../src/packages/component-id.js'
 import { deriveObjectId, enableAdminAction } from '../src/packages/core.js'
+import { installLayout, setShell } from '../src/packages/layout.js'
 import {
   depositFuelRequirement,
-  installFuel,
+  installFuelBay,
   installGenerator,
   operateGridRequirement,
   POWER_SCALE,
@@ -12,14 +13,20 @@ import {
 import { loadScriptContext } from './context.js'
 import { loadSeedFiles } from './seed-files.js'
 
-// Give every seeded storage unit a generator and a fuel bay. The inventory
-// already connected to the grid when the storage unit was created.
+// Give every seeded storage unit a generator, a fuel bay, and a Shell (power
+// needs one to switch anything). The inventory already connected to the grid
+// when the storage unit was created. The grid stands in as the Command Module.
 const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
-const OUTPUT = 15n * POWER_SCALE
-const CONTAINMENT_REDUCTION = 10n * POWER_SCALE
-const BASE_FUEL_RATE = POWER_SCALE
-const FUEL_CAPACITY = 1000n * POWER_SCALE
+const GRID_ID = componentIdFromName('power_grid')
+const SHELL_ID = '0x5e11'
+const OUTPUT = 15n
+// Fuel type 7, impulse limit 100 and volatility limit 1e-9 (at POWER_SCALE):
+// any type-7 fuel with volatility gives full output. Bay capacity 1,000 kg.
+const FUEL_TYPE = 7n
+const IMPULSE_LIMIT = 100n * POWER_SCALE
+const VOLATILITY_LIMIT = 1n
+const FUEL_CAPACITY = 1_000n * POWER_SCALE
 
 const { repoRoot, config, client, keypair } = loadScriptContext()
 const { resources } = loadSeedFiles(repoRoot)
@@ -44,18 +51,24 @@ for (const [alias, unit] of entries) {
   const entity = tx.object(entityId)
   installGenerator(tx, config, entity, {
     componentId: GENERATOR_ID,
+    fuelType: FUEL_TYPE,
     maxOutputMw: OUTPUT,
-    containmentReduction: CONTAINMENT_REDUCTION,
-    baseFuelRate: BASE_FUEL_RATE,
+    impulseLimit: IMPULSE_LIMIT,
+    volatilityLimit: VOLATILITY_LIMIT,
   })
-  installFuel(tx, config, entity, {
+  installFuelBay(tx, config, entity, {
     componentId: FUEL_ID,
     capacity: FUEL_CAPACITY,
   })
+  installLayout(tx, config, entity, [{ sectionId: 1n, moduleIds: [GRID_ID] }])
+  setShell(tx, config, entity, SHELL_ID, GRID_ID)
   enableAdminAction(tx, config, entity, 'set_power_grid', [
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'set_generator', [
+    operateGridRequirement(tx, config),
+  ])
+  enableAdminAction(tx, config, entity, 'set_fuel_bay', [
     operateGridRequirement(tx, config),
   ])
   enableAdminAction(tx, config, entity, 'set_priority', [

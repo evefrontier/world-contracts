@@ -28,6 +28,7 @@ public fun new(mut requirements: vector<Requirement>): Action {
 
 // === View Functions ===
 
+/// Requirements in reverse declaration order; the last is handed out first.
 public fun requirements(action: &Action): &vector<Requirement> {
     &action.requirements
 }

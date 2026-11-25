@@ -4,7 +4,7 @@
 module generic_module::generic_module;
 
 use core::{component::{Self, Component}, entity::Entity, request::Request};
-use power::{grid_load, power_grid::{Self, DrawKind, PowerKind}};
+use power::{grid_load, power_grid::{Self, DrawKind}};
 use std::{internal::Permit, string::String};
 use sui::clock::Clock;
 
@@ -41,7 +41,6 @@ public fun install(
     data: vector<u8>,
     power_req: u64,
     draw_kind: DrawKind,
-    power_kind: PowerKind,
     priority: u64,
     line_loss: u64,
     clock: &Clock,
@@ -58,7 +57,6 @@ public fun install(
     let power = power_grid::module_power_spec(
         power_req,
         draw_kind,
-        power_kind,
         priority,
         line_loss,
     );

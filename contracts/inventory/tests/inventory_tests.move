@@ -5,17 +5,18 @@ use core::{
     access_cap::{Self, AccessCap},
     action,
     admin_service::{Self, AdminACL},
-    docking,
     entity::{Self, Entity},
     object_registry::ObjectRegistry,
-    request::Request,
-    requirement::Requirement,
-    test_helpers::{claim, setup, take_acl, take_registry}
+    request::{Self, Request},
+    requirement::{Self, Requirement},
+    test_helpers::{claim, setup, take_acl, take_registry, tenant}
 };
+use creation::layout;
 use inventory::{inventory, item::{Self, Item}};
-use power::{grid_fuel, grid_generator, grid_load, power_grid};
+use power::{grid_fuel, grid_generator, grid_load, grid_scenario, power_grid};
 use std::string::{Self, String};
-use sui::{clock::{Self, Clock}, event, test_scenario as ts};
+use sui::{bcs, clock::{Self, Clock}, event, test_scenario as ts};
+use variant::variant::{Self, Variant, VariantKey, VariantRegistry};
 
 const ADMIN: address = @0xA;
 const OWNER: address = @0xB;
@@ -30,12 +31,42 @@ const TYPE_ID: u64 = 1;
 const DRAW: u64 = 1;
 const GENERATOR_ID: u64 = 0x71;
 const FUEL_BAY_ID: u64 = 0x72;
+const COMMAND_MODULE_ID: u64 = 0x73;
+
+/// Stand-in Command Module the Shell sits in.
+public struct CommandModule has store {}
 
 fun unit_name(): String { string::utf8(b"SU-01") }
 
-fun ship_id(): ID { object::id_from_address(@0x5) }
+/// Key of the plain (variant 0) `type_id` item in the test tenant.
+fun key_of(type_id: u64): VariantKey { variant::new_key(tenant(), type_id, 0) }
 
-fun character_id(): ID { object::id_from_address(@0x8) }
+/// ID of the frozen plain `type_id` units record in `tenant`, registering it (and
+/// the registry) on first use. Runs in its own `ADMIN` tx.
+fun variant_for(scenario: &mut ts::Scenario, tenant: String, type_id: u64, unit_volume: u64): ID {
+    ts::next_tx(scenario, ADMIN);
+    if (!ts::has_most_recent_shared<VariantRegistry>()) {
+        variant::init_for_testing(scenario.ctx());
+        ts::next_tx(scenario, ADMIN);
+    };
+    let mut registry = ts::take_shared<VariantRegistry>(scenario);
+    let key = variant::new_key(tenant, type_id, 0);
+    if (!registry.exists(key)) {
+        registry.register_for_testing(
+            tenant,
+            type_id,
+            0,
+            variant::units(),
+            unit_volume,
+            vector[],
+            vector[],
+            vector[],
+        );
+    };
+    let id = object::id_from_address(registry.derive_id(key));
+    ts::return_shared(registry);
+    id
+}
 
 /// Enable an action gated by the target's owner plus `item_req`. The owner
 /// signs with their `AccessCap` (enable is owner-gated); the same cap also
@@ -83,7 +114,8 @@ fun build_entity_with_inventory(
     e
 }
 
-/// Install the power grid on `e` if it is not there yet. Admin-only.
+/// Install the power grid on `e` if it is not there yet, with a Shell aboard so
+/// it can be switched on. Admin-only.
 fun install_grid(scenario: &mut ts::Scenario, e: &mut Entity, acl: &AdminACL) {
     if (e.has_component(power_grid::component_id())) return;
     let clock = clock::create_for_testing(scenario.ctx());
@@ -91,6 +123,17 @@ fun install_grid(scenario: &mut ts::Scenario, e: &mut Entity, acl: &AdminACL) {
     admin_service::verify_admin(&mut req, acl, scenario.ctx());
     e.complete_request(req);
     clock.destroy_for_testing();
+    let mut req = e.install(
+        COMMAND_MODULE_ID,
+        option::none(),
+        CommandModule {},
+        1,
+        internal::permit<CommandModule>(),
+        scenario.ctx(),
+    );
+    admin_service::verify_admin(&mut req, acl, scenario.ctx());
+    e.complete_request(req);
+    layout::install_with_shell_for_testing(e, acl, COMMAND_MODULE_ID, scenario.ctx());
 }
 
 /// Install the grid if needed, then the Inventory under `component_id`, connected
@@ -114,7 +157,6 @@ fun install_inventory(
         capacity,
         DRAW,
         power_grid::firm(),
-        power_grid::power(),
         0,
         0,
         &clock,
@@ -187,28 +229,28 @@ fun configure_default_actions(scenario: &mut ts::Scenario, e_id: ID, owner: addr
     enable(
         &mut e,
         b"bridge_in",
-        inventory::bridge_in_requirement(MODULE_ID, any, any, any),
+        inventory::bridge_in_requirement(MODULE_ID, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"bridge_out",
-        inventory::bridge_out_requirement(MODULE_ID, any, any, any),
+        inventory::bridge_out_requirement(MODULE_ID, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"deposit",
-        inventory::deposit_requirement(MODULE_ID, any, any, any),
+        inventory::deposit_requirement(MODULE_ID, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
     enable(
         &mut e,
         b"withdraw",
-        inventory::withdraw_requirement(MODULE_ID, any, any, any),
+        inventory::withdraw_requirement(MODULE_ID, any, any, any, any),
         &cap,
         scenario.ctx(),
     );
@@ -252,14 +294,29 @@ fun bridge_in(
     qty: u64,
     vol: u64,
 ) {
+    let record_id = variant_for(scenario, tenant(), type_id, vol);
+    bridge_in_record(scenario, e_id, owner, action, record_id, qty);
+}
+
+/// Bridge `qty` of the frozen variant `record_id` in through `action`.
+fun bridge_in_record(
+    scenario: &mut ts::Scenario,
+    e_id: ID,
+    owner: address,
+    action: vector<u8>,
+    record_id: ID,
+    qty: u64,
+) {
     ensure_admin_sponsors(scenario);
     next_tx_owner_signs_admin_pays(scenario, owner);
     let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
+    let record = ts::take_immutable_by_id<Variant>(scenario, record_id);
     let mut req = e.interact(string::utf8(action), scenario.ctx());
     e.verify_owner(&mut req, &cap);
-    inventory::game_item_to_chain_inventory(&mut e, &mut req, type_id, qty, vol);
+    inventory::game_item_to_chain_inventory(&mut e, &mut req, &record, qty);
+    ts::return_immutable(record);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     grid_load::assert_online(&mut e, &mut req, &clock);
@@ -285,7 +342,7 @@ fun bridge_out(
     let acl = take_acl(scenario);
     let mut req = e.interact(string::utf8(action), scenario.ctx());
     e.verify_owner(&mut req, &cap);
-    inventory::chain_item_to_game_inventory(&mut e, &mut req, type_id, qty);
+    inventory::chain_item_to_game_inventory(&mut e, &mut req, key_of(type_id), qty);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     grid_load::assert_online(&mut e, &mut req, &clock);
@@ -294,6 +351,38 @@ fun bridge_out(
     ts::return_to_sender(scenario, cap);
     ts::return_shared(acl);
     ts::return_shared(e);
+}
+
+/// Admin docks the shared `chaser_id` at the shared `target_id` (both sides), in its own tx.
+fun dock_at(scenario: &mut ts::Scenario, target_id: ID, chaser_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut target = ts::take_shared_by_id<Entity>(scenario, target_id);
+    let mut chaser = ts::take_shared_by_id<Entity>(scenario, chaser_id);
+    let acl = take_acl(scenario);
+    let (mut target_req, mut chaser_req) = target.dock(&mut chaser);
+    admin_service::verify_admin(&mut target_req, &acl, scenario.ctx());
+    admin_service::verify_admin(&mut chaser_req, &acl, scenario.ctx());
+    target.complete_request(target_req);
+    chaser.complete_request(chaser_req);
+    ts::return_shared(acl);
+    ts::return_shared(chaser);
+    ts::return_shared(target);
+}
+
+/// Admin undocks the shared `chaser_id` from the shared `target_id` (both sides), in its own tx.
+fun undock_from(scenario: &mut ts::Scenario, target_id: ID, chaser_id: ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut target = ts::take_shared_by_id<Entity>(scenario, target_id);
+    let mut chaser = ts::take_shared_by_id<Entity>(scenario, chaser_id);
+    let acl = take_acl(scenario);
+    let (mut target_req, mut chaser_req) = target.undock(&mut chaser);
+    admin_service::verify_admin(&mut target_req, &acl, scenario.ctx());
+    admin_service::verify_admin(&mut chaser_req, &acl, scenario.ctx());
+    target.complete_request(target_req);
+    chaser.complete_request(chaser_req);
+    ts::return_shared(acl);
+    ts::return_shared(chaser);
+    ts::return_shared(target);
 }
 
 fun deposit(
@@ -305,7 +394,7 @@ fun deposit(
 ) {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
     e.verify_owner(&mut req, cap);
-    inventory::deposit(e, &mut req, item, scenario.ctx());
+    inventory::deposit(e, &mut req, item);
     let clock = clock::create_for_testing(scenario.ctx());
     grid_load::assert_online(e, &mut req, &clock);
     clock.destroy_for_testing();
@@ -322,7 +411,7 @@ fun withdraw(
 ): Item {
     let mut req = e.interact(string::utf8(action), scenario.ctx());
     e.verify_owner(&mut req, cap);
-    let item = inventory::withdraw(e, &mut req, type_id, qty, scenario.ctx());
+    let item = inventory::withdraw(e, &mut req, key_of(type_id), qty, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     grid_load::assert_online(e, &mut req, &clock);
     clock.destroy_for_testing();
@@ -330,7 +419,42 @@ fun withdraw(
     item
 }
 
-/// Install a generator and fuel bay, fill the pool, and grant `MODULE_ID`.
+fun deposit_batch(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    cap: &AccessCap,
+    action: vector<u8>,
+    items: vector<Item>,
+) {
+    let mut req = e.interact(string::utf8(action), scenario.ctx());
+    e.verify_owner(&mut req, cap);
+    inventory::deposit_batch(e, &mut req, items);
+    let clock = clock::create_for_testing(scenario.ctx());
+    grid_load::assert_online(e, &mut req, &clock);
+    clock.destroy_for_testing();
+    e.complete_request(req);
+}
+
+fun withdraw_batch(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    cap: &AccessCap,
+    action: vector<u8>,
+    type_ids: vector<u64>,
+    quantities: vector<u64>,
+): vector<Item> {
+    let mut req = e.interact(string::utf8(action), scenario.ctx());
+    e.verify_owner(&mut req, cap);
+    let keys = type_ids.map!(|type_id| key_of(type_id));
+    let items = inventory::withdraw_batch(e, &mut req, keys, quantities, scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    grid_load::assert_online(e, &mut req, &clock);
+    clock.destroy_for_testing();
+    e.complete_request(req);
+    items
+}
+
+/// Install a generator and fuel bay, fuel the bay, and grant `MODULE_ID`.
 fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) {
     ts::next_tx(scenario, ADMIN);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
@@ -340,9 +464,11 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
         &mut entity,
         GENERATOR_ID,
         option::none(),
+        7,
+        vector[],
         10,
-        10,
-        1,
+        100_000_000_000,
+        5_000_000_000,
         &clock,
         scenario.ctx(),
     );
@@ -352,7 +478,8 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
         &mut entity,
         FUEL_BAY_ID,
         option::none(),
-        1_000,
+        1_000 * grid_scenario::kg(),
+        0,
         &clock,
         scenario.ctx(),
     );
@@ -383,14 +510,31 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     ts::return_to_sender(scenario, cap);
     ts::return_shared(entity);
 
+    let fuel_id = grid_scenario::fuel_variant(
+        scenario,
+        7,
+        90_000_000_000,
+        14_000_000_000,
+        5_000_000_000,
+        0,
+    );
     ensure_admin_sponsors(scenario);
     next_tx_owner_signs_admin_pays(scenario, owner);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
     let cap = ts::take_from_sender<AccessCap>(scenario);
     let acl = take_acl(scenario);
+    let fuel = ts::take_immutable_by_id<Variant>(scenario, fuel_id);
     let clock = clock::create_for_testing(scenario.ctx());
     let mut req = entity.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
-    grid_fuel::deposit_fuel(&mut entity, &mut req, 7, 100, 90, 14, &clock);
+    grid_fuel::deposit_fuel(
+        &mut entity,
+        &mut req,
+        FUEL_BAY_ID,
+        &fuel,
+        100 * grid_scenario::kg(),
+        &clock,
+    );
+    ts::return_immutable(fuel);
     entity.verify_owner(&mut req, &cap);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
     entity.complete_request(req);
@@ -399,6 +543,9 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
     ts::return_shared(acl);
     ts::return_shared(entity);
 
+    run_operate_grid!(scenario, entity_id, owner, |entity, req, clock| {
+        grid_fuel::set_fuel_bay(entity, req, FUEL_BAY_ID, true, clock);
+    });
     run_operate_grid!(scenario, entity_id, owner, |entity, req, clock| {
         power_grid::set_power_grid(entity, req, true, clock);
     });
@@ -562,22 +709,110 @@ fun owner_interaction_inventory() {
     power_inventory(&mut scenario, e_id, OWNER);
 
     bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 100, VOL); // used 200, bal 100
+    let minted = event::events_by_type<item::ItemMinted>();
+    assert!(minted.length() == 1);
+    let (key, quantity, entity_id, component_id, balance_after, used_after) = item::minted_fields(
+        &minted[0],
+    );
+    assert!(key == key_of(FUEL) && quantity == 100);
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(balance_after == 100 && used_after == 200);
+
     bridge_out(&mut scenario, e_id, OWNER, b"bridge_out", FUEL, 50); // used 100, bal 50
+    let burned = event::events_by_type<item::ItemBurned>();
+    assert!(burned.length() == 1);
+    let (key, quantity, entity_id, component_id, balance_after, used_after) = item::burned_fields(
+        &burned[0],
+    );
+    assert!(key == key_of(FUEL) && quantity == 50);
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(balance_after == 50 && used_after == 100);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
     let item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 20); // used 60, bal 30
     assert!(item.quantity() == 20);
+    let transit_id = object::id(&item);
     deposit(&mut scenario, &mut e, &cap, b"deposit", item); // used 100, bal 50
 
     assert!(inv(&e).used() == 100);
-    assert!(inv(&e).items().balance(FUEL) == 50);
+    assert!(inv(&e).items().balance(key_of(FUEL)) == 50);
+
+    let withdrawn = event::events_by_type<item::ItemWithdrawn>();
+    assert!(withdrawn.length() == 1);
+    let (
+        key,
+        quantity,
+        entity_id,
+        component_id,
+        out_transit,
+        balance_after,
+        used_after,
+    ) = item::withdrawn_fields(&withdrawn[0]);
+    assert!(key == key_of(FUEL) && quantity == 20);
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(out_transit == transit_id);
+    assert!(balance_after == 30 && used_after == 60);
+
+    let deposited = event::events_by_type<item::ItemDeposited>();
+    assert!(deposited.length() == 1);
+    let (
+        key,
+        quantity,
+        entity_id,
+        component_id,
+        in_transit,
+        balance_after,
+        used_after,
+    ) = item::deposited_fields(&deposited[0]);
+    assert!(key == key_of(FUEL) && quantity == 20);
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(in_transit == transit_id);
+    assert!(balance_after == 50 && used_after == 100);
 
     ts::return_to_sender(&scenario, cap);
     ts::return_shared(e);
     scenario.end();
+}
+
+/// Shared entity holding 10 FUEL, so its `used` is exactly `10 * VOL`.
+fun entity_with_ten_fuel(scenario: &mut ts::Scenario): ID {
+    setup(scenario);
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let e = build_entity_with_inventory(scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(scenario, e_id, OWNER);
+    power_inventory(scenario, e_id, OWNER);
+    bridge_in(scenario, e_id, OWNER, b"bridge_in", FUEL, 10, VOL);
+    e_id
+}
+
+// Over-balance must hit the balance check, not underflow `used`.
+#[test, expected_failure(abort_code = item::EInsufficientQuantity)]
+fun bridge_out_over_balance_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    bridge_out(&mut scenario, e_id, OWNER, b"bridge_out", FUEL, 11);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = item::EInsufficientQuantity)]
+fun withdraw_over_balance_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 11);
+
+    abort
 }
 
 #[test, expected_failure(abort_code = access_cap::ENotOwner)]
@@ -621,14 +856,16 @@ fun bridge_in_by_owner_without_sponsor_aborts() {
     ts::return_shared(acl);
     ts::return_shared(registry);
     configure_default_actions(&mut scenario, e_id, OWNER);
+    let fuel_id = variant_for(&mut scenario, tenant(), FUEL, VOL);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
     let acl = take_acl(&scenario);
+    let fuel = ts::take_immutable_by_id<Variant>(&scenario, fuel_id);
     let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
     e.verify_owner(&mut req, &cap);
-    inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 10, VOL);
+    inventory::game_item_to_chain_inventory(&mut e, &mut req, &fuel, 10);
     admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
 
     abort
@@ -687,12 +924,14 @@ fun swap_moves_items_between_two_entities() {
             inventory::deposit_requirement(
                 MODULE_ID,
                 option::some(FUEL),
+                option::none(),
                 option::some(1),
                 option::some(1),
             ),
             inventory::withdraw_requirement(
                 MODULE_ID,
                 option::some(LENS),
+                option::none(),
                 option::some(1),
                 option::some(1),
             ),
@@ -702,9 +941,11 @@ fun swap_moves_items_between_two_entities() {
     // Admin bridges a FUEL onto entity_b. The call needs the entity cap and an admin.
     bridge_in(&mut scenario, entity_b_id, player_b, b"bridge_in", FUEL, 1, VOL);
 
-    // B's ship (entity_b) docks at entity_a and swaps in one tx.
+    // B's ship (entity_b) docks at entity_a. Docking records both sides, so entity_a
+    // accepts FUEL from entity_b and entity_b accepts the LENS from entity_a.
+    dock_at(&mut scenario, entity_a_id, entity_b_id);
+
     ts::next_tx(&mut scenario, player_b);
-    docking::dock_for_testing(entity_b_id, entity_a_id, character_id(), scenario.ctx());
     let mut entity_b = ts::take_shared_by_id<Entity>(&scenario, entity_b_id);
     let cap_b = ts::take_from_sender<AccessCap>(&scenario);
     let fuel = withdraw(&mut scenario, &mut entity_b, &cap_b, b"withdraw", FUEL, 1);
@@ -712,9 +953,9 @@ fun swap_moves_items_between_two_entities() {
     let mut entity_a = ts::take_shared_by_id<Entity>(&scenario, entity_a_id);
     let mut req = entity_a.interact(string::utf8(b"swap"), scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    inventory::deposit(&mut entity_a, &mut req, fuel, scenario.ctx());
+    inventory::deposit(&mut entity_a, &mut req, fuel);
     grid_load::assert_online(&mut entity_a, &mut req, &clock);
-    let lens = inventory::withdraw(&mut entity_a, &mut req, LENS, 1, scenario.ctx());
+    let lens = inventory::withdraw(&mut entity_a, &mut req, key_of(LENS), 1, scenario.ctx());
     grid_load::assert_online(&mut entity_a, &mut req, &clock);
     clock.destroy_for_testing();
     entity_a.complete_request(req);
@@ -722,10 +963,24 @@ fun swap_moves_items_between_two_entities() {
     deposit(&mut scenario, &mut entity_b, &cap_b, b"deposit", lens);
     ts::return_to_sender(&scenario, cap_b);
 
-    assert!(inv(&entity_a).items().balance(FUEL) == 1);
-    assert!(inv(&entity_a).items().balance(LENS) == 0);
-    assert!(inv(&entity_b).items().balance(LENS) == 1);
-    assert!(inv(&entity_b).items().balance(FUEL) == 0);
+    assert!(inv(&entity_a).items().balance(key_of(FUEL)) == 1);
+    assert!(inv(&entity_a).items().balance(key_of(LENS)) == 0);
+    assert!(inv(&entity_b).items().balance(key_of(LENS)) == 1);
+    assert!(inv(&entity_b).items().balance(key_of(FUEL)) == 0);
+
+    // `transit_id` pairs each withdrawal with its deposit.
+    let withdrawn = event::events_by_type<item::ItemWithdrawn>();
+    let deposited = event::events_by_type<item::ItemDeposited>();
+    assert!(withdrawn.length() == 2 && deposited.length() == 2);
+    let (fuel_key, _, fuel_from, _, fuel_transit, _, _) = item::withdrawn_fields(&withdrawn[0]);
+    let (_, _, fuel_to, _, fuel_landed, _, _) = item::deposited_fields(&deposited[0]);
+    let (lens_key, _, lens_from, _, lens_transit, _, _) = item::withdrawn_fields(&withdrawn[1]);
+    let (_, _, lens_to, _, lens_landed, _, _) = item::deposited_fields(&deposited[1]);
+    assert!(fuel_key == key_of(FUEL) && lens_key == key_of(LENS));
+    assert!(fuel_transit == fuel_landed && lens_transit == lens_landed);
+    assert!(fuel_transit != lens_transit);
+    assert!(fuel_from == entity_b_id && fuel_to == entity_a_id);
+    assert!(lens_from == entity_a_id && lens_to == entity_b_id);
 
     ts::return_shared(entity_a);
     ts::return_shared(entity_b);
@@ -746,13 +1001,43 @@ fun bridge_in_over_capacity_aborts() {
     ts::return_shared(acl);
     ts::return_shared(registry);
     configure_default_actions(&mut scenario, e_id, OWNER);
+    let fuel_id = variant_for(&mut scenario, tenant(), FUEL, VOL);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let fuel = ts::take_immutable_by_id<Variant>(&scenario, fuel_id);
     let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
     e.verify_owner(&mut req, &cap);
-    inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL, 60, VOL); // 120 > 100
+    inventory::game_item_to_chain_inventory(&mut e, &mut req, &fuel, 60); // 120 > 100
+
+    abort
+}
+
+/// A variant registered under another tenant cannot be bridged into this entity.
+#[test, expected_failure(abort_code = inventory::EWrongTenant)]
+fun bridge_in_other_tenant_variant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id, OWNER);
+    let fuel_id = variant_for(&mut scenario, string::utf8(b"OTHER"), FUEL, VOL);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let fuel = ts::take_immutable_by_id<Variant>(&scenario, fuel_id);
+    let mut req = e.interact(string::utf8(b"bridge_in"), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    inventory::game_item_to_chain_inventory(&mut e, &mut req, &fuel, 10);
 
     abort
 }
@@ -782,22 +1067,25 @@ fun bridge_in_wrong_type_aborts() {
                 option::some(FUEL),
                 option::none(),
                 option::none(),
+                option::none(),
             ),
         ]),
     );
+    let other_id = variant_for(&mut scenario, tenant(), FUEL + 1, VOL);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let other = ts::take_immutable_by_id<Variant>(&scenario, other_id);
     let mut req = e.interact(string::utf8(b"bridge_fuel"), scenario.ctx());
     e.verify_owner(&mut req, &cap);
-    inventory::game_item_to_chain_inventory(&mut e, &mut req, FUEL + 1, 10, VOL);
+    inventory::game_item_to_chain_inventory(&mut e, &mut req, &other, 10);
 
     abort
 }
 
 #[test]
-fun uninstall_burns_inventory() {
+fun uninstall_destroys_inventory() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
@@ -820,13 +1108,28 @@ fun uninstall_burns_inventory() {
     uninstall_inventory(&mut scenario, &mut e, &acl, MODULE_ID);
     assert!(!e.has_component(MODULE_ID));
 
-    // The marker carries the whole `used` total and arrives ahead of the burns.
     let torn_down = event::events_by_type<inventory::InventoryUninstalled>();
     assert!(torn_down.length() == 1);
-    let (entity_id, component_id, used_before) = inventory::uninstalled_fields(&torn_down[0]);
+    let (
+        entity_id,
+        component_id,
+        used_before,
+        balance_count,
+        batch_count,
+    ) = inventory::uninstalled_fields(&torn_down[0]);
     assert!(entity_id == e_id && component_id == MODULE_ID);
-    assert!(used_before == 200);
-    assert!(event::events_by_type<item::ItemBurned>().length() == 1);
+    assert!(used_before == 200 && balance_count == 1 && batch_count == 1);
+
+    let destroyed = event::events_by_type<item::ItemsDestroyed>();
+    assert!(destroyed.length() == 1);
+    let (entity_id, component_id, batch_index, balances) = item::items_destroyed_fields(
+        &destroyed[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID && batch_index == 0);
+    assert!(balances.length() == 1);
+    let (key, quantity, volume) = item::destroyed_balance_fields(&balances[0]);
+    assert!(key == key_of(FUEL) && quantity == 100 && volume == 100 * VOL);
+    assert!(event::events_by_type<item::ItemBurned>().is_empty());
 
     ts::return_shared(acl);
     ts::return_shared(e);
@@ -875,7 +1178,9 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
 
     let torn_down = event::events_by_type<inventory::InventoryUninstalled>();
     assert!(torn_down.length() == 1);
-    let (torn_entity, torn_component, used_before) = inventory::uninstalled_fields(&torn_down[0]);
+    let (torn_entity, torn_component, used_before, _, _) = inventory::uninstalled_fields(
+        &torn_down[0],
+    );
     assert!(torn_entity == e_id && torn_component == MODULE_ID);
     assert!(used_before == 200);
 
@@ -887,7 +1192,7 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
 
     assert!(inv(&e).capacity() == 500);
     assert!(inv(&e).used() == 0);
-    assert!(inventory::balance_of(&e, MODULE_ID, FUEL) == 0);
+    assert!(inventory::balance_of(&e, MODULE_ID, key_of(FUEL)) == 0);
     ts::return_shared(acl);
     ts::return_shared(e);
 
@@ -899,37 +1204,69 @@ fun reinstall_opens_a_new_epoch_under_the_same_component_id() {
     bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", LENS, 50, VOL);
     ts::next_tx(&mut scenario, OWNER);
     let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    assert!(inventory::balance_of(&e, MODULE_ID, LENS) == 50);
-    assert!(inventory::balance_of(&e, MODULE_ID, FUEL) == 0);
+    assert!(inventory::balance_of(&e, MODULE_ID, key_of(LENS)) == 50);
+    assert!(inventory::balance_of(&e, MODULE_ID, key_of(FUEL)) == 0);
     assert!(inv(&e).used() == 100);
     ts::return_shared(e);
 
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = docking::ENoDocking)]
-fun withdraw_without_docking_aborts() {
+/// Moving items between two inventories on one entity needs no docking: the
+/// item's source is the entity it is deposited into.
+#[test]
+fun move_between_two_inventories_without_docking() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
     ts::next_tx(&mut scenario, ADMIN);
     let mut registry = take_registry(&scenario);
     let acl = take_acl(&scenario);
-    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let mut e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    install_inventory(
+        &mut scenario,
+        &mut e,
+        &acl,
+        MODULE_ID_2,
+        TYPE_ID,
+        option::some(string::utf8(b"SU-02")),
+        500,
+    );
     let e_id = e.id();
     e.share();
     ts::return_shared(acl);
     ts::return_shared(registry);
     configure_default_actions(&mut scenario, e_id, OWNER);
+    let any = option::none();
+    owner_enable(
+        &mut scenario,
+        e_id,
+        OWNER,
+        b"deposit_2",
+        action::new(vector[
+            access_cap::owner_requirement(),
+            inventory::deposit_requirement(MODULE_ID_2, any, any, any, any),
+        ]),
+    );
     power_inventory(&mut scenario, e_id, OWNER);
-    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    run_operate_grid!(&mut scenario, e_id, OWNER, |entity, req, clock| {
+        grid_load::set_desired_state(entity, req, MODULE_ID_2, true, clock);
+    });
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 10, VOL);
 
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
+    assert!(e.docked_entities().is_empty());
+    let fuel = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 4);
+    deposit(&mut scenario, &mut e, &cap, b"deposit_2", fuel);
 
-    abort
+    assert!(inv(&e).items().balance(key_of(FUEL)) == 6);
+    assert!(inventory::inventory(&e, MODULE_ID_2).items().balance(key_of(FUEL)) == 4);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
 }
 
 #[test, expected_failure(abort_code = grid_load::ENoGrant)]
@@ -953,77 +1290,13 @@ fun withdraw_without_power_aborts() {
     ts::next_tx(&mut scenario, OWNER);
     let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
     let cap = ts::take_from_sender<AccessCap>(&scenario);
-    docking::dock_for_testing(ship_id(), e_id, character_id(), scenario.ctx());
     let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
 
     abort
 }
 
-#[test]
-fun attested_docking_allows_withdraw_and_deposit() {
-    let mut scenario = ts::begin(ADMIN);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, ADMIN, 1000);
-    let e_id = e.id();
-    e.share();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
-    configure_default_actions(&mut scenario, e_id, ADMIN);
-    power_inventory(&mut scenario, e_id, ADMIN);
-    bridge_in(&mut scenario, e_id, ADMIN, b"bridge_in", FUEL, 1, VOL);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let acl = take_acl(&scenario);
-    docking::attest(&acl, scenario.ctx());
-    ts::return_shared(acl);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    let cap = ts::take_from_sender<AccessCap>(&scenario);
-    let item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
-    deposit(&mut scenario, &mut e, &cap, b"deposit", item);
-    assert!(inv(&e).items().balance(FUEL) == 1);
-    ts::return_to_sender(&scenario, cap);
-    ts::return_shared(e);
-
-    scenario.end();
-}
-
-#[test, expected_failure(abort_code = docking::ENotDocked)]
-fun withdraw_with_docking_of_another_pair_aborts() {
-    let mut scenario = ts::begin(ADMIN);
-    setup(&mut scenario);
-
-    ts::next_tx(&mut scenario, ADMIN);
-    let mut registry = take_registry(&scenario);
-    let acl = take_acl(&scenario);
-    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
-    let e_id = e.id();
-    e.share();
-    ts::return_shared(acl);
-    ts::return_shared(registry);
-    configure_default_actions(&mut scenario, e_id, OWNER);
-    power_inventory(&mut scenario, e_id, OWNER);
-    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 1, VOL);
-
-    ts::next_tx(&mut scenario, OWNER);
-    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
-    let cap = ts::take_from_sender<AccessCap>(&scenario);
-    docking::dock_for_testing(
-        ship_id(),
-        object::id_from_address(@0x6),
-        character_id(),
-        scenario.ctx(),
-    );
-    let _item = withdraw(&mut scenario, &mut e, &cap, b"withdraw", FUEL, 1);
-
-    abort
-}
-
-#[test, expected_failure(abort_code = docking::ENotDocked)]
-fun deposit_at_an_entity_outside_the_docking_aborts() {
+#[test, expected_failure(abort_code = entity::ENotDocked)]
+fun deposit_at_another_entity_with_nothing_docked_aborts() {
     let mut scenario = ts::begin(ADMIN);
     setup(&mut scenario);
 
@@ -1043,17 +1316,129 @@ fun deposit_at_an_entity_outside_the_docking_aborts() {
     power_inventory(&mut scenario, x_id, OWNER);
     bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
 
-    // X is docked at Y; Z is not part of the transaction's docking.
     ts::next_tx(&mut scenario, OWNER);
     let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
     let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
     let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
     let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
-    docking::dock_for_testing(x_id, ship_id(), character_id(), scenario.ctx());
     let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
     deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
 
     abort
+}
+
+/// X was docked at Z, then undocked, so Z no longer accepts items from X.
+#[test, expected_failure(abort_code = entity::ENotDocked)]
+fun deposit_at_another_entity_after_undock_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let z_id = z.id();
+    x.share();
+    z.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    dock_at(&mut scenario, z_id, x_id);
+    undock_from(&mut scenario, z_id, x_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
+    deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
+
+    abort
+}
+
+/// Z has something docked, but not X, so an item withdrawn from X can't be deposited at Z.
+#[test, expected_failure(abort_code = entity::EWrongSource)]
+fun deposit_from_an_undocked_source_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let z_id = z.id();
+    let ship = claim(&mut registry, &acl, 3, scenario.ctx());
+    let ship_id = ship.id();
+    x.share();
+    z.share();
+    ship.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    dock_at(&mut scenario, z_id, ship_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
+    deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
+
+    abort
+}
+
+/// Z has X docked, so an item withdrawn from X can be deposited at Z.
+#[test]
+fun deposit_from_a_docked_source() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let z_id = z.id();
+    x.share();
+    z.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    power_inventory(&mut scenario, z_id, PLAYER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 1, VOL);
+    dock_at(&mut scenario, z_id, x_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let x_cap = ts::take_from_address<AccessCap>(&scenario, OWNER);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    let fuel = withdraw(&mut scenario, &mut x, &x_cap, b"withdraw", FUEL, 1);
+    deposit(&mut scenario, &mut z, &z_cap, b"deposit", fuel);
+
+    assert!(inv(&x).items().balance(key_of(FUEL)) == 0);
+    assert!(inv(&z).items().balance(key_of(FUEL)) == 1);
+
+    ts::return_to_address(OWNER, x_cap);
+    ts::return_to_address(PLAYER, z_cap);
+    ts::return_shared(x);
+    ts::return_shared(z);
+    scenario.end();
 }
 
 /// Installing the Inventory connects it to the grid. Uninstalling disconnects
@@ -1105,7 +1490,6 @@ fun install_without_grid_aborts() {
         1000,
         1,
         power_grid::firm(),
-        power_grid::power(),
         0,
         0,
         &clock,
@@ -1176,12 +1560,25 @@ fun migrate_moves_inventory_with_its_items() {
     migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
 
     assert!(event::events_by_type<item::ItemBurned>().is_empty());
+    let migrated = event::events_by_type<inventory::InventoryMigrated>();
+    assert!(migrated.length() == 1);
+    let (
+        from_entity,
+        to_entity,
+        component_id,
+        inventory_type_id,
+        capacity,
+        used,
+    ) = inventory::migrated_fields(&migrated[0]);
+    assert!(from_entity == from_id && to_entity == to_id && component_id == MODULE_ID);
+    assert!(inventory_type_id == TYPE_ID);
+    assert!(capacity == 1000 && used == 100 * VOL);
     ts::next_tx(&mut scenario, ADMIN);
     let from = ts::take_shared_by_id<Entity>(&scenario, from_id);
     let to = ts::take_shared_by_id<Entity>(&scenario, to_id);
     assert!(!from.has_component(MODULE_ID));
     assert!(inv(&to).used() == 100 * VOL);
-    assert!(inv(&to).items().balance(FUEL) == 100);
+    assert!(inv(&to).items().balance(key_of(FUEL)) == 100);
     assert!(inv(&to).capacity() == 1000);
     assert!(inventory::type_id(inv(&to)) == TYPE_ID);
     assert!(power_grid::power_grid(&to).module_state(MODULE_ID).desired_online());
@@ -1219,5 +1616,923 @@ fun migrate_across_tenants_aborts() {
 
     migrate_inventory(&mut scenario, from_id, to_id, MODULE_ID);
 
+    abort
+}
+
+// === Batched withdraw / deposit ===
+
+/// Entry `i` of a batch is `(key_of(type_id), quantity, transit_id, balance_after, used_after)`.
+fun assert_moved(
+    entry: &item::MovedBalance,
+    type_id: u64,
+    quantity: u64,
+    transit_id: ID,
+    balance_after: u64,
+    used_after: u64,
+) {
+    let (t, q, id, bal, used) = item::moved_balance_fields(entry);
+    assert!(t == key_of(type_id) && q == quantity && id == transit_id);
+    assert!(bal == balance_after && used == used_after);
+}
+
+#[test]
+fun batch_withdraw_and_deposit_round_trip() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario); // FUEL 10, used 20
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", LENS, 5, VOL); // used 30
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+
+    // A repeated type is applied in order, so its `balance_after` steps down.
+    let items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw",
+        vector[FUEL, LENS, FUEL],
+        vector[4, 2, 3],
+    );
+    assert!(items.length() == 3);
+    let t0 = object::id(&items[0]);
+    let t1 = object::id(&items[1]);
+    let t2 = object::id(&items[2]);
+    assert!(items[0].key() == key_of(FUEL) && items[0].quantity() == 4);
+    assert!(items[1].key() == key_of(LENS) && items[1].quantity() == 2);
+    assert!(items[2].key() == key_of(FUEL) && items[2].quantity() == 3);
+
+    let withdrawn = event::events_by_type<item::ItemsWithdrawn>();
+    assert!(withdrawn.length() == 1);
+    let (entity_id, component_id, batch_index, batch_count, entries) = item::items_withdrawn_fields(
+        &withdrawn[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(batch_index == 0 && batch_count == 1 && entries.length() == 3);
+    assert_moved(&entries[0], FUEL, 4, t0, 6, 22);
+    assert_moved(&entries[1], LENS, 2, t1, 3, 18);
+    assert_moved(&entries[2], FUEL, 3, t2, 3, 12);
+    assert!(event::events_by_type<item::ItemWithdrawn>().is_empty());
+
+    deposit_batch(&mut scenario, &mut e, &cap, b"deposit", items);
+    assert!(inv(&e).used() == 30);
+    assert!(
+        inv(&e).items().balance(key_of(FUEL)) == 10 && inv(&e).items().balance(key_of(LENS)) == 5,
+    );
+
+    // Each deposit entry carries the `transit_id` of the withdrawal it completes.
+    let deposited = event::events_by_type<item::ItemsDeposited>();
+    assert!(deposited.length() == 1);
+    let (entity_id, component_id, batch_index, batch_count, entries) = item::items_deposited_fields(
+        &deposited[0],
+    );
+    assert!(entity_id == e_id && component_id == MODULE_ID);
+    assert!(batch_index == 0 && batch_count == 1 && entries.length() == 3);
+    assert_moved(&entries[0], FUEL, 4, t0, 7, 20);
+    assert_moved(&entries[1], LENS, 2, t1, 5, 24);
+    assert_moved(&entries[2], FUEL, 3, t2, 10, 30);
+    assert!(event::events_by_type<item::ItemDeposited>().is_empty());
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = inventory::EBatchLengthMismatch)]
+fun withdraw_batch_length_mismatch_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let _items = withdraw_batch(&mut scenario, &mut e, &cap, b"withdraw", vector[FUEL], vector[]);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = inventory::EEmptyBatch)]
+fun withdraw_batch_empty_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let _items = withdraw_batch(&mut scenario, &mut e, &cap, b"withdraw", vector[], vector[]);
+
+    abort
+}
+
+/// An entry over the action's max aborts the batch.
+#[test, expected_failure(abort_code = inventory::EQuantityAboveMax)]
+fun withdraw_batch_entry_over_rule_max_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let small = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::none(),
+        option::none(),
+        option::none(),
+        option::some(3),
+    );
+    enable(&mut e, b"withdraw_small", small, &cap, scenario.ctx());
+    let _items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw_small",
+        vector[FUEL, FUEL],
+        vector[2, 4],
+    );
+
+    abort
+}
+
+/// Capacity is checked against the batch's total volume.
+/// One requirement's max bounds the batch's total, even when every entry fits.
+#[test, expected_failure(abort_code = inventory::EQuantityAboveMax)]
+fun withdraw_batch_total_over_rule_max_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let small = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::none(),
+        option::none(),
+        option::none(),
+        option::some(3),
+    );
+    enable(&mut e, b"withdraw_small", small, &cap, scenario.ctx());
+    let _items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw_small",
+        vector[FUEL, FUEL],
+        vector[2, 2],
+    );
+
+    abort
+}
+
+#[test]
+fun withdraw_batch_total_at_rule_max_succeeds() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let small = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::none(),
+        option::none(),
+        option::some(4),
+        option::some(4),
+    );
+    enable(&mut e, b"withdraw_four", small, &cap, scenario.ctx());
+    // Each entry is below the min of 4; only the total has to meet it.
+    let items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw_four",
+        vector[FUEL, FUEL],
+        vector[2, 2],
+    );
+    assert!(inv(&e).items().balance(key_of(FUEL)) == 6);
+    deposit_batch(&mut scenario, &mut e, &cap, b"deposit", items);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = inventory::EItemTypeNotAllowed)]
+fun withdraw_batch_entry_wrong_type_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", LENS, 5, VOL);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let fuel_only = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::some(FUEL),
+        option::none(),
+        option::none(),
+        option::none(),
+    );
+    enable(&mut e, b"withdraw_fuel", fuel_only, &cap, scenario.ctx());
+    let _items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw_fuel",
+        vector[FUEL, LENS],
+        vector[1, 1],
+    );
+
+    abort
+}
+
+/// One requirement's max bounds the batch's total, even when every item fits.
+#[test, expected_failure(abort_code = inventory::EQuantityAboveMax)]
+fun deposit_batch_total_over_rule_max_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    let e_id = entity_with_ten_fuel(&mut scenario);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let small = inventory::deposit_requirement(
+        MODULE_ID,
+        option::none(),
+        option::none(),
+        option::none(),
+        option::some(3),
+    );
+    enable(&mut e, b"deposit_small", small, &cap, scenario.ctx());
+    let items = withdraw_batch(
+        &mut scenario,
+        &mut e,
+        &cap,
+        b"withdraw",
+        vector[FUEL, FUEL],
+        vector[2, 2],
+    );
+    deposit_batch(&mut scenario, &mut e, &cap, b"deposit_small", items);
+
+    abort
+}
+
+/// A one-FUEL-for-one-LENS swap cannot pay out several LENS through one batch.
+#[test, expected_failure(abort_code = inventory::EQuantityAboveMax)]
+fun swap_batch_withdraw_cannot_exceed_payment() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let entity_a = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let entity_a_id = entity_a.id();
+    let entity_b = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let entity_b_id = entity_b.id();
+    entity_a.share();
+    entity_b.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+
+    configure_default_actions(&mut scenario, entity_a_id, OWNER);
+    configure_default_actions(&mut scenario, entity_b_id, PLAYER);
+    power_inventory(&mut scenario, entity_a_id, OWNER);
+    power_inventory(&mut scenario, entity_b_id, PLAYER);
+    bridge_in(&mut scenario, entity_a_id, OWNER, b"bridge_in", LENS, 3, VOL);
+    owner_enable(
+        &mut scenario,
+        entity_a_id,
+        OWNER,
+        b"swap",
+        action::new(vector[
+            inventory::deposit_requirement(
+                MODULE_ID,
+                option::some(FUEL),
+                option::none(),
+                option::some(1),
+                option::some(1),
+            ),
+            inventory::withdraw_requirement(
+                MODULE_ID,
+                option::some(LENS),
+                option::none(),
+                option::some(1),
+                option::some(1),
+            ),
+        ]),
+    );
+    bridge_in(&mut scenario, entity_b_id, PLAYER, b"bridge_in", FUEL, 1, VOL);
+
+    dock_at(&mut scenario, entity_a_id, entity_b_id);
+
+    ts::next_tx(&mut scenario, PLAYER);
+    let mut entity_b = ts::take_shared_by_id<Entity>(&scenario, entity_b_id);
+    let cap_b = ts::take_from_sender<AccessCap>(&scenario);
+    let fuel = withdraw(&mut scenario, &mut entity_b, &cap_b, b"withdraw", FUEL, 1);
+
+    let mut entity_a = ts::take_shared_by_id<Entity>(&scenario, entity_a_id);
+    let mut req = entity_a.interact(string::utf8(b"swap"), scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    inventory::deposit(&mut entity_a, &mut req, fuel);
+    grid_load::assert_online(&mut entity_a, &mut req, &clock);
+    let _lens = inventory::withdraw_batch(
+        &mut entity_a,
+        &mut req,
+        vector[key_of(LENS), key_of(LENS), key_of(LENS)],
+        vector[1, 1, 1],
+        scenario.ctx(),
+    );
+
+    abort
+}
+
+#[test, expected_failure(abort_code = entity::ENotDocked)]
+fun deposit_batch_from_undocked_entity_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 1000);
+    let z_id = z.id();
+    x.share();
+    z.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    power_inventory(&mut scenario, z_id, PLAYER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 20, VOL);
+
+    // X and Z are never docked, so Z refuses X's items.
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let x_cap = ts::take_from_sender<AccessCap>(&scenario);
+    let items = withdraw_batch(
+        &mut scenario,
+        &mut x,
+        &x_cap,
+        b"withdraw",
+        vector[FUEL, FUEL],
+        vector[2, 2],
+    );
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    deposit_batch(&mut scenario, &mut z, &z_cap, b"deposit", items);
+
+    abort
+}
+
+#[test, expected_failure(abort_code = inventory::EOverCapacity)]
+fun deposit_batch_over_capacity_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let x = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 1000);
+    let x_id = x.id();
+    let z = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 2, PLAYER, 30);
+    let z_id = z.id();
+    x.share();
+    z.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, x_id, OWNER);
+    configure_default_actions(&mut scenario, z_id, PLAYER);
+    power_inventory(&mut scenario, x_id, OWNER);
+    power_inventory(&mut scenario, z_id, PLAYER);
+    bridge_in(&mut scenario, x_id, OWNER, b"bridge_in", FUEL, 20, VOL);
+
+    // 8 + 8 units at VOL 2 is 32 volume against Z's 30; each half alone fits.
+    dock_at(&mut scenario, z_id, x_id);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let mut x = ts::take_shared_by_id<Entity>(&scenario, x_id);
+    let x_cap = ts::take_from_sender<AccessCap>(&scenario);
+    let items = withdraw_batch(
+        &mut scenario,
+        &mut x,
+        &x_cap,
+        b"withdraw",
+        vector[FUEL, FUEL],
+        vector[8, 8],
+    );
+    let mut z = ts::take_shared_by_id<Entity>(&scenario, z_id);
+    let z_cap = ts::take_from_address<AccessCap>(&scenario, PLAYER);
+    deposit_batch(&mut scenario, &mut z, &z_cap, b"deposit", items);
+
+    abort
+}
+
+/// A mass variant takes space per kg: at 1/8000 m³ per kg (density 8,000 kg/m³),
+/// 12.5 kg is 0.0015625 m³ (1,562,500 nano-m³), and the stack rounds once.
+#[test]
+fun bridge_in_mass_variant_sizes_per_kg() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    ts::next_tx(&mut scenario, ADMIN);
+    let mut registry = take_registry(&scenario);
+    let acl = take_acl(&scenario);
+    let e = build_entity_with_inventory(&mut scenario, &mut registry, &acl, 1, OWNER, 10_000_000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(&mut scenario, e_id, OWNER);
+    power_inventory(&mut scenario, e_id, OWNER);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    if (!ts::has_most_recent_shared<VariantRegistry>()) {
+        variant::init_for_testing(scenario.ctx());
+        ts::next_tx(&mut scenario, ADMIN);
+    };
+    let mut variants = ts::take_shared<VariantRegistry>(&scenario);
+    let ore = variants.register_for_testing(
+        tenant(),
+        FUEL,
+        1,
+        variant::mass(),
+        125_000,
+        vector[],
+        vector[],
+        vector[],
+    );
+    ts::return_shared(variants);
+
+    bridge_in_record(&mut scenario, e_id, OWNER, b"bridge_in", ore, 12_500_000_000);
+    let (_, _, _, _, balance_after, used_after) = item::minted_fields(
+        &event::events_by_type<item::ItemMinted>()[0],
+    );
+    assert!(balance_after == 12_500_000_000 && used_after == 1_562_500);
+
+    scenario.end();
+}
+
+// === deposit_fuel_item ===
+
+/// The fuel `power_inventory` loads: type 7, impulse 90, burden 14, volatility 5.
+fun default_fuel(scenario: &mut ts::Scenario): ID {
+    grid_scenario::fuel_variant(scenario, 7, 90_000_000_000, 14_000_000_000, 5_000_000_000, 0)
+}
+
+/// A powered storage unit with a fuel bay, holding `kgs` kg of the default fuel.
+fun fuelled_unit(scenario: &mut ts::Scenario, kgs: u64): ID {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let e = build_entity_with_inventory(scenario, &mut registry, &acl, 1, OWNER, 1_000_000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(scenario, e_id, OWNER);
+    power_inventory(scenario, e_id, OWNER);
+    let fuel = default_fuel(scenario);
+    bridge_in_record(scenario, e_id, OWNER, b"bridge_in", fuel, kgs * grid_scenario::kg());
+    e_id
+}
+
+/// In one sponsored owner transaction: withdraw `qty` (base units) of `stock`, then burn it
+/// into the fuel bay naming `record` as its variant. `sponsored` false skips the
+/// game service as gas sponsor; `owner_signs` false skips the owner on the burn.
+fun burn_fuel(
+    scenario: &mut ts::Scenario,
+    e_id: ID,
+    stock: ID,
+    record: ID,
+    qty: u64,
+    sponsored: bool,
+    owner_signs: bool,
+) {
+    ensure_admin_sponsors(scenario);
+    if (sponsored) next_tx_owner_signs_admin_pays(scenario, OWNER)
+    else {
+        // A fresh context: a plain `next_tx` keeps the previous sponsor.
+        let epoch = scenario.ctx().epoch();
+        let timestamp = scenario.ctx().epoch_timestamp_ms();
+        let rgp = scenario.ctx().reference_gas_price();
+        let builder = ts::ctx_builder_from_sender(OWNER)
+            .set_epoch(epoch)
+            .set_epoch_timestamp(timestamp)
+            .set_reference_gas_price(rgp);
+        ts::next_with_context(scenario, builder);
+    };
+    let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let acl = take_acl(scenario);
+    let held = ts::take_immutable_by_id<Variant>(scenario, stock);
+    // The same frozen record can be taken only once per transaction.
+    let other = if (record != stock)
+        option::some(ts::take_immutable_by_id<Variant>(scenario, record)) else option::none();
+    let named = other.borrow_with_default(&held);
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let mut req = e.interact(string::utf8(b"withdraw"), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    let item = inventory::withdraw(&mut e, &mut req, held.key(), qty, scenario.ctx());
+    grid_load::assert_online(&mut e, &mut req, &clock);
+    e.complete_request(req);
+
+    let mut req = e.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
+    inventory::deposit_fuel_item(&mut e, &mut req, item, named, FUEL_BAY_ID, &clock);
+    if (owner_signs) e.verify_owner(&mut req, &cap);
+    admin_service::verify_sponsor(&mut req, &acl, scenario.ctx());
+    e.complete_request(req);
+
+    clock.destroy_for_testing();
+    other.do!(|record| ts::return_immutable(record));
+    ts::return_immutable(held);
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(acl);
+    ts::return_shared(e);
+}
+
+#[test]
+fun deposit_fuel_item_burns_item_into_bay() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+
+    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), true, true);
+
+    let deposited = event::events_by_type<inventory::FuelItemDeposited>();
+    assert!(deposited.length() == 1);
+    let (_, key, quantity, entity_id, fuel_bay_id) = deposited[0].fuel_item_deposited_fields();
+    assert!(key.type_id() == 7 && quantity == 3 * grid_scenario::kg());
+    assert!(entity_id == e_id && fuel_bay_id == FUEL_BAY_ID);
+    let added = event::events_by_type<grid_fuel::FuelAdded>();
+    let (_, bay, fuel_type, amount, _, _, _, _, _) = added[0].fuel_added_fields();
+    assert!(bay == FUEL_BAY_ID && fuel_type == 7 && amount == 3 * grid_scenario::kg());
+
+    ts::next_tx(&mut scenario, OWNER);
+    let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    assert!(inventory::balance_of(&e, MODULE_ID, key) == 2 * grid_scenario::kg());
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = inventory::EWrongVariant)]
+fun deposit_fuel_item_with_other_variant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    let other = grid_scenario::fuel_variant(
+        &mut scenario,
+        7,
+        80_000_000_000,
+        14_000_000_000,
+        5_000_000_000,
+        0,
+    );
+    burn_fuel(&mut scenario, e_id, fuel, other, 3 * grid_scenario::kg(), true, true);
+    abort
+}
+
+#[test, expected_failure(abort_code = admin_service::EUnauthorizedSponsor)]
+fun deposit_fuel_item_without_sponsor_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), false, true);
+    abort
+}
+
+#[test, expected_failure(abort_code = power::fuel_properties::ENotMass)]
+fun deposit_fuel_item_of_counted_item_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    bridge_in(&mut scenario, e_id, OWNER, b"bridge_in", FUEL, 3, VOL);
+    let plain = variant_for(&mut scenario, tenant(), FUEL, VOL);
+    burn_fuel(&mut scenario, e_id, plain, plain, 3, true, true);
+    abort
+}
+
+/// The sponsor alone cannot load the fuel: the owner must sign the burn.
+#[test, expected_failure(abort_code = request::EWrongRequirementType)]
+fun deposit_fuel_item_without_owner_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    burn_fuel(&mut scenario, e_id, fuel, fuel, 3 * grid_scenario::kg(), true, false);
+    abort
+}
+
+/// Burn 3 kg of a made-up `Item` of `key` from `source` into the fuel bay, naming
+/// `record`. For checks that abort before the item's source is used.
+fun burn_made_up_item(
+    scenario: &mut ts::Scenario,
+    e_id: ID,
+    record: ID,
+    key: VariantKey,
+    source: ID,
+) {
+    ensure_admin_sponsors(scenario);
+    next_tx_owner_signs_admin_pays(scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
+    let fuel = ts::take_immutable_by_id<Variant>(scenario, record);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let qty = 3 * grid_scenario::kg();
+    let item = item::new_for_testing(
+        key,
+        qty,
+        fuel.unit_volume(),
+        fuel.decimals(),
+        source,
+        scenario.ctx(),
+    );
+    let mut req = e.interact(string::utf8(b"deposit_fuel"), scenario.ctx());
+    inventory::deposit_fuel_item(&mut e, &mut req, item, &fuel, FUEL_BAY_ID, &clock);
+    abort
+}
+
+/// An item from an entity that is not docked here cannot fuel this entity.
+#[test, expected_failure(abort_code = entity::ENotDocked)]
+fun deposit_fuel_item_from_undocked_entity_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    let elsewhere = object::id_from_address(@0x99);
+    burn_made_up_item(&mut scenario, e_id, fuel, variant::new_key(tenant(), 7, 0), elsewhere);
+    abort
+}
+
+/// An item of another tenant cannot fuel this entity.
+#[test, expected_failure(abort_code = inventory::EWrongTenant)]
+fun deposit_fuel_item_of_other_tenant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = fuelled_unit(&mut scenario, 5);
+    let fuel = default_fuel(&mut scenario);
+    let key = variant::new_key(string::utf8(b"OTHER"), 7, 0);
+    burn_made_up_item(&mut scenario, e_id, fuel, key, e_id);
+    abort
+}
+
+// === Builder property gate ===
+// This module stands in for a builder package: it defines its own requirement,
+// checks an item's variant property, then deposits that same item.
+
+#[error(code = 100)]
+const EGateBelowMin: vector<u8> = b"Item property is below the gate's minimum";
+#[error(code = 101)]
+const EGateWrongVariant: vector<u8> = b"Variant record is not the item's variant";
+
+const ORE: u64 = 777;
+const HARDNESS: u32 = 12;
+
+/// A builder's rule: accept only items whose `property_id` is at least `min` (at 1e9).
+public struct MinProperty has drop {
+    property_id: u32,
+    min: u64,
+}
+
+/// The builder's requirement type; only this module can satisfy it.
+public struct Gate(MinProperty) has drop;
+
+fun gate_requirement(property_id: u32, min: u64): Requirement {
+    requirement::from_config(option::none(), Gate(MinProperty { property_id, min }))
+}
+
+/// Builder handler, declared just before `Deposit` in the action: check `item` is
+/// `record`'s variant and meets the rule, then deposit that same `item`.
+fun gated_deposit(e: &mut Entity, req: &mut Request, item: Item, record: &Variant) {
+    let (rule, frame) = req.take_next(internal::permit<Gate>());
+    let mut config = bcs::new(rule.data());
+    let property_id = config.peel_u32();
+    let min = config.peel_u64();
+    assert!(item.key() == record.key(), EGateWrongVariant);
+    assert!(record.value_u64(property_id).destroy_or!(0) >= min, EGateBelowMin);
+    frame.destroy_empty_frame();
+    inventory::deposit(e, req, item);
+}
+
+/// A mass ore variant with `hardness` (at 1e9), registered in the test tenant.
+fun ore(scenario: &mut ts::Scenario, variant_id: u64, hardness: u128): ID {
+    ts::next_tx(scenario, ADMIN);
+    if (!ts::has_most_recent_shared<VariantRegistry>()) {
+        variant::init_for_testing(scenario.ctx());
+        ts::next_tx(scenario, ADMIN);
+    };
+    let mut variants = ts::take_shared<VariantRegistry>(scenario);
+    let id = variants.register_for_testing(
+        tenant(),
+        ORE,
+        variant_id,
+        variant::mass(),
+        1,
+        vector[HARDNESS],
+        vector[hardness],
+        vector[false],
+    );
+    ts::return_shared(variants);
+    id
+}
+
+/// A powered storage unit with a `gated_deposit` action (hardness >= 30) and 1 kg
+/// each of a hard (50) and a soft (10) ore. Returns `(entity, hard, soft)`.
+fun gated_unit(scenario: &mut ts::Scenario): (ID, ID, ID) {
+    ts::next_tx(scenario, ADMIN);
+    let mut registry = take_registry(scenario);
+    let acl = take_acl(scenario);
+    let e = build_entity_with_inventory(scenario, &mut registry, &acl, 1, OWNER, 1_000);
+    let e_id = e.id();
+    e.share();
+    ts::return_shared(acl);
+    ts::return_shared(registry);
+    configure_default_actions(scenario, e_id, OWNER);
+    power_inventory(scenario, e_id, OWNER);
+    let any = option::none();
+    owner_enable(
+        scenario,
+        e_id,
+        OWNER,
+        b"gated_deposit",
+        action::new(vector[
+            access_cap::owner_requirement(),
+            gate_requirement(HARDNESS, 30_000_000_000),
+            inventory::deposit_requirement(MODULE_ID, any, any, any, any),
+        ]),
+    );
+    let hard = ore(scenario, 1, 50_000_000_000);
+    let soft = ore(scenario, 2, 10_000_000_000);
+    let kg = grid_scenario::kg();
+    bridge_in_record(scenario, e_id, OWNER, b"bridge_in", hard, kg);
+    bridge_in_record(scenario, e_id, OWNER, b"bridge_in", soft, kg);
+    (e_id, hard, soft)
+}
+
+/// The owner withdraws 1 kg of `stock`, then puts it back through
+/// `gated_deposit`, presenting `record` as its variant.
+fun gate_flow(scenario: &mut ts::Scenario, e_id: ID, stock: ID, record: ID) {
+    ts::next_tx(scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(scenario);
+    let held = ts::take_immutable_by_id<Variant>(scenario, stock);
+    let other = if (record != stock)
+        option::some(ts::take_immutable_by_id<Variant>(scenario, record)) else option::none();
+    let presented = other.borrow_with_default(&held);
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let mut req = e.interact(string::utf8(b"withdraw"), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    let item = inventory::withdraw(
+        &mut e,
+        &mut req,
+        held.key(),
+        grid_scenario::kg(),
+        scenario.ctx(),
+    );
+    grid_load::assert_online(&mut e, &mut req, &clock);
+    e.complete_request(req);
+
+    let mut req = e.interact(string::utf8(b"gated_deposit"), scenario.ctx());
+    e.verify_owner(&mut req, &cap);
+    gated_deposit(&mut e, &mut req, item, presented);
+    grid_load::assert_online(&mut e, &mut req, &clock);
+    e.complete_request(req);
+
+    clock.destroy_for_testing();
+    other.do!(|record| ts::return_immutable(record));
+    ts::return_immutable(held);
+    ts::return_to_sender(scenario, cap);
+    ts::return_shared(e);
+}
+
+#[test]
+fun builder_gate_accepts_item_meeting_property() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let (e_id, hard, _) = gated_unit(&mut scenario);
+
+    gate_flow(&mut scenario, e_id, hard, hard);
+    // Events are per transaction: read them before the next one.
+    assert!(event::events_by_type<item::ItemDeposited>().length() == 1);
+
+    ts::next_tx(&mut scenario, OWNER);
+    let e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let key = variant::new_key(tenant(), ORE, 1);
+    assert!(inventory::balance_of(&e, MODULE_ID, key) == grid_scenario::kg());
+    ts::return_shared(e);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = EGateBelowMin)]
+fun builder_gate_refuses_item_below_property() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let (e_id, _, soft) = gated_unit(&mut scenario);
+    gate_flow(&mut scenario, e_id, soft, soft);
+    abort
+}
+
+/// Presenting a hard ore's record for a soft ore item can't get it through.
+#[test, expected_failure(abort_code = EGateWrongVariant)]
+fun builder_gate_refuses_another_variants_record() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let (e_id, hard, soft) = gated_unit(&mut scenario);
+    gate_flow(&mut scenario, e_id, soft, hard);
+    abort
+}
+
+// === Rules pinned to a variant ===
+
+/// `gated_unit` plus an owner-gated `action` whose item rule admits only `ORE`
+/// variant 1 (the hard ore).
+fun unit_with_hard_ore_rule(scenario: &mut ts::Scenario, action: vector<u8>, deposit: bool): ID {
+    let (e_id, _, _) = gated_unit(scenario);
+    let (ore, hard, any) = (option::some(ORE), option::some(1), option::none());
+    let rule = if (deposit) inventory::deposit_requirement(MODULE_ID, ore, hard, any, any)
+    else inventory::withdraw_requirement(MODULE_ID, ore, hard, any, any);
+    owner_enable(
+        scenario,
+        e_id,
+        OWNER,
+        action,
+        action::new(vector[access_cap::owner_requirement(), rule]),
+    );
+    e_id
+}
+
+/// The owner withdraws 1 kg of `ORE` variant `variant_id` through `action`.
+fun withdraw_ore(
+    scenario: &mut ts::Scenario,
+    e: &mut Entity,
+    cap: &AccessCap,
+    action: vector<u8>,
+    variant_id: u64,
+): Item {
+    let mut req = e.interact(string::utf8(action), scenario.ctx());
+    e.verify_owner(&mut req, cap);
+    let key = variant::new_key(tenant(), ORE, variant_id);
+    let item = inventory::withdraw(e, &mut req, key, grid_scenario::kg(), scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    grid_load::assert_online(e, &mut req, &clock);
+    clock.destroy_for_testing();
+    e.complete_request(req);
+    item
+}
+
+#[test]
+fun withdraw_rule_pinned_to_variant_releases_it() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = unit_with_hard_ore_rule(&mut scenario, b"withdraw_hard", false);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+
+    let item = withdraw_ore(&mut scenario, &mut e, &cap, b"withdraw_hard", 1);
+    assert!(item.key() == variant::new_key(tenant(), ORE, 1));
+    assert!(inventory::balance_of(&e, MODULE_ID, item.key()) == 0);
+    deposit(&mut scenario, &mut e, &cap, b"deposit", item);
+
+    ts::return_to_sender(&scenario, cap);
+    ts::return_shared(e);
+    scenario.end();
+}
+
+/// A withdraw rule pinned to the hard ore can't release the soft one, though it
+/// is the same type.
+#[test, expected_failure(abort_code = inventory::EItemVariantNotAllowed)]
+fun withdraw_rule_pinned_to_variant_refuses_another_variant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = unit_with_hard_ore_rule(&mut scenario, b"withdraw_hard", false);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let _item = withdraw_ore(&mut scenario, &mut e, &cap, b"withdraw_hard", 2);
+    abort
+}
+
+/// Every entry of a batch must be the pinned variant.
+#[test, expected_failure(abort_code = inventory::EItemVariantNotAllowed)]
+fun deposit_batch_rule_pinned_to_variant_refuses_another_variant_aborts() {
+    let mut scenario = ts::begin(ADMIN);
+    setup(&mut scenario);
+    let e_id = unit_with_hard_ore_rule(&mut scenario, b"deposit_hard", true);
+    ts::next_tx(&mut scenario, OWNER);
+    let mut e = ts::take_shared_by_id<Entity>(&scenario, e_id);
+    let cap = ts::take_from_sender<AccessCap>(&scenario);
+    let hard = withdraw_ore(&mut scenario, &mut e, &cap, b"withdraw", 1);
+    let soft = withdraw_ore(&mut scenario, &mut e, &cap, b"withdraw", 2);
+    deposit_batch(&mut scenario, &mut e, &cap, b"deposit_hard", vector[hard, soft]);
+    abort
+}
+
+#[test, expected_failure(abort_code = inventory::EVariantWithoutType)]
+fun rule_with_variant_but_no_type_aborts() {
+    let _rule = inventory::withdraw_requirement(
+        MODULE_ID,
+        option::none(),
+        option::some(1),
+        option::none(),
+        option::none(),
+    );
     abort
 }

@@ -7,6 +7,7 @@ export const OBJECT_REGISTRY = 'objectRegistry'
 export const ADMIN_ACL = 'adminAcl'
 export const EVE_CURRENCY = 'eveCurrency'
 export const KILLMAIL_REGISTRY = 'killmailRegistry'
+export const VARIANT_REGISTRY = 'variantRegistry'
 
 /** Validate that an unknown value is a complete `SharedObjectRef`. */
 export function parseSharedObjectRef(
@@ -43,4 +44,8 @@ export function eveCurrency(config: WorldConfig): SharedObjectRef {
 
 export function killmailRegistry(config: WorldConfig): SharedObjectRef {
   return requireSharedObject(config, KILLMAIL_REGISTRY)
+}
+
+export function variantRegistry(config: WorldConfig): SharedObjectRef {
+  return requireSharedObject(config, VARIANT_REGISTRY)
 }

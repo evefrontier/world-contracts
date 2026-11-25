@@ -49,3 +49,5 @@ docs/v1/
 .vars
 .claude/skills/*
 .cursor/rules/
+# Local-only. The .claude/skills symlink points here.
+agentictools/skills/*-review/

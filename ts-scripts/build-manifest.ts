@@ -69,6 +69,7 @@ const SHARED_OBJECT_KEYS: Record<string, string> = {
   'object_registry::ObjectRegistry': 'objectRegistry',
   'admin_service::AdminACL': 'adminAcl',
   'registry::KillmailRegistry': 'killmailRegistry',
+  'variant::VariantRegistry': 'variantRegistry',
 }
 
 function isCreated(c: ObjectChange): c is CreatedChange {

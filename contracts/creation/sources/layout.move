@@ -412,3 +412,56 @@ fun layout_permit(): Permit<Layout> {
 fun edit_permit(): Permit<EditLayout> {
     internal::permit<EditLayout>()
 }
+
+// === Test Functions ===
+
+/// Install a Layout whose one section holds installed module `command_module_id`,
+/// enable the admin edit action, and seat a Shell there.
+#[test_only]
+public fun install_with_shell_for_testing(
+    entity: &mut Entity,
+    acl: &admin_service::AdminACL,
+    command_module_id: u64,
+    ctx: &mut TxContext,
+) {
+    let mut req = install(
+        entity,
+        vector[command_module_id],
+        vector[vector[command_module_id]],
+        ctx,
+    );
+    admin_service::verify_admin(&mut req, acl, ctx);
+    entity.complete_request(req);
+    let edit = core::action::new(vector[edit_requirement()]);
+    let mut req = entity.enable_admin_action(action_name(), edit, ctx);
+    admin_service::verify_admin(&mut req, acl, ctx);
+    entity.complete_request(req);
+    set_shell_for_testing(entity, acl, command_module_id, ctx);
+}
+
+/// Seat a Shell in `command_module_id` through the admin edit action.
+#[test_only]
+public fun set_shell_for_testing(
+    entity: &mut Entity,
+    acl: &admin_service::AdminACL,
+    command_module_id: u64,
+    ctx: &mut TxContext,
+) {
+    let mut req = entity.interact(action_name(), ctx);
+    set_shell(entity, &mut req, object::id_from_address(@0x5E11), command_module_id);
+    admin_service::verify_admin(&mut req, acl, ctx);
+    entity.complete_request(req);
+}
+
+/// Clear the Shell through the admin edit action.
+#[test_only]
+public fun clear_shell_for_testing(
+    entity: &mut Entity,
+    acl: &admin_service::AdminACL,
+    ctx: &mut TxContext,
+) {
+    let mut req = entity.interact(action_name(), ctx);
+    clear_shell(entity, &mut req);
+    admin_service::verify_admin(&mut req, acl, ctx);
+    entity.complete_request(req);
+}
