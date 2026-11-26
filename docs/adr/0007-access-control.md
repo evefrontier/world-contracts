@@ -53,9 +53,9 @@ manifest and rules attached until the owner replaces them.
 their Creation away.
 - **One pointer per Creation.** A Creation follows one manifest. A new owner
 swaps all its lists at once by attaching a different manifest.
-- **No Shell, no switching.** With no Shell aboard the Creation is dark: nobody
-can switch power or modules, and cargo can't move because the inventory is
-offline. Members can still refuel it.
+- **Cold and dark.** A Creation with no Shell is *cold*, which also makes it
+*dark* (no power). Nobody can switch power or modules on a cold Creation, and
+cargo can't move because the inventory is offline. Members can still refuel it.
 - **Every Creation has a policy**
 
 ### End-to-end flows
@@ -73,7 +73,7 @@ sequenceDiagram
     Officer->>List: create manifest with lists: list1, list2
     Builder->>Game: build Creation
     Game->>Chain: build + policy (no manifest), seat Shell, owner cap to Player(Member)
-    Builder->>Chain: attach Tribe manifest, main list = members (Member is on it)
+    Builder->>Chain: attach Tribe manifest, main list = members (Member is on it or its author)
     Builder->>Chain: cargo -> list1
     Note over Chain,List: Creation now follows the tribe manifest
     Officer->>List: add or remove a member
@@ -111,7 +111,7 @@ sequenceDiagram
     Pilot->>Game: "remove my Shell" (in game)
     Game->>Chain: one transaction, signed by Pilot, sponsored by game
     Note over Chain: grid shut down, Shell removed, owner cap kept
-    Note over Chain: dark, Pilot is still the owner, manifest still attached
+    Note over Chain: cold, Pilot is still the owner, manifest still attached
     Next->>Game: "place my Shell"
     Game->>Chain: board (checks Next is on the main list), Pilot's owner cap revoked
     Game->>Chain: new owner cap to Next's Character (second transaction)
@@ -132,7 +132,7 @@ stateDiagram-v2
     NoShell --> Owned: another member boards and becomes owner (anyone if no manifest or empty main list)
     Owned --> Owned: owner changes manifest, rules, open switch
     note right of NoShell
-        dark: no power switching, no cargo
+        cold (and dark): no power switching, no cargo
         owner, manifest and rules kept
         refuel still follows the policy
     end note
@@ -283,7 +283,8 @@ refuelling.
 | Game server                       | Handle a destroyed Shell or a split section                                                                               |
 | The contract itself               | Create the policy with every Creation; revoke the old owner when another character boards                                 |
 
-Attaching needs the character to be on the chosen main list. Replacing or
+Attaching needs the manifest's author (list cap holder) or a character on the
+chosen main list. Replacing or
 detaching the manifest removes every rule that points at a list of the old
 manifest, permission-wide and per-action. Lists are never deleted, only
 emptied. Anyone in a request satisfies a permission with `access::verify_owner`
@@ -295,8 +296,9 @@ Every handler ships a `*_template` for PTB discovery (see
 ### Rules
 
 - **Owner always passes.** Ownership comes from the cap, not the list.
-- **Manifests need membership to attach.** The attaching character must be on
-the list they choose as the default. Per-action lists must come from the same
+- **Attach by author or membership.** The owner can attach a manifest they
+authored (they present its list cap) or one whose chosen main list has their
+character on it. Per-action lists must come from the same
 manifest.
 - **Boarding** needs no Shell aboard. The owner boards with their owner cap and  
 keeps it. Anyone else boards by the main list (anyone if there is no manifest  
@@ -308,7 +310,7 @@ grid shut down, Shell removed. The owner cap stays valid. The game server only
 sponsors it for the pilot. If a contract holds the cap, it must hand it back to
 the pilot's Character first. A destroyed Shell does the same through
 `clear_shell`.
-- **No Shell, no switching.** Power handlers refuse while no Shell is aboard.
+- **Cold: no switching.** Power handlers refuse while no Shell is aboard.
 Cargo needs its inventory online, which also needs a Shell; refuel doesn't.
 - **Split sections.** One game-server transaction: the section without the
 Command Module is set open; the one with it keeps the policy and pilot.
@@ -348,8 +350,6 @@ This ADR keeps the first version small. Later steps build on the same model:
 contract that agrees, instead of transferring the list cap.
 - **Pilot on chain:** record who is aboard so Shell removal is checked on chain, not
 only by the game server.
-- **Attach by authorship:** let an author attach their own manifest without
-being on it.
 - **Lists from several authors** on one Creation, e.g. a tribe's members plus an
 ally's haulers.
 - **Builder rules on game-client actions:** refuel and game cargo run builder
