@@ -333,32 +333,6 @@ fun fill_bays(scenario: &mut ts::Scenario, entity_id: ID, count: u64, clock: &Cl
     });
 }
 
-#[test, expected_failure(abort_code = grid_fuel::EFuelBayTooLarge)]
-fun install_bay_above_max_capacity_aborts() {
-    let mut scenario = ts::begin(admin());
-    setup(&mut scenario);
-    let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    let capacity = power_grid::max_fuel_bay_capacity() + 1;
-    install_fuel_at_scale(&mut scenario, entity_id, FUEL_B, capacity, &clock);
-
-    abort
-}
-
-#[test]
-fun install_bay_at_max_capacity_succeeds() {
-    let mut scenario = ts::begin(admin());
-    setup(&mut scenario);
-    let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    let capacity = power_grid::max_fuel_bay_capacity();
-    install_fuel_at_scale(&mut scenario, entity_id, FUEL_B, capacity, &clock);
-    assert!(bay_capacity(&mut scenario, entity_id, FUEL_B) == capacity);
-
-    clock.destroy_for_testing();
-    scenario.end();
-}
-
 #[test, expected_failure(abort_code = grid_fuel::ETooManyFuelBays)]
 fun install_bay_past_max_bays_aborts() {
     let mut scenario = ts::begin(admin());
@@ -797,7 +771,7 @@ fun deposit_over_the_mass_cap_aborts() {
         &mut scenario,
         entity_id,
         FUEL_B,
-        power_grid::max_fuel_bay_capacity(),
+        std::u64::max_value!(),
         &clock,
     );
 

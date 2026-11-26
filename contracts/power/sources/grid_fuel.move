@@ -45,8 +45,6 @@ const EFuelShort: vector<u8> = b"The fuel pool holds less fuel than the withdraw
 #[error(code = 14)]
 const ETooManyFuelBays: vector<u8> =
     b"Power grid has reached its maximum fitted and stashed fuel bays";
-#[error(code = 15)]
-const EFuelBayTooLarge: vector<u8> = b"Fuel bay capacity is above the maximum";
 #[error(code = 16)]
 const EZeroImpulse: vector<u8> = b"Fuel with zero impulse holds no energy";
 #[error(code = 17)]
@@ -562,7 +560,6 @@ fun connect(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Request {
-    assert!(capacity <= power_grid::max_fuel_bay_capacity(), EFuelBayTooLarge);
     let entity_id = entity.id();
     let req = fuel_bay::install(entity, fuel_bay_id, name, ctx);
     let grid = power_grid::grid_mut(entity);

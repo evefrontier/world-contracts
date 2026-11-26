@@ -75,12 +75,6 @@ const MAX_GENERATORS: u64 = 100;
 /// Cap on fuel bays fitted plus stashed on one grid. Uninstalling or refitting a
 /// bay keeps the total, so only a new bay or an arriving stash can hit it.
 const MAX_FUEL_BAYS: u64 = 100;
-/// Cap on one bay's capacity, in nano-m³ (about 184 million m³).
-const MAX_FUEL_BAY_CAPACITY: u64 = 184_467_440_737_095_516;
-/// Cap on the fuel one bay holds at `SCALE` (about 184 million kg):
-/// `u64::MAX ÷ MAX_FUEL_BAYS`, so the fuel of every bay fits a u64 even when a
-/// dense fuel packs a lot of mass into the bay's volume.
-const MAX_FUEL_BAY_QUANTITY: u64 = 184_467_440_737_095_516;
 
 // === Structs ===
 
@@ -877,14 +871,11 @@ public fun max_fuel_bays(): u64 {
     MAX_FUEL_BAYS
 }
 
-/// Cap on one bay's capacity, a volume in nano-m³.
-public fun max_fuel_bay_capacity(): u64 {
-    MAX_FUEL_BAY_CAPACITY
-}
-
-/// Cap on the fuel one bay holds, a mass at `SCALE`.
+/// Cap on the fuel one bay holds, a mass at `SCALE` (about 184 million kg):
+/// `u64::MAX ÷ MAX_FUEL_BAYS`, so the fuel of every bay fits a u64 even when a
+/// dense fuel packs a lot of mass into the bay's volume.
 public fun max_fuel_bay_quantity(): u64 {
-    MAX_FUEL_BAY_QUANTITY
+    std::u64::max_value!() / MAX_FUEL_BAYS
 }
 
 public fun component_id(): u64 {
@@ -1896,7 +1887,7 @@ fun add_fuel(sums: &mut FuelSums, fuel: &Fuel) {
 }
 
 /// The blend `sums` add up to, typed `fuel_type`. Empty when it holds nothing.
-/// The quantity fits a u64 because `MAX_FUEL_BAY_QUANTITY` caps every bay.
+/// The quantity fits a u64 because `max_fuel_bay_quantity` caps every bay.
 fun sums_to_fuel(sums: &FuelSums, fuel_type: Option<u64>): Fuel {
     let quantity = sums.quantity;
     if (quantity == 0) return empty_fuel();
