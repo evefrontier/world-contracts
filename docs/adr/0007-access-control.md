@@ -29,7 +29,7 @@ Five ideas:
 | **Owner**                         | The character who built the Creation or last placed their Shell in it. Removing the Shell doesn't change the owner. On chain: whoever holds the Creation's owner cap. The owner can always do everything. |
 | **DataItems/Manifest/SharedList** | A shared object holding one or more named lists of characters (and bot or org wallets), e.g. a tribe's *members*, *haulers* and *controllers*. Someone creates it and keeps it up to date, e.g. a tribe officer. It is not part of a Creation: one manifest can be used by many Creations. |
 | **Permission**                    | A name for a kind of action: switch the grid, run a module, refuel, move cargo, and so on. Actions ask for a permission instead of "the owner".                                             |
-| **Policy**                        | Settings on each Creation: which manifest it follows and its main list, optional rules per permission, and an **open** switch that lets anyone in.                                       |
+| **Policy**                        | Settings on each Creation: which manifest it follows and its main list, optional rules per permission, and an **open** switch that lets anyone do shared actions (boarding still follows the main list). |
 | **Rule**                          | What someone other than the owner must meet for a permission: by default "be on the main list"; it can also be another list in the manifest, "anyone", or a builder's own check.        |
 
 Who can do what by default:
@@ -40,7 +40,7 @@ Who can do what by default:
 | Edit a manifest and its lists | Whoever holds that manifest's list cap (its author) |
 | Choose the Creation's manifest, set rules, set open | Owner only |
 | Remove the Shell | Owner (pilot), from inside the game |
-| Install, uninstall, destroy | The game server, when the owner asks |
+| Install, uninstall, destroy, merge, split, dock | The game server. It decides who may ask (e.g. merge only if you own both); the chain trusts it |
 | Place a Shell in a Creation with no Shell | The owner; anyone on the main list; anyone at all if there is no manifest or the main list has no characters |
 
 Key behaviours:
@@ -370,6 +370,10 @@ game decides a contract may outrank the pilot.
 
    and avoids a Creation that can never come back online). Needs game design  
    confirmation.
+5. Which in-game actions are shared and which are owner-only is game design's
+   call. The chain only enforces sharing for actions that are on chain.
+6. Should open also let anyone board a cold Creation? Today boarding follows the
+   main list.
 
 ## Consequences
 
