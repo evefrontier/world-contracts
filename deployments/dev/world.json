@@ -118,6 +118,9 @@
       "appCap": "0x31ed7189517ffffd683b794e507f8ffe1cb0b8a2bd97692c53506efda6c1d847",
       "name": "@evefrontier/world-creation-dev",
       "packageInfo": "0x9c2a41718d58991c89f71d6954bb23d0c199372b27b9a1c856f5a5531e2fbe89"
+    },
+    "variant": {
+      "appCap": "0xfd0126ef9076fe8c5a45e9f4867a283f7e541f3877b6ed364f1995e1e7c204c1"
     }
   }
 }
