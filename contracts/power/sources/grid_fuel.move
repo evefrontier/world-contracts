@@ -15,7 +15,7 @@ use variant::variant::Variant;
 // === Errors ===
 
 #[error(code = 0)]
-const EFuelOverCapacity: vector<u8> = b"Fuel amount would exceed the fuel bay's capacity";
+const EFuelOverCapacity: vector<u8> = b"Fuel volume would exceed the fuel bay's capacity";
 #[error(code = 1)]
 const EZeroFuel: vector<u8> = b"Fuel amount must be greater than zero";
 #[error(code = 2)]

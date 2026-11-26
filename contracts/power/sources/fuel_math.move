@@ -58,7 +58,8 @@ public(package) fun blend(
 }
 
 /// `blend`, rounded up: for a fuel's `unit_volume`, so a blend's volume is never
-/// under-counted against a bay's capacity.
+/// under-counted against a bay's capacity. Each blend may round up by 1, so many
+/// small deposits into a large bay can leave it slightly above the exact average.
 public(package) fun blend_up(
     pooled_stat: u64,
     pooled_quantity: u64,
@@ -73,7 +74,7 @@ public(package) fun blend_up(
 
 /// Volume in nano-m³ of `quantity` (1e-9 kg) at `unit_volume` (m³ per kg at
 /// `SCALE`, 1 / density), rounded up: `ceil(quantity × unit_volume ÷ SCALE)`.
-public fun volume(quantity: u64, unit_volume: u64): u128 {
+public(package) fun volume(quantity: u64, unit_volume: u64): u128 {
     ((quantity as u128) * (unit_volume as u128)).div_ceil(SCALE as u128)
 }
 

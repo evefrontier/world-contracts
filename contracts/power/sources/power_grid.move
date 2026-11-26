@@ -877,10 +877,12 @@ public fun max_fuel_bays(): u64 {
     MAX_FUEL_BAYS
 }
 
+/// Cap on one bay's capacity, a volume in nano-m³.
 public fun max_fuel_bay_capacity(): u64 {
     MAX_FUEL_BAY_CAPACITY
 }
 
+/// Cap on the fuel one bay holds, a mass at `SCALE`.
 public fun max_fuel_bay_quantity(): u64 {
     MAX_FUEL_BAY_QUANTITY
 }
