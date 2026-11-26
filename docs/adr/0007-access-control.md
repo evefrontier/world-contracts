@@ -26,7 +26,7 @@ Five ideas:
 
 | Idea                              | In plain words                                                                                                                                                                              |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Owner**                         | The character whose Shell is aboard. On chain: whoever holds the Creation's owner cap. The owner can always do everything.                                                                  |
+| **Owner**                         | The character who built the Creation or last placed their Shell in it. Removing the Shell doesn't change the owner. On chain: whoever holds the Creation's owner cap. The owner can always do everything. |
 | **DataItems/Manifest/SharedList** | A shared object holding one or more named lists of characters (and bot or org wallets), e.g. a tribe's *members*, *haulers* and *controllers*. Someone creates it and keeps it up to date, e.g. a tribe officer. It is not part of a Creation: one manifest can be used by many Creations. |
 | **Permission**                    | A name for a kind of action: switch the grid, run a module, refuel, move cargo, and so on. Actions ask for a permission instead of "the owner".                                             |
 | **Policy**                        | Settings on each Creation: which manifest it follows and its main list, optional rules per permission, and an **open** switch that lets anyone in.                                       |
@@ -39,14 +39,16 @@ Who can do what by default:
 | Refuel, switch power and modules, move cargo | The owner and everyone on the main list (or the list set for that action) |
 | Edit a manifest and its lists | Whoever holds that manifest's list cap (its author) |
 | Choose the Creation's manifest, set rules, set open | Owner only |
-| Abandon (remove the Shell) | Owner, from inside the game |
+| Remove the Shell | Owner (pilot), from inside the game |
 | Install, uninstall, destroy | The game server, when the owner asks |
-| Place a Shell in an abandoned Creation | Anyone on the main list; anyone at all if there is no manifest or the main list has no characters |
+| Place a Shell in a Creation with no Shell | The owner; anyone on the main list; anyone at all if there is no manifest or the main list has no characters |
 
 Key behaviours:
 
-- **The manifest stays.** Abandoning or changing owner keeps the manifest and
-rules attached until the next owner replaces them.
+- **There is always an owner.** Removing or losing the Shell keeps the owner.
+Ownership moves only when another character places their Shell.
+- **The manifest stays.** Removing the Shell or changing owner keeps the
+manifest and rules attached until the owner replaces them.
 - **The owner always wins.** Removing the owner from the manifest doesn't take
 their Creation away.
 - **One pointer per Creation.** A Creation follows one manifest. A new owner
@@ -97,7 +99,7 @@ sequenceDiagram
 The owner skips the list: they borrow the owner cap from their Character and
 present it instead (`verify_owner`).
 
-**3. Abandon and take over**
+**3. Remove the Shell and take over**
 
 ```mermaid
 sequenceDiagram
@@ -108,27 +110,31 @@ sequenceDiagram
 
     Pilot->>Game: "remove my Shell" (in game)
     Game->>Chain: one transaction, signed by Pilot, sponsored by game
-    Note over Chain: grid shut down, Shell removed, owner cap revoked
-    Note over Chain: dark, no owner, manifest still attached
+    Note over Chain: grid shut down, Shell removed, owner cap kept
+    Note over Chain: dark, Pilot is still the owner, manifest still attached
     Next->>Game: "place my Shell"
-    Game->>Chain: board (checks Next is on the main list)
+    Game->>Chain: board (checks Next is on the main list), Pilot's owner cap revoked
     Game->>Chain: new owner cap to Next's Character (second transaction)
     Note over Game,Chain: short gap between boarding and the new cap, accepted
     Note over Chain: Next is the owner, can keep or replace the manifest
 ```
+
+If Pilot places their own Shell again instead, nothing changes: they keep their
+owner cap.
 
 **4. Creation lifecycle**
 
 ```mermaid
 stateDiagram-v2
     [*] --> Owned: build (Shell seated, owner cap minted)
-    Owned --> Abandoned: owner abandons / Shell destroyed
-    Abandoned --> Owned: a member boards (anyone if no manifest or empty main list)
+    Owned --> NoShell: owner removes the Shell / Shell destroyed
+    NoShell --> Owned: owner boards again (same cap)
+    NoShell --> Owned: another member boards and becomes owner (anyone if no manifest or empty main list)
     Owned --> Owned: owner changes manifest, rules, open switch
-    note right of Abandoned
-        dark: no power switching
-        manifest and rules kept
-        refuel still follows the policy, no cargo
+    note right of NoShell
+        dark: no power switching, no cargo
+        owner, manifest and rules kept
+        refuel still follows the policy
     end note
 ```
 
@@ -169,7 +175,7 @@ owner cap in its contract and lends it out by its own rules.
 
 **In scope:** owner cap kept as the ownership proof; shared manifests; named
 permissions on power and inventory actions; per-Creation policy with rules and
-the open switch; boarding and abandon with fixed rules; letting any object hold
+the open switch; boarding and Shell removal with fixed rules; letting any object hold
 and lend the owner cap; views and events.
 
 **Out of scope (later):** builder rules on actions the game client builds
@@ -268,14 +274,14 @@ refuelling.
 
 ### Actions
 
-| Who                               | Can                                                                                                                       | Functions                                                                                                               |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Owner                             | Choose the manifest and its main list, point an action at another list, set other rules, open the Creation to everyone | `access::attach_manifest`, `detach_manifest`, `set_main_list`, `set_list_rule`, `set_rule`, `clear_rule`, `set_open` |
-| Manifest author (list cap holder) | Create a manifest, add or rename lists, add or remove members                                                             | `access_list::new`, `add_list`, `rename_list`, `add_*`, `remove_*`                                                      |
-| Member                            | Prove they are on a list                                                                                                  | `access_list::verify_character`, `verify_wallet`                                                                        |
-| Player + game server              | Board, abandon                                                                                                            | `layout::board`, `board_open`, `abandon`                                                                                |
-| Game server                       | Handle a lost Shell or a split section; open a Creation with no owner                                                     | `layout::clear_shell`, `access::migrate`, `set_open`                                                                    |
-| The contract itself               | Create the policy with every Creation; clear the owner inside abandon                                                     | `access::install`, `entity::revoke_owner`                                                                               |
+| Who                               | Can                                                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Owner                             | Choose the manifest and its main list, point an action at another list, set other rules, open the Creation to everyone |
+| Manifest author (list cap holder) | Create a manifest, add or rename lists, add or remove members                                                             |
+| Member                            | Prove they are on a list                                                                                                  |
+| Player + game server              | Board, remove the Shell                                                                                                   |
+| Game server                       | Handle a destroyed Shell or a split section                                                                               |
+| The contract itself               | Create the policy with every Creation; revoke the old owner when another character boards                                 |
 
 Attaching needs the character to be on the chosen main list. Replacing or
 detaching the manifest removes every rule that points at a list of the old
@@ -292,12 +298,16 @@ Every handler ships a `*_template` for PTB discovery (see
 - **Manifests need membership to attach.** The attaching character must be on
 the list they choose as the default. Per-action lists must come from the same
 manifest.
-- **Boarding** needs no Shell and no owner. No manifest, or a main list with
-no characters: anyone. Otherwise only the main list's characters. The game server checks the
-Shell belongs to the boarding character before paying.
-- **Abandon** is one transaction: owner cap, game-server sponsor, grid shut
-down, cap revoked. The game server only sponsors it for the pilot. If a
-contract holds the cap, it must hand it back to the pilot's Character first.
+- **Boarding** needs no Shell aboard. The owner boards with their owner cap and  
+keeps it. Anyone else boards by the main list (anyone if there is no manifest  
+or the main list has no characters); boarding revokes the old owner cap and  
+the new owner gets a fresh one. The game server checks the Shell belongs to  
+the boarding character before sponsoring.
+- **Removing the Shell** is one transaction: owner cap, game-server sponsor,
+grid shut down, Shell removed. The owner cap stays valid. The game server only
+sponsors it for the pilot. If a contract holds the cap, it must hand it back to
+the pilot's Character first. A destroyed Shell does the same through
+`clear_shell`.
 - **No Shell, no switching.** Power handlers refuse while no Shell is aboard.
 Cargo needs its inventory online, which also needs a Shell; refuel doesn't.
 - **Split sections.** One game-server transaction: the section without the
@@ -336,7 +346,7 @@ This ADR keeps the first version small. Later steps build on the same model:
 
 - **Authorship with proof:** hand a manifest to a specific character, or to a
 contract that agrees, instead of transferring the list cap.
-- **Pilot on chain:** record who is aboard so abandon is checked on chain, not
+- **Pilot on chain:** record who is aboard so Shell removal is checked on chain, not
 only by the game server.
 - **Attach by authorship:** let an author attach their own manifest without
 being on it.
@@ -356,6 +366,10 @@ game decides a contract may outrank the pilot.
 
    builder calls safely (templates plus an allowlist).
 3. Owner-only rules per action.
+4. Refuel with no Shell: allowed for the owner and members (it only adds fuel,
+
+   and avoids a Creation that can never come back online). Needs game design  
+   confirmation.
 
 ## Consequences
 
@@ -365,7 +379,7 @@ their own rules, permissions and lists; the owner cap can live in any contract.
 
 **Harder:** every owner-gated handler moves to a named permission; one list cap
 edits every list in a manifest unless a contract splits it; a manifest
-author is trusted by everyone following their manifest (emptying the main list opens boarding
-on abandoned Creations); frequent removals need a transaction (a list is stale
+author is trusted by everyone following their manifest (emptying the main list lets anyone take
+over a Creation with no Shell); frequent removals need a transaction (a list is stale
 until edited); the game server stays responsible for checking presence and
 Shell ownership.
