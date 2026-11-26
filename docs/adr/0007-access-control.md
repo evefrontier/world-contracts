@@ -52,7 +52,8 @@ their Creation away.
 - **One pointer per Creation.** A Creation follows one manifest. A new owner
 swaps all its lists at once by attaching a different manifest.
 - **No Shell, no switching.** With no Shell aboard the Creation is dark: nobody
-can switch power or modules. Members can still refuel it and move items.
+can switch power or modules, and cargo can't move because the inventory is
+offline. Members can still refuel it.
 - **Every Creation has a policy**
 
 ### End-to-end flows
@@ -127,7 +128,7 @@ stateDiagram-v2
     note right of Abandoned
         dark: no power switching
         manifest and rules kept
-        refuel and cargo follow the policy
+        refuel still follows the policy, no cargo
     end note
 ```
 
@@ -277,7 +278,8 @@ refuelling.
 | The contract itself               | Create the policy with every Creation; clear the owner inside abandon                                                     | `access::install`, `entity::revoke_owner`                                                                               |
 
 Attaching needs the character to be on the chosen main list. Replacing or
-detaching the manifest clears per-action lists. Lists are never deleted, only
+detaching the manifest removes every rule that points at a list of the old
+manifest, permission-wide and per-action. Lists are never deleted, only
 emptied. Anyone in a request satisfies a permission with `access::verify_owner`
 (owner cap) or `access::resolve` (the rule).
 
@@ -297,10 +299,12 @@ Shell belongs to the boarding character before paying.
 down, cap revoked. The game server only sponsors it for the pilot. If a
 contract holds the cap, it must hand it back to the pilot's Character first.
 - **No Shell, no switching.** Power handlers refuse while no Shell is aboard.
+Cargo needs its inventory online, which also needs a Shell; refuel doesn't.
 - **Split sections.** One game-server transaction: the section without the
 Command Module is set open; the one with it keeps the policy and pilot.
-- **Characters are checked when used**, not when added: list entries are plain
-ids, so a Creation's cap can never pass as a character.
+- **List entries are plain ids**, added only by the manifest author. There is no
+on-chain check that an entry is a character; the game server checks the
+boarding character before paying.
 - **Rules are all-of**; an empty rule means anyone. Rules survive a change of
 owner, like the manifest.
 
