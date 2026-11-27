@@ -44,7 +44,7 @@ for pkg in "${PACKAGES[@]}"; do
     fi
 done
 
-CHAIN_ID=$(sui client chain-identifier)
+CHAIN_ID=$(chain_id)
 pnpm exec tsx ts-scripts/build-manifest.ts "$DEPLOY_DIR" "$ENV" "$CHAIN_ID" "${PACKAGES[@]}"
 
 # Seed the AdminACL from ADMIN_ADDRESSES / SPONSOR_ADDRESSES in the env

@@ -5,11 +5,15 @@
 #   mvr.sh set-network       <env> <pkg>
 #   mvr.sh git-version       <env> <pkg> <ver> <commit>
 #   mvr.sh set-appcap        <env> <pkg> <appCapId>
-#   mvr.sh bootstrap-appcap  <env> <pkg>
+#   mvr.sh bootstrap-appcap  <env> <pkg> <recipient>
 #
-# bootstrap-appcap is a one-time, manual step per new (pkg, env) pair
-# It mints a permanent SuiNS subname, so run it deliberately with the
-# @evefrontier-owning mainnet key active, not as part of the automated deploy.
+# bootstrap-appcap is a one-time step per new (pkg, env) pair, signed by the
+# @evefrontier SuiNS owner key (see .github/workflows/bootstrap-appcap.yml).
+# It mints a permanent SuiNS subname and sends the AppCap to <recipient>, the
+# env's deployer, which signs every other step.
+#
+# Txs are signed by the active CLI address, or by AWS KMS when SUINS_KMS_KEY_ID
+# is set.
 #
 # Object ids are read from / written to the committed deployments/<env>/world.json.
 source "$(dirname "$0")/lib.sh"
@@ -41,19 +45,21 @@ mvr_set() {
         '.mvr[$p] = (.mvr[$p] // {}) + {($f): $v}' "$world" > "$tmp" && mv "$tmp" "$world"
 }
 
-# Run a sui client ptb, capture --json, fail on non-JSON; writes to $out.
+# Run a ptb, capture --json, fail on non-JSON; writes to $out.
 run_ptb() {
     local label=$1 out=$2
     shift 2
-    local tmp
+    local tmp tmp_err
     tmp=$(mktemp)
-    sui client ptb "$@" --json > "$tmp" 2>&1 || true
+    tmp_err=$(mktemp)
+    sui_tx ptb "$@" > "$tmp" 2> "$tmp_err" || true
     if [[ "$(head -c1 "$tmp")" != "{" && "$(head -c1 "$tmp")" != "[" ]]; then
         echo "ERROR: $label failed:" >&2
-        cat "$tmp" >&2
-        rm -f -- "$tmp"
+        cat "$tmp" "$tmp_err" >&2
+        rm -f -- "$tmp" "$tmp_err"
         exit 1
     fi
+    rm -f -- "$tmp_err"
     mv "$tmp" "$out"
     echo "$label -> $out"
 }
@@ -98,11 +104,11 @@ cmd_set_network() {
 
     ensure_client_env mainnet "$(get_rpc live)"
 
-    sui client ptb \
+    sui_tx ptb \
         --move-call "$MVR_CORE_MAINNET::move_registry::unset_network" \
             "@$MVR_REGISTRY" "@$app_cap" "\"$MVR_TESTNET_CHAIN_ID\"" \
         || echo "unset_network: no existing mapping for $pkg (first deploy)"
-    sui client ptb \
+    sui_tx ptb \
         --move-call 0x1::option::some "<0x2::object::ID>" "@$pi_id" --assign pinfo \
         --move-call 0x1::option::some "<address>" "@$pkg_addr" --assign pid \
         --move-call 0x1::option::none "<0x2::object::ID>" --assign null \
@@ -122,35 +128,29 @@ cmd_git_version() {
     [[ -z "$pi_id" ]] && { echo "ERROR: no packageInfo for $pkg/$env — run package-info first" >&2; exit 1; }
 
     ensure_client_env "$env" "$(get_rpc "$env")"
-    sui client ptb \
+    sui_tx ptb \
         --move-call "$meta::git::new" "\"$GIT_REPO\"" "\"contracts/$pkg\"" "\"$commit\"" --assign git \
         --move-call "$meta::package_info::set_git_versioning" "@$pi_id" "$version" git
     echo "set_git_versioning $pkg v$version @ $commit"
 }
 
-# Resolve deployer from CLI, DEPLOYER_ADDRESS, or the deployer private key.
-deployer_addr() {
-    local addr=${1:-${DEPLOYER_ADDRESS:-}}
-    if [[ -z "$addr" ]]; then
-        local key=${DEPLOYER_PRIVATE_KEY:-${DEPLOYER_KEY:-}}
-        [[ -n "$key" ]] && addr=$(import_key "$key")
-    fi
-    [[ "$addr" =~ ^0x[a-fA-F0-9]{64}$ ]] || {
-        echo "ERROR: no deployer address — pass 0x… or set DEPLOYER_ADDRESS / DEPLOYER_PRIVATE_KEY in .env" >&2
-        exit 1
-    }
-    echo "$addr"
-}
-
-# One-time bootstrap: register world-<pkg>-<env> on MAINNET and send AppCap to the deployer.
+# One-time bootstrap: register world-<pkg>-<env> on MAINNET and send the AppCap
+# to the recipient (default: the signer).
 cmd_bootstrap_appcap() {
-    local env=$1 pkg=$2
-    local name out app_cap deployer
+    local env=$1 pkg=$2 recipient=${3:-}
+    local name out app_cap
     [[ "$env" == "localnet" ]] && {
         echo "ERROR: bootstrap-appcap is mainnet-only — not for localnet" >&2
         exit 1
     }
-    deployer=$(deployer_addr "${3:-}")
+    [[ "$recipient" =~ ^0x[a-fA-F0-9]{64}$ ]] || {
+        echo "ERROR: recipient must be the $env deployer address (0x…), got '$recipient'" >&2
+        exit 1
+    }
+    [[ -n "$(mvr_get "$env" "$pkg" appCap)" ]] && {
+        echo "ERROR: $pkg/$env already has an appCap — refusing to register again" >&2
+        exit 1
+    }
     name=$(mvr_name "$pkg" "$env")
     # register() takes the app label only; the @evefrontier parent is MVR_SUINS_PARENT.
     label="${name#*/}"
@@ -160,13 +160,13 @@ cmd_bootstrap_appcap() {
     run_ptb "register $name" "$out" \
         --move-call "$MVR_CORE_MAINNET::move_registry::register" \
             "@$MVR_REGISTRY" "@$MVR_SUINS_PARENT" "\"$label\"" "@0x6" --assign appcap \
-        --transfer-objects "[appcap]" "@$deployer"
+        --transfer-objects "[appcap]" "@$recipient"
 
     app_cap=$(jq -r '.objectChanges[] | select(.type=="created" and (.objectType|contains("AppCap"))) | .objectId' "$out" | head -1)
     [[ -z "$app_cap" ]] && { echo "ERROR: no AppCap created in $out" >&2; exit 1; }
 
     mvr_set "$env" "$pkg" appCap "$app_cap"
-    echo "bootstrap-appcap $pkg/$env: registered '$name', appCap = $app_cap -> $deployer"
+    echo "bootstrap-appcap $pkg/$env: registered '$name', appCap = $app_cap -> $recipient"
 }
 
 setup

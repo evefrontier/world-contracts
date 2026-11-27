@@ -6,21 +6,26 @@ run() {
     if [[ "${DRY_RUN:-}" == "1" ]]; then echo "DRY_RUN: $*"; else "$@"; fi
 }
 
-# Import deployer (+ optional AppCap) keys, init client, export SUI_PRIVATE_KEY.
-# Sets: DEPLOYER_ADDR, APPCAP_ADDR
+# Resolve the deployer signer: an AWS KMS key (DEPLOYER_KMS_KEY_ID) or a private
+# key (DEPLOYER_KEY). The deployer also holds the MVR AppCaps, so it signs every
+# deploy, upgrade and MVR step. Sets: DEPLOYER_ADDR.
 ci_bootstrap_keys() {
-    : "${TARGET_ENV:?}" "${NET:?}" "${DEPLOYER_KEY:?}"
+    : "${TARGET_ENV:?}" "${NET:?}"
 
     sui_init_config "$NET" "$(get_rpc "$TARGET_ENV")"
-    DEPLOYER_ADDR=$(import_key "$DEPLOYER_KEY")
-    [[ -z "$DEPLOYER_ADDR" ]] && { echo "ERROR: could not import deployer key" >&2; exit 1; }
-    sui client switch --address "$DEPLOYER_ADDR" >/dev/null
-    export SUI_PRIVATE_KEY="$DEPLOYER_KEY"
-
-    APPCAP_ADDR="$DEPLOYER_ADDR"
-    if [[ -n "${APPCAP_KEY:-}" ]]; then
-        APPCAP_ADDR=$(import_key "$APPCAP_KEY")
+    if [[ -n "${DEPLOYER_KMS_KEY_ID:-}" ]]; then
+        export SUINS_KMS_KEY_ID="$DEPLOYER_KMS_KEY_ID"
+        DEPLOYER_ADDR=$(kms_signer address "$DEPLOYER_KMS_KEY_ID")
+    else
+        : "${DEPLOYER_KEY:?set DEPLOYER_KEY or DEPLOYER_KMS_KEY_ID}"
+        DEPLOYER_ADDR=$(import_key "$DEPLOYER_KEY")
+        export SUI_PRIVATE_KEY="$DEPLOYER_KEY"
     fi
+    [[ -z "$DEPLOYER_ADDR" ]] && { echo "ERROR: could not resolve deployer address" >&2; exit 1; }
+    if [[ -z "${DEPLOYER_KMS_KEY_ID:-}" ]]; then
+        sui client switch --address "$DEPLOYER_ADDR" >/dev/null
+    fi
+    echo "deployer: $DEPLOYER_ADDR${DEPLOYER_KMS_KEY_ID:+ (KMS)}"
 }
 
 # Copy Published.toml for each pkg + world.json into deployments/$TARGET_ENV/records.
@@ -66,13 +71,8 @@ ci_require_appcaps() {
 ci_mvr_deploy_pkg() {
     local pkg=$1
 
-    sui client switch --address "$DEPLOYER_ADDR" >/dev/null
     run ./scripts/mvr.sh package-info "$TARGET_ENV" "$pkg"
-
-    sui client switch --address "$APPCAP_ADDR" >/dev/null
     run ./scripts/mvr.sh set-network "$TARGET_ENV" "$pkg"
-
-    sui client switch --address "$DEPLOYER_ADDR" >/dev/null
     run ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
 }
 

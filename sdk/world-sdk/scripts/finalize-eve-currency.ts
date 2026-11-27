@@ -41,8 +41,8 @@ function createdCurrencyId(
 }
 
 async function main(): Promise<void> {
-  const { deployEnv, repoRoot, manifestPath, client, keypair } =
-    loadScriptContext()
+  const { deployEnv, repoRoot, manifestPath, client, signer } =
+    await loadScriptContext()
   const deployDir = join(repoRoot, 'deployments', deployEnv)
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest
 
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   }
 
   const tx = new Transaction()
-  tx.setSender(keypair.getPublicKey().toSuiAddress())
+  tx.setSender(signer.getPublicKey().toSuiAddress())
   tx.moveCall({
     target: '0x2::coin_registry::finalize_registration',
     typeArguments: [coinType],
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
 
   const result = await signAndExecute(client, {
     transaction: tx,
-    signer: keypair,
+    signer,
   })
 
   const sharedId = result.effects.changedObjects.find(

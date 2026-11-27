@@ -39,7 +39,7 @@ else
     publish "$PKG" "$ENV" "$PUBFILE" "$DEPLOY_DIR/$PKG.publish.json"
 fi
 
-CHAIN_ID=$(sui client chain-identifier)
+CHAIN_ID=$(chain_id)
 pnpm exec tsx ts-scripts/build-manifest.ts "$DEPLOY_DIR" "$ENV" "$CHAIN_ID" "$PKG"
 
 echo "Finalizing EVE currency for $ENV ..."

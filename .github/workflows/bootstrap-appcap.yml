@@ -1,0 +1,193 @@
+name: Bootstrap MVR AppCap
+
+# One-time per (package, env): registers @evefrontier/world-<pkg>-<env> on
+# mainnet with the SuiNS owner key and sends the AppCap to that env's deployer,
+# resolved from the same key deploy.yml signs with.
+# This mints a permanent SuiNS subname, so the `suins` environment must require
+# reviewers. It holds AWS_DEPLOY_ROLE_ARN, AWS_REGION and SUI_SUINS_KMS_KEY_ID.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: GHCR image tag to run (e.g. v1.2.3, dev-v1.2.3)
+        type: string
+        required: true
+      env:
+        description: Environment the MVR names are for
+        type: choice
+        options: [dev, test, uat, live]
+        required: true
+      packages:
+        description: Space-separated packages (e.g. "core character")
+        type: string
+        required: true
+
+concurrency:
+  group: bootstrap-appcap
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: world-contracts
+
+jobs:
+  # Runs in the target environment so it sees that env's deployer key.
+  deployer:
+    name: Resolve ${{ inputs.env }} deployer
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }}
+    permissions:
+      packages: read
+      id-token: write
+    outputs:
+      address: ${{ steps.addr.outputs.address }}
+    steps:
+      - name: Resolve image
+        id: cfg
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: bad image_tag '$IMAGE_TAG'" >&2; exit 1; }
+          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS credentials
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deployer address
+        id: addr
+        env:
+          DEPLOYER_KEY: ${{ secrets.SUI_DEPLOYER_KEY }}
+          DEPLOYER_KMS_KEY_ID: ${{ vars.SUI_DEPLOYER_KMS_KEY_ID }}
+          TARGET_ENV: ${{ inputs.env }}
+        run: |
+          docker pull -q "${{ steps.cfg.outputs.image }}" >/dev/null
+          address=$(docker run --rm \
+            -e DEPLOYER_KEY -e DEPLOYER_KMS_KEY_ID -e TARGET_ENV -e NET=mainnet \
+            -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            --entrypoint bash "${{ steps.cfg.outputs.image }}" \
+            -c 'source scripts/lib.sh && source scripts/ci-deploy-lib.sh && ci_bootstrap_keys >/dev/null && echo "$DEPLOYER_ADDR"')
+          [[ "$address" =~ ^0x[a-fA-F0-9]{64}$ ]] || { echo "ERROR: could not resolve the $TARGET_ENV deployer address" >&2; exit 1; }
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+          echo "AppCaps for \`$TARGET_ENV\` go to deployer \`$address\`" >> "$GITHUB_STEP_SUMMARY"
+
+  bootstrap:
+    needs: deployer
+    name: AppCaps for ${{ inputs.env }} (${{ inputs.packages }})
+    runs-on: ubuntu-latest
+    environment: suins
+    permissions:
+      contents: write
+      packages: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Validate inputs
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          KMS_KEY_ID: ${{ vars.SUI_SUINS_KMS_KEY_ID }}
+        run: |
+          [[ -n "$KMS_KEY_ID" ]] || { echo "ERROR: SUI_SUINS_KMS_KEY_ID is not set on the suins environment" >&2; exit 1; }
+          for pkg in $PACKAGES; do
+            [[ -d "contracts/$pkg" && "$pkg" =~ ^[a-z_]+$ ]] || { echo "ERROR: unknown package '$pkg'" >&2; exit 1; }
+          done
+          [[ -f "deployments/${{ inputs.env }}/world.json" ]] || { echo "ERROR: deployments/${{ inputs.env }}/world.json missing" >&2; exit 1; }
+
+      - name: Resolve image
+        id: cfg
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: bad image_tag '$IMAGE_TAG'" >&2; exit 1; }
+          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull pinned image
+        run: docker pull "${{ steps.cfg.outputs.image }}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Register MVR names
+        env:
+          SUINS_KMS_KEY_ID: ${{ vars.SUI_SUINS_KMS_KEY_ID }}
+          PACKAGES: ${{ inputs.packages }}
+          RECIPIENT: ${{ needs.deployer.outputs.address }}
+          TARGET_ENV: ${{ inputs.env }}
+          CONTAINER: bootstrap-appcap-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          env="$TARGET_ENV"
+          docker create --name "$CONTAINER" \
+            -e CI=true \
+            -e SUINS_KMS_KEY_ID -e PACKAGES -e RECIPIENT -e TARGET_ENV \
+            -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            --entrypoint bash \
+            "${{ steps.cfg.outputs.image }}" \
+            -c 'set -euo pipefail
+                mkdir -p "deployments/$TARGET_ENV"
+                cat /app/world.json.seed > "deployments/$TARGET_ENV/world.json"
+                for pkg in $PACKAGES; do
+                  ./scripts/mvr.sh bootstrap-appcap "$TARGET_ENV" "$pkg" "$RECIPIENT"
+                done'
+          docker cp "deployments/$env/world.json" "$CONTAINER:/app/world.json.seed"
+          status=0
+          docker start -a "$CONTAINER" || status=$?
+          # Keep the AppCaps recorded so far, even if a later package failed.
+          docker cp "$CONTAINER:/app/deployments/$env/world.json" "deployments/$env/world.json"
+          exit $status
+
+      - name: Remove container
+        if: always()
+        run: docker rm -f "bootstrap-appcap-${{ github.run_id }}-${{ github.run_attempt }}" 2>/dev/null || true
+
+      - name: Open records PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          PACKAGES: ${{ inputs.packages }}
+          DEPLOYER: ${{ needs.deployer.outputs.address }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "deployments/${{ inputs.env }}/world.json"
+          if git diff --cached --quiet; then
+            echo "No AppCaps recorded."
+            exit 0
+          fi
+          branch="appcap-records/${{ inputs.env }}-${{ github.run_id }}"
+          title="mvr(${{ inputs.env }}): bootstrap AppCaps for $PACKAGES"
+          git commit -m "$title [skip ci]"
+          git push origin "HEAD:${branch}"
+          gh pr create \
+            --base "$GITHUB_REF_NAME" \
+            --head "$branch" \
+            --title "$title" \
+            --body "AppCaps registered on mainnet by the SuiNS owner key and sent to the ${{ inputs.env }} deployer \`$DEPLOYER\` (image \`$IMAGE_TAG\`)." \
+            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${GITHUB_REF_NAME}...${branch}?expand=1"

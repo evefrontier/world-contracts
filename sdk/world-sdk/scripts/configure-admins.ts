@@ -17,14 +17,14 @@ if (admins.length === 0 && sponsors.length === 0) {
   process.exit(0)
 }
 
-const { config, client, keypair } = loadScriptContext()
+const { config, client, signer } = await loadScriptContext()
 
 const tx = new Transaction()
 if (admins.length > 0) addAdmins(tx, config, admins)
 if (sponsors.length > 0) addSponsors(tx, config, sponsors)
 
 const res = await signAndExecute(client, {
-  signer: keypair,
+  signer,
   transaction: tx,
 })
 

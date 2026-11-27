@@ -7,7 +7,7 @@ import { loadSeedFiles } from './seed-files.js'
 
 const PLAYER_ALIASES = ['PLAYER_A', 'PLAYER_B', 'PLAYER_C'] as const
 
-const { repoRoot, config, client, keypair } = loadScriptContext()
+const { repoRoot, config, client, signer } = await loadScriptContext()
 const { resources, accounts } = loadSeedFiles(repoRoot)
 
 for (const alias of PLAYER_ALIASES) {
@@ -30,7 +30,7 @@ for (const alias of PLAYER_ALIASES) {
 }
 
 const res = await signAndExecute(client, {
-  signer: keypair,
+  signer,
   transaction: tx,
 })
 
