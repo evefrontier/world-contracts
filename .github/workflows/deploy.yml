@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: dev
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - name: Resolve config
@@ -136,8 +136,8 @@ jobs:
           # PR creation may be blocked by org policy; the records branch is
           # already pushed, so print a link to open it.
           gh pr create \
-            --base dev \
+            --base "${{ github.ref_name }}" \
             --head "$branch" \
             --title "$title" \
             --body "Automated deployment records for \`${{ inputs.env }}\` from image \`${{ inputs.image_tag }}\` (mode: ${{ inputs.mode }}, version: ${{ inputs.version }}, commit: ${{ github.sha }})." \
-            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/dev...${branch}?expand=1"
+            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${{ github.ref_name }}...${branch}?expand=1"

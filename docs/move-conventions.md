@@ -8,9 +8,7 @@ nowhere else.
 Follows the official [Sui Move Conventions](https://docs.sui.io/concepts/sui-move-concepts/conventions)
 and the [Move Book code-quality checklist](https://move-book.com/guides/code-quality-checklist).
 
-> **Scope.** Live code is in `contracts/core/sources/`. Everything under `contracts/archive/`
-> is the deprecated `world::` assembly model (`StorageUnit`, `assemblies/`, `primitives/`,
-> `GovernorCap`/`AdminACL`/`OwnerCap`) — do not copy its patterns into new code. See
+> **Scope.** Live code is in `contracts/core/sources/`. See
 > [`docs/adr/0002-modular-architecture.md`](adr/0002-modular-architecture.md) for the design.
 
 ## Production guardrails (non-negotiable)
@@ -89,7 +87,7 @@ assert!(entity.version == VERSION, EWrongVersion);
 assert!(entity.version == VERSION, 1);
 ```
 
-The message is surfaced on abort and parsed by the error-decoder tool; the numeric `code` stays
+The message is surfaced on abort; the numeric `code` stays
 unique within the module.
 
 ## Field getters
