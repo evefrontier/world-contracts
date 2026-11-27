@@ -19,6 +19,7 @@ import { componentIdFromName } from '../packages/component-id.js'
 import { mintAccess } from '../packages/core.js'
 import { balanceOf } from '../packages/inventory.js'
 import { installLayout, setShell } from '../packages/layout.js'
+import { POWER_SCALE } from '../packages/power.js'
 import {
   deriveVariantId,
   type QuantityKind,
@@ -245,7 +246,8 @@ export async function fuelVariant(
   registerVariant(tx, config, {
     key,
     kind: 'mass',
-    unitVolume: 1n,
+    // 1 m³ per kg, so a bay's capacity in m³ equals the kg of test fuel it holds.
+    unitVolume: POWER_SCALE,
     values: [
       { propertyId: 208, magnitude: stats.impulse },
       { propertyId: 209, magnitude: thermal },

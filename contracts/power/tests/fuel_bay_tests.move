@@ -333,32 +333,6 @@ fun fill_bays(scenario: &mut ts::Scenario, entity_id: ID, count: u64, clock: &Cl
     });
 }
 
-#[test, expected_failure(abort_code = grid_fuel::EFuelBayTooLarge)]
-fun install_bay_above_max_capacity_aborts() {
-    let mut scenario = ts::begin(admin());
-    setup(&mut scenario);
-    let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    let capacity = power_grid::max_fuel_bay_capacity() + 1;
-    install_fuel_at_scale(&mut scenario, entity_id, FUEL_B, capacity, &clock);
-
-    abort
-}
-
-#[test]
-fun install_bay_at_max_capacity_succeeds() {
-    let mut scenario = ts::begin(admin());
-    setup(&mut scenario);
-    let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
-    let capacity = power_grid::max_fuel_bay_capacity();
-    install_fuel_at_scale(&mut scenario, entity_id, FUEL_B, capacity, &clock);
-    assert!(bay_capacity(&mut scenario, entity_id, FUEL_B) == capacity);
-
-    clock.destroy_for_testing();
-    scenario.end();
-}
-
 #[test, expected_failure(abort_code = grid_fuel::ETooManyFuelBays)]
 fun install_bay_past_max_bays_aborts() {
     let mut scenario = ts::begin(admin());
@@ -698,10 +672,125 @@ fun all_fuel_offline_cuts_power() {
     scenario.end();
 }
 
+// === Volume ===
+
+/// 1_000 kg at 1 m³/kg and 1_000 kg at 3 m³/kg blend to 2 m³/kg: 4_000 m³,
+/// exactly what the bay holds.
+#[test]
+fun deposit_blends_unit_volume_by_mass() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 4_000, &clock);
+    let scale = power_grid::scale();
+
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1_000, scale, &clock);
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1_000, 3 * scale, &clock);
+
+    let added = event::events_by_type<FuelAdded>();
+    assert!(grid_fuel::fuel_added_unit_volume(&added[0]) == 2 * scale);
+    let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
+    assert!(fuel.quantity() == 2_000 * kg() && fuel.unit_volume() == 2 * scale);
+    assert!(power_grid::fuel_volume(&fuel) == ((4_000 * kg()) as u128));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The same two deposits need 4_000 m³; a 3_999 m³ bay refuses the second.
+#[test, expected_failure(abort_code = grid_fuel::EFuelOverCapacity)]
+fun deposit_over_volume_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 3_999, &clock);
+    let scale = power_grid::scale();
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1_000, scale, &clock);
+
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1_000, 3 * scale, &clock);
+
+    abort
+}
+
+/// A dense fuel (0.5 m³/kg) fits 2_000 kg in a 1_000 m³ bay.
+#[test]
+fun dense_fuel_fits_more_mass() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 1_000, &clock);
+
+    grid_scenario::deposit_at_volume(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        2_000,
+        power_grid::scale() / 2,
+        &clock,
+    );
+
+    let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
+    assert!(power_grid::fuel_volume(&fuel) == ((1_000 * kg()) as u128));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The blend's unit volume rounds up, so the bay's volume is never under-counted:
+/// 2 kg at 1 m³/kg and 1 kg at 1 m³/kg + 1 average to 1 m³/kg + 1/3, stored as + 1.
+#[test]
+fun blended_unit_volume_rounds_up() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, 10, &clock);
+    let scale = power_grid::scale();
+
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 2, scale, &clock);
+    grid_scenario::deposit_at_volume(&mut scenario, entity_id, FUEL_B, 1, scale + 1, &clock);
+
+    assert!(bay_fuel(&mut scenario, entity_id, FUEL_B).unit_volume() == scale + 1);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A fuel light enough to fit the volume still can't pass the mass cap, which
+/// keeps every bay's fuel within a u64.
+#[test, expected_failure(abort_code = grid_fuel::EFuelBayTooHeavy)]
+fun deposit_over_the_mass_cap_aborts() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    grid_scenario::install_fuel_at_scale(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        std::u64::max_value!(),
+        &clock,
+    );
+
+    grid_scenario::deposit_at_volume(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        power_grid::max_fuel_bay_quantity() / kg() + 1,
+        1,
+        &clock,
+    );
+
+    abort
+}
+
 // === Deposit ===
 
-/// Equal amounts average the stats: impulse (90 + 10) / 2, burden (14 + 4) / 2,
-/// volatility (1 + 7) / 2.
+/// Equal amounts average the stats: impulse (90 + 10) / 2, volatility (1 + 7) / 2.
+/// Burden takes the max of 14 and 4.
 #[test]
 fun deposit_blends_by_weighted_average() {
     let mut scenario = ts::begin(admin());
@@ -726,7 +815,7 @@ fun deposit_blends_by_weighted_average() {
     ].fuel_added_fields();
     assert!(bay == fuel_bay_id() && amount == starting_units() * kg());
     assert!(resulting == 2 * starting_fuel());
-    assert!(impulse == 50_000_000_000 && burden == 9_000_000_000 && volatility == 4_000_000_000);
+    assert!(impulse == 50_000_000_000 && burden == burden() && volatility == 4_000_000_000);
     assert!(settled_fuel(&mut scenario, entity_id) == 2 * starting_fuel());
 
     clock.destroy_for_testing();
@@ -734,7 +823,7 @@ fun deposit_blends_by_weighted_average() {
 }
 
 /// The overview's blend: 1000 units of A and 500 of B. Stats keep nine decimals,
-/// rounded down: impulse 46.666666666, burden 7.333333333, volatility 0.566666666.
+/// rounded down: impulse 46.666666666, volatility 0.566666666. Burden is the max, 14.
 #[test]
 fun deposit_matches_overview_blend() {
     let mut scenario = ts::begin(admin());
@@ -745,8 +834,40 @@ fun deposit_matches_overview_blend() {
     let fuel = bay_fuel(&mut scenario, entity_id, FUEL_B);
     assert!(fuel.quantity() == 1_500 * kg());
     assert!(fuel.impulse() == 46_666_666_666);
-    assert!(fuel.containment_burden() == 7_333_333_333);
+    assert!(fuel.containment_burden() == 14_000_000_000);
     assert!(fuel.volatility() == 566_666_666);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// A pool's containment burden is the max of its online bays, not their average:
+/// a bay at 14 beside a smaller bay at 20 reads 20.
+#[test]
+fun pool_burden_is_the_max_of_its_bays() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
+    install_fuel(&mut scenario, entity_id, FUEL_B, fuel_capacity(), &clock);
+    deposit_fuel_into(
+        &mut scenario,
+        entity_id,
+        FUEL_B,
+        starting_units() / 4,
+        impulse(),
+        20_000_000_000,
+        volatility(),
+        &clock,
+    );
+    set_fuel_bay(&mut scenario, entity_id, FUEL_B, true, &clock);
+
+    ts::next_tx(&mut scenario, owner());
+    let entity = ts::take_shared_by_id<Entity>(&scenario, entity_id);
+    let grid = power_grid::power_grid(&entity);
+    assert!(grid.pool_fuel(fuel_type()).containment_burden() == 20_000_000_000);
+    assert!(grid.online_fuel().containment_burden() == 20_000_000_000);
+    ts::return_shared(entity);
 
     clock.destroy_for_testing();
     scenario.end();

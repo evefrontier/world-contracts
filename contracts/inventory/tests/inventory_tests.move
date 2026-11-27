@@ -2078,7 +2078,14 @@ fun fuelled_unit(scenario: &mut ts::Scenario, kgs: u64): ID {
     ts::next_tx(scenario, ADMIN);
     let mut registry = take_registry(scenario);
     let acl = take_acl(scenario);
-    let e = build_entity_with_inventory(scenario, &mut registry, &acl, 1, OWNER, 1_000_000);
+    let e = build_entity_with_inventory(
+        scenario,
+        &mut registry,
+        &acl,
+        1,
+        OWNER,
+        1_000 * grid_scenario::kg(),
+    );
     let e_id = e.id();
     e.share();
     ts::return_shared(acl);

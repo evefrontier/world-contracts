@@ -230,10 +230,20 @@ const VOLATILITY: u32 = 211;
 ```
 
 **One unit everywhere.** The power grid's `SCALE` is 1e9, the same as variant
-values, mass quantities and the proto's nanos. Every fuel amount, bay capacity,
-stat, generator limit, requirement threshold and burn rate, in calls, events and
-views, is at 1e9, so the service sends and reads the values as they are, with no
-conversion. Fuel stats load from the variant unchanged.
+values, mass quantities and the proto's nanos. Every fuel amount, stat, generator
+limit, requirement threshold and burn rate, in calls, events and views, is at
+1e9, so the service sends and reads the values as they are, with no conversion.
+Fuel stats load from the variant unchanged.
+
+**Bay capacity is a volume** (nano-m³), like an inventory's. Fuel is still counted
+by mass, so a bay also keeps its fuel's `unit_volume` (m³ per kg, 1 / density,
+from the variant) as a fifth blended stat. It blends by mass like the others,
+which is exact because volumes add (averaging density itself would not be), and
+rounds up so the bay is never over-filled. A deposit fits when the blend's mass ×
+`unit_volume` is within the capacity. Burn stays per kg, so burn rate and run-out
+are unchanged; burning or siphoning X kg frees X × `unit_volume`. A separate mass
+cap per bay keeps every bay's fuel within a `u64` when a dense fuel packs a lot
+of mass into its volume.
 
 The fuel type is `key.type_id`. A deposit or siphon amount must be a whole 0.0001
 kg (10^5), the game's precision, or the call aborts; a siphon must also be at
@@ -241,7 +251,7 @@ least 0.01 kg, the smallest stack it can be minted back as. Zero impulse, zero
 volatility, a missing fuel property or `Units` kind aborts; a zero containment
 burden or thermal inefficiency loads as 0.
 
-A bay keeps only the fuel type and four blended stats, not a variant. A siphon
+A bay keeps only the fuel type and five blended stats, not a variant. A siphon
 emits those values with the tenant and the quantity (`FuelSiphoned`); the service
 asks the game which variant that fuel is, registers it if new, and mints the
 stack. The chain never rebuilds the original variant: blending makes that the

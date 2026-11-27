@@ -171,7 +171,7 @@ describe('fuel bays (localnet)', () => {
       online: false,
       quantity: 1_500n * POWER_SCALE,
       impulse: 46_666_666_666n,
-      containmentBurden: 7_333_333_333n,
+      containmentBurden: 14n * POWER_SCALE,
       volatility: 566_666_666n,
     })
     expect(loaded.get(BAY_B)).toMatchObject({
