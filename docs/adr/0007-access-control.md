@@ -26,10 +26,10 @@ Five ideas:
 
 | Idea                              | In plain words                                                                                                                                                                              |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Owner**                         | The character who built the Creation or last placed their Shell in it. Removing the Shell doesn't change the owner. On chain: whoever holds the Creation's owner cap. The owner can always do everything. |
+| **Owner**                         | The builder at first, then whoever or who claimed it. On chain: whoever holds the Creation's owner cap. The owner can always do everything. A Creation always has an owner until someone claims it. |
 | **DataItems/Manifest/SharedList** | A shared object holding one or more named lists of characters (and bot or org wallets), e.g. a tribe's *members*, *haulers* and *controllers*. Someone creates it and keeps it up to date, e.g. a tribe officer. It is not part of a Creation: one manifest can be used by many Creations. |
 | **Permission**                    | A name for a kind of action: switch the grid, run a module, refuel, move cargo, and so on. Actions ask for a permission instead of "the owner".                                             |
-| **Policy**                        | Settings on each Creation: which manifest it follows and its main list, optional rules per permission, and an **open** switch that lets anyone do shared actions (boarding still follows the main list). |
+| **Policy**                        | Settings on each Creation: which manifest it follows and its main list, optional rules per permission, an **open** switch that lets anyone do shared actions (never claim). |
 | **Rule**                          | What someone other than the owner must meet for a permission: by default "be on the main list"; it can also be another list in the manifest, "anyone", or a builder's own check.        |
 
 Who can do what by default:
@@ -39,23 +39,29 @@ Who can do what by default:
 | Refuel, switch power and modules, move cargo | The owner and everyone on the main list (or the list set for that action) |
 | Edit a manifest and its lists | Whoever holds that manifest's list cap (its author) |
 | Choose the Creation's manifest, set rules, set open | Owner only |
-| Remove the Shell | Owner (pilot), from inside the game |
+| Release, recall, abandon | Owner only, from the game client (sponsored) |
+| Claim (become owner) | Released: a character on the main list (anyone, with no manifest attached). Abandoned: any character. Never through open. The game server checks this and claims as admin |
 | Install, uninstall, destroy, merge, split, dock | The game server. It decides who may ask (e.g. merge only if you own both); the chain trusts it |
-| Place a Shell in a Creation with no Shell | The owner; anyone on the main list; anyone at all if there is no manifest or the main list has no characters |
 
 Key behaviours:
 
-- **There is always an owner.** Removing or losing the Shell keeps the owner.
-Ownership moves only when another character places their Shell.
-- **The manifest stays.** Removing the Shell or changing owner keeps the
-manifest and rules attached until the owner replaces them.
+- **Ownership moves only through the owner.** The owner releases the Creation
+so a character on the main list can claim it, or abandons it so any character
+can. Nobody takes an Owned Creation.
+- **Always an owner.** Three states, Owned, Released and Abandoned. The owner
+keeps the cap until a claim mints a new one to someone else.
+- **Abandon is final.** It also opens the Creation to everyone; nothing switches
+it back, and any character can claim it.
+- **The manifest stays.** Changing owner keeps the manifest and rules attached
+until the owner replaces them.
 - **The owner always wins.** Removing the owner from the manifest doesn't take
 their Creation away.
 - **One pointer per Creation.** A Creation follows one manifest. A new owner
 swaps all its lists at once by attaching a different manifest.
-- **Cold and dark.** A Creation with no Shell is *cold*, which also makes it
-*dark* (no power). Nobody can switch power or modules on a cold Creation, and
-cargo can't move because the inventory is offline. Members can still refuel it.
+- **The chain records no Shell.** Shells still exist in game; only the owner's go
+into a Creation's Command Modules, and the game server enforces that. The chain
+records no Shell and no Command Module. Nothing shuts down when a player
+leaves: modules run while fuel and power allow. Dark/Cold means no power.
 - **Every Creation has a policy**
 
 ### End-to-end flows
@@ -72,7 +78,7 @@ sequenceDiagram
 
     Officer->>List: create manifest with lists: list1, list2
     Builder->>Game: build Creation
-    Game->>Chain: build + policy (no manifest), seat Shell, owner cap to Player(Member)
+    Game->>Chain: build + policy (no manifest), owner cap to Player(Member)
     Builder->>Chain: attach Tribe manifest, main list = members (Member is on it or its author)
     Builder->>Chain: cargo -> list1
     Note over Chain,List: Creation now follows the tribe manifest
@@ -99,46 +105,56 @@ sequenceDiagram
 The owner skips the list: they borrow the owner cap from their Character and
 present it instead (`verify_owner`).
 
-**3. Remove the Shell and take over**
+**3. Release and claim**
 
 ```mermaid
 sequenceDiagram
-    participant Pilot as Owner (pilot)
+    participant Owner
+    participant Next as Another member
     participant Game as Game server
     participant Chain as Creation
-    participant Next as Another member
 
-    Pilot->>Game: "remove my Shell" (in game)
-    Game->>Chain: one transaction, signed by Pilot, sponsored by game
-    Note over Chain: grid shut down, Shell removed, owner cap kept
-    Note over Chain: cold, Pilot is still the owner, manifest still attached
-    Next->>Game: "place my Shell"
-    Game->>Chain: board (checks Next is on the main list), Pilot's owner cap revoked
-    Game->>Chain: new owner cap to Next's Character (second transaction)
-    Note over Game,Chain: short gap between boarding and the new cap, accepted
-    Note over Chain: Next is the owner, can keep or replace the manifest
+    Owner->>Game: press "Release" (in game)
+    Game->>Chain: access::release, owner cap, sponsored by game
+    Note over Chain: Policy.status = Released
+    Next->>Game: board or place a Shell (in game)
+    Game->>Game: check status = Released and Next is a character on the main list
+    Game->>Chain: one admin tx: mint_access to Next's Character (replaces the old cap), settle_claim
+    Note over Chain: Next owner, can keep or replace the manifest
 ```
 
-If Pilot places their own Shell again instead, nothing changes: they keep their
-owner cap.
+**4. Abandon and claim**
 
-**4. Creation lifecycle**
+```mermaid
+sequenceDiagram
+    participant Owner
+    participant Anyone
+    participant Game as Game server
+    participant Chain as Creation
+
+    Owner->>Game: press "Abandon" and confirm (in game)
+    Game->>Chain: access::abandon, owner cap, sponsored by game
+    Note over Chain: Policy.status = Abandoned, open = true, old owner still holds the cap
+    Anyone->>Game: board or place a Shell (in game)
+    Game->>Game: check status = Abandoned and Anyone is a character
+    Game->>Chain: one admin tx: mint_access to Anyone's Character (replaces the old cap), settle_claim (status = Owned, open = false)
+```
+
+**5. Creation lifecycle**
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Owned: build (Shell seated, owner cap minted)
-    Owned --> NoShell: owner removes the Shell / Shell destroyed
-    NoShell --> Owned: owner boards again (same cap)
-    NoShell --> Owned: another member boards and becomes owner (anyone if no manifest or empty main list)
-    Owned --> Owned: owner changes manifest, rules, open switch
-    note right of NoShell
-        cold (and dark): no power switching, no cargo
-        owner, manifest and rules kept
-        refuel still follows the policy
-    end note
+    [*] --> Owned: build (owner cap to the builder)
+    Owned --> Owned: hand over (cap transfer)
+    Owned --> Released: release
+    Released --> Owned: recall
+    Owned --> Abandoned: abandon (sets open)
+    Released --> Abandoned: abandon (sets open)
+    Released --> Owned: claim by a manifest member (game server)
+    Abandoned --> Owned: claim by anyone (game server)
 ```
 
-**5. A tribe or DAO runs the manifest**
+**6. A tribe or DAO runs the manifest**
 
 ```mermaid
 sequenceDiagram
@@ -175,8 +191,8 @@ owner cap in its contract and lends it out by its own rules.
 
 **In scope:** owner cap kept as the ownership proof; shared manifests; named
 permissions on power and inventory actions; per-Creation policy with rules and
-the open switch; boarding and Shell removal with fixed rules; letting any object hold
-and lend the owner cap; views and events.
+the open switch; release, recall, hand-over, and claim by the game server; letting any
+object hold and lend the owner cap; views and events.
 
 **Out of scope (later):** builder rules on actions the game client builds
 (refuel, game cargo); owner-only rules per action; a contract replacing the
@@ -211,9 +227,11 @@ public struct ListRef has copy, drop, store {   // one list inside a SharedAcces
 // core::access — a component on every Creation
 public struct Policy has store {
     open: bool,                                      // anyone meets every permission
+    status: Status,                                  // Owned (default), Released or Abandoned
     main_list: Option<ListRef>,                      // the attached manifest and its main list; none = owner only
     rules: VecMap<RuleKey, vector<Requirement>>,
 }
+public enum Status has copy, drop, store { Owned, Released, Abandoned }
 public struct RuleKey has copy, drop, store {
     permission: TypeName,                            // with_original_ids
     action: Option<String>,                          // none = every action
@@ -228,6 +246,9 @@ missing list. A builder retires a role by emptying it.
 - **A list rule** is `[Member(ListRef)]`, for a list inside the attached
 manifest. The attached manifest is `main_list.manifest`, so a main list can't
 exist without a manifest.
+- **Ownership state** is `Policy.status`: Owned (default), Released or
+Abandoned. A Creation always has an owner, the cap holder, in each; ownership
+changes only at a claim or a hand-over.
 - `Request` gains `action: Option<String>` (set by `entity::interact`) so a
 rule can target one named action.
 
@@ -267,21 +288,21 @@ flowchart TD
     M -- no --> Refuse[Refuse: owner only]
 ```
 
-Game-client actions only honour a rule that is "anyone" (`[]`) or a single list
+Game-client actions (refuel, game cargo) only honour a rule that is "anyone" (`[]`) or a single list
 (`[Member(ListRef)]`); any other rule is skipped, because the game client can only
 build list checks. That way a builder rule can never lock members out of
-refuelling.
+refuelling. Open never covers claim or owner-only actions.
 
 ### Actions
 
 | Who                               | Can                                                                                                                       |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Owner                             | Choose the manifest and its main list, point an action at another list, set other rules, open the Creation to everyone |
+| Owner                             | Choose the manifest and its main list, point an action at another list, set other rules, open the Creation to everyone|
+| Owner + game server               | `release`, `recall`, `abandon` (built by the game client, game-sponsored)                                                 |
 | Manifest author (list cap holder) | Create a manifest, add or rename lists, add or remove members                                                             |
 | Member                            | Prove they are on a list                                                                                                  |
-| Player + game server              | Board, remove the Shell                                                                                                   |
-| Game server                       | Handle a destroyed Shell or a split section                                                                               |
-| The contract itself               | Create the policy with every Creation; revoke the old owner when another character boards                                 |
+| Game server                       | Dock, detach a section (copy the policy, mint its cap), merge, claim |
+| The contract itself               | Create the policy with every Creation                                                                                     |
 
 Attaching needs the manifest's author (list cap holder) or a character on the
 chosen main list. Replacing or
@@ -295,41 +316,47 @@ Every handler ships a `*_template` for PTB discovery (see
 
 ### Rules
 
-- **Owner always passes.** Ownership comes from the cap, not the list.
-- **Attach by author or membership.** The owner can attach a manifest they
-authored (they present its list cap) or one whose chosen main list has their
-character on it. Per-action lists must come from the same
-manifest.
-- **Boarding** needs no Shell aboard. The owner boards with their owner cap and  
-keeps it. Anyone else boards by the main list (anyone if there is no manifest  
-or the main list has no characters); boarding revokes the old owner cap and  
-the new owner gets a fresh one. The game server checks the Shell belongs to  
-the boarding character before sponsoring.
-- **Removing the Shell** is one transaction: owner cap, game-server sponsor,
-grid shut down, Shell removed. The owner cap stays valid. The game server only
-sponsors it for the pilot. If a contract holds the cap, it must hand it back to
-the pilot's Character first. A destroyed Shell does the same through
-`clear_shell`.
-- **Cold: no switching.** Power handlers refuse while no Shell is aboard.
-Cargo needs its inventory online, which also needs a Shell; refuel doesn't.
-- **Split sections.** One game-server transaction: the section without the
-Command Module is set open; the one with it keeps the policy and pilot.
-- **List entries are plain ids**, added only by the manifest author. There is no
-on-chain check that an entry is a character; the game server checks the
-boarding character before paying.
-- **Rules are all-of**; an empty rule means anyone. Rules survive a change of
-owner, like the manifest.
+**Access**
+
+- The owner always passes; ownership comes from the cap, not a list.
+- A rule is all-of; an empty rule means anyone. Rules and the manifest survive
+a change of owner.
+- The owner attaches a manifest they authored or whose main list they are on.  
+Per-action lists come from that manifest.
+- Modules keep running while fuel and power allow, and cargo moves while its inventory is online.
+
+**Ownership**
+
+- There is always an owner: the cap holder. It changes only by hand-over (cap
+transfer, status kept) or a claim.
+- `release`: Owned → Released; `recall`: back to Owned. `abandon`: → Abandoned
+and open; final (`release`, `recall`, `set_open` abort). All need the owner cap,
+so a vault or DAO must lend it.
+- Claim (game server, one admin transaction): Released → a main-list character
+(anyone with no manifest); Abandoned → any character; never a wallet; first
+claim wins. `mint_access` to the claimant + `settle_claim` (Owned; closed if it
+was Abandoned).
+
+**Structure** (game server, admin)
+
+- Detach: the new section copies the policy and gets a cap minted to the
+original cap's holder.
+- Merge: only Creations the owner owns, or one claimed in the merge. The absorbing
+Creation keeps its owner and policy; stale caps are deleted with
+`destroy_stale_access`.
+- Docking isn't checked by access rules; the game server enforces it for the
+actions it sponsors.
 
 ### Builder extensions
 
 | Builders can | How |
 |---|---|
-| Hold the owner cap in a vault, DAO or multisig | Send it to their object; lend it with `access_cap::receive` and a return-only receipt |
+| Hold the owner cap in a vault, DAO or multisig | Send it to their object; lend it with `access_cap::receive` and a return-only receipt; it must lend the cap for release, recall or abandon, so nobody takes the Creation without it |
 | Add their own checks (roles, votes, tokens, limits) | Owner sets them as a permission's rule, for every action or one named action |
 | Add permissions for their own components | Push `access::requirement<MyPerm>()`; the same policy governs it |
 | Run a manifest from a contract | Keep the list cap in their object; give roles their own edit rights over single lists; edit after a vote, role change or token check |
 | Add owner-enabled actions | `entity::enable_action` with their own requirements |
-| Follow Creations, not owners | Views and events for owner, manifest, rules and open switch |
+| Follow Creations, not owners | Views and events for owner, manifest, rules, open switch and ownership state |
 
 ## Alternatives considered
 
@@ -339,7 +366,7 @@ owner, like the manifest.
 | Tribe holds the owner cap, members borrow it by role | Left to builders | Every borrow writes one shared object, and the borrower gets every owner right |
 | One list per shared object | Rejected | A new owner re-points every list, and the game reads many objects |
 | A list stored on each Creation | Rejected | A tribe edits every Creation on each join or leave |
-| A contract replaces the owner cap | Later | Needs a game decision; a Shell change still resets it |
+| A contract replaces the owner cap | Later | Needs a game decision; a claim still resets it |
 | Separate settings for game-client actions | Later | One rules map gives the same protection with fewer functions |
 
 ## Future direction
@@ -348,32 +375,26 @@ This ADR keeps the first version small. Later steps build on the same model:
 
 - **Authorship with proof:** hand a manifest to a specific character, or to a
 contract that agrees, instead of transferring the list cap.
-- **Pilot on chain:** record who is aboard so Shell removal is checked on chain, not
-only by the game server.
 - **Lists from several authors** on one Creation, e.g. a tribe's members plus an
 ally's haulers.
 - **Builder rules on game-client actions:** refuel and game cargo run builder
 checks through PTB templates and a sponsor allowlist.
-- **A contract as owner:** a contract replaces the owner cap entirely, once the  
-game decides a contract may outrank the pilot.
+- **A contract as owner:** a contract replaces the owner cap entirely, or keeps
+custody when a released Creation is claimed (the new cap goes back to the
+contract).
 
 ## Open questions
 
-1. Should `set_rule` and `enable_action` reject core markers (e.g. the revoke
+1. Should `set_rule` and `enable_action` reject core markers (e.g. `EditAccess`,
 
-   requirement) so a rule can never strip the owner?
+   `Ownership`) so a rule can never act as the owner?
 2. Builder rules on refuel and game cargo: needs the game server to sponsor
 
    builder calls safely (templates plus an allowlist).
 3. Owner-only rules per action.
-4. Refuel with no Shell: allowed for the owner and members (it only adds fuel,
+4. Which in-game actions are shared and which are owner-only is game design's
 
-   and avoids a Creation that can never come back online). Needs game design  
-   confirmation.
-5. Which in-game actions are shared and which are owner-only is game design's
    call. The chain only enforces sharing for actions that are on chain.
-6. Should open also let anyone board a cold Creation? Today boarding follows the
-   main list.
 
 ## Consequences
 
@@ -381,9 +402,6 @@ game decides a contract may outrank the pilot.
 Creations and updates everywhere at once; builders reuse the same policy for
 their own rules, permissions and lists; the owner cap can live in any contract.
 
-**Harder:** every owner-gated handler moves to a named permission; one list cap
-edits every list in a manifest unless a contract splits it; a manifest
-author is trusted by everyone following their manifest (emptying the main list lets anyone take
-over a Creation with no Shell); frequent removals need a transaction (a list is stale
-until edited); the game server stays responsible for checking presence and
-Shell ownership.
+**Harder:** every owner-gated handler moves to a named permission; frequent removals need a transaction (a list is stale
+until edited); the game server stays responsible for checking presence, docking,
+which Shells go into Command Modules and the claiming character.
