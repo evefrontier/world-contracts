@@ -6,14 +6,15 @@ run() {
     if [[ "${DRY_RUN:-}" == "1" ]]; then echo "DRY_RUN: $*"; else "$@"; fi
 }
 
-# Resolve the deployer and AppCap signers: an AWS KMS key (*_KMS_KEY_ID) or a
-# private key (*_KEY). The AppCap signer defaults to the deployer.
-# Sets: DEPLOYER_ADDR, APPCAP_ADDR. Leaves the deployer as the active signer.
+# Resolve the deployer signer: an AWS KMS key (DEPLOYER_KMS_KEY_ID) or a private
+# key (DEPLOYER_KEY). The deployer also holds the MVR AppCaps, so it signs every
+# deploy, upgrade and MVR step. Sets: DEPLOYER_ADDR.
 ci_bootstrap_keys() {
     : "${TARGET_ENV:?}" "${NET:?}"
 
     sui_init_config "$NET" "$(get_rpc "$TARGET_ENV")"
     if [[ -n "${DEPLOYER_KMS_KEY_ID:-}" ]]; then
+        export SUINS_KMS_KEY_ID="$DEPLOYER_KMS_KEY_ID"
         DEPLOYER_ADDR=$(kms_signer address "$DEPLOYER_KMS_KEY_ID")
     else
         : "${DEPLOYER_KEY:?set DEPLOYER_KEY or DEPLOYER_KMS_KEY_ID}"
@@ -21,32 +22,10 @@ ci_bootstrap_keys() {
         export SUI_PRIVATE_KEY="$DEPLOYER_KEY"
     fi
     [[ -z "$DEPLOYER_ADDR" ]] && { echo "ERROR: could not resolve deployer address" >&2; exit 1; }
-
-    APPCAP_ADDR="$DEPLOYER_ADDR"
-    if [[ -n "${APPCAP_KMS_KEY_ID:-}" ]]; then
-        APPCAP_ADDR=$(kms_signer address "$APPCAP_KMS_KEY_ID")
-    elif [[ -n "${APPCAP_KEY:-}" ]]; then
-        APPCAP_ADDR=$(import_key "$APPCAP_KEY")
-    else
-        APPCAP_KMS_KEY_ID=${DEPLOYER_KMS_KEY_ID:-}
+    if [[ -z "${DEPLOYER_KMS_KEY_ID:-}" ]]; then
+        sui client switch --address "$DEPLOYER_ADDR" >/dev/null
     fi
     echo "deployer: $DEPLOYER_ADDR${DEPLOYER_KMS_KEY_ID:+ (KMS)}"
-    echo "appcap:   $APPCAP_ADDR${APPCAP_KMS_KEY_ID:+ (KMS)}"
-    use_signer deployer
-}
-
-# Sign the following sui txs with the deployer or the AppCap key.
-use_signer() {
-    local kms addr
-    case "$1" in
-        deployer) kms=${DEPLOYER_KMS_KEY_ID:-}; addr=$DEPLOYER_ADDR ;;
-        appcap)   kms=${APPCAP_KMS_KEY_ID:-};   addr=$APPCAP_ADDR ;;
-        *) echo "use_signer: unknown signer '$1'" >&2; exit 1 ;;
-    esac
-    export SUINS_KMS_KEY_ID="$kms"
-    if [[ -z "$kms" ]]; then
-        sui client switch --address "$addr" >/dev/null
-    fi
 }
 
 # Copy Published.toml for each pkg + world.json into deployments/$TARGET_ENV/records.
@@ -92,13 +71,8 @@ ci_require_appcaps() {
 ci_mvr_deploy_pkg() {
     local pkg=$1
 
-    use_signer deployer
     run ./scripts/mvr.sh package-info "$TARGET_ENV" "$pkg"
-
-    use_signer appcap
     run ./scripts/mvr.sh set-network "$TARGET_ENV" "$pkg"
-
-    use_signer deployer
     run ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
 }
 

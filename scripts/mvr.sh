@@ -5,15 +5,15 @@
 #   mvr.sh set-network       <env> <pkg>
 #   mvr.sh git-version       <env> <pkg> <ver> <commit>
 #   mvr.sh set-appcap        <env> <pkg> <appCapId>
-#   mvr.sh bootstrap-appcap  <env> <pkg> [recipient]
+#   mvr.sh bootstrap-appcap  <env> <pkg> <recipient>
 #
-# bootstrap-appcap is a one-time, manual step per new (pkg, env) pair
-# It mints a permanent SuiNS subname, so run it deliberately with the
-# @evefrontier-owning mainnet key, not as part of the automated deploy.
-# The AppCap goes to [recipient], or to the signer when omitted.
+# bootstrap-appcap is a one-time step per new (pkg, env) pair, signed by the
+# @evefrontier SuiNS owner key (see .github/workflows/bootstrap-appcap.yml).
+# It mints a permanent SuiNS subname and sends the AppCap to <recipient>, the
+# env's deployer, which signs every other step.
 #
 # Txs are signed by the active CLI address, or by AWS KMS when SUINS_KMS_KEY_ID
-# is set (e.g. SUINS_KMS_KEY_ID=$APPCAP_KMS_KEY_ID for the AppCap key).
+# is set.
 #
 # Object ids are read from / written to the committed deployments/<env>/world.json.
 source "$(dirname "$0")/lib.sh"
@@ -138,17 +138,19 @@ cmd_git_version() {
 # to the recipient (default: the signer).
 cmd_bootstrap_appcap() {
     local env=$1 pkg=$2 recipient=${3:-}
-    local name out app_cap to
+    local name out app_cap
     [[ "$env" == "localnet" ]] && {
         echo "ERROR: bootstrap-appcap is mainnet-only — not for localnet" >&2
         exit 1
     }
-    if [[ -n "$recipient" ]]; then
-        [[ "$recipient" =~ ^0x[a-fA-F0-9]{64}$ ]] || { echo "ERROR: bad recipient '$recipient'" >&2; exit 1; }
-        to="@$recipient"
-    else
-        to=sender
-    fi
+    [[ "$recipient" =~ ^0x[a-fA-F0-9]{64}$ ]] || {
+        echo "ERROR: recipient must be the $env deployer address (0x…), got '$recipient'" >&2
+        exit 1
+    }
+    [[ -n "$(mvr_get "$env" "$pkg" appCap)" ]] && {
+        echo "ERROR: $pkg/$env already has an appCap — refusing to register again" >&2
+        exit 1
+    }
     name=$(mvr_name "$pkg" "$env")
     # register() takes the app label only; the @evefrontier parent is MVR_SUINS_PARENT.
     label="${name#*/}"
@@ -158,14 +160,13 @@ cmd_bootstrap_appcap() {
     run_ptb "register $name" "$out" \
         --move-call "$MVR_CORE_MAINNET::move_registry::register" \
             "@$MVR_REGISTRY" "@$MVR_SUINS_PARENT" "\"$label\"" "@0x6" --assign appcap \
-        --move-call sui::tx_context::sender --assign sender \
-        --transfer-objects "[appcap]" "$to"
+        --transfer-objects "[appcap]" "@$recipient"
 
     app_cap=$(jq -r '.objectChanges[] | select(.type=="created" and (.objectType|contains("AppCap"))) | .objectId' "$out" | head -1)
     [[ -z "$app_cap" ]] && { echo "ERROR: no AppCap created in $out" >&2; exit 1; }
 
     mvr_set "$env" "$pkg" appCap "$app_cap"
-    echo "bootstrap-appcap $pkg/$env: registered '$name', appCap = $app_cap -> ${recipient:-signer}"
+    echo "bootstrap-appcap $pkg/$env: registered '$name', appCap = $app_cap -> $recipient"
 }
 
 setup

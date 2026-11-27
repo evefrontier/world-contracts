@@ -1,0 +1,140 @@
+name: Bootstrap MVR AppCap
+
+# One-time per (package, env): registers @evefrontier/world-<pkg>-<env> on
+# mainnet with the SuiNS owner key and sends the AppCap to that env's deployer.
+# This mints a permanent SuiNS subname, so the `suins` environment must require
+# reviewers. It holds AWS_DEPLOY_ROLE_ARN, AWS_REGION and SUI_SUINS_KMS_KEY_ID.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: GHCR image tag to run (e.g. v1.2.3, dev-v1.2.3)
+        type: string
+        required: true
+      env:
+        description: Environment the MVR names are for
+        type: choice
+        options: [dev, test, uat, live]
+        required: true
+      packages:
+        description: Space-separated packages (e.g. "core character")
+        type: string
+        required: true
+      recipient:
+        description: The env's deployer address (receives the AppCaps)
+        type: string
+        required: true
+
+concurrency:
+  group: bootstrap-appcap
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: world-contracts
+
+jobs:
+  bootstrap:
+    name: AppCaps for ${{ inputs.env }} (${{ inputs.packages }})
+    runs-on: ubuntu-latest
+    environment: suins
+    permissions:
+      contents: write
+      packages: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Validate inputs
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          RECIPIENT: ${{ inputs.recipient }}
+          KMS_KEY_ID: ${{ vars.SUI_SUINS_KMS_KEY_ID }}
+        run: |
+          [[ -n "$KMS_KEY_ID" ]] || { echo "ERROR: SUI_SUINS_KMS_KEY_ID is not set on the suins environment" >&2; exit 1; }
+          [[ "$RECIPIENT" =~ ^0x[a-fA-F0-9]{64}$ ]] || { echo "ERROR: bad recipient '$RECIPIENT'" >&2; exit 1; }
+          for pkg in $PACKAGES; do
+            [[ -d "contracts/$pkg" && "$pkg" =~ ^[a-z_]+$ ]] || { echo "ERROR: unknown package '$pkg'" >&2; exit 1; }
+          done
+          [[ -f "deployments/${{ inputs.env }}/world.json" ]] || { echo "ERROR: deployments/${{ inputs.env }}/world.json missing" >&2; exit 1; }
+
+      - name: Resolve image
+        id: cfg
+        run: |
+          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${{ inputs.image_tag }}"
+          echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull pinned image
+        run: docker pull "${{ steps.cfg.outputs.image }}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Register MVR names
+        env:
+          SUINS_KMS_KEY_ID: ${{ vars.SUI_SUINS_KMS_KEY_ID }}
+          PACKAGES: ${{ inputs.packages }}
+          RECIPIENT: ${{ inputs.recipient }}
+          TARGET_ENV: ${{ inputs.env }}
+          CONTAINER: bootstrap-appcap-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          env="$TARGET_ENV"
+          docker create --name "$CONTAINER" \
+            -e CI=true \
+            -e SUINS_KMS_KEY_ID -e PACKAGES -e RECIPIENT -e TARGET_ENV \
+            -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            --entrypoint bash \
+            "${{ steps.cfg.outputs.image }}" \
+            -c 'set -euo pipefail
+                mkdir -p "deployments/$TARGET_ENV"
+                cat /app/world.json.seed > "deployments/$TARGET_ENV/world.json"
+                for pkg in $PACKAGES; do
+                  ./scripts/mvr.sh bootstrap-appcap "$TARGET_ENV" "$pkg" "$RECIPIENT"
+                done'
+          docker cp "deployments/$env/world.json" "$CONTAINER:/app/world.json.seed"
+          status=0
+          docker start -a "$CONTAINER" || status=$?
+          # Keep the AppCaps recorded so far, even if a later package failed.
+          docker cp "$CONTAINER:/app/deployments/$env/world.json" "deployments/$env/world.json"
+          exit $status
+
+      - name: Remove container
+        if: always()
+        run: docker rm -f "bootstrap-appcap-${{ github.run_id }}-${{ github.run_attempt }}" 2>/dev/null || true
+
+      - name: Open records PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "deployments/${{ inputs.env }}/world.json"
+          if git diff --cached --quiet; then
+            echo "No AppCaps recorded."
+            exit 0
+          fi
+          branch="appcap-records/${{ inputs.env }}-${{ github.run_id }}"
+          title="mvr(${{ inputs.env }}): bootstrap AppCaps for ${{ inputs.packages }}"
+          git commit -m "$title [skip ci]"
+          git push origin "HEAD:${branch}"
+          gh pr create \
+            --base "${{ github.ref_name }}" \
+            --head "$branch" \
+            --title "$title" \
+            --body "AppCaps registered on mainnet by the SuiNS owner key and sent to \`${{ inputs.recipient }}\` (image \`${{ inputs.image_tag }}\`)." \
+            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${{ github.ref_name }}...${branch}?expand=1"
