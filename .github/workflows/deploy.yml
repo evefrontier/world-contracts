@@ -57,6 +57,7 @@ jobs:
         env:
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: bad image_tag '$IMAGE_TAG'" >&2; exit 1; }
           image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
           case "${{ inputs.env }}" in
