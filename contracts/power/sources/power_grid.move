@@ -112,14 +112,15 @@ public struct FuelBayState has copy, drop, store {
 }
 
 /// A quantity of fuel of one type and its stats, all at `SCALE`. Loading fuel
-/// blends the stats by quantity-weighted average. Inside a stored `FuelBayState`
+/// blends the stats by quantity-weighted average, except containment burden,
+/// which takes the max. Inside a stored `FuelBayState`
 /// the quantity is as of `last_settled_ms`, not live; `projected_bays` gives it now.
 public struct Fuel has copy, drop, store {
     /// `None` while empty. Set by the first deposit, cleared when it runs dry.
     fuel_type: Option<u64>,
     quantity: u64,
     impulse: u64,
-    /// Stored only; burn ignores it.
+    /// Stored only; burn ignores it. Blends as the max, not an average.
     containment_burden: u64,
     volatility: u64,
     /// Stored for siphon and off-chain heat.
@@ -195,7 +196,8 @@ public enum PowerStatus has copy, drop, store {
     BaysOffline,
 }
 
-/// Running quantity-weighted sums of fuel stats, for blending bays.
+/// Running quantity-weighted sums of fuel stats, for blending bays. Containment
+/// burden is the running max instead.
 public struct FuelSums has copy, drop {
     quantity: u128,
     impulse: u128,
@@ -1263,20 +1265,16 @@ public(package) fun set_bay_online(grid: &mut PowerGrid, fuel_bay_id: u64, onlin
     grid.bays[&fuel_bay_id].online = online;
 }
 
-/// Load fuel into one bay, blending its stats by quantity-weighted average. The
-/// bay takes the added type; the caller checks it matches a non-empty bay.
+/// Load fuel into one bay, blending its stats by quantity-weighted average and
+/// its containment burden by max. The bay takes the added type; the caller
+/// checks it matches a non-empty bay.
 public(package) fun blend_into_bay(grid: &mut PowerGrid, fuel_bay_id: u64, added: Fuel) {
     let fuel = &mut grid.bays[&fuel_bay_id].fuel;
     let held = fuel.quantity;
     fuel.fuel_type = added.fuel_type;
     fuel.impulse = fuel_math::blend(fuel.impulse, held, added.impulse, added.quantity);
-    fuel.containment_burden =
-        fuel_math::blend(
-            fuel.containment_burden,
-            held,
-            added.containment_burden,
-            added.quantity,
-        );
+    fuel.containment_burden = if (held == 0) added.containment_burden
+    else fuel.containment_burden.max(added.containment_burden);
     fuel.volatility = fuel_math::blend(fuel.volatility, held, added.volatility, added.quantity);
     fuel.thermal_inefficiency =
         fuel_math::blend(
@@ -1874,12 +1872,14 @@ fun empty_sums(): FuelSums {
     }
 }
 
-/// Add `fuel` to `sums`, weighted by its quantity.
+/// Add `fuel` to `sums`, weighted by its quantity; its containment burden counts
+/// toward the max only while it holds fuel.
 fun add_fuel(sums: &mut FuelSums, fuel: &Fuel) {
     let held = fuel.quantity as u128;
     sums.quantity = sums.quantity + held;
     sums.impulse = sums.impulse + held * (fuel.impulse as u128);
-    sums.containment_burden = sums.containment_burden + held * (fuel.containment_burden as u128);
+    if (held > 0)
+        sums.containment_burden = sums.containment_burden.max(fuel.containment_burden as u128);
     sums.volatility = sums.volatility + held * (fuel.volatility as u128);
     sums.thermal_inefficiency =
         sums.thermal_inefficiency + held * (fuel.thermal_inefficiency as u128);
@@ -1895,7 +1895,7 @@ fun sums_to_fuel(sums: &FuelSums, fuel_type: Option<u64>): Fuel {
         fuel_type,
         quantity: quantity as u64,
         impulse: (sums.impulse / quantity) as u64,
-        containment_burden: (sums.containment_burden / quantity) as u64,
+        containment_burden: sums.containment_burden as u64,
         volatility: (sums.volatility / quantity) as u64,
         thermal_inefficiency: (sums.thermal_inefficiency / quantity) as u64,
         unit_volume: sums.unit_volume.div_ceil(quantity) as u64,
