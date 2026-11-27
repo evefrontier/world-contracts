@@ -13,6 +13,7 @@ use power::{
         firm_power,
         elastic_power,
         install_module,
+        mw,
         power,
         power_up,
         projected,
@@ -43,12 +44,12 @@ const OV_B: u64 = 502;
 const OV_C: u64 = 503;
 const OV_D: u64 = 504;
 const OV_E: u64 = 505;
-/// 15 MW.
-const OUTPUT: u64 = 15;
+/// 15 MW at `SCALE`.
+const OUTPUT: u64 = 15_000_000_000;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
 const IMPULSE_LIMIT: u64 = 100_000_000_000;
-/// 10 MW.
-const DRAW: u64 = 10;
+/// 10 MW at `SCALE`.
+const DRAW: u64 = 10_000_000_000;
 /// Long enough at 10 MW that the whole tank burns, in ms.
 const DEPLETING_MS: u64 = 10_000_000_000_000;
 /// A fuel type no bay holds.
@@ -295,14 +296,14 @@ fun elastic_first_ask_takes_the_leftover() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = powered(&mut scenario, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
-    install_module(&mut scenario, entity_id, MOD_E, elastic_power(6), &clock);
-    install_module(&mut scenario, entity_id, MOD_F, elastic_power(4), &clock);
+    install_module(&mut scenario, entity_id, MOD_E, elastic_power(mw(6)), &clock);
+    install_module(&mut scenario, entity_id, MOD_F, elastic_power(mw(4)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
     set_desired(&mut scenario, entity_id, MOD_E, true, &clock);
     set_desired(&mut scenario, entity_id, MOD_F, true, &clock);
 
     assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == DRAW);
-    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == 5);
+    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == mw(5));
     assert!(draw(&mut scenario, entity_id, MOD_F, &clock) == 0);
 
     clock.destroy_for_testing();
@@ -318,14 +319,73 @@ fun elastic_next_ask_gets_what_is_left() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = powered(&mut scenario, &clock);
     install_module(&mut scenario, entity_id, MOD_A, firm_power(DRAW), &clock);
-    install_module(&mut scenario, entity_id, MOD_E, elastic_power(4), &clock);
-    install_module(&mut scenario, entity_id, MOD_F, elastic_power(4), &clock);
+    install_module(&mut scenario, entity_id, MOD_E, elastic_power(mw(4)), &clock);
+    install_module(&mut scenario, entity_id, MOD_F, elastic_power(mw(4)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
     set_desired(&mut scenario, entity_id, MOD_E, true, &clock);
     set_desired(&mut scenario, entity_id, MOD_F, true, &clock);
 
-    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == 4);
-    assert!(draw(&mut scenario, entity_id, MOD_F, &clock) == 1);
+    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == mw(4));
+    assert!(draw(&mut scenario, entity_id, MOD_F, &clock) == mw(1));
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+// === Fractional MW ===
+
+/// A 2.5 MW Generator runs a 0.5 MW Firm module: capacity and draw read back
+/// exactly, and 10 s at impulse 90 burns a twentieth of 10 MW's 1_111_111_112.
+#[test]
+fun fractional_firm_draw_reads_back_exactly() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(
+        &mut scenario,
+        vector[2_500_000_000],
+        vector[IMPULSE_LIMIT],
+        &clock,
+    );
+    power_up(&mut scenario, entity_id, 1, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(500_000_000), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+
+    let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
+    assert!(capacity == 2_500_000_000 && used == 500_000_000 && online == vector[MOD_A]);
+    assert!(stored_draw(&mut scenario, entity_id, MOD_A) == 500_000_000);
+
+    clock.set_for_testing(10_000);
+    catch_up(&mut scenario, entity_id, MOD_A, &clock);
+    assert!(settled_fuel(&mut scenario, entity_id) == starting_fuel() - 55_555_556);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Elastic takes a fractional leftover: 2.5 MW less 0.75 MW Firm leaves 1.75 MW
+/// for a 3 MW ask.
+#[test]
+fun elastic_takes_a_fractional_leftover() {
+    let mut scenario = ts::begin(admin());
+    setup(&mut scenario);
+    let clock = clock::create_for_testing(scenario.ctx());
+    let entity_id = setup_entity(
+        &mut scenario,
+        vector[2_500_000_000],
+        vector[IMPULSE_LIMIT],
+        &clock,
+    );
+    power_up(&mut scenario, entity_id, 1, &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(750_000_000), &clock);
+    install_module(&mut scenario, entity_id, MOD_E, elastic_power(mw(3)), &clock);
+    set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
+    set_desired(&mut scenario, entity_id, MOD_E, true, &clock);
+
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 750_000_000);
+    assert!(draw(&mut scenario, entity_id, MOD_E, &clock) == 1_750_000_000);
+    let (_, _, used, _) = projected(&mut scenario, entity_id, &clock);
+    assert!(used == mw(2) + 500_000_000);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -337,25 +397,25 @@ fun overview_power_example() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[100], vector[IMPULSE_LIMIT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[mw(100)], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
-    install_module(&mut scenario, entity_id, OV_A, firm_power(70), &clock);
-    install_module(&mut scenario, entity_id, OV_B, firm_power(20), &clock);
-    install_module(&mut scenario, entity_id, OV_C, elastic_power(30), &clock);
-    install_module(&mut scenario, entity_id, OV_D, firm_power(10), &clock);
-    install_module(&mut scenario, entity_id, OV_E, firm_power(20), &clock);
+    install_module(&mut scenario, entity_id, OV_A, firm_power(mw(70)), &clock);
+    install_module(&mut scenario, entity_id, OV_B, firm_power(mw(20)), &clock);
+    install_module(&mut scenario, entity_id, OV_C, elastic_power(mw(30)), &clock);
+    install_module(&mut scenario, entity_id, OV_D, firm_power(mw(10)), &clock);
+    install_module(&mut scenario, entity_id, OV_E, firm_power(mw(20)), &clock);
 
     // A needs 70, B needs 20: both run, 10 spare.
     set_desired(&mut scenario, entity_id, OV_A, true, &clock);
     set_desired(&mut scenario, entity_id, OV_B, true, &clock);
-    assert!(draw(&mut scenario, entity_id, OV_A, &clock) == 70);
-    assert!(draw(&mut scenario, entity_id, OV_B, &clock) == 20);
+    assert!(draw(&mut scenario, entity_id, OV_A, &clock) == mw(70));
+    assert!(draw(&mut scenario, entity_id, OV_B, &clock) == mw(20));
     // C asks to charge at 30 and gets the 10 left.
     set_desired(&mut scenario, entity_id, OV_C, true, &clock);
-    assert!(draw(&mut scenario, entity_id, OV_C, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, OV_C, &clock) == mw(10));
     // D's fixed 10 comes before charging, so C drops to 0.
     set_desired(&mut scenario, entity_id, OV_D, true, &clock);
-    assert!(draw(&mut scenario, entity_id, OV_D, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, OV_D, &clock) == mw(10));
     assert!(draw(&mut scenario, entity_id, OV_C, &clock) == 0);
     // E's 20 overloads: the grid trips.
     set_desired(&mut scenario, entity_id, OV_E, true, &clock);
@@ -365,9 +425,9 @@ fun overview_power_example() {
     set_desired(&mut scenario, entity_id, OV_E, false, &clock);
     assert!(draw(&mut scenario, entity_id, OV_A, &clock) == 0);
     power(&mut scenario, entity_id, true, &clock);
-    assert!(draw(&mut scenario, entity_id, OV_A, &clock) == 70);
-    assert!(draw(&mut scenario, entity_id, OV_B, &clock) == 20);
-    assert!(draw(&mut scenario, entity_id, OV_D, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, OV_A, &clock) == mw(70));
+    assert!(draw(&mut scenario, entity_id, OV_B, &clock) == mw(20));
+    assert!(draw(&mut scenario, entity_id, OV_D, &clock) == mw(10));
     assert!(draw(&mut scenario, entity_id, OV_C, &clock) == 0);
 
     clock.destroy_for_testing();
@@ -693,8 +753,8 @@ fun module_switched_off_during_power_off_stays_off() {
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = powered(&mut scenario, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(5), &clock);
-    install_module(&mut scenario, entity_id, MOD_B, firm_power(5), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(5)), &clock);
+    install_module(&mut scenario, entity_id, MOD_B, firm_power(mw(5)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
     set_desired(&mut scenario, entity_id, MOD_B, true, &clock);
 
@@ -702,7 +762,7 @@ fun module_switched_off_during_power_off_stays_off() {
     set_desired(&mut scenario, entity_id, MOD_B, false, &clock);
     power(&mut scenario, entity_id, true, &clock);
 
-    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 5);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == mw(5));
     assert!(draw(&mut scenario, entity_id, MOD_B, &clock) == 0);
     let (_, desired_b, _) = module_flags(&mut scenario, entity_id, MOD_B);
     assert!(!desired_b);

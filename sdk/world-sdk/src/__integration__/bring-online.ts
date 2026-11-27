@@ -57,7 +57,7 @@ export async function installInventoryPower(
   const entity = installTx.object(entityId)
   installGenerator(installTx, config, entity, {
     componentId: GENERATOR_ID,
-    maxOutputMw: 10n,
+    maxOutputMw: 10n * POWER_SCALE,
     fuelType: INVENTORY_FUEL.fuelType,
     impulseLimit: 100n * POWER_SCALE,
     volatilityLimit: 1n,

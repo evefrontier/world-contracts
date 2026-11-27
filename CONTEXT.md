@@ -136,7 +136,7 @@ Concrete `T` values installed on Entities. Migrated from the legacy assembly mod
     `its load ÷ min(pool impulse, impulse_limit)` fuel units per second. Burden plays no part.
   - **Run-out step** — when a pool runs dry between settles, settle and views stop at that
     moment, recompute capacity and grants, and carry on.
-  - **SCALE** — MW, fuel quantity, and fuel stats are fixed-point `u64` values times 10_000.
+  - **SCALE** — MW, fuel quantity, and fuel stats are fixed-point `u64` values times 1e9 .
 - *Planned:* Access control, Transport, Weapon, Creation tag, KillMail.
   Each is a component type with its own Requirement types, handlers, and PTB templates.
   Player-facing fittings are game modules; the rest are still just components.

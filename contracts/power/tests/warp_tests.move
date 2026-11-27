@@ -20,6 +20,7 @@ use power::{
         impulse,
         install_fuel,
         install_module,
+        mw,
         owner,
         power_up,
         projected,
@@ -140,9 +141,9 @@ fun withdraw_everything_after_burn() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[15], vector[IMPULSE_LIMIT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[mw(15)], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(10)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
     enable_withdraw(&mut scenario, entity_id);
     clock.set_for_testing(10_000);
@@ -165,9 +166,9 @@ fun withdraw_more_than_left_after_burn_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[15], vector[IMPULSE_LIMIT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[mw(15)], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(10)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
     enable_withdraw(&mut scenario, entity_id);
     clock.set_for_testing(10_000);
@@ -384,9 +385,9 @@ fun withdraw_from_bay_more_than_left_after_burn_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[15], vector[IMPULSE_LIMIT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[mw(15)], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(10)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
     enable_withdraw(&mut scenario, entity_id);
     clock.set_for_testing(10_000);
@@ -567,6 +568,7 @@ fun siphon_takes_part_of_a_bay() {
     assert!(siphoned_entity == entity_id && siphoned_bay == fuel_bay_id());
     assert!(siphoned_type == fuel_type() && quantity == 7 * power_grid::scale());
     assert!(siphoned[0].fuel_siphoned_tenant() == core::test_helpers::tenant());
+    assert!(siphoned[0].fuel_siphoned_unit_volume() == power::grid_scenario::unit_volume());
     assert!(siphoned_impulse == impulse() && siphoned_volatility == volatility());
     assert!(siphoned_burden == burden() && siphoned_thermal == thermal());
     let fuel = bay_fuel(&mut scenario, entity_id, fuel_bay_id());
@@ -600,12 +602,12 @@ fun siphon_all_clears_the_type_and_cuts_power() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = setup_entity(&mut scenario, vector[15], vector[IMPULSE_LIMIT], &clock);
+    let entity_id = setup_entity(&mut scenario, vector[mw(15)], vector[IMPULSE_LIMIT], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(10)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
     enable_siphon(&mut scenario, entity_id);
-    assert!(stored_draw(&mut scenario, entity_id, MOD_A) == 10);
+    assert!(stored_draw(&mut scenario, entity_id, MOD_A) == mw(10));
 
     siphon(&mut scenario, admin(), entity_id, fuel_bay_id(), starting_fuel(), &clock);
 

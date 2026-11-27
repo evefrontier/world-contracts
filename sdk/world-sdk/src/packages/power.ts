@@ -14,9 +14,9 @@ import {
   verifySponsor,
 } from './core.js'
 
-// MW is a plain integer. Every fuel amount, capacity, stat, limit and rate is
-// fixed point at `POWER_SCALE` (1e9: 1e-9 kg, the proto's nanos), the same
-// units as `VALUE_SCALE` and `MASS_UNIT`, so nothing is converted.
+// Every power (MW), fuel amount, capacity, stat, limit and rate is fixed point
+// at `POWER_SCALE` (1e9, the proto's nanos), the same units as `VALUE_SCALE`
+// and `MASS_UNIT`, so nothing is converted.
 export const POWER_SCALE = 1_000_000_000n
 
 const POWER_PACKAGE = 'power'
@@ -53,6 +53,7 @@ function drawKindCall(
 }
 
 export interface ModulePowerSpec {
+  /** MW the module needs, at `POWER_SCALE`. */
   powerReq: bigint
   drawKind?: DrawKind
   priority?: bigint
@@ -61,7 +62,7 @@ export interface ModulePowerSpec {
 
 /** A module that connects to the grid but stays desired-offline until the owner turns it on. */
 export const DESIRED_OFFLINE_MODULE: ModulePowerSpec = {
-  powerReq: 1n,
+  powerReq: POWER_SCALE,
   drawKind: 'firm',
   priority: 0n,
   lineLoss: 0n,
@@ -117,6 +118,7 @@ export interface InstallGeneratorArgs {
   fuelType: bigint
   /** Types the owner may switch to; empty (default) for a fixed-type Generator. */
   selectableFuelTypes?: bigint[]
+  /** Rated output, MW at `POWER_SCALE`. */
   maxOutputMw: bigint
   /** Most impulse it can use, at `POWER_SCALE`. */
   impulseLimit: bigint
@@ -152,7 +154,7 @@ export function installGenerator(
 export interface InstallFuelBayArgs {
   componentId: bigint
   name?: string | null
-  /** At `POWER_SCALE` (`MASS_UNIT` per kg). */
+  /** Volume in nano-m³ (m³ at `POWER_SCALE`). The fuel's mass × its `unitVolume` must fit. */
   capacity: bigint
   /** At `POWER_SCALE`; defaults to `0n`. Stored only; deposits are not checked against it yet. */
   containmentRating?: bigint
@@ -504,7 +506,7 @@ export interface DepositFuelArgs {
 }
 
 /**
- * Load fuel into one bay; its stats blend by amount. An empty bay locks to
+ * Load fuel into one bay; its stats blend by amount, its containment burden by max. An empty bay locks to
  * the variant's type until it runs dry; another type or zero impulse aborts. The owner's `ownerCap`
  * authorizes the deposit, and the gas sponsor must be on `AdminACL`.
  */
@@ -779,6 +781,7 @@ const FuelBcs = bcs.struct('Fuel', {
   containment_burden: bcs.u64(),
   volatility: bcs.u64(),
   thermal_inefficiency: bcs.u64(),
+  unit_volume: bcs.u64(),
 })
 
 function fuelAmount(fuel: typeof FuelBcs.$inferType): FuelAmount {
@@ -789,6 +792,7 @@ function fuelAmount(fuel: typeof FuelBcs.$inferType): FuelAmount {
     containmentBurden: BigInt(fuel.containment_burden),
     volatility: BigInt(fuel.volatility),
     thermalInefficiency: BigInt(fuel.thermal_inefficiency),
+    unitVolume: BigInt(fuel.unit_volume),
   }
 }
 
@@ -808,6 +812,7 @@ const BaysBcs = bcs.struct('VecMap', {
 /** A fuel bay as `projectedBays` returns it. Quantity and stats at `POWER_SCALE`. */
 export interface ProjectedBay extends FuelAmount {
   fuelBayId: bigint
+  /** Volume in nano-m³. */
   capacity: bigint
   /** At `POWER_SCALE`. Stored only; deposits are not checked against it yet. */
   containmentRating: bigint
@@ -837,9 +842,12 @@ export interface FuelAmount {
   fuelType: bigint | null
   quantity: bigint
   impulse: bigint
+  /** Blends as the max, not by amount. */
   containmentBurden: bigint
   volatility: bigint
   thermalInefficiency: bigint
+  /** m³ per kg at `POWER_SCALE` (1 / density), blended by mass and rounded up. */
+  unitVolume: bigint
 }
 
 /**

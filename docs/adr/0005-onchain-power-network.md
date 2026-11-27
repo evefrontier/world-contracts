@@ -54,7 +54,7 @@ flowchart LR
 
 A pool's bays burn together, each in proportion to what it holds, so they all
 run dry at the same moment. A generator's burn uses the amount-weighted average
-of its pool's stats. Pools run dry at different moments.
+of its pool's stats; a pool's containment burden is the max of its bays. Pools run dry at different moments.
 
 The owner sets each power module's **desired state**. It is always stored and
 never refused, even with no fuel. The grant is separate:
@@ -158,7 +158,7 @@ public struct PowerGrid has store {
 }
 
 public struct FuelBayState has copy, drop, store {
-    capacity: u64,
+    capacity: u64,                      // volume, nano-m³
     containment_rating: u64,            // set at install; stored only
     online: bool,
     fuel: Fuel,
@@ -171,12 +171,13 @@ public struct Fuel has copy, drop, store {
     containment_burden: u64,            // stored, not used in burn
     volatility: u64,
     thermal_inefficiency: u64,          // stored for siphon and off-chain heat
+    unit_volume: u64,                   // m³ per kg (1 / density), blended by mass
 }
 
 public struct ModuleState has copy, drop, store {
     module_spec: ModulePowerSpec,
     desired_online: bool,
-    active_draw_at_last_settled: u64,   // MW granted
+    active_draw_at_last_settled: u64,   // MW granted, at SCALE
 }
 
 public enum DrawKind has copy, drop, store { Firm, Elastic }
@@ -188,7 +189,7 @@ public enum DrawKind has copy, drop, store { Firm, Elastic }
 public struct GeneratorState has copy, drop, store {
     fuel_type: u64,
     selectable_fuel_types: vector<u64>, // empty for a fixed-type generator
-    max_output_mw: u64,
+    max_output_mw: u64,                 // at SCALE, so fractional MW fits
     impulse_limit: u64,
     volatility_limit: u64,
     online: bool,

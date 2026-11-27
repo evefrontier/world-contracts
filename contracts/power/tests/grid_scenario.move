@@ -29,7 +29,7 @@ const GENERATOR_BASE: u64 = 101;
 /// Base burn rate of every Generator, 1 unit per second.
 /// Component id of the fuel bay every `setup_entity` grid gets.
 const FUEL_BAY_ID: u64 = 9_001;
-/// Capacity of that bay in kg; helpers send it at `SCALE`.
+/// Capacity of that bay in m³ (as many kg of test fuel); helpers send it at `SCALE`.
 const FUEL_CAPACITY: u64 = 100_000;
 /// Starting fuel of that bay in kg; helpers send it at `SCALE`.
 const STARTING_FUEL: u64 = 50_000;
@@ -48,6 +48,9 @@ const CONTAINMENT_RATING: u64 = 10_000_000_000;
 const COMMAND_MODULE_ID: u64 = 8_001;
 /// Base units (1e-9 kg) per kg: helpers take plain kg and deposit at 1e9.
 const KG: u64 = 1_000_000_000;
+/// Test fuel takes 1 m³ per kg (density 1 kg/m³), so a bay's capacity in m³
+/// equals the kg it holds and helpers can size bays in kg.
+const UNIT_VOLUME: u64 = 1_000_000_000;
 
 const OPERATE: vector<u8> = b"operate_grid";
 const DEPOSIT_FUEL: vector<u8> = b"deposit_fuel";
@@ -102,6 +105,9 @@ public fun fuel_type(): u64 { FUEL_TYPE }
 public fun thermal(): u64 { THERMAL }
 
 public fun containment_rating(): u64 { CONTAINMENT_RATING }
+
+/// `n` whole MW at `SCALE`.
+public fun mw(n: u64): u64 { n * power_grid::scale() }
 
 /// Firm power for a module with no line loss and priority 0.
 public fun firm_power(power_req: u64): ModulePowerSpec {
@@ -523,7 +529,7 @@ public fun set_fuel_bay(
     );
 }
 
-/// Install empty fuel bay `fuel_bay_id` with `capacity` kg, offline.
+/// Install empty fuel bay `fuel_bay_id` with `capacity` m³ (as many kg of test fuel), offline.
 public fun install_fuel(
     scenario: &mut ts::Scenario,
     entity_id: ID,
@@ -534,7 +540,7 @@ public fun install_fuel(
     install_fuel_at_scale(scenario, entity_id, fuel_bay_id, capacity * KG, clock);
 }
 
-/// Install empty fuel bay `fuel_bay_id` with `capacity` at `SCALE`, offline.
+/// Install empty fuel bay `fuel_bay_id` with `capacity` nano-m³, offline.
 public fun install_fuel_at_scale(
     scenario: &mut ts::Scenario,
     entity_id: ID,
@@ -991,6 +997,41 @@ public fun deposit_fuel_via(
     clock: &Clock,
 ) {
     let variant_id = fuel_variant(scenario, fuel_type, impulse, burden, volatility, thermal);
+    deposit_variant(scenario, entity_id, name, fuel_bay_id, variant_id, amount, clock);
+}
+
+/// Owner deposits `amount` kg of the default fuel at `unit_volume` (m³ per kg at
+/// `SCALE`) into bay `fuel_bay_id`, through the `deposit_fuel` action.
+public fun deposit_at_volume(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    fuel_bay_id: u64,
+    amount: u64,
+    unit_volume: u64,
+    clock: &Clock,
+) {
+    let variant_id = fuel_variant_with_volume(
+        scenario,
+        FUEL_TYPE,
+        IMPULSE,
+        BURDEN,
+        VOLATILITY,
+        THERMAL,
+        unit_volume,
+    );
+    deposit_variant(scenario, entity_id, DEPOSIT_FUEL, fuel_bay_id, variant_id, amount, clock);
+}
+
+/// Owner deposits `amount` kg of variant `variant_id` through action `name`.
+fun deposit_variant(
+    scenario: &mut ts::Scenario,
+    entity_id: ID,
+    name: vector<u8>,
+    fuel_bay_id: u64,
+    variant_id: ID,
+    amount: u64,
+    clock: &Clock,
+) {
     ensure_admin_sponsors(scenario);
     next_tx_owner_signs_admin_pays(scenario);
     let mut entity = ts::take_shared_by_id<Entity>(scenario, entity_id);
@@ -1011,8 +1052,11 @@ public fun deposit_fuel_via(
 /// Base units per kg; helpers take plain kg.
 public fun kg(): u64 { KG }
 
-/// The fuel variant of `fuel_type` with these stats (at `SCALE`) in the test
-/// tenant, registered on first use. Returns its ID.
+/// m³ per kg of the test fuel, at `SCALE`.
+public fun unit_volume(): u64 { UNIT_VOLUME }
+
+/// The fuel variant of `fuel_type` with these stats (at `SCALE`) and
+/// `UNIT_VOLUME` in the test tenant, registered on first use. Returns its ID.
 public fun fuel_variant(
     scenario: &mut ts::Scenario,
     fuel_type: u64,
@@ -1020,6 +1064,19 @@ public fun fuel_variant(
     burden: u64,
     volatility: u64,
     thermal: u64,
+): ID {
+    fuel_variant_with_volume(scenario, fuel_type, impulse, burden, volatility, thermal, UNIT_VOLUME)
+}
+
+/// `fuel_variant` at `unit_volume` m³ per kg (at `SCALE`).
+public fun fuel_variant_with_volume(
+    scenario: &mut ts::Scenario,
+    fuel_type: u64,
+    impulse: u64,
+    burden: u64,
+    volatility: u64,
+    thermal: u64,
+    unit_volume: u64,
 ): ID {
     ts::next_tx(scenario, ADMIN);
     if (!ts::has_most_recent_shared<VariantRegistry>()) {
@@ -1031,6 +1088,7 @@ public fun fuel_variant(
     let mixed =
         (((impulse as u128) * 1_000_003 + (burden as u128)) * 1_000_003
         + (volatility as u128)) * 1_000_003 + (thermal as u128);
+    let mixed = mixed * 1_000_003 + (unit_volume as u128);
     let variant_id = 1 + ((mixed % 1_000_000_007) as u64);
     let key = variant::new_key(tenant(), fuel_type, variant_id);
     if (!registry.exists(key)) {
@@ -1040,7 +1098,7 @@ public fun fuel_variant(
             fuel_type,
             variant_id,
             variant::mass(),
-            1,
+            unit_volume,
             vector[208, 209, 210, 211],
             vector[impulse as u128, thermal as u128, burden as u128, volatility as u128],
             vector[false, false, false, false],

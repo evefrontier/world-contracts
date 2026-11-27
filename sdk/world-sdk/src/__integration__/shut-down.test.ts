@@ -48,7 +48,7 @@ import {
 const GENERATOR_ID = 0xf0n
 const BAY_ID = 0xf1n
 const MODULE_ID = 0xf2n
-const DRAW = 10n
+const DRAW = 10n * POWER_SCALE
 
 describe('shut down (localnet)', () => {
   const { config, client } = loadLocalnetWorld()
@@ -68,7 +68,7 @@ describe('shut down (localnet)', () => {
     seatShell(createTx, config, creation)
     installGenerator(createTx, config, creation, {
       componentId: GENERATOR_ID,
-      maxOutputMw: 15n,
+      maxOutputMw: 15n * POWER_SCALE,
       fuelType: 1n,
       impulseLimit: 100n * POWER_SCALE,
       volatilityLimit: 1n,

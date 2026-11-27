@@ -15,6 +15,7 @@ use power::{
         firm_power,
         generator_id,
         install_module,
+        mw,
         owner,
         power_up,
         set_desired,
@@ -43,11 +44,11 @@ fun overview(scenario: &mut ts::Scenario, outputs: vector<u64>, clock: &Clock): 
     let impulse_limits = vector::tabulate!(count, |_| IMPULSE_LIMIT);
     let entity_id = setup_entity(scenario, outputs, impulse_limits, clock);
     power_up(scenario, entity_id, count, clock);
-    install_module(scenario, entity_id, A, firm_power(70), clock);
-    install_module(scenario, entity_id, B, firm_power(20), clock);
-    install_module(scenario, entity_id, C, elastic_power(30), clock);
-    install_module(scenario, entity_id, D, firm_power(10), clock);
-    install_module(scenario, entity_id, E, firm_power(20), clock);
+    install_module(scenario, entity_id, A, firm_power(mw(70)), clock);
+    install_module(scenario, entity_id, B, firm_power(mw(20)), clock);
+    install_module(scenario, entity_id, C, elastic_power(mw(30)), clock);
+    install_module(scenario, entity_id, D, firm_power(mw(10)), clock);
+    install_module(scenario, entity_id, E, firm_power(mw(20)), clock);
     enable_fitted(scenario, entity_id);
     entity_id
 }
@@ -106,15 +107,15 @@ fun fitting_switch_on_passes_the_pre_filter() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = overview(&mut scenario, vector[100], &clock);
+    let entity_id = overview(&mut scenario, vector[mw(100)], &clock);
 
     fitted_on(&mut scenario, entity_id, A, &clock);
     fitted_on(&mut scenario, entity_id, B, &clock);
     fitted_on(&mut scenario, entity_id, D, &clock);
 
-    assert!(draw(&mut scenario, entity_id, A, &clock) == 70);
-    assert!(draw(&mut scenario, entity_id, B, &clock) == 20);
-    assert!(draw(&mut scenario, entity_id, D, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, A, &clock) == mw(70));
+    assert!(draw(&mut scenario, entity_id, B, &clock) == mw(20));
+    assert!(draw(&mut scenario, entity_id, D, &clock) == mw(10));
 
     clock.destroy_for_testing();
     scenario.end();
@@ -126,7 +127,7 @@ fun overloading_switch_on_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = overview(&mut scenario, vector[100], &clock);
+    let entity_id = overview(&mut scenario, vector[mw(100)], &clock);
     fitted_on(&mut scenario, entity_id, A, &clock);
     fitted_on(&mut scenario, entity_id, B, &clock);
 
@@ -141,7 +142,7 @@ fun elastic_switch_on_passes_the_pre_filter() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = overview(&mut scenario, vector[100], &clock);
+    let entity_id = overview(&mut scenario, vector[mw(100)], &clock);
     fitted_on(&mut scenario, entity_id, A, &clock);
     fitted_on(&mut scenario, entity_id, B, &clock);
     fitted_on(&mut scenario, entity_id, D, &clock);
@@ -160,7 +161,7 @@ fun generator_offline_that_overloads_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = overview(&mut scenario, vector[60, 40], &clock);
+    let entity_id = overview(&mut scenario, vector[mw(60), mw(40)], &clock);
     fitted_on(&mut scenario, entity_id, A, &clock);
 
     grid_scenario::fitted!(
@@ -178,7 +179,7 @@ fun fuel_bay_offline_that_overloads_aborts() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = overview(&mut scenario, vector[100], &clock);
+    let entity_id = overview(&mut scenario, vector[mw(100)], &clock);
     fitted_on(&mut scenario, entity_id, A, &clock);
 
     grid_scenario::fitted!(
@@ -206,7 +207,7 @@ fun builder_grants_in_rank_order() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = overview(&mut scenario, vector[100], &clock);
+    let entity_id = overview(&mut scenario, vector[mw(100)], &clock);
     set_priority(&mut scenario, entity_id, A, 1, &clock);
     set_priority(&mut scenario, entity_id, E, 2, &clock);
     set_priority(&mut scenario, entity_id, B, 3, &clock);
@@ -215,9 +216,9 @@ fun builder_grants_in_rank_order() {
 
     grant_in_rank_order(&mut scenario, entity_id, &clock);
 
-    assert!(draw(&mut scenario, entity_id, A, &clock) == 70);
-    assert!(draw(&mut scenario, entity_id, E, &clock) == 20);
-    assert!(draw(&mut scenario, entity_id, D, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, A, &clock) == mw(70));
+    assert!(draw(&mut scenario, entity_id, E, &clock) == mw(20));
+    assert!(draw(&mut scenario, entity_id, D, &clock) == mw(10));
     assert!(draw(&mut scenario, entity_id, B, &clock) == 0);
     assert!(draw(&mut scenario, entity_id, C, &clock) == 0);
 
