@@ -45,8 +45,11 @@ jobs:
     steps:
       - name: Resolve image
         id: cfg
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${{ inputs.image_tag }}"
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: bad image_tag '$IMAGE_TAG'" >&2; exit 1; }
+          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
@@ -108,8 +111,11 @@ jobs:
 
       - name: Resolve image
         id: cfg
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${{ inputs.image_tag }}"
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: bad image_tag '$IMAGE_TAG'" >&2; exit 1; }
+          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
@@ -164,6 +170,9 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          PACKAGES: ${{ inputs.packages }}
+          DEPLOYER: ${{ needs.deployer.outputs.address }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -173,12 +182,12 @@ jobs:
             exit 0
           fi
           branch="appcap-records/${{ inputs.env }}-${{ github.run_id }}"
-          title="mvr(${{ inputs.env }}): bootstrap AppCaps for ${{ inputs.packages }}"
+          title="mvr(${{ inputs.env }}): bootstrap AppCaps for $PACKAGES"
           git commit -m "$title [skip ci]"
           git push origin "HEAD:${branch}"
           gh pr create \
-            --base "${{ github.ref_name }}" \
+            --base "$GITHUB_REF_NAME" \
             --head "$branch" \
             --title "$title" \
-            --body "AppCaps registered on mainnet by the SuiNS owner key and sent to the ${{ inputs.env }} deployer \`${{ needs.deployer.outputs.address }}\` (image \`${{ inputs.image_tag }}\`)." \
-            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${{ github.ref_name }}...${branch}?expand=1"
+            --body "AppCaps registered on mainnet by the SuiNS owner key and sent to the ${{ inputs.env }} deployer \`$DEPLOYER\` (image \`$IMAGE_TAG\`)." \
+            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${GITHUB_REF_NAME}...${branch}?expand=1"
