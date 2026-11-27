@@ -12,9 +12,7 @@ Read it before writing or reviewing `.move` code. For the domain vocabulary see
 
 Non-negotiables (full detail in the doc above):
 
-- Live code is `contracts/core/`; `contracts/archive/` is the deprecated `world::` assembly
-  model (`StorageUnit`, `assemblies/`, `primitives/`, `GovernorCap`/`AdminACL`/`OwnerCap`) — do
-  not copy its patterns.
+- Live code is `contracts/core/`.
 - Every `assert!` uses a named `E` + PascalCase `u64` error constant; no bare `abort`.
 - `// === Section ===` headers in the canonical order; objects-first, capabilities-second,
   `ctx`/`&Clock` last in signatures.

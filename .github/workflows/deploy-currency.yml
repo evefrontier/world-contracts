@@ -47,13 +47,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: dev
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - name: Resolve config
         id: cfg
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${{ inputs.image_tag }}"
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: bad image_tag '$IMAGE_TAG'" >&2; exit 1; }
+          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
           case "${{ inputs.env }}" in
             dev|test|uat) echo "net=testnet" >> "$GITHUB_OUTPUT" ;;
@@ -110,6 +113,8 @@ jobs:
       - name: Open deployment records PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          VERSION: ${{ inputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -121,12 +126,12 @@ jobs:
             exit 0
           fi
           branch="deploy-currency-records/${{ inputs.env }}-${{ github.run_id }}"
-          title="deploy-currency(${{ inputs.env }}): ${{ inputs.image_tag }}"
+          title="deploy-currency(${{ inputs.env }}): $IMAGE_TAG"
           git commit -m "$title [skip ci]"
           git push origin "HEAD:${branch}"
           gh pr create \
-            --base dev \
+            --base "$GITHUB_REF_NAME" \
             --head "$branch" \
             --title "$title" \
-            --body "Automated currency deployment records for \`${{ inputs.env }}\` from image \`${{ inputs.image_tag }}\` (mode: ${{ inputs.mode }}, version: ${{ inputs.version }}, commit: ${{ github.sha }})." \
-            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/dev...${branch}?expand=1"
+            --body "Automated currency deployment records for \`${{ inputs.env }}\` from image \`$IMAGE_TAG\` (mode: ${{ inputs.mode }}, version: $VERSION, commit: ${{ github.sha }})." \
+            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${GITHUB_REF_NAME}...${branch}?expand=1"

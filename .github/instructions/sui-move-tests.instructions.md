@@ -19,4 +19,3 @@ Non-negotiables (full detail in the doc above):
   before the entity is shared or returned.
 - Success tests clean up (`ts::return_shared` / `ts::return_to_sender`) and end with
   `scenario.end()`.
-- Tests under `contracts/archive/` belong to the deprecated assembly model — not a template.

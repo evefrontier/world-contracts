@@ -20,9 +20,6 @@ Read the single source of truth before working:
 ## Where things live
 
 - **`contracts/core/`** — the live v1 architecture. Start here.
-- **`contracts/archive/`** — deprecated `world::` assembly model
-  ([ADR 0001](../docs/adr/0001-assembly-architecture.md)). Reference only; do not copy its
-  patterns.
 
 When reviewing, work from the checklist in `docs/move-conventions.md` rather than re-deriving
 rules here. Don't flag what `sui move fmt` and the compiler already handle.

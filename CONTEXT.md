@@ -152,9 +152,6 @@ Concrete `T` values installed on Entities. Migrated from the legacy assembly mod
 ## Terms to keep straight
 
 - **core / v1** — the live modular architecture under [`contracts/core/`](contracts/core/). Start here.
-- **archive** — the deprecated, assembly-first `world::` model under
-  [`contracts/archive/`](contracts/archive/). Reference only; **do not copy** its patterns
-  (`StorageUnit`, `assemblies/`, `primitives/`, `GovernorCap`/`AdminACL`/`OwnerCap`).
 - **assembly model** — the old design where each structure type owned its object shape and a
   fixed API. Superseded by the Entity/Component/Action/Request/Requirement model
   ([ADR-0001](docs/adr/0001-assembly-architecture.md) → [ADR-0002](docs/adr/0002-modular-architecture.md)).

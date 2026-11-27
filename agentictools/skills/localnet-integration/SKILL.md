@@ -44,7 +44,7 @@ funded at genesis, identical every run. `host-test` exports `SUI_PRIVATE_KEY` /
 
 1. Read the `[integration]` log lines — they name the failing step (genesis, RPC wait,
   send-funds, `deploy-world.sh`, `deploy-currency.sh`, `seed-world.sh`, tests).
-2. Move abort codes: decode with `tools/error-decoder` (`pnpm build:decoder`).
+2. Move abort codes: the abort message names the error constant (`#[error]` consts).
 3. Node never ready / genesis error after a Sui bump: `SUI_VERSION` in both Dockerfiles must
   match `protocol_version` in `docker/genesis/genesis-config.yaml` (see `docker/README.md`).
 4. Port in use: a previous `up` or snapshot stack is still running → `down` / `snapshot-down`.

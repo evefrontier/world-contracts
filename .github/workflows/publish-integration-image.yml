@@ -9,7 +9,7 @@ name: Publish Integration Image
 on:
   workflow_dispatch:
   push:
-    branches: [dev]
+    branches: [main, dev]
     paths:
       - 'docker/Dockerfile.integration'
       - 'docker/entrypoint-integration.sh'

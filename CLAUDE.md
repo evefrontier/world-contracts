@@ -7,9 +7,6 @@ Request / Requirement** architecture.
 ## Where things live
 
 - **`contracts/core/`** — the live v1 architecture. Start here.
-- **`contracts/archive/`** — the deprecated `world::` assembly model. Reference only; do **not**
-  copy its patterns (`StorageUnit`, `assemblies/`, `primitives/`, `GovernorCap`/`AdminACL`/`OwnerCap`).
-- **`tools/error-decoder/`** — TypeScript tool for decoding Move abort codes.
 - **`scripts/`** — bash deploy/test helpers.
 - **`agentictools/skills/`** — agent-agnostic skills (e.g. `localnet-integration`: launch localnet,
   run integration tests); symlinked into `.claude/skills/`.
