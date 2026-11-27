@@ -1,7 +1,8 @@
 name: Bootstrap MVR AppCap
 
 # One-time per (package, env): registers @evefrontier/world-<pkg>-<env> on
-# mainnet with the SuiNS owner key and sends the AppCap to that env's deployer.
+# mainnet with the SuiNS owner key and sends the AppCap to that env's deployer,
+# resolved from the same key deploy.yml signs with.
 # This mints a permanent SuiNS subname, so the `suins` environment must require
 # reviewers. It holds AWS_DEPLOY_ROLE_ARN, AWS_REGION and SUI_SUINS_KMS_KEY_ID.
 
@@ -21,10 +22,6 @@ on:
         description: Space-separated packages (e.g. "core character")
         type: string
         required: true
-      recipient:
-        description: The env's deployer address (receives the AppCaps)
-        type: string
-        required: true
 
 concurrency:
   group: bootstrap-appcap
@@ -35,7 +32,56 @@ env:
   IMAGE_NAME: world-contracts
 
 jobs:
+  # Runs in the target environment so it sees that env's deployer key.
+  deployer:
+    name: Resolve ${{ inputs.env }} deployer
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }}
+    permissions:
+      packages: read
+      id-token: write
+    outputs:
+      address: ${{ steps.addr.outputs.address }}
+    steps:
+      - name: Resolve image
+        id: cfg
+        run: |
+          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${{ inputs.image_tag }}"
+          echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS credentials
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deployer address
+        id: addr
+        env:
+          DEPLOYER_KEY: ${{ secrets.SUI_DEPLOYER_KEY }}
+          DEPLOYER_KMS_KEY_ID: ${{ vars.SUI_DEPLOYER_KMS_KEY_ID }}
+          TARGET_ENV: ${{ inputs.env }}
+        run: |
+          docker pull -q "${{ steps.cfg.outputs.image }}" >/dev/null
+          address=$(docker run --rm \
+            -e DEPLOYER_KEY -e DEPLOYER_KMS_KEY_ID -e TARGET_ENV -e NET=mainnet \
+            -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            --entrypoint bash "${{ steps.cfg.outputs.image }}" \
+            -c 'source scripts/lib.sh && source scripts/ci-deploy-lib.sh && ci_bootstrap_keys >/dev/null && echo "$DEPLOYER_ADDR"')
+          [[ "$address" =~ ^0x[a-fA-F0-9]{64}$ ]] || { echo "ERROR: could not resolve the $TARGET_ENV deployer address" >&2; exit 1; }
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+          echo "AppCaps for \`$TARGET_ENV\` go to deployer \`$address\`" >> "$GITHUB_STEP_SUMMARY"
+
   bootstrap:
+    needs: deployer
     name: AppCaps for ${{ inputs.env }} (${{ inputs.packages }})
     runs-on: ubuntu-latest
     environment: suins
@@ -52,11 +98,9 @@ jobs:
       - name: Validate inputs
         env:
           PACKAGES: ${{ inputs.packages }}
-          RECIPIENT: ${{ inputs.recipient }}
           KMS_KEY_ID: ${{ vars.SUI_SUINS_KMS_KEY_ID }}
         run: |
           [[ -n "$KMS_KEY_ID" ]] || { echo "ERROR: SUI_SUINS_KMS_KEY_ID is not set on the suins environment" >&2; exit 1; }
-          [[ "$RECIPIENT" =~ ^0x[a-fA-F0-9]{64}$ ]] || { echo "ERROR: bad recipient '$RECIPIENT'" >&2; exit 1; }
           for pkg in $PACKAGES; do
             [[ -d "contracts/$pkg" && "$pkg" =~ ^[a-z_]+$ ]] || { echo "ERROR: unknown package '$pkg'" >&2; exit 1; }
           done
@@ -88,7 +132,7 @@ jobs:
         env:
           SUINS_KMS_KEY_ID: ${{ vars.SUI_SUINS_KMS_KEY_ID }}
           PACKAGES: ${{ inputs.packages }}
-          RECIPIENT: ${{ inputs.recipient }}
+          RECIPIENT: ${{ needs.deployer.outputs.address }}
           TARGET_ENV: ${{ inputs.env }}
           CONTAINER: bootstrap-appcap-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -136,5 +180,5 @@ jobs:
             --base "${{ github.ref_name }}" \
             --head "$branch" \
             --title "$title" \
-            --body "AppCaps registered on mainnet by the SuiNS owner key and sent to \`${{ inputs.recipient }}\` (image \`${{ inputs.image_tag }}\`)." \
+            --body "AppCaps registered on mainnet by the SuiNS owner key and sent to the ${{ inputs.env }} deployer \`${{ needs.deployer.outputs.address }}\` (image \`${{ inputs.image_tag }}\`)." \
             || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${{ github.ref_name }}...${branch}?expand=1"
