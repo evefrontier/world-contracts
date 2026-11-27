@@ -52,8 +52,10 @@ jobs:
 
       - name: Resolve config
         id: cfg
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${{ inputs.image_tag }}"
+          image="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
           case "${{ inputs.env }}" in
             dev|test|uat) echo "net=testnet" >> "$GITHUB_OUTPUT" ;;
@@ -110,6 +112,8 @@ jobs:
       - name: Open deployment records PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          VERSION: ${{ inputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -121,12 +125,12 @@ jobs:
             exit 0
           fi
           branch="deploy-currency-records/${{ inputs.env }}-${{ github.run_id }}"
-          title="deploy-currency(${{ inputs.env }}): ${{ inputs.image_tag }}"
+          title="deploy-currency(${{ inputs.env }}): $IMAGE_TAG"
           git commit -m "$title [skip ci]"
           git push origin "HEAD:${branch}"
           gh pr create \
-            --base "${{ github.ref_name }}" \
+            --base "$GITHUB_REF_NAME" \
             --head "$branch" \
             --title "$title" \
-            --body "Automated currency deployment records for \`${{ inputs.env }}\` from image \`${{ inputs.image_tag }}\` (mode: ${{ inputs.mode }}, version: ${{ inputs.version }}, commit: ${{ github.sha }})." \
-            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${{ github.ref_name }}...${branch}?expand=1"
+            --body "Automated currency deployment records for \`${{ inputs.env }}\` from image \`$IMAGE_TAG\` (mode: ${{ inputs.mode }}, version: $VERSION, commit: ${{ github.sha }})." \
+            || echo "PR creation blocked; open one from: https://github.com/${{ github.repository }}/compare/${GITHUB_REF_NAME}...${branch}?expand=1"

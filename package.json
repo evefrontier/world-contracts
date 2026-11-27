@@ -6,9 +6,9 @@
   "packageManager": "pnpm@12.10.1",
   "scripts": {
     "prepare": "husky",
-    "build": "find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move build --build-env testnet --path {}",
-    "lint": "find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move build --build-env testnet --lint --path {}",
-    "test": "find contracts -maxdepth 1 -mindepth 1 -type d | xargs -P 4 -I {} sui move test --build-env testnet --path {}",
+    "build": "find contracts -mindepth 2 -maxdepth 2 -name Move.toml -exec dirname {} \\; | xargs -P 4 -I {} sui move build --build-env testnet --path {}",
+    "lint": "find contracts -mindepth 2 -maxdepth 2 -name Move.toml -exec dirname {} \\; | xargs -P 4 -I {} sui move build --build-env testnet --lint --path {}",
+    "test": "find contracts -mindepth 2 -maxdepth 2 -name Move.toml -exec dirname {} \\; | xargs -P 4 -I {} sui move test --build-env testnet --path {}",
     "fmt": "prettier --plugin=@mysten/prettier-plugin-move --write \"**/**/*.move\"",
     "fmt:check": "prettier --plugin=@mysten/prettier-plugin-move --check \"**/**/*.move\" ",
     "lint:ts": "biome check --write",
