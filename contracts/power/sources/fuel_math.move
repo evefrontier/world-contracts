@@ -1,7 +1,7 @@
 /// Pure fuel math. No grid state: callers pass the numbers and get a number back.
-/// Power comes in as plain integers. Fuel quantity, stats, rates and burn are
-/// fixed point at `SCALE` (1e9: 1e-9 kg, the proto's nanos), the same units as
-/// variant values and the game service, so nothing is converted at the boundary.
+/// Power (MW), fuel quantity, stats, rates and burn are all fixed point at
+/// `SCALE` (1e9: the proto's nanos), the same units as variant values and the
+/// game service, so nothing is converted at the boundary.
 module power::fuel_math;
 
 // === Constants ===
@@ -35,8 +35,8 @@ public fun volatility_share(pool_volatility: u64, volatility_limit: u64): u64 {
     if (pool_volatility > 0) share.max(1) else share
 }
 
-/// Plain MW a Generator sends out at `share` (at `SCALE`): `max_output_mw × share ÷ SCALE`,
-/// floored, but at least 1 MW while both are above zero.
+/// MW a Generator sends out at `share`, both at `SCALE`: `max_output_mw × share ÷ SCALE`,
+/// floored, but at least 1 (1e-9 MW) while both are above zero.
 public fun generator_output(max_output_mw: u64, share: u64): u64 {
     let output = ((max_output_mw as u128) * (share as u128) / (SCALE as u128)) as u64;
     if (max_output_mw > 0 && share > 0) output.max(1) else output
@@ -89,9 +89,8 @@ public(package) fun generator_burn(
     load: u128,
     elapsed_ms: u128,
 ): u128 {
-    // One `SCALE` lifts plain MW to fuel units, the other cancels the impulse's.
-    let numerator =
-        (load as u256) * (output_mw as u256) * ((SCALE * SCALE) as u256) * (elapsed_ms as u256);
+    // MW and fuel share `SCALE`; this one cancels the impulse's.
+    let numerator = (load as u256) * (output_mw as u256) * (SCALE as u256) * (elapsed_ms as u256);
     let denominator = (capacity_mw as u256) * (usable_impulse as u256) * (MS_PER_SECOND as u256);
     let burn = (numerator + denominator - 1) / denominator;
     (burn.min(std::u64::max_value!() as u256)) as u128
@@ -102,15 +101,17 @@ public(package) fun generator_burn(
 /// 1 MW split across two equal generators at impulse 1: each burns 0.5 a second.
 #[test]
 fun half_share_burns_half_the_load() {
-    assert!(generator_burn(SCALE, 2, 1, 1, 1) == 500_000);
-    assert!(generator_burn(SCALE, 2, 1, 1, 1_000) == 500_000_000);
-    assert!(generator_burn(SCALE, 2, 1, 1, 3_000) == 1_500_000_000);
+    assert!(generator_burn(SCALE, 2 * SCALE, SCALE, SCALE as u128, 1) == 500_000);
+    assert!(generator_burn(SCALE, 2 * SCALE, SCALE, SCALE as u128, 1_000) == 500_000_000);
+    assert!(generator_burn(SCALE, 2 * SCALE, SCALE, SCALE as u128, 3_000) == 1_500_000_000);
 }
 
 /// 10 MW at impulse 46.6666 burns 0.214286 a second; burden plays no part.
 #[test]
 fun scaled_impulse_burns() {
-    assert!(generator_burn(46_666_600_000, 10, 10, 10, 1_000) == 214_286_021);
+    assert!(
+        generator_burn(46_666_600_000, 10 * SCALE, 10 * SCALE, 10 * (SCALE as u128), 1_000) == 214_286_021,
+    );
 }
 
 /// A tiny impulse with a huge load caps at `u64::MAX`.
@@ -137,11 +138,20 @@ fun volatility_share_caps_at_scale() {
     assert!(volatility_share(1, 30 * SCALE) == 1);
 }
 
-/// Output is rated × share, floored, but at least 1 MW for any share.
+/// Output is rated × share, floored, but at least 1 for any share.
 #[test]
 fun generator_output_floors() {
-    assert!(generator_output(15, SCALE) == 15);
+    assert!(generator_output(15 * SCALE, SCALE) == 15 * SCALE);
+    assert!(generator_output(15 * SCALE, SCALE / 2) == 7_500_000_000);
     assert!(generator_output(15, SCALE / 2) == 7);
-    assert!(generator_output(15, 1) == 1);
-    assert!(generator_output(15, 0) == 0);
+    assert!(generator_output(15 * SCALE, 1) == 15);
+    assert!(generator_output(1, 1) == 1);
+    assert!(generator_output(15 * SCALE, 0) == 0);
+}
+
+/// A fractional rating keeps its fraction.
+#[test]
+fun fractional_mw_output() {
+    assert!(generator_output(2_500_000_000, SCALE) == 2_500_000_000);
+    assert!(generator_output(500_000_000, SCALE / 2) == 250_000_000);
 }

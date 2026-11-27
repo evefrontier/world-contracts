@@ -14,9 +14,9 @@ import {
   verifySponsor,
 } from './core.js'
 
-// MW is a plain integer. Every fuel amount, capacity, stat, limit and rate is
-// fixed point at `POWER_SCALE` (1e9: 1e-9 kg, the proto's nanos), the same
-// units as `VALUE_SCALE` and `MASS_UNIT`, so nothing is converted.
+// Every power (MW), fuel amount, capacity, stat, limit and rate is fixed point
+// at `POWER_SCALE` (1e9, the proto's nanos), the same units as `VALUE_SCALE`
+// and `MASS_UNIT`, so nothing is converted.
 export const POWER_SCALE = 1_000_000_000n
 
 const POWER_PACKAGE = 'power'
@@ -53,6 +53,7 @@ function drawKindCall(
 }
 
 export interface ModulePowerSpec {
+  /** MW the module needs, at `POWER_SCALE`. */
   powerReq: bigint
   drawKind?: DrawKind
   priority?: bigint
@@ -61,7 +62,7 @@ export interface ModulePowerSpec {
 
 /** A module that connects to the grid but stays desired-offline until the owner turns it on. */
 export const DESIRED_OFFLINE_MODULE: ModulePowerSpec = {
-  powerReq: 1n,
+  powerReq: POWER_SCALE,
   drawKind: 'firm',
   priority: 0n,
   lineLoss: 0n,
@@ -117,6 +118,7 @@ export interface InstallGeneratorArgs {
   fuelType: bigint
   /** Types the owner may switch to; empty (default) for a fixed-type Generator. */
   selectableFuelTypes?: bigint[]
+  /** Rated output, MW at `POWER_SCALE`. */
   maxOutputMw: bigint
   /** Most impulse it can use, at `POWER_SCALE`. */
   impulseLimit: bigint

@@ -9,6 +9,7 @@ use power::{
         admin,
         generator_id,
         install_generator,
+        mw,
         power,
         set_generator,
         set_generator_fuel_type,
@@ -21,15 +22,15 @@ use sui::{clock::{Self, Clock}, event, test_scenario as ts};
 
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
 const IMPULSE_LIMIT: u64 = 100_000_000_000;
-/// 10 MW and 5 MW.
-const OUTPUT_A: u64 = 10;
-const OUTPUT_B: u64 = 5;
+/// 10 MW and 5 MW at `SCALE`.
+const OUTPUT_A: u64 = 10_000_000_000;
+const OUTPUT_B: u64 = 5_000_000_000;
 /// An Emergency Generator that can burn either type.
 const EMERGENCY: u64 = 9_101;
 const HYDROGEN: u64 = 1;
 const CRUDE: u64 = 2;
-/// 20 MW, impulse limit 50, volatility limit 2, all at `SCALE` where scaled.
-const EMERGENCY_OUTPUT: u64 = 20;
+/// 20 MW, impulse limit 50, volatility limit 2, all at `SCALE`.
+const EMERGENCY_OUTPUT: u64 = 20_000_000_000;
 const EMERGENCY_IMPULSE_LIMIT: u64 = 50_000_000_000;
 const EMERGENCY_VOLATILITY_LIMIT: u64 = 2_000_000_000;
 const MOD_A: u64 = 401;
@@ -312,7 +313,7 @@ fun install_past_max_generators_aborts() {
             generator_id(i),
             HYDROGEN,
             vector[],
-            1,
+            mw(1),
             1,
             1,
             &clock,
@@ -331,7 +332,7 @@ fun install_past_max_generators_aborts() {
         generator_id(power_grid::max_generators()),
         HYDROGEN,
         vector[],
-        1,
+        mw(1),
         1,
         1,
         &clock,
@@ -359,7 +360,7 @@ fun install_zero_impulse_limit_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
 
-    install_generator(&mut scenario, entity_id, EMERGENCY, HYDROGEN, vector[], 1, 0, 1, &clock);
+    install_generator(&mut scenario, entity_id, EMERGENCY, HYDROGEN, vector[], mw(1), 0, 1, &clock);
 
     abort
 }
@@ -371,7 +372,7 @@ fun install_zero_volatility_limit_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[], vector[], &clock);
 
-    install_generator(&mut scenario, entity_id, EMERGENCY, HYDROGEN, vector[], 1, 1, 0, &clock);
+    install_generator(&mut scenario, entity_id, EMERGENCY, HYDROGEN, vector[], mw(1), 1, 0, &clock);
 
     abort
 }
@@ -508,11 +509,11 @@ fun uninstall_online_generator_that_overloads_trips() {
         &mut scenario,
         entity_id,
         MOD_A,
-        grid_scenario::firm_power(12),
+        grid_scenario::firm_power(mw(12)),
         &clock,
     );
     grid_scenario::set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
-    assert!(grid_scenario::draw(&mut scenario, entity_id, MOD_A, &clock) == 12);
+    assert!(grid_scenario::draw(&mut scenario, entity_id, MOD_A, &clock) == mw(12));
 
     uninstall_generator(&mut scenario, entity_id, 0, &clock);
 

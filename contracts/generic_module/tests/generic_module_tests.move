@@ -17,6 +17,8 @@ const MODULE_ID: u64 = 0x70;
 const MODULE_ID_2: u64 = 0x71;
 const TYPE_ID: u64 = 42;
 const TYPE_ID_2: u64 = 43;
+/// Firm draw, 1 MW at `SCALE`.
+const DRAW: u64 = 1_000_000_000;
 
 fun module_name(): string::String {
     string::utf8(b"thruster")
@@ -57,7 +59,7 @@ fun install_generic(
         type_id,
         option::some(string::utf8(name)),
         data,
-        1,
+        DRAW,
         power_grid::firm(),
         0,
         0,
@@ -418,7 +420,7 @@ fun migrate_moves_module_with_its_data_and_power() {
     assert!(generic_module::type_id(&to, MODULE_ID) == TYPE_ID);
     assert!(generic_module::data(&to, MODULE_ID) == module_data());
     assert!(generic_module::name(&to, MODULE_ID) == option::some(module_name()));
-    assert!(power_grid::power_grid(&to).module_state(MODULE_ID).power_req() == 1);
+    assert!(power_grid::power_grid(&to).module_state(MODULE_ID).power_req() == DRAW);
     assert!(!power_grid::power_grid(&from).is_module_connected(MODULE_ID));
     ts::return_shared(from);
     ts::return_shared(to);

@@ -177,7 +177,7 @@ public struct Fuel has copy, drop, store {
 public struct ModuleState has copy, drop, store {
     module_spec: ModulePowerSpec,
     desired_online: bool,
-    active_draw_at_last_settled: u64,   // MW granted
+    active_draw_at_last_settled: u64,   // MW granted, at SCALE
 }
 
 public enum DrawKind has copy, drop, store { Firm, Elastic }
@@ -189,7 +189,7 @@ public enum DrawKind has copy, drop, store { Firm, Elastic }
 public struct GeneratorState has copy, drop, store {
     fuel_type: u64,
     selectable_fuel_types: vector<u64>, // empty for a fixed-type generator
-    max_output_mw: u64,
+    max_output_mw: u64,                 // at SCALE, so fractional MW fits
     impulse_limit: u64,
     volatility_limit: u64,
     online: bool,

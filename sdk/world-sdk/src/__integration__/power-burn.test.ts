@@ -48,9 +48,9 @@ const GENERIC_ID = 0x84n
 const ITEM = 88834n
 
 // 20 MW generator. 10 MW inventory + 5 MW thruster, both firm, so both fit.
-const OUTPUT = 20n
-const INVENTORY_DRAW = 10n
-const GENERIC_DRAW = 5n
+const OUTPUT = 20n * POWER_SCALE
+const INVENTORY_DRAW = 10n * POWER_SCALE
+const GENERIC_DRAW = 5n * POWER_SCALE
 const USED = INVENTORY_DRAW + GENERIC_DRAW
 // Impulse 15 (at POWER_SCALE) and no burden: 15 MW burns 1 fuel unit per second,
 // so 25 units last ~25s.

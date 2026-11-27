@@ -33,6 +33,7 @@ use power::{
         install_fuel_at_scale,
         install_module,
         kg,
+        mw,
         owner,
         power_up,
         projected,
@@ -57,10 +58,10 @@ use variant::variant::Variant;
 
 const FUEL_B: u64 = 9_002;
 const MOD_A: u64 = 401;
-/// 15 MW.
-const OUTPUT: u64 = 15;
-/// 10 MW.
-const DRAW: u64 = 10;
+/// 15 MW at `SCALE`.
+const OUTPUT: u64 = 15_000_000_000;
+/// 10 MW at `SCALE`.
+const DRAW: u64 = 10_000_000_000;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
 const IMPULSE_LIMIT: u64 = 100_000_000_000;
 const GATED_DEPOSIT: vector<u8> = b"gated_deposit";
@@ -1489,12 +1490,12 @@ fun each_generator_burns_its_share() {
     let mut clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(
         &mut scenario,
-        vector[100, 50],
+        vector[mw(100), mw(50)],
         vector[100_000_000_000, 30_000_000_000],
         &clock,
     );
     power_up(&mut scenario, entity_id, 2, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(120), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(120)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
 
     clock.set_for_testing(1_000);
