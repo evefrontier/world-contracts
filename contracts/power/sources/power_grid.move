@@ -7,9 +7,8 @@
 /// goes false and stays false until the owner switches it on. Fuel bays live in `grid_fuel`, generator state in
 /// `grid_generator`, and connect, disconnect and desired state in `grid_load`.
 /// Burn math lives in `fuel_math`. Every mutating path settles before it changes
-/// state. Power and bay capacity are plain integers. Fuel quantity and fuel
-/// stats are fixed point at `fuel_math::scale`, so a short settle still burns
-/// a fraction.
+/// state. Power (MW), bay capacity, fuel quantity and fuel stats are fixed
+/// point at `fuel_math::scale`, so a short settle still burns a fraction.
 /// See `docs/adr/0005-onchain-power-network.md`.
 module power::power_grid;
 
@@ -137,7 +136,7 @@ public struct GeneratorState has copy, drop, store {
     fuel_type: u64,
     /// Types the owner may switch to. Empty for a fixed-type Generator.
     selectable_fuel_types: vector<u64>,
-    /// Rated output, plain MW.
+    /// Rated output, MW at `SCALE`.
     max_output_mw: u64,
     /// Most impulse it can use, at `SCALE`.
     impulse_limit: u64,
@@ -151,13 +150,13 @@ public struct ModuleState has copy, drop, store {
     module_spec: ModulePowerSpec,
     /// Owner intent. Set with `set_desired_state`.
     desired_online: bool,
-    /// MW granted at the last settle, plain; zero means no grant.
+    /// MW granted at the last settle, at `SCALE`; zero means no grant.
     active_draw_at_last_settled: u64,
 }
 
 /// The power spec a module declares at install. Stored inside `ModuleState`.
 public struct ModulePowerSpec has copy, drop, store {
-    /// MW the module needs to operate, plain.
+    /// MW the module needs to operate, at `SCALE`.
     power_req: u64,
     draw_kind: DrawKind,
     /// Priority group. Stored only; grants ignore it in v1.
@@ -231,7 +230,7 @@ public struct ModuleView has copy, drop, store {
 }
 
 /// An installed Generator as `projected_snapshot` reads it: its state, why it is
-/// or isn't supplying power, and what it sends out now, plain MW.
+/// or isn't supplying power, and what it sends out now, MW at `SCALE`.
 public struct GeneratorView has copy, drop, store {
     state: GeneratorState,
     status: PowerStatus,
@@ -243,7 +242,7 @@ public struct GeneratorView has copy, drop, store {
 public struct GridSnapshot has copy, drop, store {
     /// Whether the grid is on now, a trip included. See `projected_on`.
     on: bool,
-    /// Capacity grants can use now, plain MW: 0 while off. See `projected_status`.
+    /// Capacity grants can use now, MW at `SCALE`: 0 while off. See `projected_status`.
     capacity_mw: u64,
     /// MW granted now, the sum of the modules' draws.
     used_mw: u64,
@@ -682,7 +681,7 @@ public fun projected_on(entity: &Entity, clock: &Clock): bool {
     on
 }
 
-/// Power limit now, plain MW: `capacity_mw` with the burn since the last settle
+/// Power limit now, MW at `SCALE`: `capacity_mw` with the burn since the last settle
 /// applied, so 0 once every supplying pool runs dry. Ignores On/Off.
 public fun projected_capacity_mw(entity: &Entity, clock: &Clock): u64 {
     let grid = power_grid(entity);
@@ -690,7 +689,7 @@ public fun projected_capacity_mw(entity: &Entity, clock: &Clock): u64 {
     grid.capacity_of(&bays)
 }
 
-/// What Generator `generator_id` sends out now, plain MW: `output_mw` with the
+/// What Generator `generator_id` sends out now, MW at `SCALE`: `output_mw` with the
 /// burn since the last settle applied, so 0 once its pool runs dry.
 public fun projected_output_mw(entity: &Entity, generator_id: u64, clock: &Clock): u64 {
     let grid = power_grid(entity);
@@ -892,13 +891,13 @@ public fun on_at_last_settled(grid: &PowerGrid): bool {
 }
 
 /// Power limit as of the last settle, not live: the sum of `output_mw` over the
-/// Generators, plain MW. `effective_capacity_mw` is what grants use. See
+/// Generators, MW at `SCALE`. `effective_capacity_mw` is what grants use. See
 /// `projected_capacity_mw` for now.
 public fun capacity_mw(grid: &PowerGrid): u64 {
     grid.capacity_of(&grid.bays)
 }
 
-/// What a Generator sends out as of the last settle, plain MW: its rated output
+/// What a Generator sends out as of the last settle, MW at `SCALE`: its rated output
 /// scaled by its pool's volatility, or 0 while offline or its pool is empty. See
 /// `projected_output_mw` for now.
 public fun output_mw(grid: &PowerGrid, state: &GeneratorState): u64 {
@@ -1816,7 +1815,7 @@ fun effective_capacity_of(grid: &PowerGrid, bays: &VecMap<u64, FuelBayState>): u
     if (grid.on_at_last_settled) grid.capacity_of(bays) else 0
 }
 
-/// A Generator's output with `pools` from `pools_of`, plain MW: rated output
+/// A Generator's output with `pools` from `pools_of`, MW at `SCALE`: rated output
 /// scaled by its pool's volatility, or 0 while offline or its pool is empty.
 fun output_from(pools: &VecMap<u64, Fuel>, state: &GeneratorState): u64 {
     if (!state.online || !pools.contains(&state.fuel_type)) return 0;

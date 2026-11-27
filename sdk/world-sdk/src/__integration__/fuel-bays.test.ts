@@ -51,8 +51,8 @@ const BAY_A = 0xa1n
 const BAY_B = 0xa2n
 const MODULE_ID = 0xa3n
 // 10 MW generator at containment reduction 10 sends 10 MW to a 10 MW module.
-const OUTPUT = 10n
-const DRAW = 10n
+const OUTPUT = 10n * POWER_SCALE
+const DRAW = 10n * POWER_SCALE
 const BAY_CAPACITY = 2_000n
 const BURN_WAIT_MS = 4_000
 

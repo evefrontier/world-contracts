@@ -106,6 +106,9 @@ public fun thermal(): u64 { THERMAL }
 
 public fun containment_rating(): u64 { CONTAINMENT_RATING }
 
+/// `n` whole MW at `SCALE`.
+public fun mw(n: u64): u64 { n * power_grid::scale() }
+
 /// Firm power for a module with no line loss and priority 0.
 public fun firm_power(power_req: u64): ModulePowerSpec {
     power_grid::module_power_spec(power_req, power_grid::firm(), 0, 0)

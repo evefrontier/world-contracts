@@ -27,8 +27,9 @@ const VOL: u64 = 2;
 const MODULE_ID: u64 = 0x51;
 const MODULE_ID_2: u64 = 0x52;
 const TYPE_ID: u64 = 1;
-/// Firm draw stored on the inventory at install. `OnlineRequirement` asks for this.
-const DRAW: u64 = 1;
+/// Firm draw stored on the inventory at install, 1 MW at `SCALE`. `OnlineRequirement`
+/// asks for this.
+const DRAW: u64 = 1_000_000_000;
 const GENERATOR_ID: u64 = 0x71;
 const FUEL_BAY_ID: u64 = 0x72;
 const COMMAND_MODULE_ID: u64 = 0x73;
@@ -466,7 +467,7 @@ fun power_inventory(scenario: &mut ts::Scenario, entity_id: ID, owner: address) 
         option::none(),
         7,
         vector[],
-        10,
+        grid_scenario::mw(10),
         100_000_000_000,
         5_000_000_000,
         &clock,
@@ -1488,7 +1489,7 @@ fun install_without_grid_aborts() {
         TYPE_ID,
         option::some(unit_name()),
         1000,
-        1,
+        DRAW,
         power_grid::firm(),
         0,
         0,

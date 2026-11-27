@@ -30,10 +30,10 @@ use sui::{clock::{Self, Clock}, test_scenario as ts};
 const MOD_A: u64 = 401;
 const MOD_B: u64 = 402;
 const FUEL_B: u64 = 9_002;
-/// 15 MW.
-const OUTPUT: u64 = 15;
-/// 10 MW.
-const DRAW: u64 = 10;
+/// 15 MW at `SCALE`.
+const OUTPUT: u64 = 15_000_000_000;
+/// 10 MW at `SCALE`.
+const DRAW: u64 = 10_000_000_000;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
 const IMPULSE_LIMIT: u64 = 100_000_000_000;
 /// Long enough at 10 MW that the whole bay burns, in ms.

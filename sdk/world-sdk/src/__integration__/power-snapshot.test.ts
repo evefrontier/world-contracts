@@ -55,9 +55,9 @@ const HYDROGEN_BAY = 0xd2n
 const CRUDE_BAY = 0xd3n
 const EMPTY_BAY = 0xd4n
 const MODULES: Record<string, [bigint, bigint, DrawKind, boolean]> = {
-  firm: [0xdan, 20n, 'firm', true],
-  elastic: [0xdbn, 30n, 'elastic', true],
-  off: [0xdcn, 10n, 'firm', false],
+  firm: [0xdan, 20n * POWER_SCALE, 'firm', true],
+  elastic: [0xdbn, 30n * POWER_SCALE, 'elastic', true],
+  off: [0xdcn, 10n * POWER_SCALE, 'firm', false],
 }
 
 const UNITS = 100n
@@ -89,7 +89,7 @@ describe('power snapshot (localnet)', () => {
         componentId,
         fuelType: componentId === MAIN ? HYDROGEN : CRUDE,
         selectableFuelTypes: [HYDROGEN, CRUDE],
-        maxOutputMw: 100n,
+        maxOutputMw: 100n * POWER_SCALE,
         impulseLimit: 100n * POWER_SCALE,
         volatilityLimit: 1n,
       })

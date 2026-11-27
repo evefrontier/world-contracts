@@ -18,6 +18,7 @@ use power::{
         install_fuel,
         install_generator,
         install_module,
+        mw,
         owner,
         power_up,
         projected,
@@ -41,8 +42,8 @@ const FUEL_B: u64 = 9_002;
 const OTHER_TYPE: u64 = 8;
 /// Third bay, holding the default type beside the default bay.
 const FUEL_C: u64 = 9_003;
-/// 15 MW each.
-const OUTPUT: u64 = 15;
+/// 15 MW each, at `SCALE`.
+const OUTPUT: u64 = 15_000_000_000;
 /// Impulse limit 100, above both test fuels.
 const IMPULSE_LIMIT: u64 = 100_000_000_000;
 /// `OTHER_TYPE` fuel: impulse 45, 1_000 kg.
@@ -52,7 +53,7 @@ const OTHER_UNITS: u64 = 1_000;
 // === Helpers ===
 
 /// Generator 0 burns `fuel_type()` from the default bay; Generator 1 burns
-/// `OTHER_TYPE` from `FUEL_B`. Both online, grid on, `MOD_A` drawing `draw` MW.
+/// `OTHER_TYPE` from `FUEL_B`. Both online, grid on, `MOD_A` drawing `draw` MW at `SCALE`.
 fun two_pools(scenario: &mut ts::Scenario, draw: u64, clock: &Clock): ID {
     two_pools_holding(scenario, draw, OTHER_UNITS, clock)
 }
@@ -115,7 +116,7 @@ fun pool_reads_only_its_type() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools(&mut scenario, 20, &clock);
+    let entity_id = two_pools(&mut scenario, mw(20), &clock);
 
     let own = pool(&mut scenario, entity_id, fuel_type());
     assert!(own.fuel_type() == option::some(fuel_type()));
@@ -138,7 +139,7 @@ fun two_pools_burn_independently() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools(&mut scenario, 20, &clock);
+    let entity_id = two_pools(&mut scenario, mw(20), &clock);
 
     clock.set_for_testing(1_000);
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
@@ -155,7 +156,7 @@ fun two_pools_burn_independently() {
 }
 
 /// Output is rated × volatility share: pool volatility 1 against a limit of 2
-/// gives half of 15 MW, floored to 7.
+/// gives half of 15 MW: 7.5 MW, the fraction kept.
 #[test]
 fun output_scales_with_volatility() {
     let mut scenario = ts::begin(admin());
@@ -175,7 +176,7 @@ fun output_scales_with_volatility() {
     );
     power_up(&mut scenario, entity_id, 1, &clock);
 
-    assert!(capacity(&mut scenario, entity_id, &clock) == 7);
+    assert!(capacity(&mut scenario, entity_id, &clock) == 7_500_000_000);
 
     clock.destroy_for_testing();
     scenario.end();
@@ -233,7 +234,7 @@ fun offline_bay_leaves_its_pool() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools(&mut scenario, 10, &clock);
+    let entity_id = two_pools(&mut scenario, mw(10), &clock);
     assert!(capacity(&mut scenario, entity_id, &clock) == 2 * OUTPUT);
 
     set_fuel_bay(&mut scenario, entity_id, FUEL_B, false, &clock);
@@ -260,7 +261,7 @@ fun run_out_overloads_at_that_moment() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools_holding(&mut scenario, 20, 1, &clock);
+    let entity_id = two_pools_holding(&mut scenario, mw(20), 1, &clock);
 
     clock.set_for_testing(10_000);
     let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
@@ -291,11 +292,11 @@ fun other_pool_burns_at_the_new_rate_after_a_run_out() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+    let entity_id = two_pools_holding(&mut scenario, mw(10), 1, &clock);
 
     clock.set_for_testing(10_000);
     let (_, capacity, used, online) = projected(&mut scenario, entity_id, &clock);
-    assert!(capacity == OUTPUT && used == 10 && online == vector[MOD_A]);
+    assert!(capacity == OUTPUT && used == mw(10) && online == vector[MOD_A]);
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
     assert!(own_left == starting_fuel() - 611_111_112);
 
@@ -314,7 +315,7 @@ fun read_before_run_out_uses_one_stretch() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+    let entity_id = two_pools_holding(&mut scenario, mw(10), 1, &clock);
 
     clock.set_for_testing(4_000);
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
@@ -365,7 +366,7 @@ fun projected_pools_step_through_run_outs() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+    let entity_id = two_pools_holding(&mut scenario, mw(10), 1, &clock);
 
     let pools = pools(&mut scenario, entity_id, &clock);
     assert!(pools.length() == 2);
@@ -392,7 +393,7 @@ fun projected_pools_read_the_burn_rate() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+    let entity_id = two_pools_holding(&mut scenario, mw(10), 1, &clock);
     let other_type = OTHER_TYPE;
 
     let pools = pools(&mut scenario, entity_id, &clock);
@@ -492,7 +493,7 @@ fun snapshot_matches_the_views_through_a_run_out() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+    let entity_id = two_pools_holding(&mut scenario, mw(10), 1, &clock);
 
     assert_snapshot_matches_the_views(&mut scenario, entity_id, &clock);
     clock.set_for_testing(4_000);
@@ -523,7 +524,7 @@ fun snapshot_reads_a_trip() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools_holding(&mut scenario, 20, 1, &clock);
+    let entity_id = two_pools_holding(&mut scenario, mw(20), 1, &clock);
 
     clock.set_for_testing(10_000);
     assert_snapshot_matches_the_views(&mut scenario, entity_id, &clock);
@@ -598,7 +599,7 @@ fun fuel_of_another_type_reads_no_fuel() {
         &clock,
     );
     power_up(&mut scenario, entity_id, 1, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(10)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
 
     assert!(module_status(&mut scenario, entity_id, &clock) == power_grid::no_fuel_status());
@@ -613,7 +614,7 @@ fun one_supplying_pool_keeps_modules_online() {
     let mut scenario = ts::begin(admin());
     setup(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let entity_id = two_pools_holding(&mut scenario, 10, 1, &clock);
+    let entity_id = two_pools_holding(&mut scenario, mw(10), 1, &clock);
 
     clock.set_for_testing(10_000);
     assert!(module_status(&mut scenario, entity_id, &clock) == power_grid::online_status());
@@ -635,7 +636,7 @@ fun impulse_above_limit_burns_faster() {
     let mut clock = clock::create_for_testing(scenario.ctx());
     let entity_id = setup_entity(&mut scenario, vector[OUTPUT], vector[OTHER_IMPULSE], &clock);
     power_up(&mut scenario, entity_id, 1, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(10), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(10)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
 
     clock.set_for_testing(1_000);
@@ -684,7 +685,7 @@ fun one_type_burns_its_bays_in_proportion_beside_another_type() {
     );
     set_fuel_bay(&mut scenario, entity_id, FUEL_B, true, &clock);
     power_up(&mut scenario, entity_id, 2, &clock);
-    install_module(&mut scenario, entity_id, MOD_A, firm_power(20), &clock);
+    install_module(&mut scenario, entity_id, MOD_A, firm_power(mw(20)), &clock);
     set_desired(&mut scenario, entity_id, MOD_A, true, &clock);
 
     clock.set_for_testing(1_000);
@@ -730,7 +731,7 @@ fun emergency_on_other(scenario: &mut ts::Scenario, other_units: u64, clock: &Cl
     );
     set_fuel_bay(scenario, entity_id, FUEL_B, true, clock);
     power_up(scenario, entity_id, 1, clock);
-    install_module(scenario, entity_id, MOD_A, firm_power(10), clock);
+    install_module(scenario, entity_id, MOD_A, firm_power(mw(10)), clock);
     set_desired(scenario, entity_id, MOD_A, true, clock);
     entity_id
 }
@@ -766,7 +767,7 @@ fun emergency_stops_when_its_type_runs_dry() {
     ts::return_shared(entity);
 
     switch_emergency_to(&mut scenario, entity_id, fuel_type(), &clock);
-    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == mw(10));
 
     clock.destroy_for_testing();
     scenario.end();
@@ -784,7 +785,7 @@ fun emergency_set_to_another_type_burns_that_pool() {
     switch_emergency_to(&mut scenario, entity_id, fuel_type(), &clock);
 
     clock.set_for_testing(1_000);
-    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == 10);
+    assert!(draw(&mut scenario, entity_id, MOD_A, &clock) == mw(10));
     let own_left = projected_bay_amount(&mut scenario, entity_id, fuel_bay_id(), &clock);
     let other_left = projected_bay_amount(&mut scenario, entity_id, FUEL_B, &clock);
     assert!(own_left == starting_fuel() - 111_111_112);

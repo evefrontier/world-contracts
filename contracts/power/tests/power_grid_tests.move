@@ -19,10 +19,12 @@ use power::{
 use sui::{clock::{Self, Clock}, test_scenario as ts};
 
 const MOD_A: u64 = 401;
-const OUTPUT: u64 = 15;
+/// 15 MW at `SCALE`.
+const OUTPUT: u64 = 15_000_000_000;
 /// Impulse limit 100, above the test fuel's impulse, so it never caps.
 const IMPULSE_LIMIT: u64 = 100_000_000_000;
-const DRAW: u64 = 10;
+/// 10 MW at `SCALE`.
+const DRAW: u64 = 10_000_000_000;
 const IMPULSE: u64 = 90_000_000_000;
 
 /// A grid with no power sources, off.
@@ -363,7 +365,7 @@ fun check_aborts_when_capacity_below() {
             false,
             option::none(),
             option::none(),
-            1,
+            grid_scenario::mw(1),
             option::none(),
         ),
         |entity, req| power_grid::assert_power_grid(entity, req, &clock),

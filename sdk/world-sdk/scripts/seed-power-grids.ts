@@ -20,7 +20,7 @@ const GENERATOR_ID = componentIdFromName('generator')
 const FUEL_ID = componentIdFromName('fuel')
 const GRID_ID = componentIdFromName('power_grid')
 const SHELL_ID = '0x5e11'
-const OUTPUT = 15n
+const OUTPUT = 15n * POWER_SCALE
 // Fuel type 7, impulse limit 100 and volatility limit 1e-9 (at POWER_SCALE):
 // any type-7 fuel with volatility gives full output. Bay capacity 1,000 m³.
 const FUEL_TYPE = 7n

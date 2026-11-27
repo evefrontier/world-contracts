@@ -79,7 +79,7 @@ describe('fuel pools (localnet)', () => {
       componentId: EMERGENCY,
       fuelType: HYDROGEN,
       selectableFuelTypes: [HYDROGEN, CRUDE],
-      maxOutputMw: 20n,
+      maxOutputMw: 20n * POWER_SCALE,
       impulseLimit: 100n * POWER_SCALE,
       volatilityLimit: 1n,
     })

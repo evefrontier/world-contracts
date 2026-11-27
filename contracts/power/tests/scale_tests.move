@@ -16,6 +16,7 @@ use power::{
         install_fuel,
         install_generator,
         install_module,
+        mw,
         owner,
         power,
         set_desired,
@@ -86,7 +87,7 @@ fun full_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {
             generator_id(i),
             t,
             vector[],
-            10,
+            mw(10),
             IMPULSE_LIMIT,
             volatility_limit(),
             clock,
@@ -102,7 +103,7 @@ fun full_grid(scenario: &mut ts::Scenario, clock: &Clock): ID {
         set_fuel_bay(scenario, entity_id, bay, true, clock);
     });
     SIZE.do!(|i| {
-        install_module(scenario, entity_id, FIRST_MODULE + i, elastic_power(1), clock);
+        install_module(scenario, entity_id, FIRST_MODULE + i, elastic_power(mw(1)), clock);
         set_desired(scenario, entity_id, FIRST_MODULE + i, true, clock);
     });
     entity_id

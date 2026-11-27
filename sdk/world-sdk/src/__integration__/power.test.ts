@@ -49,8 +49,8 @@ const FUEL_ID = 0x63n
 const ITEM = 88834n
 const VOL = 2n
 // 15 MW generator, 10 MW inventory draw, containment reduction 10.
-const OUTPUT = 15n
-const DRAW = 10n
+const OUTPUT = 15n * POWER_SCALE
+const DRAW = 10n * POWER_SCALE
 // 500 units of fuel: impulse 90, containment burden 14.
 const FUEL_AMOUNT = 500n
 const IMPULSE = 90n * POWER_SCALE

@@ -45,12 +45,15 @@ import {
 const GENERATOR_ID = 0xc0n
 const BAY_ID = 0xc1n
 // The overview's power example on a 100 MW limit.
+/** Whole MW at `POWER_SCALE`. */
+const mw = (n: bigint): bigint => n * POWER_SCALE
+
 const MODULES: Record<string, [bigint, bigint, DrawKind]> = {
-  A: [0xcan, 70n, 'firm'],
-  B: [0xcbn, 20n, 'firm'],
-  C: [0xccn, 30n, 'elastic'],
-  D: [0xcdn, 10n, 'firm'],
-  E: [0xcen, 20n, 'firm'],
+  A: [0xcan, mw(70n), 'firm'],
+  B: [0xcbn, mw(20n), 'firm'],
+  C: [0xccn, mw(30n), 'elastic'],
+  D: [0xcdn, mw(10n), 'firm'],
+  E: [0xcen, mw(20n), 'firm'],
 }
 type Name = keyof typeof MODULES
 
@@ -72,7 +75,7 @@ describe('power sharing (localnet)', () => {
     seatShell(createTx, config, creation)
     installGenerator(createTx, config, creation, {
       componentId: GENERATOR_ID,
-      maxOutputMw: 100n,
+      maxOutputMw: mw(100n),
       fuelType: 1n,
       impulseLimit: 100n * POWER_SCALE,
       volatilityLimit: 1n,
@@ -177,9 +180,12 @@ describe('power sharing (localnet)', () => {
       return readDraws(client, config, entityId)
     }
 
-    expect(await desire(['A', 'B'], true)).toMatchObject({ A: 70n, B: 20n })
-    expect(await desire(['C'], true)).toMatchObject({ C: 10n })
-    expect(await desire(['D'], true)).toMatchObject({ C: 0n, D: 10n })
+    expect(await desire(['A', 'B'], true)).toMatchObject({
+      A: mw(70n),
+      B: mw(20n),
+    })
+    expect(await desire(['C'], true)).toMatchObject({ C: mw(10n) })
+    expect(await desire(['D'], true)).toMatchObject({ C: 0n, D: mw(10n) })
     // E overloads: the grid trips.
     expect(await desire(['E'], true)).toEqual({
       A: 0n,
@@ -191,10 +197,10 @@ describe('power sharing (localnet)', () => {
     // E off again: still tripped until the owner switches the grid on.
     expect(await desire(['E'], false)).toMatchObject({ A: 0n, B: 0n, D: 0n })
     expect(await switchOn()).toEqual({
-      A: 70n,
-      B: 20n,
+      A: mw(70n),
+      B: mw(20n),
       C: 0n,
-      D: 10n,
+      D: mw(10n),
       E: 0n,
     })
 
@@ -220,9 +226,9 @@ describe('power sharing (localnet)', () => {
     completeRequest(fittedTx, config, fitted, request)
     await expectAbort(client, fittedTx, signer, /EWouldOverload/)
     expect(await readDraws(client, config, entityId)).toMatchObject({
-      A: 70n,
-      B: 20n,
-      D: 10n,
+      A: mw(70n),
+      B: mw(20n),
+      D: mw(10n),
     })
   })
 })
