@@ -114,7 +114,40 @@ start_logging() {
     exec 1> >(tee -a "$LOG") 2>&1
 }
 
-# Run `sui <cmd> --json` from contracts/$pkg, capture output, fail on non-JSON.
+# Hex chain id of the active env (the plain CLI output also has a Base58 line).
+chain_id() {
+    sui client chain-identifier --json | jq -r .hex
+}
+
+kms_signer() {
+    "$REPO_ROOT/node_modules/.bin/tsx" "$REPO_ROOT/ts-scripts/kms-signer.ts" "$@"
+}
+
+# Run a tx-building `sui client <cmd...>` and print its --json result.
+# With SUINS_KMS_KEY_ID set, the CLI only builds the tx; AWS KMS signs it.
+sui_tx() {
+    if [[ -z "${SUINS_KMS_KEY_ID:-}" ]]; then
+        sui client "$@" --json
+        return
+    fi
+    local sender tx sig
+    sender=$(kms_signer address "$SUINS_KMS_KEY_ID") || return 1
+    [[ "$1" == "ptb" ]] && sender="@$sender"
+    tx=$(sui client "$@" --sender "$sender" --serialize-unsigned-transaction) || return 1
+    sig=$(kms_signer sign "$SUINS_KMS_KEY_ID" "$tx") || return 1
+    sui client execute-signed-tx --tx-bytes "$tx" --signatures "$sig" --json
+}
+
+# The CLI only writes Published.toml when it signs itself; record it for KMS txs.
+record_published() {
+    local pkg=$1 env=$2 out_file=$3
+    if [[ -n "${SUINS_KMS_KEY_ID:-}" ]]; then
+        "$REPO_ROOT/node_modules/.bin/tsx" "$REPO_ROOT/ts-scripts/record-published.ts" \
+            "contracts/$pkg" "$env" "$(chain_id)" "$out_file"
+    fi
+}
+
+# Run a tx command from contracts/$pkg, capture output, fail on non-JSON.
 # Args: pkg env action out_file cmd...
 _run_pkg_cmd() {
     local pkg=$1 env=$2 action=$3 out_file=$4
@@ -123,7 +156,7 @@ _run_pkg_cmd() {
     tmp=$(mktemp)
     tmp_err=$(mktemp)
 
-    (cd "contracts/$pkg" && "$@" --json) > "$tmp" 2> "$tmp_err" || true
+    (cd "contracts/$pkg" && "$@") > "$tmp" 2> "$tmp_err" || true
 
     {
         echo ""
@@ -154,10 +187,10 @@ publish() {
     local pkg=$1 env=$2 pubfile=$3 out_file=$4
     if [[ "$env" == "localnet" ]]; then
         _run_pkg_cmd "$pkg" "$env" "Publish" "$out_file" \
-            sui client test-publish --build-env testnet --pubfile-path "$pubfile"
+            sui client test-publish --build-env testnet --pubfile-path "$pubfile" --json
     else
-        _run_pkg_cmd "$pkg" "$env" "Publish" "$out_file" \
-            sui client publish
+        _run_pkg_cmd "$pkg" "$env" "Publish" "$out_file" sui_tx publish
+        record_published "$pkg" "$env" "$out_file"
     fi
 }
 
@@ -168,6 +201,6 @@ upgrade() {
         echo "ERROR: upgrade is not supported for localnet (ephemeral test-publish)." >&2
         exit 1
     fi
-    _run_pkg_cmd "$pkg" "$env" "Upgrade" "$out_file" \
-        sui client upgrade
+    _run_pkg_cmd "$pkg" "$env" "Upgrade" "$out_file" sui_tx upgrade
+    record_published "$pkg" "$env" "$out_file"
 }

@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 source "$(dirname "$0")/ci-deploy-lib.sh"
 
-: "${TARGET_ENV:?}" "${MODE:?}" "${NET:?}" "${COMMIT:?}" "${DEPLOYER_KEY:?}" "${VERSION:?}"
+: "${TARGET_ENV:?}" "${MODE:?}" "${NET:?}" "${COMMIT:?}" "${VERSION:?}"
 
 # Packages in dependency order, matching deploy-world.sh.
 PACKAGES=(core character metadata creation variant power inventory generic_module killmail)

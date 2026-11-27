@@ -27,10 +27,12 @@
     "*.move": "prettier --plugin=@mysten/prettier-plugin-move --write"
   },
   "dependencies": {
+    "@aws-sdk/credential-providers": "^3.1177.0",
     "@iarna/toml": "^2.2.5",
-    "@mysten/bcs": "^2.0.2",
+    "@mysten/aws-kms-signer": "^0.3.35",
+    "@mysten/bcs": "^2.1.4",
     "@mysten/prettier-plugin-move": "^0.3.3",
-    "@mysten/sui": "^2.0.0",
+    "@mysten/sui": "^2.39.1",
     "@noble/hashes": "^1.8.0",
     "dotenv": "^17.2.3",
     "prettier": "^3.7.4"

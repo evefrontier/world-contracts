@@ -9,7 +9,7 @@ const UNIT_NAME = 'SU'
 /** Volume cap in nano-m³: 1,000 m³. */
 const CAPACITY = 1_000n * 1_000_000_000n
 
-const { repoRoot, config, client, keypair } = loadScriptContext()
+const { repoRoot, config, client, signer } = await loadScriptContext()
 const { resources, accounts } = loadSeedFiles(repoRoot)
 
 const entries = Object.entries(resources.storageUnit ?? {})
@@ -47,7 +47,7 @@ for (const [, unit] of entries) {
 }
 
 const created = await signAndExecute(client, {
-  signer: keypair,
+  signer,
   transaction: createTx,
 })
 console.log('create digest:', created.digest)
@@ -71,7 +71,7 @@ for (const [alias, unit] of entries) {
 }
 
 const minted = await signAndExecute(client, {
-  signer: keypair,
+  signer,
   transaction: mintTx,
 })
 console.log('mint digest:', minted.digest)

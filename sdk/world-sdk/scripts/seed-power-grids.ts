@@ -28,7 +28,7 @@ const IMPULSE_LIMIT = 100n * POWER_SCALE
 const VOLATILITY_LIMIT = 1n
 const FUEL_CAPACITY = 1_000n * POWER_SCALE
 
-const { repoRoot, config, client, keypair } = loadScriptContext()
+const { repoRoot, config, client, signer } = await loadScriptContext()
 const { resources } = loadSeedFiles(repoRoot)
 
 const entries = Object.entries(resources.storageUnit ?? {})
@@ -82,7 +82,7 @@ for (const [alias, unit] of entries) {
   ])
 
   const result = await signAndExecute(client, {
-    signer: keypair,
+    signer,
     transaction: tx,
   })
   await client.waitForTransaction({ digest: result.digest })

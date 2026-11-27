@@ -44,6 +44,7 @@ jobs:
       contents: write
       packages: read
       pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -70,10 +71,21 @@ jobs:
       - name: Pull pinned image
         run: docker pull "${{ steps.cfg.outputs.image }}"
 
+      # KMS signing: set vars AWS_DEPLOY_ROLE_ARN, AWS_REGION and SUI_*_KMS_KEY_ID on
+      # the environment. The KMS key takes precedence over the private-key secret.
+      - name: Configure AWS credentials
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
       - name: Deploy / upgrade currency (+ MVR)
         env:
           DEPLOYER_KEY: ${{ secrets.SUI_DEPLOYER_KEY }}
           APPCAP_KEY: ${{ secrets.SUI_APPCAP_KEY }}
+          DEPLOYER_KMS_KEY_ID: ${{ vars.SUI_DEPLOYER_KMS_KEY_ID }}
+          APPCAP_KMS_KEY_ID: ${{ vars.SUI_APPCAP_KMS_KEY_ID }}
           TARGET_ENV: ${{ inputs.env }}
           MODE: ${{ inputs.mode }}
           VERSION: ${{ inputs.version }}
@@ -88,6 +100,8 @@ jobs:
           docker create --name "$CONTAINER" \
             -e CI=true \
             -e DEPLOYER_KEY -e APPCAP_KEY \
+            -e DEPLOYER_KMS_KEY_ID -e APPCAP_KMS_KEY_ID \
+            -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
             -e TARGET_ENV -e MODE -e VERSION -e NET \
             -e COMMIT="${{ github.sha }}" \
             --entrypoint bash \

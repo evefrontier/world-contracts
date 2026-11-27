@@ -34,8 +34,8 @@ async function main(): Promise<void> {
   }
   const amountRaw = amountEve * SCALE
 
-  const { config, client, keypair } = loadScriptContext()
-  const sender = keypair.getPublicKey().toSuiAddress()
+  const { config, client, signer } = await loadScriptContext()
+  const sender = signer.getPublicKey().toSuiAddress()
   const coinType = eveCoinType(config)
 
   const coinsRes = await client.listCoins({
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
   })
 
   const result = await signAndExecute(client, {
-    signer: keypair,
+    signer,
     transaction: tx,
   })
 

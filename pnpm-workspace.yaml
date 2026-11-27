@@ -6,8 +6,8 @@ allowBuilds:
 
 # Single source of truth for shared dependency versions across the workspace.
 catalog:
-  "@mysten/sui": ^2.0.0
-  "@mysten/bcs": ^2.0.2
+  "@mysten/sui": ^2.39.1
+  "@mysten/bcs": ^2.1.4
   "@mysten/prettier-plugin-move": ^0.3.3
   "@noble/hashes": ^1.8.0
   dotenv: ^17.2.3

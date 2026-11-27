@@ -6,20 +6,46 @@ run() {
     if [[ "${DRY_RUN:-}" == "1" ]]; then echo "DRY_RUN: $*"; else "$@"; fi
 }
 
-# Import deployer (+ optional AppCap) keys, init client, export SUI_PRIVATE_KEY.
-# Sets: DEPLOYER_ADDR, APPCAP_ADDR
+# Resolve the deployer and AppCap signers: an AWS KMS key (*_KMS_KEY_ID) or a
+# private key (*_KEY). The AppCap signer defaults to the deployer.
+# Sets: DEPLOYER_ADDR, APPCAP_ADDR. Leaves the deployer as the active signer.
 ci_bootstrap_keys() {
-    : "${TARGET_ENV:?}" "${NET:?}" "${DEPLOYER_KEY:?}"
+    : "${TARGET_ENV:?}" "${NET:?}"
 
     sui_init_config "$NET" "$(get_rpc "$TARGET_ENV")"
-    DEPLOYER_ADDR=$(import_key "$DEPLOYER_KEY")
-    [[ -z "$DEPLOYER_ADDR" ]] && { echo "ERROR: could not import deployer key" >&2; exit 1; }
-    sui client switch --address "$DEPLOYER_ADDR" >/dev/null
-    export SUI_PRIVATE_KEY="$DEPLOYER_KEY"
+    if [[ -n "${DEPLOYER_KMS_KEY_ID:-}" ]]; then
+        DEPLOYER_ADDR=$(kms_signer address "$DEPLOYER_KMS_KEY_ID")
+    else
+        : "${DEPLOYER_KEY:?set DEPLOYER_KEY or DEPLOYER_KMS_KEY_ID}"
+        DEPLOYER_ADDR=$(import_key "$DEPLOYER_KEY")
+        export SUI_PRIVATE_KEY="$DEPLOYER_KEY"
+    fi
+    [[ -z "$DEPLOYER_ADDR" ]] && { echo "ERROR: could not resolve deployer address" >&2; exit 1; }
 
     APPCAP_ADDR="$DEPLOYER_ADDR"
-    if [[ -n "${APPCAP_KEY:-}" ]]; then
+    if [[ -n "${APPCAP_KMS_KEY_ID:-}" ]]; then
+        APPCAP_ADDR=$(kms_signer address "$APPCAP_KMS_KEY_ID")
+    elif [[ -n "${APPCAP_KEY:-}" ]]; then
         APPCAP_ADDR=$(import_key "$APPCAP_KEY")
+    else
+        APPCAP_KMS_KEY_ID=${DEPLOYER_KMS_KEY_ID:-}
+    fi
+    echo "deployer: $DEPLOYER_ADDR${DEPLOYER_KMS_KEY_ID:+ (KMS)}"
+    echo "appcap:   $APPCAP_ADDR${APPCAP_KMS_KEY_ID:+ (KMS)}"
+    use_signer deployer
+}
+
+# Sign the following sui txs with the deployer or the AppCap key.
+use_signer() {
+    local kms addr
+    case "$1" in
+        deployer) kms=${DEPLOYER_KMS_KEY_ID:-}; addr=$DEPLOYER_ADDR ;;
+        appcap)   kms=${APPCAP_KMS_KEY_ID:-};   addr=$APPCAP_ADDR ;;
+        *) echo "use_signer: unknown signer '$1'" >&2; exit 1 ;;
+    esac
+    export SUINS_KMS_KEY_ID="$kms"
+    if [[ -z "$kms" ]]; then
+        sui client switch --address "$addr" >/dev/null
     fi
 }
 
@@ -66,13 +92,13 @@ ci_require_appcaps() {
 ci_mvr_deploy_pkg() {
     local pkg=$1
 
-    sui client switch --address "$DEPLOYER_ADDR" >/dev/null
+    use_signer deployer
     run ./scripts/mvr.sh package-info "$TARGET_ENV" "$pkg"
 
-    sui client switch --address "$APPCAP_ADDR" >/dev/null
+    use_signer appcap
     run ./scripts/mvr.sh set-network "$TARGET_ENV" "$pkg"
 
-    sui client switch --address "$DEPLOYER_ADDR" >/dev/null
+    use_signer deployer
     run ./scripts/mvr.sh git-version "$TARGET_ENV" "$pkg" "$VERSION" "$COMMIT"
 }
 
