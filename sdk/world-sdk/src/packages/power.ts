@@ -504,7 +504,7 @@ export interface DepositFuelArgs {
 }
 
 /**
- * Load fuel into one bay; its stats blend by amount. An empty bay locks to
+ * Load fuel into one bay; its stats blend by amount, its containment burden by max. An empty bay locks to
  * the variant's type until it runs dry; another type or zero impulse aborts. The owner's `ownerCap`
  * authorizes the deposit, and the gas sponsor must be on `AdminACL`.
  */
@@ -840,6 +840,7 @@ export interface FuelAmount {
   fuelType: bigint | null
   quantity: bigint
   impulse: bigint
+  /** Blends as the max, not by amount. */
   containmentBurden: bigint
   volatility: bigint
   thermalInefficiency: bigint

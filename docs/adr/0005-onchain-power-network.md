@@ -54,7 +54,7 @@ flowchart LR
 
 A pool's bays burn together, each in proportion to what it holds, so they all
 run dry at the same moment. A generator's burn uses the amount-weighted average
-of its pool's stats. Pools run dry at different moments.
+of its pool's stats; a pool's containment burden is the max of its bays. Pools run dry at different moments.
 
 The owner sets each power module's **desired state**. It is always stored and
 never refused, even with no fuel. The grant is separate:
