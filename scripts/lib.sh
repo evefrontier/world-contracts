@@ -133,7 +133,10 @@ sui_tx() {
     local sender tx sig
     sender=$(kms_signer address "$SUINS_KMS_KEY_ID") || return 1
     [[ "$1" == "ptb" ]] && sender="@$sender"
-    tx=$(sui client "$@" --sender "$sender" --serialize-unsigned-transaction) || return 1
+    # The CLI won't build a tx without a managed address, even for an external --sender.
+    sui client active-address 2>/dev/null | grep -q '^0x' || sui client new-address ed25519 >/dev/null
+    tx=$(sui client "$@" --sender "$sender" --serialize-unsigned-transaction) \
+        || { echo "$tx" >&2; return 1; }
     sig=$(kms_signer sign "$SUINS_KMS_KEY_ID" "$tx") || return 1
     sui client execute-signed-tx --tx-bytes "$tx" --signatures "$sig" --json
 }
